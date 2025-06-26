@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
+import {
+  Card,
+  CardHeader,
+  CardContent,
+  CardFooter,
+  CardTitle,
+} from '../components/ui/card';
+import { Label } from '../components/ui/label';
 
 interface Props {
   onLogin: (email: string, password: string) => Promise<void>;
@@ -22,23 +30,40 @@ export default function Login({ onLogin }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto mt-20 w-80 space-y-4">
-      <Input
-        type="email"
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
-      <Input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-      {error && <p className="text-red-500 text-sm">{error}</p>}
-      <Button type="submit" className="w-full">
-        Login
-      </Button>
-    </form>
+    <Card className="mx-auto mt-20 w-96">
+      <form onSubmit={handleSubmit}>
+        <CardHeader>
+          <CardTitle>Login</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          {error && <p className="text-destructive text-sm">{error}</p>}
+        </CardContent>
+        <CardFooter>
+          <Button type="submit" className="w-full">
+            Login
+          </Button>
+        </CardFooter>
+      </form>
+    </Card>
   );
 }
