@@ -44,7 +44,7 @@ const users = {
     teamLead: 'Lead A',
     manager: 'Manager A',
   },
-  'user@example.com': {
+  'darshan.singh@vizvainc.com': {
     passwordHash: crypto.createHash('sha256').update('userpass').digest('hex'),
     role: 'user',
     teamLead: 'Lead B',
