@@ -7,3 +7,4 @@ yarn-error.log*
 
 # ignore build output
 *.tsbuildinfo
+backend/node_modules/
