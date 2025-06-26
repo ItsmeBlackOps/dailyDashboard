@@ -13,6 +13,8 @@
    MONGODB_URI=<your mongo uri>
    PORT=3000
    JWT_SECRET=<random secret>
+   # Allowed origin for CORS
+   FRONTEND_ORIGIN=http://localhost:5173
    ```
 3. Start the server:
    ```bash
@@ -31,6 +33,7 @@
 - `MONGODB_URI` – MongoDB connection string.
 - `PORT` – Port for the HTTP server (default `3000`).
 - `JWT_SECRET` – Secret for signing JWT tokens.
+- `FRONTEND_ORIGIN` – Allowed origin for CORS requests (default `http://localhost:5173`).
 
 ### Dev Scripts
 - `npm start` – runs the server
