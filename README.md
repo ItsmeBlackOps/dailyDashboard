@@ -55,3 +55,7 @@ npm run dev
 ```
 
 Open `http://localhost:3000` to view the login page.
+
+The frontend leverages the reusable components under `frontend/components/ui`.
+The login screen and the table used to display tasks are built exclusively using
+these UI primitives.
