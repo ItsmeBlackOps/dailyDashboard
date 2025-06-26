@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from '../components/ui';
+import DOMPurify from 'dompurify';
 
 interface Props {
   tasks: any[];
@@ -37,9 +38,15 @@ export default function Tasks({ tasks }: Props) {
               <TableRow key={i}>
                 <TableCell>{t.assignedEmail || 'N/A'}</TableCell>
                 <TableCell>
-                  <pre className="whitespace-pre-wrap break-words text-xs">
-                    {JSON.stringify(t, null, 2)}
-                  </pre>
+                  <pre
+                    className="whitespace-pre-wrap break-words text-xs"
+                    // Sanitize any HTML to prevent XSS
+                    dangerouslySetInnerHTML={{
+                      __html: DOMPurify.sanitize(
+                        JSON.stringify(t, null, 2)
+                      ),
+                    }}
+                  />
                 </TableCell>
               </TableRow>
             ))}
