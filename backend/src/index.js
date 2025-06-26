@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import moment from 'moment-timezone';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
+import cors from 'cors';
 
 dotenv.config();
 
@@ -11,6 +12,17 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
 const app = express();
 app.use(express.json());
+const allowedOrigins = [process.env.FRONTEND_ORIGIN || 'http://localhost:5173'];
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error('Not allowed by CORS'));
+    },
+  })
+);
 
 // MongoDB connection
 const mongoURI = process.env.MONGODB_URI;
