@@ -1,8 +1,3 @@
-🔒 Folder Access Restriction
-Do NOT read, modify, or reference the UI/ folder until the frontend development phase officially begins.
-
-Treat the UI/ folder as out-of-scope during initial phases (e.g., backend architecture, API development, database setup).
-
 Use only the latest stable versions of these kinds of tools:
 
 🔎 Validation Before Use:
