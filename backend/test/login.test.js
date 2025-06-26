@@ -23,7 +23,7 @@ describe('POST /refresh', () => {
   test('returns new access token', async () => {
     const loginRes = await request(app)
       .post('/login')
-      .send({ email: 'user@example.com', password: 'userpass' });
+      .send({ email: 'darshan.singh@vizvainc.com', password: 'userpass' });
     const refreshRes = await request(app)
       .post('/refresh')
       .send({ refreshToken: loginRes.body.refreshToken })
