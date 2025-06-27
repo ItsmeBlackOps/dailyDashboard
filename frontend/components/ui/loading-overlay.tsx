@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react';
-import { cn } from '@/frontend/lib/utils';
+import { cn } from '@/lib/utils';
 
 interface LoadingOverlayProps {
   className?: string;
