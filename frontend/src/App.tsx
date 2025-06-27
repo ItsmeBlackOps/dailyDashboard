@@ -1,31 +1,36 @@
-import { useState } from 'react';
-import Login from './Login';
-import Tasks from './Tasks';
+import { useEffect, useState } from "react";
+import Tasks from "./Tasks";
+import SignIn from "./pages/auth/SignIn";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 
-export default function App() {
-  const [token, setToken] = useState<string | null>(null);
+function Content() {
+  const { token } = useAuth();
   const [tasks, setTasks] = useState<any[]>([]);
 
-  async function handleLogin(email: string, password: string) {
-    const res = await fetch('http://localhost:3000/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    if (!res.ok) throw new Error('Login failed');
-    const data = await res.json();
-    setToken(data.accessToken);
-    const tasksRes = await fetch('http://localhost:3000/tasks/today', {
-      headers: { Authorization: `Bearer ${data.accessToken}` },
-    });
-    if (tasksRes.ok) {
-      const t = await tasksRes.json();
-      setTasks(t);
+  useEffect(() => {
+    async function fetchTasks() {
+      if (!token) return;
+      const res = await fetch("http://localhost:3000/tasks/today", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(data);
+      }
     }
-  }
+    fetchTasks();
+  }, [token]);
 
   if (!token) {
-    return <Login onLogin={handleLogin} />;
+    return <SignIn />;
   }
   return <Tasks tasks={tasks} />;
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Content />
+    </AuthProvider>
+  );
 }
