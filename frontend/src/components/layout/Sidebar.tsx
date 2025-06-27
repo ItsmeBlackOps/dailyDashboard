@@ -31,12 +31,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
         )}
       >
         <div className="flex h-16 items-center border-b border-border px-4">
-          <Button
-            onClick={toggleSidebar}
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-          >
+          <Button onClick={toggleSidebar} variant="ghost" size="icon">
             <Menu className="h-5 w-5" />
             <span className="sr-only">Toggle sidebar</span>
           </Button>
