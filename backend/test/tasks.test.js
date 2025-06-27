@@ -1,7 +1,7 @@
 import moment from 'moment-timezone';
 import request from 'supertest';
 import { jest } from '@jest/globals';
-import { app, TaskBody } from '../src/index.js';
+import { app, TaskBody, activityLog } from '../src/index.js';
 
 describe('GET /tasks/today', () => {
   let findSpy;
@@ -85,5 +85,33 @@ describe('GET /tasks/today', () => {
       .set('x-user-email', 'john@example.com')
       .expect(200);
     expect(userRes.body).toHaveLength(0);
+  });
+});
+
+describe('POST /tasks/today', () => {
+  beforeEach(() => {
+    activityLog.length = 0;
+  });
+
+  test('requires authentication', async () => {
+    await request(app).post('/tasks/today').send({}).expect(401);
+  });
+
+  test('logs activity', async () => {
+    const payload = {
+      email: 'admin@example.com',
+      role: 'admin',
+      teamLead: 'Lead A',
+      manager: 'Manager A',
+      activity: '<script>alert(1)</script>Working',
+    };
+    await request(app)
+      .post('/tasks/today')
+      .set('x-user-role', 'admin')
+      .set('x-user-email', 'admin@example.com')
+      .send(payload)
+      .expect(201);
+    expect(activityLog).toHaveLength(1);
+    expect(activityLog[0].activity).toBe('Working');
   });
 });
