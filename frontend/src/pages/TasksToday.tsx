@@ -5,6 +5,8 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/use-toast';
+import { computeNotificationDelay } from '@/utils/interviewNotification';
 
 function getEmailFromToken() {
   try {
@@ -36,6 +38,22 @@ export default function TasksToday() {
   const [activity, setActivity] = useState('');
   const [message, setMessage] = useState('');
 
+  function playBeep() {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 440;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 1);
+    } catch {
+      // ignore
+    }
+  }
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -49,6 +67,37 @@ export default function TasksToday() {
     };
     load();
   }, [authFetch]);
+
+  useEffect(() => {
+    if (tasks.length === 0) return;
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+    const timers: Array<ReturnType<typeof setTimeout>> = [];
+    tasks.forEach((task) => {
+      const dateStr = task['Date of Interview'];
+      const timeStr = task['Start Time Of Interview'];
+      if (!dateStr || !timeStr) return;
+      const delay = computeNotificationDelay(dateStr, timeStr);
+      const timer = setTimeout(() => {
+        const message = `Interview with ${task['Candidate Name'] ?? 'candidate'} starts at ${timeStr}`;
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          new Notification('Interview Reminder', { body: message });
+        }
+        toast({ title: 'Interview Reminder', description: message });
+        playBeep();
+      }, delay);
+      timers.push(timer);
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [tasks]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      window.location.reload();
+    }, 15 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const handlePost = async (e: React.FormEvent) => {
     e.preventDefault();
