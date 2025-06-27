@@ -11,7 +11,7 @@ export function Header({ toggleSidebar }: HeaderProps) {
   const { logout } = useAuth();
   return (
     <header className="sticky top-0 z-30 bg-background border-b border-border h-16 flex items-center px-4 shadow-sm">
-      <Button onClick={toggleSidebar} variant="ghost" size="icon" className="md:hidden">
+      <Button onClick={toggleSidebar} variant="ghost" size="icon">
         <Menu className="h-5 w-5" />
         <span className="sr-only">Toggle menu</span>
       </Button>
