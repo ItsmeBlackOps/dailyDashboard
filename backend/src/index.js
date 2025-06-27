@@ -172,108 +172,135 @@ const users = {
 const refreshTokens = new Map();
 
 // --- Helpers to infer full names & teams ---
-function getFullNameFromEmail(email) {
-  const local = email.split('@')[0];
-  const parts = local.split('.');
-  if (parts.length < 2) return null;
-  const capitalize = s =>
-    s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-  return parts.map(capitalize).join(' ');
+function getUserByEmail(email) {
+  const lower = email.toLowerCase();
+  for (const key of Object.keys(users)) {
+    if (key.toLowerCase() === lower) {
+      return { email: key, ...users[key] };
+    }
+  }
+  return null;
 }
 
+// Helper to get all direct reports of a lead by their full name
 function getTeamMembersByLeadName(leadName) {
   return Object.entries(users)
-    .filter(([email, info]) => info.teamLead === leadName)
+    .filter(([_, u]) => u.teamLead === leadName)
     .map(([email]) => email.toLowerCase());
 }
 
-// --- Auth middleware ---
+// --- Auth middleware: extract email from JWT or header, then look up role/etc ---
 app.use((req, res, next) => {
+  let email;
+
+  // 1) Try JWT
   const auth = req.headers.authorization;
   if (auth?.startsWith('Bearer ')) {
     try {
       const payload = jwt.verify(auth.slice(7), JWT_SECRET);
-      req.user = { email: payload.email, role: payload.role };
-      console.log(`[Auth] JWT user: ${req.user.email}`);
+      email = payload.email;
     } catch {
-      console.warn('[Auth] Bad JWT');
+      console.warn('[Auth] Invalid JWT');
     }
   }
-  // fallback for tests or manual headers
-  if (!req.user) {
-    req.user = {
-      email: (req.headers['x-user-email'] || '').toString(),
-      role: (req.headers['x-user-role'] || 'user').toString()
-    };
-    console.log(`[Auth] Fallback user: ${req.user.email}`);
+
+  // 2) Fallback for tests (or manual dev): x-user-email header
+  if (!email && req.headers['x-user-email']) {
+    email = req.headers['x-user-email'].toString();
   }
+
+  if (email) {
+    const user = getUserByEmail(email);
+    if (user) {
+      req.user = {
+        email:    user.email,
+        role:     user.role,
+        teamLead: user.teamLead,
+        manager:  user.manager,
+      };
+      console.log(`[Auth] User: ${user.email} (${user.role})`);
+    } else {
+      console.warn(`[Auth] No user record for: ${email}`);
+    }
+  }
+
   next();
 });
 
+// Only allow through if we found a user record
 function requireAuth(req, res, next) {
-  if (!req.user.email && req.user.role !== 'admin' && req.user.role !== 'lead') {
-    return res.status(401).json({ error: 'Unauthorized' });
+  if (!req.user) {
+    return res.status(401).json({ error: 'Unauthorized: no valid user' });
   }
   next();
 }
 
-// --- Auth routes ---
+// --- Login & token endpoints ---
+// Note: we only embed email in JWT, never role
 app.post('/login', (req, res) => {
   const { email, password } = req.body;
-  const user = users[email];
-  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  const user = getUserByEmail(email);
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
 
   const hash = crypto.createHash('sha256').update(password).digest('hex');
   if (hash !== user.passwordHash) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
-  const payload = { email, role: user.role };
-  const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' });
-  const refreshToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
-  refreshTokens.set(refreshToken, email);
+  // Sign only the email
+  const accessToken  = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '15m' });
+  const refreshToken = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+  refreshTokens.set(refreshToken, user.email);
 
   res.json({
     accessToken,
     refreshToken,
-    role: user.role,
+    role:     user.role,
     teamLead: user.teamLead,
-    manager: user.manager,
+    manager:  user.manager,
   });
 });
 
+const refreshTokens = new Map();
 app.post('/refresh', (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken || !refreshTokens.has(refreshToken)) {
     return res.status(401).json({ error: 'Invalid refresh token' });
   }
   try {
-    const payload = jwt.verify(refreshToken, JWT_SECRET);
-    const newToken = jwt.sign({ email: payload.email, role: payload.role }, JWT_SECRET, { expiresIn: '15m' });
-    res.json({ accessToken: newToken });
+    const payload     = jwt.verify(refreshToken, JWT_SECRET);
+    const accessToken = jwt.sign({ email: payload.email }, JWT_SECRET, { expiresIn: '15m' });
+    res.json({ accessToken });
   } catch {
     res.status(401).json({ error: 'Invalid refresh token' });
   }
 });
 
-// --- Get today’s tasks (with team-lead logic) ---
+// --- GET /tasks/today ---
+// Leads see tasks assigned to anyone they lead.
+// Admins see everything.  
+// Users only see their own.
 app.get('/tasks/today', requireAuth, async (req, res) => {
   try {
-    // 1. Figure out date in EST
-    const now = moment.tz('America/New_York');
+    // Today's date string in EST
+    const now     = moment.tz('America/New_York');
     const dateStr = now.format('MM/DD/YYYY');
 
-    // 2. Fetch docs
+    // Fetch all docs for today
     const docs = await TaskBody.find({ "Date of Interview": dateStr });
 
-    // 3. If you’re a lead, build your report list
-    const emailLower = req.user.email.toLowerCase();
-    let teamMemberEmails = [];
+    // If you’re a lead, build your team’s email list
+    const lowerEmail = req.user.email.toLowerCase();
+    let teamEmails   = [];
     if (req.user.role === 'lead') {
-      const fullName = getFullNameFromEmail(emailLower);
-      if (fullName) {
-        teamMemberEmails = getTeamMembersByLeadName(fullName);
-      }
+      // full name = First Last from email
+      const [first, last] = req.user.email.split('@')[0].split('.');
+      const fullName = first && last
+        ? `${first[0].toUpperCase()}${first.slice(1)} ${last[0].toUpperCase()}${last.slice(1)}`
+        : '';
+      teamEmails = getTeamMembersByLeadName(fullName);
     }
 
     const results = [];
@@ -281,7 +308,7 @@ app.get('/tasks/today', requireAuth, async (req, res) => {
     for (const doc of docs) {
       if (!Array.isArray(doc.replies)) continue;
 
-      // extract all “Assigned To” lines
+      // parse all “Assigned To” replies
       const assignments = doc.replies
         .map(r => {
           const m = ASSIGN_REGEX.exec(r.body || '');
@@ -293,37 +320,34 @@ app.get('/tasks/today', requireAuth, async (req, res) => {
 
       if (!assignments.length) continue;
 
-      // pick the latest
-      const latest = assignments.reduce((a, b) =>
-        b.ts.isAfter(a.ts) ? b : a
+      // pick the latest assignment
+      const latest = assignments.reduce((a, b) => b.ts.isAfter(a.ts) ? b : a);
+
+      const assignedTo = latest.email;
+      const allowed = (
+          req.user.role === 'admin' ||
+          lowerEmail === assignedTo        ||
+          teamEmails.includes(assignedTo)
       );
-
-      // check permissions
-      const ok =
-        req.user.role === 'admin'
-        || emailLower === latest.email
-        || teamMemberEmails.includes(latest.email);
-
-      if (ok) {
+      if (allowed) {
         results.push({
           ...doc,
           assignedEmail: latest.email,
-          assignedAt: latest.ts.toISOString(),
+          assignedAt:    latest.ts.toISOString(),
         });
       }
     }
 
     res.json(results);
-
   } catch (err) {
-    console.error('Error in /tasks/today:', err);
+    console.error('❌ /tasks/today error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// --- Export for tests & run ---
 export { app, TaskBody, activityLog };
+
 if (process.env.NODE_ENV !== 'test') {
   const PORT = process.env.PORT || 3004;
-  app.listen(PORT, () => console.log(`🚀 Listening on ${PORT}`));
+  app.listen(PORT, () => console.log(`🚀 Server up on ${PORT}`));
 }
