@@ -312,7 +312,7 @@ app.get('/tasks/today', requireAuth, async (req, res) => {
       // parse all “Assigned To” replies
       const assignments = doc.replies
         .map(r => {
-          const m = ASSIGN_REGEX.exec(r.body || '');
+           const m    = /Assigned To: @.+\[(.+?)\]/i.exec(r.body);;
           return m
             ? { ts: moment(r.receivedDateTime), email: m[1].toLowerCase() }
             : null;
