@@ -38,7 +38,7 @@ export * from './sheet';
 export * from './sidebar';
 export * from './skeleton';
 export * from './slider';
-export * from './sonner';
+export { Toaster as SonnerToaster, toast } from './sonner';
 export * from './switch';
 export * from './table';
 export * from './tabs';
