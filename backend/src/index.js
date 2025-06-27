@@ -289,7 +289,7 @@ app.get('/tasks/today', requireAuth, async (req, res) => {
       );
       console.log(req.user.email, `===`, latest.email)
       // 4) filter by cutoff and user permissions
-        if (req.user.role === 'admin' || req.user.email === latest.email.toLowerCase()) {
+        if (req.user.role === 'admin' || req.user.email.toLowerCase() === latest.email.toLowerCase()) {
           results.push({
             ...doc,
             assignedEmail: latest.email,
