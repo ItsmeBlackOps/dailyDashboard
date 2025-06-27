@@ -67,9 +67,27 @@ const users = {
   'darshan.singh@vizvainc.com': {
     passwordHash: crypto.createHash('sha256').update('userpass').digest('hex'),
     role: 'user',
-    teamLead: 'Lead B',
-    manager: 'Manager B',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel',
   },
+  'aditya.sharma@vizvainc.com': {
+    passwordHash: crypto.createHash('sha256').update('asharma123').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel'
+  },
+  'ajay.krishna@vizvainc.com': {
+    passwordHash: crypto.createHash('sha256').update('ajshna@123').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel'
+  },
+  'anusree.vasudevan@vizvainc.com': {
+    passwordHash: crypto.createHash('sha256').update('sree123').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel'
+  }
 };
 
 const refreshTokens = new Map();
