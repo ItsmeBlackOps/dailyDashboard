@@ -95,7 +95,7 @@ export default function TasksToday() {
   // --- load tasks once on mount ---
   const loadTasks = async () => {
     try {
-      const res = await authFetch('http://localhost:3000/tasks/today');
+      const res = await authFetch('https://dailydb.tunn.dev/tasks/today');
       if (!res.ok) throw new Error('Failed to load tasks');
       const data: Task[] = await res.json();
       setTasks(data);
