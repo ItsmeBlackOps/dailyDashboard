@@ -330,9 +330,14 @@ app.get('/tasks/today', requireAuth, async (req, res) => {
           lowerEmail === assignedTo        ||
           teamEmails.includes(assignedTo)
       );
+      const [first1, last1] = latest.email.split('@')[0].split('.');
+      const fullName1 = first1 && last1
+        ? `${first1[0].toUpperCase()}${first1.slice(1)} ${last1[0].toUpperCase()}${last1.slice(1)}`
+        : '';
       if (allowed) {
         results.push({
           ...doc,
+          assignedExpert: fullName1,
           assignedEmail: latest.email,
           assignedAt:    latest.ts.toISOString(),
         });
