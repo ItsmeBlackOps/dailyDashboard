@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { useAuth } from '@/hooks/useAuth';
+
 
 interface Task {
   assignedEmail?: string;
@@ -16,33 +17,30 @@ interface Task {
 }
 
 export default function TasksToday() {
+  const { authFetch } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) return;
-
-    fetch('http://localhost:3000/tasks/today', {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(async res => {
+    const load = async () => {
+      try {
+        const res = await authFetch('http://localhost:3000/tasks/today');
         if (!res.ok) throw new Error('Failed to load tasks');
-        return res.json();
-      })
-      .then(data => setTasks(data))
-      .catch(err => setError(err.message));
-  }, []);
+        const data = await res.json();
+        setTasks(data);
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    };
+    load();
+  }, [authFetch]);
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Today\'s Tasks</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {error && <p className="text-red-500 mb-2">{error}</p>}
+      <div className="p-4 space-y-4">
+        <h2 className="text-xl font-semibold">Today's Tasks</h2>
+        {error && <p className="text-red-500 mb-2">{error}</p>}
+
             {tasks.length === 0 ? (
               <p>No tasks found</p>
             ) : (
@@ -73,8 +71,7 @@ export default function TasksToday() {
                 </TableBody>
               </Table>
             )}
-          </CardContent>
-        </Card>
+
       </div>
     </DashboardLayout>
   );
