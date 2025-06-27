@@ -93,7 +93,74 @@ const users = {
     role: 'user',
     teamLead: 'Rujuwal Garg',
     manager: 'Harsh Patel'
+  },
+    'amartya.kumar@vizvainc.com': {
+    passwordHash: crypto.createHash('sha256').update('N3wP@ssw0rd!1').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel',
+  },
+  'aman.agnihotri@vizvainc.com': {
+    passwordHash: crypto.createHash('sha256').update('Aman$321New').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel',
+  },
+  'harshit@vizvainc.com': {
+    passwordHash: crypto.createHash('sha256').update('H@rsh!t2025').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel',
+  },
+  'Hamid.Ansari@silverspaceinc.com': {
+    passwordHash: crypto.createHash('sha256').update('H@midN3xtGen').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel',
+  },
+  'pooja.kumari@vizvainc.com': {
+    passwordHash: crypto.createHash('sha256').update('Pooja#456!New').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel',
+  },
+  'jayshree.rana@vizvainc.com': {
+    passwordHash: crypto.createHash('sha256').update('Jay$hr33@2025').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel',
+  },
+  'vaibhav.kaushik@vizvainc.com': {
+    passwordHash: crypto.createHash('sha256').update('V@ibhav#2025!').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel',
+  },
+  'rahul.agarwal@vizvainc.com': {
+    passwordHash: crypto.createHash('sha256').update('Rahul2025@Up').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel',
+  },
+  'vansh.malhotra@vizvainc.com': {
+    passwordHash: crypto.createHash('sha256').update('V@nsh!Power99').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel',
+  },
+  'Kartikeya.Baijal@silverspaceinc.com': {
+    passwordHash: crypto.createHash('sha256').update('K@rtik22#Next').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel',
+  },
+  'Aayush.Shukla@vizvainc.com': {
+    passwordHash: crypto.createHash('sha256').update('A@yush_007x!').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel',
   }
+
 };
 
 const refreshTokens = new Map();
