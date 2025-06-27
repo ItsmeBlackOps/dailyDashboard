@@ -165,52 +165,60 @@ const users = {
 
 const refreshTokens = new Map();
 
-// --- auth middleware ---
+// --- Helpers to infer full names & teams ---
+function getFullNameFromEmail(email) {
+  const local = email.split('@')[0];
+  const parts = local.split('.');
+  if (parts.length < 2) return null;
+  const capitalize = s =>
+    s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  return parts.map(capitalize).join(' ');
+}
+
+function getTeamMembersByLeadName(leadName) {
+  return Object.entries(users)
+    .filter(([email, info]) => info.teamLead === leadName)
+    .map(([email]) => email.toLowerCase());
+}
+
+// --- Auth middleware ---
 app.use((req, res, next) => {
   const auth = req.headers.authorization;
   if (auth?.startsWith('Bearer ')) {
-    const token = auth.slice(7);
     try {
-      const payload = jwt.verify(token, JWT_SECRET);
+      const payload = jwt.verify(auth.slice(7), JWT_SECRET);
       req.user = { email: payload.email, role: payload.role };
-      console.log(`[Auth] User from JWT: ${req.user.email}`);
+      console.log(`[Auth] JWT user: ${req.user.email}`);
     } catch {
-      console.warn('[Auth] Invalid JWT token');
+      console.warn('[Auth] Bad JWT');
     }
   }
-
+  // fallback for tests or manual headers
   if (!req.user) {
-    const role = req.headers['x-user-role'];
-    const email = req.headers['x-user-email'];
-    req.user = { role: role || 'user', email: email || '' };
+    req.user = {
+      email: (req.headers['x-user-email'] || '').toString(),
+      role: (req.headers['x-user-role'] || 'user').toString()
+    };
     console.log(`[Auth] Fallback user: ${req.user.email}`);
   }
-
   next();
 });
 
 function requireAuth(req, res, next) {
-  if (!req.user?.email && req.user?.role !== 'admin') {
-    console.warn('[Auth] Unauthorized access attempt');
+  if (!req.user.email && req.user.role !== 'admin' && req.user.role !== 'lead') {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
 }
 
-// --- endpoints ---
-
-// Login
+// --- Auth routes ---
 app.post('/login', (req, res) => {
   const { email, password } = req.body;
   const user = users[email];
-  if (!user) {
-    console.warn(`[Login] Invalid user: ${email}`);
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
   const hash = crypto.createHash('sha256').update(password).digest('hex');
   if (hash !== user.passwordHash) {
-    console.warn(`[Login] Invalid password for ${email}`);
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
@@ -218,8 +226,6 @@ app.post('/login', (req, res) => {
   const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' });
   const refreshToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
   refreshTokens.set(refreshToken, email);
-
-  console.log(`[Login] Successful login for ${email}`);
 
   res.json({
     accessToken,
@@ -230,87 +236,88 @@ app.post('/login', (req, res) => {
   });
 });
 
-// Refresh
 app.post('/refresh', (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken || !refreshTokens.has(refreshToken)) {
-    console.warn('[Refresh] Invalid refresh token');
     return res.status(401).json({ error: 'Invalid refresh token' });
   }
-
   try {
     const payload = jwt.verify(refreshToken, JWT_SECRET);
-    const accessToken = jwt.sign({ email: payload.email, role: payload.role }, JWT_SECRET, { expiresIn: '15m' });
-    console.log(`[Refresh] Refreshed token for ${payload.email}`);
-    res.json({ accessToken });
+    const newToken = jwt.sign({ email: payload.email, role: payload.role }, JWT_SECRET, { expiresIn: '15m' });
+    res.json({ accessToken: newToken });
   } catch {
-    console.warn('[Refresh] Failed to verify refresh token');
     res.status(401).json({ error: 'Invalid refresh token' });
   }
 });
 
-// Get tasks for today
+// --- Get today’s tasks (with team-lead logic) ---
 app.get('/tasks/today', requireAuth, async (req, res) => {
   try {
+    // 1. Figure out date in EST
     const now = moment.tz('America/New_York');
     const dateStr = now.format('MM/DD/YYYY');
-    console.log(`[Tasks GET] Looking for tasks on ${dateStr}`);
 
-    const docs = await TaskBody.find({"Date of Interview": dateStr});
-    console.log(`[Tasks GET] Found ${docs.length} documents for today`);
+    // 2. Fetch docs
+    const docs = await TaskBody.find({ "Date of Interview": dateStr });
 
-    const cutoff = moment.tz('23:59', 'HH:mm', 'America/New_York');
+    // 3. If you’re a lead, build your report list
+    const emailLower = req.user.email.toLowerCase();
+    let teamMemberEmails = [];
+    if (req.user.role === 'lead') {
+      const fullName = getFullNameFromEmail(emailLower);
+      if (fullName) {
+        teamMemberEmails = getTeamMembersByLeadName(fullName);
+      }
+    }
+
     const results = [];
 
     for (const doc of docs) {
       if (!Array.isArray(doc.replies)) continue;
 
-      // 1) collect all (timestamp, email) pairs
-      const assignments = [];
-      for (const reply of doc.replies) {
-        const text = reply?.body ?? '';
-        // console.log(text)
-        const m    = /Assigned To: @.+\[(.+?)\]/i.exec(text);
-        if (!m) continue;
-        // console.log(m[1]);
+      // extract all “Assigned To” lines
+      const assignments = doc.replies
+        .map(r => {
+          const m = ASSIGN_REGEX.exec(r.body || '');
+          return m
+            ? { ts: moment(r.receivedDateTime), email: m[1].toLowerCase() }
+            : null;
+        })
+        .filter(x => x && x.ts.isValid());
 
-        const ts = moment(reply.receivedDateTime); 
-        if (!ts.isValid()) continue;
+      if (!assignments.length) continue;
 
-        assignments.push({ timestamp: ts, email: m[1] });
-      }
-
-      // 2) if none found, skip
-      if (assignments.length === 0) continue;
-
-      // 3) pick the one with the latest timestamp
+      // pick the latest
       const latest = assignments.reduce((a, b) =>
-        b.timestamp.isAfter(a.timestamp) ? b : a
+        b.ts.isAfter(a.ts) ? b : a
       );
-      console.log(req.user.email, `===`, latest.email)
-      // 4) filter by cutoff and user permissions
-        if (req.user.role === 'admin' || req.user.email.toLowerCase() === latest.email.toLowerCase()) {
-          results.push({
-            ...doc,
-            assignedEmail: latest.email,
-            assignedAt:    latest.timestamp.toISOString(),
-          });
-        }
-      
+
+      // check permissions
+      const ok =
+        req.user.role === 'admin'
+        || emailLower === latest.email
+        || teamMemberEmails.includes(latest.email);
+
+      if (ok) {
+        results.push({
+          ...doc,
+          assignedEmail: latest.email,
+          assignedAt: latest.ts.toISOString(),
+        });
+      }
     }
 
-    return res.json(results);
-
+    res.json(results);
 
   } catch (err) {
-    console.error('❌ Error in /tasks/today GET:', err);
+    console.error('Error in /tasks/today:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
+// --- Export for tests & run ---
 export { app, TaskBody, activityLog };
-
 if (process.env.NODE_ENV !== 'test') {
   const PORT = process.env.PORT || 3004;
-  app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+  app.listen(PORT, () => console.log(`🚀 Listening on ${PORT}`));
 }
