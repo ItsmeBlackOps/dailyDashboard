@@ -1,20 +1,12 @@
-import { Menu, LogOut } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 
-interface HeaderProps {
-  toggleSidebar: () => void;
-}
-
-export function Header({ toggleSidebar }: HeaderProps) {
+export function Header() {
   const { logout } = useAuth();
   return (
     <header className="sticky top-0 z-30 bg-background border-b border-border h-16 flex items-center px-4 shadow-sm">
-      <Button onClick={toggleSidebar} variant="ghost" size="icon">
-        <Menu className="h-5 w-5" />
-        <span className="sr-only">Toggle menu</span>
-      </Button>
       <Link to="/dashboard" className="ml-2 text-xl font-bold">
         Daily Dashboard
       </Link>
