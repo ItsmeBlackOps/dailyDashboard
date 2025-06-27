@@ -300,6 +300,7 @@ app.get('/tasks/today', requireAuth, async (req, res) => {
       const fullName = first && last
         ? `${first[0].toUpperCase()}${first.slice(1)} ${last[0].toUpperCase()}${last.slice(1)}`
         : '';
+      console.log(fullName);
       teamEmails = getTeamMembersByLeadName(fullName);
     }
 
