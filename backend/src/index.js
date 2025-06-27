@@ -58,6 +58,12 @@ const ASSIGN_REGEX = /Assigned\s+To:\s*@[^\s]+\s*\[([^\]]+)\]/i;
 const EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 
 const users = {
+  'rujuwal.garg@silverspaceinc.com': {
+  passwordHash: crypto.createHash('sha256').update('Rujuwal#2025!').digest('hex'),
+  role: 'lead',
+  teamLead: '', // He’s the lead, so no one leads him
+  manager: 'Harsh Patel'
+  },
   'admin@example.com': {
     passwordHash: crypto.createHash('sha256').update('adminpass').digest('hex'),
     role: 'admin',
