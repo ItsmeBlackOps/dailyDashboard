@@ -1,36 +1,22 @@
-import { useEffect, useState } from "react";
-import Tasks from "./Tasks";
-import SignIn from "./pages/auth/SignIn";
-import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { TooltipProvider } from '@radix-ui/react-tooltip';
+import SignIn from './pages/auth/SignIn';
 
-function Content() {
-  const { token } = useAuth();
-  const [tasks, setTasks] = useState<any[]>([]);
+const queryClient = new QueryClient();
 
-  useEffect(() => {
-    async function fetchTasks() {
-      if (!token) return;
-      const res = await fetch("http://localhost:3000/tasks/today", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setTasks(data);
-      }
-    }
-    fetchTasks();
-  }, [token]);
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Default to SignIn for any unmatched route */}
+          <Route path="/auth/signin" element={<SignIn />} />
+          <Route path="*" element={<SignIn />} />
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
 
-  if (!token) {
-    return <SignIn />;
-  }
-  return <Tasks tasks={tasks} />;
-}
-
-export default function App() {
-  return (
-    <AuthProvider>
-      <Content />
-    </AuthProvider>
-  );
-}
+export default App;

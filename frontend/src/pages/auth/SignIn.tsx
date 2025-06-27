@@ -1,38 +1,165 @@
-import { useState } from "react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from "@/components/ui";
-import { useAuth } from "@/hooks/useAuth";
-import { LoadingOverlay } from "@/components/ui/loading-overlay";
+import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from '@/components/ui/card';
+import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
 
 export default function SignIn() {
-  const { login, loading, error } = useAuth();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [formData, setFormData] = useState({
+    email: '',
+    password: ''
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
 
-  async function handleSubmit(e: React.FormEvent) {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await login(email, password);
-  }
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('http://localhost:3000/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Invalid credentials');
+      }
+
+      const data = await response.json();
+
+      /**
+       * Expected:
+       * data = {
+       *   accessToken: string,
+       *   refreshToken: string,
+       *   role: string,
+       *   teamLead: string,
+       *   manager: string
+       * }
+       */
+      localStorage.setItem('accessToken', data.accessToken);
+      localStorage.setItem('refreshToken', data.refreshToken);
+      localStorage.setItem('role', data.role);
+      localStorage.setItem('teamLead', data.teamLead);
+      localStorage.setItem('manager', data.manager);
+
+      // Optionally redirect after login
+      navigate('/dashboard'); // adjust route as needed
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
 
   return (
-    <Card className="mx-auto mt-20 w-96 relative">
-      {loading && <LoadingOverlay />}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <CardHeader>
-          <CardTitle>Sign In</CardTitle>
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1">
+          <div className="flex items-center justify-center mb-4">
+            <div className="bg-primary rounded h-10 w-10 flex items-center justify-center text-white font-bold text-xl">
+              P
+            </div>
+          </div>
+          <CardTitle className="text-2xl text-center">Welcome back</CardTitle>
+          <CardDescription className="text-center">
+            Enter your credentials to access your account
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} />
-          </div>
-          {error && <p className="text-destructive text-sm">{error}</p>}
-          <Button type="submit" className="w-full">Sign In</Button>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div className="text-red-500 text-sm text-center">{error}</div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  className="pl-10"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  className="pl-10 pr-10"
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Link
+                to="/auth/forgot-password"
+                className="text-sm text-primary hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
+
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? 'Signing in...' : 'Sign In'}
+            </Button>
+
+            <div className="text-center text-sm">
+              Don't have an account?{' '}
+              <Link to="/auth/signup" className="text-primary hover:underline">
+                Sign up
+              </Link>
+            </div>
+          </form>
         </CardContent>
-      </form>
-    </Card>
+      </Card>
+    </div>
   );
 }
