@@ -42,6 +42,8 @@
 ### Authentication
 Use `POST /login` with `email` and `password` to obtain an access token and a refresh token. Send the access token in the `Authorization: Bearer` header for protected endpoints. The `/tasks/today` route and other future APIs require a valid token. Obtain a new access token via `POST /refresh` with a valid refresh token.
 
+To log what you are currently working on, send a `POST /tasks/today` request with `email`, `role`, `teamLead`, `manager` and `activity` in the body. The endpoint stores the sanitized activity in memory and returns a confirmation message.
+
 API documentation is provided using Swagger.
 
 ## Frontend
