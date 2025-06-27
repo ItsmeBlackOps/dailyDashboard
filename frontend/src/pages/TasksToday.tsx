@@ -2,6 +2,8 @@ import { useEffect, useState, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import moment from 'moment-timezone';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { Textarea } from '@/components/ui/textarea';
@@ -28,6 +30,7 @@ interface Task {
   'End Time Of Interview'?: string;
   'End Client'?: string;
   'Interview Round'?: string;
+  status?: string;
   assignedEmail?: string;
 }
 
@@ -37,6 +40,8 @@ export default function TasksToday() {
   const [error, setError] = useState('');
   const [activity, setActivity] = useState('');
   const [message, setMessage] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [sortAsc, setSortAsc] = useState(true);
 
   // keep track of IDs we’ve already seen
   const seenIds = useRef<Set<string>>(new Set());
@@ -56,6 +61,36 @@ export default function TasksToday() {
       // ignore
     }
   }
+
+  const getStatusBadge = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'cancelled':
+        return 'bg-red-100 text-red-800';
+      case 'in-progress':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'pending':
+        return 'bg-blue-100 text-blue-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getRowBg = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'completed':
+        return 'bg-green-50';
+      case 'cancelled':
+        return 'bg-red-50';
+      case 'in-progress':
+        return 'bg-yellow-50';
+      case 'pending':
+        return 'bg-blue-50';
+      default:
+        return '';
+    }
+  };
 
   // --- load tasks once on mount ---
   const loadTasks = async () => {
@@ -165,6 +200,18 @@ export default function TasksToday() {
     }
   };
 
+  const statuses = Array.from(new Set(tasks.map(t => t.status).filter(Boolean)));
+
+  const displayedTasks = tasks
+    .filter(t => filterStatus === 'all' || t.status === filterStatus)
+    .sort((a, b) => {
+      const aName = (a['Candidate Name'] || '').toLowerCase();
+      const bName = (b['Candidate Name'] || '').toLowerCase();
+      if (aName < bName) return sortAsc ? -1 : 1;
+      if (aName > bName) return sortAsc ? 1 : -1;
+      return 0;
+    });
+
   return (
     <DashboardLayout>
       <div className="p-4 space-y-4">
@@ -174,35 +221,59 @@ export default function TasksToday() {
         {tasks.length === 0 ? (
           <p>No tasks found</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Subject</TableHead>
-                <TableHead>Candidate Name</TableHead>
-                <TableHead>Date of Interview</TableHead>
-                <TableHead>Start Time</TableHead>
-                <TableHead>End Time</TableHead>
-                <TableHead>End Client</TableHead>
-                <TableHead>Round</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tasks.map((task) => (
-                <TableRow key={task._id}>
-                  <TableCell>{DOMPurify.sanitize(task.subject || '')}</TableCell>
-                  <TableCell>{DOMPurify.sanitize(task['Candidate Name'] || '')}</TableCell>
-                  <TableCell>{DOMPurify.sanitize(task['Date of Interview'] || '')}</TableCell>
-                  <TableCell>{DOMPurify.sanitize(task['Start Time Of Interview'] || '')}</TableCell>
-                  <TableCell>{DOMPurify.sanitize(task['End Time Of Interview'] || '')}</TableCell>
-                  <TableCell>{DOMPurify.sanitize(task['End Client'] || '')}</TableCell>
-                  <TableCell>{DOMPurify.sanitize(task['Interview Round'] || '')}</TableCell>
+          <>
+            <div className="flex gap-4 items-center">
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  {statuses.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button variant="outline" onClick={() => setSortAsc(!sortAsc)}>
+                Sort {sortAsc ? 'A-Z' : 'Z-A'}
+              </Button>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Subject</TableHead>
+                  <TableHead>Candidate Name</TableHead>
+                  <TableHead>Date of Interview</TableHead>
+                  <TableHead>Start Time</TableHead>
+                  <TableHead>End Time</TableHead>
+                  <TableHead>End Client</TableHead>
+                  <TableHead>Round</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {displayedTasks.map((task) => (
+                  <TableRow key={task._id} className={getRowBg(task.status || '')}>
+                    <TableCell>{DOMPurify.sanitize(task.subject || '')}</TableCell>
+                    <TableCell>{DOMPurify.sanitize(task['Candidate Name'] || '')}</TableCell>
+                    <TableCell>{DOMPurify.sanitize(task['Date of Interview'] || '')}</TableCell>
+                    <TableCell>{DOMPurify.sanitize(task['Start Time Of Interview'] || '')}</TableCell>
+                    <TableCell>{DOMPurify.sanitize(task['End Time Of Interview'] || '')}</TableCell>
+                    <TableCell>{DOMPurify.sanitize(task['End Client'] || '')}</TableCell>
+                    <TableCell>{DOMPurify.sanitize(task['Interview Round'] || '')}</TableCell>
+                    <TableCell>
+                      {task.status && (
+                        <Badge className={getStatusBadge(task.status)}>{task.status}</Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </>
         )}
 
-        
+
       </div>
     </DashboardLayout>
   );
