@@ -38,6 +38,9 @@ if (process.env.NODE_ENV !== 'test') {
 const taskBodySchema = new mongoose.Schema({}, { strict: false });
 const TaskBody = mongoose.model('TaskBody', taskBodySchema, 'interviewSupport.taskBody');
 
+// In-memory log of posted activities for /tasks/today
+const activityLog = [];
+
 const ASSIGN_REGEX = /Assigned\s+To:\s*@[^\s]+\s*\[([^\]]+)\]/i;
 const EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 
@@ -128,6 +131,26 @@ app.post('/refresh', (req, res) => {
   }
 });
 
+// Record what a user is currently doing
+app.post('/tasks/today', requireAuth, (req, res) => {
+  const { email, role, teamLead, manager, activity } = req.body;
+  if (!email || !role || !teamLead || !manager || !activity) {
+    return res.status(400).json({ error: 'Missing fields' });
+  }
+  let sanitizedActivity = String(activity);
+  sanitizedActivity = sanitizedActivity.replace(/<script[^>]*>.*?<\/script>/gis, '');
+  sanitizedActivity = sanitizedActivity.replace(/<[^>]*>/g, '');
+  activityLog.push({
+    email: String(email),
+    role: String(role),
+    teamLead: String(teamLead),
+    manager: String(manager),
+    activity: sanitizedActivity,
+    timestamp: new Date(),
+  });
+  res.status(201).json({ message: 'Logged' });
+});
+
 app.get('/tasks/today', requireAuth, async (req, res) => {
   try {
     const now = moment.tz('America/New_York');
@@ -168,7 +191,7 @@ app.get('/tasks/today', requireAuth, async (req, res) => {
   }
 });
 
-export { app, TaskBody };
+export { app, TaskBody, activityLog };
 
 if (process.env.NODE_ENV !== 'test') {
   const PORT = process.env.PORT || 3000;

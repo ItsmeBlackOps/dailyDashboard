@@ -3,6 +3,19 @@ import DOMPurify from 'dompurify';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/hooks/useAuth';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+
+function getEmailFromToken() {
+  try {
+    const token = localStorage.getItem('accessToken');
+    if (!token) return '';
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.email || '';
+  } catch {
+    return '';
+  }
+}
 
 
 interface Task {
@@ -20,6 +33,8 @@ export default function TasksToday() {
   const { authFetch } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [error, setError] = useState('');
+  const [activity, setActivity] = useState('');
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -34,6 +49,27 @@ export default function TasksToday() {
     };
     load();
   }, [authFetch]);
+
+  const handlePost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMessage('');
+    try {
+      const email = getEmailFromToken();
+      const role = localStorage.getItem('role') || '';
+      const teamLead = localStorage.getItem('teamLead') || '';
+      const manager = localStorage.getItem('manager') || '';
+      const res = await authFetch('http://localhost:3000/tasks/today', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, role, teamLead, manager, activity }),
+      });
+      if (!res.ok) throw new Error('Failed to post activity');
+      setActivity('');
+      setMessage('Activity logged');
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -72,6 +108,19 @@ export default function TasksToday() {
               </Table>
             )}
 
+        <form onSubmit={handlePost} className="space-y-2">
+          <label htmlFor="activity" className="font-medium">
+            What are you doing now?
+          </label>
+          <Textarea
+            id="activity"
+            value={activity}
+            onChange={(e) => setActivity(e.target.value)}
+            required
+          />
+          <Button type="submit">Post</Button>
+          {message && <p>{DOMPurify.sanitize(message)}</p>}
+        </form>
       </div>
     </DashboardLayout>
   );
