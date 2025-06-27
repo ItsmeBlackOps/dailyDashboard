@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/hooks/useAuth';
 
+
 interface Task {
   assignedEmail?: string;
   Subject?: string;
@@ -39,6 +40,7 @@ export default function TasksToday() {
       <div className="p-4 space-y-4">
         <h2 className="text-xl font-semibold">Today's Tasks</h2>
         {error && <p className="text-red-500 mb-2">{error}</p>}
+
             {tasks.length === 0 ? (
               <p>No tasks found</p>
             ) : (
@@ -69,6 +71,7 @@ export default function TasksToday() {
                 </TableBody>
               </Table>
             )}
+
       </div>
     </DashboardLayout>
   );
