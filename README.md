@@ -58,4 +58,17 @@ Open `http://localhost:3000` to view the login page.
 
 The frontend leverages the reusable components under `frontend/components/ui`.
 The login screen and the table used to display tasks are built exclusively using
-these UI primitives.
+these UI primitives. After signing in you will be redirected to `/dashboard`
+where today's tasks appear in a table. Expired access tokens are automatically
+refreshed using the stored refresh token; if refreshing fails the user is
+returned to the sign-in page.
+
+### Tech Stack
+- React
+- TypeScript
+- Vite
+
+### Dev Scripts
+- `npm run dev` – start the Vite dev server
+- `npm run build` – build production assets
+- `npm run lint` – run ESLint
