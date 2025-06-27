@@ -29,7 +29,7 @@
     "module": "esnext",                                  /* Use ESM for module generation. */
     "jsx": "react-jsx",                                  /* Emit React JSX using the new transform. */
     "moduleResolution": "node",
-    "baseUrl": "..",
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]
     },
