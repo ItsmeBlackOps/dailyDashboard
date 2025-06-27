@@ -87,6 +87,12 @@ const users = {
     role: 'user',
     teamLead: 'Rujuwal Garg',
     manager: 'Harsh Patel'
+  },
+  'prateek.narvariya@silverspaceinc.com': {
+    passwordHash: crypto.createHash('sha256').update('rasilasantra').digest('hex'),
+    role: 'user',
+    teamLead: 'Rujuwal Garg',
+    manager: 'Harsh Patel'
   }
 };
 
