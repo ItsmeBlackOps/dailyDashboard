@@ -244,6 +244,6 @@ app.get('/tasks/today', requireAuth, async (req, res) => {
 export { app, TaskBody, activityLog };
 
 if (process.env.NODE_ENV !== 'test') {
-  const PORT = process.env.PORT || 3000;
+  const PORT = process.env.PORT || 3004;
   app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 }
