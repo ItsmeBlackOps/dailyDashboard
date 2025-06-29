@@ -248,7 +248,7 @@ io.on('connection', socket => {
     const todayStr = moment.tz('America/New_York').format('MM/DD/YYYY');
     console.log(todayStr);
     const docs = await taskBodyCollection
-      .find({ 'Date of Interview': '06/29/2025' })
+      .find({ 'Date of Interview': todayStr })
       .toArray();
 
     const lowerEmail = authUser.email.toLowerCase();
