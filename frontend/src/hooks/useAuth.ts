@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 
-export const API_URL = 'https://s02lbgvv-3004.inc1.devtunnels.ms/';
+export const API_URL = 'https://dailydb.tunn.dev/';
 
 interface RefreshResponse {
   success: boolean;
