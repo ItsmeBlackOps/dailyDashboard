@@ -3,7 +3,7 @@
 /**
  * URL of your notification sound file (place it in public/sounds/)
  */
-const SOUND_URL = "/sounds/notification.mp3";
+const SOUND_URL = "notification.mp3";
 
 let audioInstance: HTMLAudioElement | null = null;
 
