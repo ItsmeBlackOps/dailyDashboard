@@ -3,7 +3,7 @@ export function playBeep(): void {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const osc = ctx.createOscillator();
     osc.type = 'sine';
-    osc.frequency.value = 440;
+    osc.frequency.value = 4400;
     osc.connect(ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + 1);
