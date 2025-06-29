@@ -1,26 +1,68 @@
-export function playBeep(): void {
-  try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = 4400;
-    osc.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 1);
-  } catch {
-    // ignore errors
+// utils/notify.ts
+
+/**
+ * URL of your notification sound file (place it in public/sounds/)
+ */
+const SOUND_URL = "/sounds/notification.mp3";
+
+let audioInstance: HTMLAudioElement | null = null;
+
+/**
+ * Lazily initialize the Audio element for playback.
+ */
+function initAudio() {
+  if (!audioInstance) {
+    audioInstance = new Audio(SOUND_URL);
+    audioInstance.volume = 0.8;
+    audioInstance.preload = "auto";
   }
 }
 
-export async function sendNotification(title: string, body: string): Promise<void> {
-  const NotificationAPI = (globalThis as any).Notification;
-  if (!NotificationAPI) return;
-  if (NotificationAPI.permission === 'granted') {
-    new NotificationAPI(title, { body });
-  } else if (NotificationAPI.permission !== 'denied') {
-    const perm = await NotificationAPI.requestPermission();
-    if (perm === 'granted') {
-      new NotificationAPI(title, { body });
+/**
+ * Play the notification sound.
+ * Falls back quietly if playback isn’t supported or fails.
+ */
+export function playBeep(): void {
+  try {
+    initAudio();
+    if (!audioInstance) return;
+    // rewind to start each time
+    audioInstance.currentTime = 0;
+    audioInstance.play().catch(() => {
+      // ignore any user-gesture / autoplay restrictions
+    });
+  } catch {
+    // completely swallow errors
+  }
+}
+
+/**
+ * Show a system notification (via the Notification API).
+ * Will request permission if needed.
+ */
+export async function sendNotification(
+  title: string,
+  body: string
+): Promise<void> {
+  if (!("Notification" in window)) {
+    // Browser doesn’t support it
+    return;
+  }
+
+  if (Notification.permission === "granted") {
+    new Notification(title, { body });
+  } else if (Notification.permission !== "denied") {
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") {
+      new Notification(title, { body });
     }
   }
+}
+
+/**
+ * Convenience function: play the beep AND show the system notification.
+ */
+export async function notify(title: string, body: string): Promise<void> {
+  playBeep();
+  await sendNotification(title, body);
 }
