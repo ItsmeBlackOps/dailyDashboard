@@ -16,6 +16,12 @@ export async function requestRefreshToken(
 ): Promise<string | null> {
   return new Promise((resolve) => {
     const socket = io(apiUrl, { autoConnect: false, transports: ['websocket'] });
+
+    socket.on('connect_error', () => {
+      socket.disconnect();
+      resolve(null);
+    });
+
     socket.connect();
     socket.emit('refresh', { refreshToken }, (resp: RefreshResponse) => {
       socket.disconnect();
