@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { io, Socket } from 'socket.io-client';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,55 +15,50 @@ import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
 
 export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  });
+  const [formData, setFormData] = useState({email: '',password: ''});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const API_URL = 'https://s02lbgvv-3004.inc1.devtunnels.ms/';
+  
+  const socket: Socket = useMemo(
+    () => io(API_URL, { autoConnect: false, transports: ['websocket'] }),
+    []
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    try {
-      const response = await fetch('https://dailydb.tunn.dev/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
+    socket.connect();
+    socket.emit(
+      'login',
+      { email: formData.email, password: formData.password },
+      (response: any) => {
+        setLoading(false);
+        if (!response.success) {
+          setError(response.error || 'Login failed');
+          socket.disconnect();
+          return;
+        }
 
-      if (!response.ok) {
-        throw new Error('Invalid credentials');
+        // Persist credentials
+        localStorage.setItem('accessToken', response.accessToken);
+        localStorage.setItem('refreshToken', response.refreshToken);
+        localStorage.setItem('role', response.role);
+        localStorage.setItem('teamLead', response.teamLead);
+        localStorage.setItem('manager', response.manager);
+
+        // Reconnect socket with token for future events
+        socket.disconnect();
+        socket.auth = { token: response.accessToken };
+        socket.connect();
+
+        // Full-page navigation (no Router needed)
+        window.location.href = '/dashboard';
       }
-
-      const data = await response.json();
-
-      /**
-       * Expected:
-       * data = {
-       *   accessToken: string,
-       *   refreshToken: string,
-       *   role: string,
-       *   teamLead: string,
-       *   manager: string
-       * }
-       */
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('refreshToken', data.refreshToken);
-      localStorage.setItem('role', data.role);
-      localStorage.setItem('teamLead', data.teamLead);
-      localStorage.setItem('manager', data.manager);
-
-      // Optionally redirect after login
-      navigate('/dashboard'); // adjust route as needed
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
+    );
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
