@@ -22,10 +22,8 @@ import { Input } from "@/components/ui/input";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { toast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth, API_URL } from "@/hooks/useAuth";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Info } from "lucide-react";
 import { playBeep, sendNotification } from "@/utils/notify";
 
 interface Task {
@@ -53,12 +51,10 @@ export default function TasksToday() {
   const [candidateFilter, setCandidateFilter] = useState("");
   const [expertFilter, setExpertFilter] = useState("");
 
-  const [reminders, setReminders] = useState<string[]>([]);
-  const reminderTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-
   const seenIds = useRef<Set<string>>(new Set());
-
+  const reminderTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const { authFetch } = useAuth();
+  const { toast } = useToast();
 
   const socket: Socket = useMemo(() => {
     const token = localStorage.getItem("accessToken") || "";
@@ -68,7 +64,6 @@ export default function TasksToday() {
       auth: { token },
     });
   }, []);
-
 
   const getStatusBadge = (status: string) => {
     switch (status?.toLowerCase()) {
@@ -100,6 +95,26 @@ export default function TasksToday() {
   };
 
   useEffect(() => {
+    // Handlers
+    const handleNew = (newTask: Task) => {
+      if (seenIds.current.has(newTask._id)) return;
+      seenIds.current.add(newTask._id);
+      setTasks((prev) => [...prev, newTask]);
+      const desc = newTask.subject || "";
+      toast({ title: "New Task Added", description: desc });
+      sendNotification("New Task Added", desc);
+      playBeep();
+    };
+    const handleUpdate = (updated: Task) => {
+      setTasks((prev) =>
+        prev.map((t) => (t._id === updated._id ? updated : t))
+      );
+    };
+
+    // Register listeners before connect
+    socket.on("taskCreated", handleNew);
+    socket.on("taskUpdated", handleUpdate);
+
     socket.connect();
 
     socket.emit(
@@ -115,30 +130,15 @@ export default function TasksToday() {
       }
     );
 
-    socket.on("taskCreated", (newTask: Task) => {
-      if (!seenIds.current.has(newTask._id)) {
-        seenIds.current.add(newTask._id);
-        setTasks((prev) => [...prev, newTask]);
-        const desc = newTask.subject || "";
-        toast({ title: "New Task Added", description: desc });
-        sendNotification("New Task Added", desc);
-        playBeep();
-      }
-    });
-    socket.on("taskUpdated", (updated: Task) => {
-      setTasks((prev) =>
-        prev.map((t) => (t._id === updated._id ? updated : t))
-      );
-    });
-
     return () => {
-      socket.off("taskCreated");
-      socket.off("taskUpdated");
+      socket.off("taskCreated", handleNew);
+      socket.off("taskUpdated", handleUpdate);
       socket.disconnect();
     };
-  }, [socket]);
+  }, [socket, toast]);
 
   useEffect(() => {
+    // clear timers
     reminderTimers.current.forEach(clearTimeout);
     reminderTimers.current = [];
 
@@ -160,18 +160,17 @@ export default function TasksToday() {
       const reminderTime = start.clone().subtract(35, "minutes");
       const delay = reminderTime.diff(now);
       if (delay <= 0) return;
-      const candidate = DOMPurify.sanitize(task["Candidate Name"] || "candidate");
-      console.log(
-        `Scheduling reminder for ${candidate} at ${start.format()} in ${delay}ms`
+
+      const candidate = DOMPurify.sanitize(
+        task["Candidate Name"] || "candidate"
       );
       const timer = setTimeout(() => {
         const msg = `Interview with ${candidate} starts at ${task["Start Time Of Interview"]}`;
-        console.log(`Triggering reminder: ${msg}`);
-        setReminders((r) => [...r, msg]);
         toast({ title: "Interview Reminder", description: msg });
         sendNotification("Interview Reminder", msg);
         playBeep();
       }, delay);
+
       reminderTimers.current.push(timer);
     });
 
@@ -179,7 +178,7 @@ export default function TasksToday() {
       reminderTimers.current.forEach(clearTimeout);
       reminderTimers.current = [];
     };
-  }, [tasks]);
+  }, [tasks, toast]);
 
   const handlePost = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,7 +206,6 @@ export default function TasksToday() {
     new Set(tasks.map((t) => t.status).filter(Boolean))
   );
 
-  // **Always ascending by startTime → endTime**
   const displayedTasks = tasks
     .filter((t) => filterStatus === "all" || t.status === filterStatus)
     .filter((t) =>
@@ -244,16 +242,6 @@ export default function TasksToday() {
       <div className="p-4 space-y-4">
         <h2 className="text-xl font-semibold">Today's Tasks</h2>
         {error && <p className="text-red-500 mb-2">{error}</p>}
-        {reminders.map((r, i) => (
-          <Alert
-            key={i}
-            className="border-blue-200 bg-blue-50 text-blue-900"
-          >
-            <Info className="h-4 w-4" />
-            <AlertTitle>Reminder</AlertTitle>
-            <AlertDescription>{r}</AlertDescription>
-          </Alert>
-        ))}
 
         {displayedTasks.length === 0 ? (
           <p>No tasks found</p>
@@ -322,7 +310,9 @@ export default function TasksToday() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {DOMPurify.sanitize(task["End Time Of Interview"] || "")}
+                      {DOMPurify.sanitize(
+                        task["End Time Of Interview"] || ""
+                      )}
                     </TableCell>
                     <TableCell>
                       {DOMPurify.sanitize(task["End Client"] || "")}

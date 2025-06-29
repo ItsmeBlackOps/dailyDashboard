@@ -35,6 +35,7 @@ export default function SignIn() {
     socket.emit(
       'login',
       { email: formData.email, password: formData.password },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (response: any) => {
         setLoading(false);
         if (!response.success) {

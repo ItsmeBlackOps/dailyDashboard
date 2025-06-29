@@ -155,8 +155,32 @@ async function connectMongo() {
   const db = client.db('interviewSupport');
   taskBodyCollection = db.collection('taskBody');
   console.log('✅ Connected to MongoDB');
+
+  // WATCH FOR REAL-TIME CHANGES IN taskBody
+  const changeStream = taskBodyCollection.watch([
+    { $match: { operationType: { $in: ['insert', 'update'] } } }
+  ]);
+
+  changeStream.on('change', async (change) => {
+    if (change.operationType === 'insert') {
+      const newTask = change.fullDocument;
+      // broadcast the new task
+      io.emit('taskCreated', newTask);
+
+    } else if (change.operationType === 'update') {
+      // re-fetch the full, updated document
+      const updatedDoc = await taskBodyCollection.findOne({ _id: change.documentKey._id });
+      io.emit('taskUpdated', updatedDoc);
+    }
+  });
+
+  changeStream.on('error', (err) => {
+    console.error('Change stream error:', err);
+  });
 }
+
 await connectMongo();
+
 
 // --- HTTP Server & Socket.IO Setup ---
 const server = http.createServer(app);
@@ -222,8 +246,9 @@ io.on('connection', socket => {
 
   try {
     const todayStr = moment.tz('America/New_York').format('MM/DD/YYYY');
+    console.log(todayStr);
     const docs = await taskBodyCollection
-      .find({ 'Date of Interview': '06/30/2025' })
+      .find({ 'Date of Interview': '06/29/2025' })
       .toArray();
 
     const lowerEmail = authUser.email.toLowerCase();
@@ -233,9 +258,10 @@ io.on('connection', socket => {
       const fullName = `${first[0].toUpperCase()}${first.slice(1)} ` +
                        `${last[0].toUpperCase()}${last.slice(1)}`;
       teamEmails = Object.entries(users)
-        .filter(([,u]) => u.teamLead === fullName)
+        .filter(([mail,u]) => u.teamLead === fullName || mail.toLowerCase() === lowerEmail )
         .map(([e]) => e.toLowerCase());
-    }
+      }
+    console.log(teamEmails);
 
     const tasks = [];
 
@@ -245,13 +271,13 @@ io.on('connection', socket => {
       const assignments = doc.replies
       .map(r => {
         const m = /Assigned To: @.+\[(.+?)\]/i.exec(r.body);
+        console.log(r.body)
         return m && moment(r.receivedDateTime).isValid()
         ? { ts: moment(r.receivedDateTime), email: m[1].toLowerCase() }
         : null;
       })
       .filter(Boolean);
       if (!assignments.length) continue;
-      
       const latest = assignments.reduce((a, b) => b.ts.isAfter(a.ts) ? b : a);
       const assignedTo = latest.email;
       const allowed = authUser.role === 'admin'
