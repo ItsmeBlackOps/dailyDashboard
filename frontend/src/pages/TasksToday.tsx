@@ -100,7 +100,7 @@ export default function TasksToday() {
       if (seenIds.current.has(newTask._id)) return;
       seenIds.current.add(newTask._id);
       setTasks((prev) => [...prev, newTask]);
-      const desc = newTask.subject || "";
+      const desc = DOMPurify.sanitize(newTask.subject || "");
       toast({ title: "New Task Added", description: desc });
       sendNotification("New Task Added", desc);
       playBeep();
@@ -121,7 +121,9 @@ export default function TasksToday() {
       "getTasksToday",
       (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
         if (!resp.success) {
-          setError(resp.error || "Failed to load tasks");
+          const msg = resp.error || "Failed to load tasks";
+          setError(msg);
+          toast({ title: "Error", description: msg, variant: "destructive" });
           return;
         }
         const initial = resp.tasks || [];
@@ -165,7 +167,10 @@ export default function TasksToday() {
         task["Candidate Name"] || "candidate"
       );
       const timer = setTimeout(() => {
-        const msg = `Interview with ${candidate} starts at ${task["Start Time Of Interview"]}`;
+        const startTime = DOMPurify.sanitize(
+          task["Start Time Of Interview"] || ""
+        );
+        const msg = `Interview with ${candidate} starts at ${startTime}`;
         toast({ title: "Interview Reminder", description: msg });
         sendNotification("Interview Reminder", msg);
         playBeep();
@@ -196,9 +201,13 @@ export default function TasksToday() {
       });
       if (!res.ok) throw new Error("Failed to post activity");
       setActivity("");
-      setMessage("Activity logged");
+      const msg = "Activity logged";
+      setMessage(msg);
+      toast({ title: "Success", description: msg });
     } catch (err) {
-      setMessage((err as Error).message);
+      const msg = (err as Error).message;
+      setMessage(msg);
+      toast({ title: "Error", description: msg, variant: "destructive" });
     }
   };
 
