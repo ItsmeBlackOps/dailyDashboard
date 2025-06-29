@@ -1,5 +1,32 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { io } from 'socket.io-client';
+
+export const API_URL = 'https://s02lbgvv-3004.inc1.devtunnels.ms/';
+
+interface RefreshResponse {
+  success: boolean;
+  accessToken?: string;
+  error?: string;
+}
+
+export async function requestRefreshToken(
+  refreshToken: string,
+  apiUrl: string = API_URL
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const socket = io(apiUrl, { autoConnect: false, transports: ['websocket'] });
+    socket.connect();
+    socket.emit('refresh', { refreshToken }, (resp: RefreshResponse) => {
+      socket.disconnect();
+      if (resp && resp.success && resp.accessToken) {
+        resolve(resp.accessToken);
+      } else {
+        resolve(null);
+      }
+    });
+  });
+}
 
 export function useAuth() {
   const navigate = useNavigate();
@@ -13,14 +40,9 @@ export function useAuth() {
   const refreshAccessToken = useCallback(async () => {
     const refreshToken = localStorage.getItem('refreshToken');
     if (!refreshToken) return false;
-    const res = await fetch('http://localhost:3000/refresh', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken })
-    });
-    if (!res.ok) return false;
-    const data = await res.json();
-    localStorage.setItem('accessToken', data.accessToken);
+    const newToken = await requestRefreshToken(refreshToken);
+    if (!newToken) return false;
+    localStorage.setItem('accessToken', newToken);
     return true;
   }, []);
 
