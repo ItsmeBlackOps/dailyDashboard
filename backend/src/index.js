@@ -1,62 +1,33 @@
-import dotenv from 'dotenv';
+// index.js
+import 'dotenv/config';
 import express from 'express';
-import { MongoClient } from 'mongodb';
+import http from 'http';
+import { Server } from 'socket.io';
+import { MongoClient, ObjectId } from 'mongodb';
 import moment from 'moment-timezone';
 import jwt from 'jsonwebtoken';
-import crypto from 'node:crypto';
+import crypto from 'crypto';
 import cors from 'cors';
 import morgan from 'morgan';
 
-dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'secret';
-const mongoURI = 'mongodb+srv://USER:***REMOVED-MONGO-PWD***@cluster0.jlncjtp.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+// --- Environment & Config ---
+const { JWT_SECRET = 'secret', MONGODB_URI } = process.env;
+const mongoURI = MONGODB_URI ||
+  'mongodb+srv://USER:***REMOVED-MONGO-PWD***@cluster0.jlncjtp.mongodb.net/?retryWrites=true&w=majority';
+const PORT = process.env.PORT || 3004;
 
+// --- Express Setup ---
 const app = express();
+app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
-app.use(cors());
 
-// --- MongoClient setup ---
-let taskBodyCollection = null;
+// --- In-memory Refresh Token Store ---
+const refreshTokens = new Map();
 
-async function connectMongo() {
-  const client = new MongoClient(mongoURI);
-  await client.connect();
-  const db = client.db('interviewSupport'); // uses database from URI
-  taskBodyCollection = db.collection('taskBody');
-}
-
-// only connect in non-test env
-if (process.env.NODE_ENV !== 'test') {
-  if (!mongoURI) {
-    console.error('❌ MONGODB_URI is not defined');
-    process.exit(1);
-  }
-  connectMongo()
-    .then(() => console.log('✅ Connected to MongoDB'))
-    .catch(err => {
-      console.error('❌ MongoDB connection error:', err);
-      process.exit(1);
-    });
-}
-
-// Plain JS “model” with a stub‐able find() for your tests
-const TaskBody = {
-  find: async (filter = {}) => {
-    if (!taskBodyCollection) {
-      throw new Error('MongoDB client not initialized');
-    }
-    return taskBodyCollection.find(filter).toArray();
-  }
-};
-
-// In-memory log for activity posts
-const activityLog = [];
-
-const ASSIGN_REGEX = /Assigned\s+To:\s*@[^\s]+\s*\[([^\]]+)\]/i;
-const EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
-
+// --- In-memory Refresh Token Store ---
+// --- User store & helpers ---
 const users = {
   'rujuwal.garg@silverspaceinc.com': {
   passwordHash: crypto.createHash('sha256').update('Rujuwal#2025!').digest('hex'),
@@ -169,191 +140,172 @@ const users = {
 
 };
 
-// const refreshTokens = new Map();
 
-// --- Helpers to infer full names & teams ---
 function getUserByEmail(email) {
   const lower = email.toLowerCase();
-  for (const key of Object.keys(users)) {
-    if (key.toLowerCase() === lower) {
-      return { email: key, ...users[key] };
-    }
-  }
-  return null;
+  return Object.entries(users).find(([key]) => key.toLowerCase() === lower)?.[1] || null;
 }
 
-// Helper to get all direct reports of a lead by their full name
-function getTeamMembersByLeadName(leadName) {
-  return Object.entries(users)
-    .filter(([_, u]) => u.teamLead === leadName)
-    .map(([email]) => email.toLowerCase());
+// --- MongoDB Connection ---
+let taskBodyCollection;
+async function connectMongo() {
+  console.log('🚀 Connecting to MongoDB...');
+  const client = new MongoClient(mongoURI);
+  await client.connect();
+  const db = client.db('interviewSupport');
+  taskBodyCollection = db.collection('taskBody');
+  console.log('✅ Connected to MongoDB');
 }
+await connectMongo();
 
-// --- Auth middleware: extract email from JWT or header, then look up role/etc ---
-app.use((req, res, next) => {
-  let email;
+// --- HTTP Server & Socket.IO Setup ---
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: '*', methods: ['GET','POST'] }});
 
-  // 1) Try JWT
-  const auth = req.headers.authorization;
-  if (auth?.startsWith('Bearer ')) {
-    try {
-      const payload = jwt.verify(auth.slice(7), JWT_SECRET);
-      email = payload.email;
-    } catch {
-      console.warn('[Auth] Invalid JWT');
-    }
-  }
-
-  // 2) Fallback for tests (or manual dev): x-user-email header
-  if (!email && req.headers['x-user-email']) {
-    email = req.headers['x-user-email'].toString();
-  }
-
-  if (email) {
+// --- Socket Authentication Middleware ---
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (!token) return next();
+  try {
+    const { email } = jwt.verify(token, JWT_SECRET);
     const user = getUserByEmail(email);
-    if (user) {
-      req.user = {
-        email:    user.email,
-        role:     user.role,
-        teamLead: user.teamLead,
-        manager:  user.manager,
-      };
-      console.log(`[Auth] User: ${user.email} (${user.role})`);
-    } else {
-      console.warn(`[Auth] No user record for: ${email}`);
-    }
-  }
-
-  next();
-});
-
-// Only allow through if we found a user record
-function requireAuth(req, res, next) {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Unauthorized: no valid user' });
-  }
-  next();
-}
-
-// --- Login & token endpoints ---
-// Note: we only embed email in JWT, never role
-app.post('/login', (req, res) => {
-  const { email, password } = req.body;
-  const user = getUserByEmail(email);
-  if (!user) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-
-  const hash = crypto.createHash('sha256').update(password).digest('hex');
-  if (hash !== user.passwordHash) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-
-  // Sign only the email
-  const accessToken  = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '15m' });
-  const refreshToken = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-  refreshTokens.set(refreshToken, user.email);
-
-  res.json({
-    accessToken,
-    refreshToken,
-    role:     user.role,
-    teamLead: user.teamLead,
-    manager:  user.manager,
-  });
-});
-
-const refreshTokens = new Map();
-app.post('/refresh', (req, res) => {
-  const { refreshToken } = req.body;
-  if (!refreshToken || !refreshTokens.has(refreshToken)) {
-    return res.status(401).json({ error: 'Invalid refresh token' });
-  }
-  try {
-    const payload     = jwt.verify(refreshToken, JWT_SECRET);
-    const accessToken = jwt.sign({ email: payload.email }, JWT_SECRET, { expiresIn: '15m' });
-    res.json({ accessToken });
+    if (!user) throw new Error();
+    socket.data.user = { email, role: user.role, teamLead: user.teamLead, manager: user.manager };
+    console.log(`[Auth] Socket authenticated: ${email}`);
+    next();
   } catch {
-    res.status(401).json({ error: 'Invalid refresh token' });
+    next(new Error('Unauthorized'));
   }
 });
 
-// --- GET /tasks/today ---
-// Leads see tasks assigned to anyone they lead.
-// Admins see everything.  
-// Users only see their own.
-app.get('/tasks/today', requireAuth, async (req, res) => {
+// --- Socket.IO Event Handling ---
+io.on('connection', socket => {
+  console.log(`🔌 Socket connected [id=${socket.id}]`);
+
+  socket.on('login', ({ email, password }, callback) => {
+    try {
+      const user = getUserByEmail(email);
+      if (!user) throw new Error('Invalid credentials');
+      const hash = crypto.createHash('sha256').update(password).digest('hex');
+      if (hash !== user.passwordHash) throw new Error('Invalid credentials');
+
+      const accessToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: '15m' });
+      const refreshToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' });
+      refreshTokens.set(refreshToken, email);
+
+      socket.data.user = { email, role: user.role, teamLead: user.teamLead, manager: user.manager };
+      console.log(`[Auth] ${email} logged in via socket`);
+
+      callback({ success: true, accessToken, refreshToken, role: user.role, teamLead: user.teamLead, manager: user.manager });
+    } catch (err) {
+      callback({ success: false, error: err.message });
+    }
+  });
+  socket.on('refresh', ({ refreshToken }, callback) => {
+    try {
+      // 1) Check we issued it
+      if (!refreshToken || !refreshTokens.has(refreshToken)) {
+        return callback({ success: false, error: 'Invalid refresh token' });
+      }
+      // 2) Verify & re‐sign a fresh access token
+      const { email } = jwt.verify(refreshToken, JWT_SECRET);
+      const accessToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: '15m' });
+      callback({ success: true, accessToken });
+    } catch (err) {
+      callback({ success: false, error: 'Invalid refresh token' });
+    }
+  });
+
+  socket.on('getTasksToday', async callback => {
+  const authUser = socket.data.user;
+  if (!authUser) return callback({ success: false, error: 'Unauthorized' });
+
   try {
-    // Today's date string in EST
-    const now     = moment.tz('America/New_York');
-    const dateStr = now.format('MM/DD/YYYY');
+    const todayStr = moment.tz('America/New_York').format('MM/DD/YYYY');
+    const docs = await taskBodyCollection
+      .find({ 'Date of Interview': '06/30/2025' })
+      .toArray();
 
-    // Fetch all docs for today
-    const docs = await TaskBody.find({ "Date of Interview": dateStr });
-
-    // If you’re a lead, build your team’s email list
-    const lowerEmail = req.user.email.toLowerCase();
-    let teamEmails   = [];
-    if (req.user.role === 'lead') {
-      // full name = First Last from email
-      const [first, last] = req.user.email.split('@')[0].split('.');
-      const fullName = first && last
-        ? `${first[0].toUpperCase()}${first.slice(1)} ${last[0].toUpperCase()}${last.slice(1)}`
-        : '';
-      console.log(fullName);
-      teamEmails = getTeamMembersByLeadName(fullName);
+    const lowerEmail = authUser.email.toLowerCase();
+    let teamEmails = [];
+    if (authUser.role === 'lead') {
+      const [first, last] = lowerEmail.split('@')[0].split('.');
+      const fullName = `${first[0].toUpperCase()}${first.slice(1)} ` +
+                       `${last[0].toUpperCase()}${last.slice(1)}`;
+      teamEmails = Object.entries(users)
+        .filter(([,u]) => u.teamLead === fullName)
+        .map(([e]) => e.toLowerCase());
     }
 
-    const results = [];
+    const tasks = [];
 
     for (const doc of docs) {
       if (!Array.isArray(doc.replies)) continue;
-
-      // parse all “Assigned To” replies
+      // find the latest “Assigned To” reply
       const assignments = doc.replies
-        .map(r => {
-           const m    = /Assigned To: @.+\[(.+?)\]/i.exec(r.body);;
-          return m
-            ? { ts: moment(r.receivedDateTime), email: m[1].toLowerCase() }
-            : null;
-        })
-        .filter(x => x && x.ts.isValid());
-
+      .map(r => {
+        const m = /Assigned To: @.+\[(.+?)\]/i.exec(r.body);
+        return m && moment(r.receivedDateTime).isValid()
+        ? { ts: moment(r.receivedDateTime), email: m[1].toLowerCase() }
+        : null;
+      })
+      .filter(Boolean);
       if (!assignments.length) continue;
-
-      // pick the latest assignment
+      
       const latest = assignments.reduce((a, b) => b.ts.isAfter(a.ts) ? b : a);
-
       const assignedTo = latest.email;
-      const allowed = (
-          req.user.role === 'admin' ||
-          lowerEmail === assignedTo        ||
-          teamEmails.includes(assignedTo)
+      const allowed = authUser.role === 'admin'
+      || lowerEmail === assignedTo
+      || teamEmails.includes(assignedTo);
+      if (!allowed) continue;
+      
+      // parse full datetime strings into Date objects
+      const startMoment = moment.tz(
+        `${doc['Date of Interview']} ${doc['Start Time Of Interview']}`,
+        'MM/DD/YYYY HH:mm',
+        'America/New_York'
       );
-      const [first1, last1] = latest.email.split('@')[0].split('.');
-      const fullName1 = first1 && last1
-        ? `${first1[0].toUpperCase()}${first1.slice(1)} ${last1[0].toUpperCase()}${last1.slice(1)}`
-        : '';
-      if (allowed) {
-        results.push({
-          ...doc,
-          assignedExpert: fullName1,
-          assignedEmail: latest.email,
-          assignedAt:    latest.ts.toISOString(),
-        });
-      }
+      const endMoment = moment.tz(
+        `${doc['Date of Interview']} ${doc['End Time Of Interview']}`,
+        'MM/DD/YYYY HH:mm',
+        'America/New_York'
+      );
+      
+      // standardized fields
+      const startTime = startMoment.toDate();
+      const endTime   = endMoment.toDate();
+      
+      const [f, l] = assignedTo.split('@')[0].split('.');
+      tasks.push({
+        ...doc,
+        assignedExpert: `${f[0].toUpperCase()}${f.slice(1)} ` +
+        `${l[0].toUpperCase()}${l.slice(1)}`,
+        assignedEmail: assignedTo,
+        assignedAt: latest.ts.toISOString(),
+        startTime,
+        endTime
+      });
+      
     }
 
-    res.json(results);
+    // **Sort once, outside the loop**:
+    //  - by startTime ascending
+    //  - tie-break by endTime ascending
+    tasks.sort((a, b) => {
+      const diff = a.startTime - b.startTime;
+      if (diff !== 0) return diff;
+      return a.endTime - b.endTime;
+    });
+    console.log(tasks)
+    callback({ success: true, tasks });
   } catch (err) {
-    console.error('❌ /tasks/today error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    callback({ success: false, error: err.message });
   }
 });
 
-export { app, TaskBody, activityLog };
 
-if (process.env.NODE_ENV !== 'test') {
-  const PORT = process.env.PORT || 3004;
-  app.listen(PORT, () => console.log(`🚀 Server up on ${PORT}`));
-}
+  socket.on('disconnect', reason => console.log(`❌ Socket disconnected [id=${socket.id}] reason: ${reason}`));
+});
+
+// --- Start Server ---
+server.listen(PORT, () => console.log(`🚀 Server listening on port ${PORT}`));
