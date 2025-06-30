@@ -65,13 +65,17 @@ The login screen and the table used to display tasks are built exclusively using
 these UI primitives. After signing in you will be redirected to `/dashboard`
 
 where today's tasks appear in a table. Expired access tokens are automatically
-refreshed via a Socket.IO `refresh` event using the stored refresh token. If
-refreshing fails the user is returned to the sign-in page.
+refreshed via a Socket.IO `refresh` event using the stored refresh token. If a
+socket connection fails with `Unauthorized`, the client transparently requests a
+new token, reconnects, and reloads tasks.
 
-The tasks view shows interview reminders. Thirty-five minutes before a scheduled
-interview a notification bar appears and the browser plays a short beep. The
-notification also triggers the browser's Notification API so the alert is heard
-even if the tab is in the background.
+Tasks update in real time using a MongoDB change stream. The frontend listens
+to `taskCreated` and `taskUpdated` events from the WebSocket. To guard against
+any missed messages it also polls the backend every minute. New tasks trigger a
+short beep and a browser notification. The view also shows interview reminders:
+thirty-five minutes before a scheduled interview a notification bar appears and
+the browser plays the beep so the alert is heard even if the tab is in the
+background.
 
 ### Tech Stack
 - React

@@ -179,12 +179,11 @@ async function connectMongo() {
   });
 }
 
-await connectMongo();
-
-
 // --- HTTP Server & Socket.IO Setup ---
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*', methods: ['GET','POST'] }});
+
+await connectMongo();
 
 // --- Socket Authentication Middleware ---
 io.use((socket, next) => {
