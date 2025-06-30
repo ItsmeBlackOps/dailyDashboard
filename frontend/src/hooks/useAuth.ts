@@ -80,5 +80,5 @@ export function useAuth() {
     [logout, refreshAccessToken]
   );
 
-  return { authFetch, logout };
+  return { authFetch, logout, refreshAccessToken };
 }
