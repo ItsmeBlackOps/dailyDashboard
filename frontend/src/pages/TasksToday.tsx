@@ -53,7 +53,7 @@ export default function TasksToday() {
 
   const seenIds = useRef<Set<string>>(new Set());
   const reminderTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const { authFetch } = useAuth();
+  const { authFetch, refreshAccessToken } = useAuth();
   const { toast } = useToast();
 
   const socket: Socket = useMemo(() => {
@@ -105,37 +105,74 @@ export default function TasksToday() {
       sendNotification("New Task Added", desc);
       playBeep();
     };
+
     const handleUpdate = (updated: Task) => {
       setTasks((prev) =>
         prev.map((t) => (t._id === updated._id ? updated : t))
       );
     };
 
+    const handleConnectError = async (err: Error) => {
+      if (err.message !== "Unauthorized") return;
+      const refreshed = await refreshAccessToken();
+      if (!refreshed) {
+        socket.disconnect();
+        return;
+      }
+      const newToken = localStorage.getItem("accessToken") || "";
+      socket.auth = { token: newToken };
+      socket.once("connect", fetchTasks);
+      socket.connect();
+    };
+
     // Register listeners before connect
     socket.on("taskCreated", handleNew);
     socket.on("taskUpdated", handleUpdate);
+    socket.on("connect_error", handleConnectError);
 
-    socket.connect();
-
-    socket.emit(
-      "getTasksToday",
-      (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
-        if (!resp.success) {
-          const msg = resp.error || "Failed to load tasks";
-          setError(msg);
-          toast({ title: "Error", description: msg, variant: "destructive" });
-          return;
+    const fetchTasks = () => {
+      socket.emit(
+        "getTasksToday",
+        (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
+          if (!resp.success) {
+            const msg = resp.error || "Failed to load tasks";
+            setError(msg);
+            toast({ title: "Error", description: msg, variant: "destructive" });
+            return;
+          }
+          const received = resp.tasks || [];
+          setTasks((prev) => {
+            const map = new Map(prev.map((t) => [t._id, t]));
+            const updated = [...prev];
+            for (const task of received) {
+              const existing = map.get(task._id);
+              if (!existing) {
+                updated.push(task);
+                seenIds.current.add(task._id);
+                const desc = DOMPurify.sanitize(task.subject || "");
+                toast({ title: "New Task Added", description: desc });
+                sendNotification("New Task Added", desc);
+                playBeep();
+              } else {
+                Object.assign(existing, task);
+              }
+            }
+            return updated;
+          });
         }
-        const initial = resp.tasks || [];
-        setTasks(initial);
-        initial.forEach((t) => seenIds.current.add(t._id));
-      }
-    );
+      );
+    };
+
+    socket.once("connect", fetchTasks);
+    socket.connect();
+    const interval = setInterval(fetchTasks, 60_000);
 
     return () => {
       socket.off("taskCreated", handleNew);
       socket.off("taskUpdated", handleUpdate);
+      socket.off("connect_error", handleConnectError);
       socket.disconnect();
+      clearInterval(interval);
     };
   }, [socket, toast]);
 
