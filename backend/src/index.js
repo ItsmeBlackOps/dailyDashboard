@@ -407,18 +407,53 @@ io.on("connection", (socket) => {
       }
       console.log(teamEmails);
 
-      const tasks = [];
-
+      const tasks: Task[] = [];
+      console.log(`Starting to process ${docs.length} docs for user ${authUser.email}`);
+      
+      // normalize once
+      const userEmailLower = authUser.email.toLowerCase();
+      
       for (const doc of docs) {
+        // 1) Log which raw document we’re looking at
+        console.log(`\n[doc] id=${doc._id || doc.id || '(no-id)'} raw=`, doc);
+      
+        // 2) Attempt to format
         const task = formatTask(doc);
-        if (!task) continue;
-        const allowed =
-          authUser.role === "admin" ||
-          lowerEmail === task.assignedEmail.toLowerCase() ||
-          teamEmails.includes(task.assignedEmail.toLowerCase());
-        if (!allowed) continue;
+        if (!task) {
+          console.log(
+            `[skip] formatTask returned null/undefined for doc id=${doc._id || '(no-id)'}`
+          );
+          continue;
+        }
+        console.log(
+          `[formatted] taskId=${task._id} assignedEmail=${task.assignedEmail}`
+        );
+      
+        // 3) Compute permission
+        const assignedEmailLower = task.assignedEmail?.toLowerCase() || '';
+        const isAdmin = authUser.role === 'admin';
+        const isSelf = userEmailLower === assignedEmailLower;
+        const isOnTeam = teamEmails.includes(assignedEmailLower);
+      
+        console.log(
+          `[check] role=${authUser.role} isAdmin=${isAdmin} isSelf=${isSelf} isOnTeam=${isOnTeam}`
+        );
+      
+        const allowed = isAdmin || isSelf || isOnTeam;
+        if (!allowed) {
+          console.log(
+            `[skip] user not allowed to see task ${task._id} (assigned to ${assignedEmailLower})`
+          );
+          continue;
+        }
+      
+        // 4) All good → push
         tasks.push(task);
+        console.log(`[push] task ${task._id} added (total so far: ${tasks.length})`);
       }
+      
+      console.log(`Done processing docs — final task count: ${tasks.length}`);
+
 
       // **Sort once, outside the loop**:
       //  - by startTime ascending
