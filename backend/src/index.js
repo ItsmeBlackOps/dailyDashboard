@@ -407,7 +407,8 @@ io.on("connection", (socket) => {
       }
       console.log(teamEmails);
 
-      const tasks: Task[] = [];
+      const tasks = [];
+
       console.log(`Starting to process ${docs.length} docs for user ${authUser.email}`);
       
       // normalize once
