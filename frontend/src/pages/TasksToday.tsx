@@ -53,6 +53,7 @@ export default function TasksToday() {
 
   const seenIds = useRef<Set<string>>(new Set());
   const reminderTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const firstLoad = useRef(true);
   const { authFetch, refreshAccessToken } = useAuth();
   const { toast } = useToast();
 
@@ -103,17 +104,40 @@ export default function TasksToday() {
       const desc = DOMPurify.sanitize(newTask.subject || "");
       toast({ title: "New Task Added", description: desc });
       sendNotification("New Task Added", desc);
+      console.log("[socket] new task", newTask._id);
       playBeep();
     };
 
     const handleUpdate = (updated: Task) => {
       setTasks((prev) =>
-        prev.map((t) => (t._id === updated._id ? updated : t))
+        prev.map((t) => {
+          if (t._id !== updated._id) return t;
+          if (t.status !== updated.status) {
+            const desc = DOMPurify.sanitize(updated.subject || "");
+            const statusDesc = DOMPurify.sanitize(updated.status || "");
+            toast({
+              title: "Task Status Updated",
+              description: `${desc} is now ${statusDesc}`,
+            });
+            sendNotification(
+              "Task Status Updated",
+              `${desc} is now ${statusDesc}`,
+            );
+            console.log(
+              "[socket] status update",
+              updated._id,
+              "->",
+              updated.status,
+            );
+          }
+          return updated;
+        }),
       );
     };
 
     const handleConnectError = async (err: Error) => {
       if (err.message !== "Unauthorized") return;
+      console.log("[socket] unauthorized, refreshing token");
       const refreshed = await refreshAccessToken();
       if (!refreshed) {
         socket.disconnect();
@@ -131,6 +155,8 @@ export default function TasksToday() {
     socket.on("connect_error", handleConnectError);
 
     const fetchTasks = () => {
+      const isInitial = firstLoad.current;
+      console.log("[socket] fetching tasks", { isInitial });
       socket.emit(
         "getTasksToday",
         (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
@@ -140,7 +166,10 @@ export default function TasksToday() {
             toast({ title: "Error", description: msg, variant: "destructive" });
             return;
           }
+
+          firstLoad.current = false;
           const received = resp.tasks || [];
+          console.log("[socket] received tasks", received.length);
           setTasks((prev) => {
             const map = new Map(prev.map((t) => [t._id, t]));
             const updated = [...prev];
@@ -152,18 +181,37 @@ export default function TasksToday() {
                 const desc = DOMPurify.sanitize(task.subject || "");
                 toast({ title: "New Task Added", description: desc });
                 sendNotification("New Task Added", desc);
-                playBeep();
+                if (!isInitial) {
+                  console.log("[beep] new", task._id);
+                  playBeep();
+                }
               } else {
+                if (existing.status !== task.status) {
+                  const desc = DOMPurify.sanitize(task.subject || "");
+                  const statusDesc = DOMPurify.sanitize(task.status || "");
+                  toast({
+                    title: "Task Status Updated",
+                    description: `${desc} is now ${statusDesc}`,
+                  });
+                  sendNotification(
+                    "Task Status Updated",
+                    `${desc} is now ${statusDesc}`,
+                  );
+                  console.log("[beep] status", task._id);
+                }
                 Object.assign(existing, task);
               }
             }
             return updated;
           });
-        }
+        },
       );
     };
 
-    socket.once("connect", fetchTasks);
+    socket.once("connect", () => {
+      console.log("[socket] connected");
+      fetchTasks();
+    });
     socket.connect();
     const interval = setInterval(fetchTasks, 60_000);
 
@@ -183,12 +231,12 @@ export default function TasksToday() {
 
     const parseDT = (
       task: Task,
-      key: "Start Time Of Interview" | "End Time Of Interview"
+      key: "Start Time Of Interview" | "End Time Of Interview",
     ) =>
       moment.tz(
         `${task["Date of Interview"]} ${task[key]}`,
         "MM/DD/YYYY hh:mm A",
-        "America/New_York"
+        "America/New_York",
       );
 
     const now = moment.tz("America/New_York");
@@ -198,21 +246,30 @@ export default function TasksToday() {
       if (!start.isValid()) return;
       const reminderTime = start.clone().subtract(35, "minutes");
       const delay = reminderTime.diff(now);
-      if (delay <= 0) return;
 
       const candidate = DOMPurify.sanitize(
-        task["Candidate Name"] || "candidate"
+        task["Candidate Name"] || "candidate",
       );
-      const timer = setTimeout(() => {
-        const startTime = DOMPurify.sanitize(
-          task["Start Time Of Interview"] || ""
-        );
-        const msg = `Interview with ${candidate} starts at ${startTime}`;
+      const startTime = DOMPurify.sanitize(
+        task["Start Time Of Interview"] || "",
+      );
+      const trigger = () => {
+        const msg =
+          `Interview with ${candidate} starts at ${startTime} in 35 minutes. ` +
+          `Please ensure the meeting is created.`;
         toast({ title: "Interview Reminder", description: msg });
         sendNotification("Interview Reminder", msg);
+        console.log("[reminder] interview", task._id);
         playBeep();
-      }, delay);
+      };
 
+      if (delay <= 0) {
+        if (start.isAfter(now)) trigger();
+        return;
+      }
+
+      console.log("[reminder] scheduling", task._id, delay);
+      const timer = setTimeout(trigger, delay);
       reminderTimers.current.push(timer);
     });
 
@@ -225,6 +282,7 @@ export default function TasksToday() {
   const handlePost = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage("");
+    console.log("[activity] posting", activity);
     try {
       const token = localStorage.getItem("accessToken") || "";
       const { email } = JSON.parse(atob(token.split(".")[1]));
@@ -241,33 +299,37 @@ export default function TasksToday() {
       const msg = "Activity logged";
       setMessage(msg);
       toast({ title: "Success", description: msg });
+      console.log("[activity] posted");
     } catch (err) {
       const msg = (err as Error).message;
       setMessage(msg);
       toast({ title: "Error", description: msg, variant: "destructive" });
+      console.log("[activity] error", msg);
     }
   };
 
   const statuses = Array.from(
-    new Set(tasks.map((t) => t.status).filter(Boolean))
+    new Set(tasks.map((t) => t.status).filter(Boolean)),
   );
 
   const displayedTasks = tasks
     .filter((t) => filterStatus === "all" || t.status === filterStatus)
     .filter((t) =>
-      t["Candidate Name"]?.toLowerCase().includes(candidateFilter.toLowerCase())
+      t["Candidate Name"]
+        ?.toLowerCase()
+        .includes(candidateFilter.toLowerCase()),
     )
     .filter((t) =>
-      t.assignedExpert?.toLowerCase().includes(expertFilter.toLowerCase())
+      t.assignedExpert?.toLowerCase().includes(expertFilter.toLowerCase()),
     )
     .sort((a, b) => {
       const parseDT = (
         task: Task,
-        key: "Start Time Of Interview" | "End Time Of Interview"
+        key: "Start Time Of Interview" | "End Time Of Interview",
       ) =>
         moment(
           `${task["Date of Interview"]} ${task[key]}`,
-          "MM/DD/YYYY hh:mm A"
+          "MM/DD/YYYY hh:mm A",
         ).toDate();
 
       const aStart = parseDT(a, "Start Time Of Interview");
@@ -352,13 +414,11 @@ export default function TasksToday() {
                     </TableCell>
                     <TableCell>
                       {DOMPurify.sanitize(
-                        task["Start Time Of Interview"] || ""
+                        task["Start Time Of Interview"] || "",
                       )}
                     </TableCell>
                     <TableCell>
-                      {DOMPurify.sanitize(
-                        task["End Time Of Interview"] || ""
-                      )}
+                      {DOMPurify.sanitize(task["End Time Of Interview"] || "")}
                     </TableCell>
                     <TableCell>
                       {DOMPurify.sanitize(task["End Client"] || "")}
