@@ -98,14 +98,17 @@ export default function TasksToday() {
   useEffect(() => {
     // Handlers
     const handleNew = (newTask: Task) => {
+      const isInitial = firstLoad.current;
       if (seenIds.current.has(newTask._id)) return;
       seenIds.current.add(newTask._id);
       setTasks((prev) => [...prev, newTask]);
       const desc = DOMPurify.sanitize(newTask.subject || "");
       toast({ title: "New Task Added", description: desc });
       sendNotification("New Task Added", desc);
-      console.log("[socket] new task", newTask._id);
-      playBeep();
+      if (!isInitial) {
+
+        console.log("[socket] new task", newTask._id);
+      playBeep();}
     };
 
     const handleUpdate = (updated: Task) => {
