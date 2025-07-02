@@ -1,27 +1,27 @@
 // index.js
-import 'dotenv/config';
-import express from 'express';
-import http from 'http';
-import { Server } from 'socket.io';
-import { MongoClient, ObjectId } from 'mongodb';
-import moment from 'moment-timezone';
-import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
-import cors from 'cors';
-import morgan from 'morgan';
-
+import "dotenv/config";
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import { MongoClient, ObjectId } from "mongodb";
+import moment from "moment-timezone";
+import jwt from "jsonwebtoken";
+import crypto from "crypto";
+import cors from "cors";
+import morgan from "morgan";
 
 // --- Environment & Config ---
-const { JWT_SECRET = 'secret', MONGODB_URI } = process.env;
-const mongoURI = MONGODB_URI ||
-  'mongodb+srv://USER:***REMOVED-MONGO-PWD***@cluster0.jlncjtp.mongodb.net/?retryWrites=true&w=majority';
+const { JWT_SECRET = "secret", MONGODB_URI } = process.env;
+const mongoURI =
+  MONGODB_URI ||
+  "mongodb+srv://USER:***REMOVED-MONGO-PWD***@cluster0.jlncjtp.mongodb.net/?retryWrites=true&w=majority";
 const PORT = process.env.PORT || 3004;
 
 // --- Express Setup ---
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(morgan('dev'));
+app.use(morgan("dev"));
 
 // --- In-memory Refresh Token Store ---
 const refreshTokens = new Map();
@@ -29,159 +29,281 @@ const refreshTokens = new Map();
 // --- In-memory Refresh Token Store ---
 // --- User store & helpers ---
 const users = {
-  'rujuwal.garg@silverspaceinc.com': {
-  passwordHash: crypto.createHash('sha256').update('Rujuwal#2025!').digest('hex'),
-  role: 'lead',
-  teamLead: '', // He’s the lead, so no one leads him
-  manager: 'Harsh Patel'
+  "rujuwal.garg@silverspaceinc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("Rujuwal#2025!")
+      .digest("hex"),
+    role: "lead",
+    teamLead: "", // He’s the lead, so no one leads him
+    manager: "Harsh Patel",
   },
-  'admin@example.com': {
-    passwordHash: crypto.createHash('sha256').update('adminpass').digest('hex'),
-    role: 'admin',
-    teamLead: 'Lead A',
-    manager: 'Manager A',
+  "admin@example.com": {
+    passwordHash: crypto.createHash("sha256").update("adminpass").digest("hex"),
+    role: "admin",
+    teamLead: "Lead A",
+    manager: "Manager A",
   },
-  'darshan.singh@vizvainc.com': {
-    passwordHash: crypto.createHash('sha256').update('userpass').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel',
+  "darshan.singh@vizvainc.com": {
+    passwordHash: crypto.createHash("sha256").update("userpass").digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'aditya.sharma@vizvainc.com': {
-    passwordHash: crypto.createHash('sha256').update('asharma123').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel'
+  "aditya.sharma@vizvainc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("asharma123")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'ajay.krishna@vizvainc.com': {
-    passwordHash: crypto.createHash('sha256').update('ajshna@123').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel'
+  "ajay.krishna@vizvainc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("ajshna@123")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'anusree.vasudevan@vizvainc.com': {
-    passwordHash: crypto.createHash('sha256').update('sree123').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel'
+  "anusree.vasudevan@vizvainc.com": {
+    passwordHash: crypto.createHash("sha256").update("sree123").digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'prateek.narvariya@silverspaceinc.com': {
-    passwordHash: crypto.createHash('sha256').update('rasilasantra').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel'
+  "prateek.narvariya@silverspaceinc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("rasilasantra")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-    'amartya.kumar@vizvainc.com': {
-    passwordHash: crypto.createHash('sha256').update('N3wP@ssw0rd!1').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel',
+  "amartya.kumar@vizvainc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("N3wP@ssw0rd!1")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'aman.agnihotri@vizvainc.com': {
-    passwordHash: crypto.createHash('sha256').update('Aman$321New').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel',
+  "aman.agnihotri@vizvainc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("Aman$321New")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'harshit@vizvainc.com': {
-    passwordHash: crypto.createHash('sha256').update('H@rsh!t2025').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel',
+  "harshit@vizvainc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("H@rsh!t2025")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'Hamid.Ansari@silverspaceinc.com': {
-    passwordHash: crypto.createHash('sha256').update('H@midN3xtGen').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel',
+  "Hamid.Ansari@silverspaceinc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("H@midN3xtGen")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'pooja.kumari@vizvainc.com': {
-    passwordHash: crypto.createHash('sha256').update('Pooja#456!New').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel',
+  "pooja.kumari@vizvainc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("Pooja#456!New")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'jayshree.rana@vizvainc.com': {
-    passwordHash: crypto.createHash('sha256').update('Jay$hr33@2025').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel',
+  "jayshree.rana@vizvainc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("Jay$hr33@2025")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'vaibhav.kaushik@vizvainc.com': {
-    passwordHash: crypto.createHash('sha256').update('V@ibhav#2025!').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel',
+  "vaibhav.kaushik@vizvainc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("V@ibhav#2025!")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'rahul.agarwal@vizvainc.com': {
-    passwordHash: crypto.createHash('sha256').update('Rahul2025@Up').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel',
+  "rahul.agarwal@vizvainc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("Rahul2025@Up")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'vansh.malhotra@vizvainc.com': {
-    passwordHash: crypto.createHash('sha256').update('V@nsh!Power99').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel',
+  "vansh.malhotra@vizvainc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("V@nsh!Power99")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'Kartikeya.Baijal@silverspaceinc.com': {
-    passwordHash: crypto.createHash('sha256').update('K@rtik22#Next').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel',
+  "Kartikeya.Baijal@silverspaceinc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("K@rtik22#Next")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
   },
-  'Aayush.Shukla@vizvainc.com': {
-    passwordHash: crypto.createHash('sha256').update('A@yush_007x!').digest('hex'),
-    role: 'user',
-    teamLead: 'Rujuwal Garg',
-    manager: 'Harsh Patel',
-  }
-
+  "Aayush.Shukla@vizvainc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("A@yush_007x!")
+      .digest("hex"),
+    role: "user",
+    teamLead: "Rujuwal Garg",
+    manager: "Harsh Patel",
+  },
 };
-
 
 function getUserByEmail(email) {
   const lower = email.toLowerCase();
-  return Object.entries(users).find(([key]) => key.toLowerCase() === lower)?.[1] || null;
+  return (
+    Object.entries(users).find(([key]) => key.toLowerCase() === lower)?.[1] ||
+    null
+  );
+}
+
+function formatTask(doc) {
+  if (!Array.isArray(doc.replies)) return null;
+
+  const assignments = doc.replies
+    .map((r) => {
+      const m = /Assigned To: @.+\[(.+?)\]/i.exec(r.body);
+      if (m && moment(r.receivedDateTime).isValid()) {
+        return { ts: moment(r.receivedDateTime), email: m[1].toLowerCase() };
+      }
+      return null;
+    })
+    .filter(Boolean);
+
+  if (!assignments.length) return null;
+  const latest = assignments.reduce((a, b) => (b.ts.isAfter(a.ts) ? b : a));
+  const assignedTo = latest.email;
+
+  const startMoment = moment.tz(
+    `${doc["Date of Interview"]} ${doc["Start Time Of Interview"]}`,
+    "MM/DD/YYYY HH:mm",
+    "America/New_York",
+  );
+  const endMoment = moment.tz(
+    `${doc["Date of Interview"]} ${doc["End Time Of Interview"]}`,
+    "MM/DD/YYYY HH:mm",
+    "America/New_York",
+  );
+
+  const [f, l] = assignedTo.split("@")[0].split(".");
+  return {
+    ...doc,
+    assignedExpert: `${f[0].toUpperCase()}${f.slice(1)} ${l[0].toUpperCase()}${l.slice(1)}`,
+    assignedEmail: assignedTo,
+    assignedAt: latest.ts.toISOString(),
+    startTime: startMoment.toDate(),
+    endTime: endMoment.toDate(),
+  };
+}
+
+function shouldSendTask(user, assignedEmail) {
+  const lowerEmail = user.email.toLowerCase();
+  let teamEmails = [];
+  if (user.role === "lead") {
+    const [first, last] = lowerEmail.split("@")[0].split(".");
+    const fullName = `${first[0].toUpperCase()}${first.slice(1)} ${last[0].toUpperCase()}${last.slice(1)}`;
+    teamEmails = Object.entries(users)
+      .filter(
+        ([mail, u]) =>
+          u.teamLead === fullName || mail.toLowerCase() === lowerEmail,
+      )
+      .map(([e]) => e.toLowerCase());
+  }
+
+  return (
+    user.role === "admin" ||
+    lowerEmail === assignedEmail.toLowerCase() ||
+    teamEmails.includes(assignedEmail.toLowerCase())
+  );
+}
+
+function emitToRelevant(event, task) {
+  for (const socket of io.of("/").sockets.values()) {
+    const user = socket.data.user;
+    if (!user) continue;
+    if (shouldSendTask(user, task.assignedEmail)) {
+      socket.emit(event, task);
+    }
+  }
 }
 
 // --- MongoDB Connection ---
 let taskBodyCollection;
 async function connectMongo() {
-  console.log('🚀 Connecting to MongoDB...');
+  console.log("🚀 Connecting to MongoDB...");
   const client = new MongoClient(mongoURI);
   await client.connect();
-  const db = client.db('interviewSupport');
-  taskBodyCollection = db.collection('taskBody');
-  console.log('✅ Connected to MongoDB');
+  const db = client.db("interviewSupport");
+  taskBodyCollection = db.collection("taskBody");
+  console.log("✅ Connected to MongoDB");
 
   // WATCH FOR REAL-TIME CHANGES IN taskBody
   const changeStream = taskBodyCollection.watch([
-    { $match: { operationType: { $in: ['insert', 'update'] } } }
+    { $match: { operationType: { $in: ["insert", "update"] } } },
   ]);
 
-  changeStream.on('change', async (change) => {
-    if (change.operationType === 'insert') {
-      const newTask = change.fullDocument;
-      // broadcast the new task
-      io.emit('taskCreated', newTask);
-
-    } else if (change.operationType === 'update') {
-      // re-fetch the full, updated document
-      const updatedDoc = await taskBodyCollection.findOne({ _id: change.documentKey._id });
-      io.emit('taskUpdated', updatedDoc);
+  changeStream.on("change", async (change) => {
+    try {
+      const doc =
+        change.operationType === "insert"
+          ? change.fullDocument
+          : await taskBodyCollection.findOne({ _id: change.documentKey._id });
+      const formatted = formatTask(doc);
+      if (!formatted) return;
+      const event =
+        change.operationType === "insert" ? "taskCreated" : "taskUpdated";
+      console.log(`[changeStream] ${event} for ${formatted.assignedEmail}`);
+      emitToRelevant(event, formatted);
+    } catch (err) {
+      console.error("Change stream processing error:", err);
     }
   });
 
-  changeStream.on('error', (err) => {
-    console.error('Change stream error:', err);
+  changeStream.on("error", (err) => {
+    console.error("Change stream error:", err);
   });
 }
 
 // --- HTTP Server & Socket.IO Setup ---
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*', methods: ['GET','POST'] }});
+const io = new Server(server, {
+  cors: { origin: "*", methods: ["GET", "POST"] },
+});
 
 await connectMongo();
 
@@ -193,143 +315,131 @@ io.use((socket, next) => {
     const { email } = jwt.verify(token, JWT_SECRET);
     const user = getUserByEmail(email);
     if (!user) throw new Error();
-    socket.data.user = { email, role: user.role, teamLead: user.teamLead, manager: user.manager };
+    socket.data.user = {
+      email,
+      role: user.role,
+      teamLead: user.teamLead,
+      manager: user.manager,
+    };
     console.log(`[Auth] Socket authenticated: ${email}`);
     next();
   } catch {
-    next(new Error('Unauthorized'));
+    next(new Error("Unauthorized"));
   }
 });
 
 // --- Socket.IO Event Handling ---
-io.on('connection', socket => {
+io.on("connection", (socket) => {
   console.log(`🔌 Socket connected [id=${socket.id}]`);
 
-  socket.on('login', ({ email, password }, callback) => {
+  socket.on("login", ({ email, password }, callback) => {
     try {
       const user = getUserByEmail(email);
-      if (!user) throw new Error('Invalid credentials');
-      const hash = crypto.createHash('sha256').update(password).digest('hex');
-      if (hash !== user.passwordHash) throw new Error('Invalid credentials');
+      if (!user) throw new Error("Invalid credentials");
+      const hash = crypto.createHash("sha256").update(password).digest("hex");
+      if (hash !== user.passwordHash) throw new Error("Invalid credentials");
 
-      const accessToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: '15m' });
-      const refreshToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' });
+      const accessToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: "15m" });
+      const refreshToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: "7d" });
       refreshTokens.set(refreshToken, email);
 
-      socket.data.user = { email, role: user.role, teamLead: user.teamLead, manager: user.manager };
+      socket.data.user = {
+        email,
+        role: user.role,
+        teamLead: user.teamLead,
+        manager: user.manager,
+      };
       console.log(`[Auth] ${email} logged in via socket`);
 
-      callback({ success: true, accessToken, refreshToken, role: user.role, teamLead: user.teamLead, manager: user.manager });
+      callback({
+        success: true,
+        accessToken,
+        refreshToken,
+        role: user.role,
+        teamLead: user.teamLead,
+        manager: user.manager,
+      });
     } catch (err) {
       callback({ success: false, error: err.message });
     }
   });
-  socket.on('refresh', ({ refreshToken }, callback) => {
+  socket.on("refresh", ({ refreshToken }, callback) => {
     try {
       // 1) Check we issued it
       if (!refreshToken || !refreshTokens.has(refreshToken)) {
-        return callback({ success: false, error: 'Invalid refresh token' });
+        return callback({ success: false, error: "Invalid refresh token" });
       }
       // 2) Verify & re‐sign a fresh access token
       const { email } = jwt.verify(refreshToken, JWT_SECRET);
-      const accessToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: '15m' });
+      const accessToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: "15m" });
       callback({ success: true, accessToken });
     } catch (err) {
-      callback({ success: false, error: 'Invalid refresh token' });
+      callback({ success: false, error: "Invalid refresh token" });
     }
   });
 
-  socket.on('getTasksToday', async callback => {
-  const authUser = socket.data.user;
-  if (!authUser) return callback({ success: false, error: 'Unauthorized' });
+  socket.on("getTasksToday", async (callback) => {
+    const authUser = socket.data.user;
+    if (!authUser) return callback({ success: false, error: "Unauthorized" });
 
-  try {
-    const todayStr = moment.tz('America/New_York').format('MM/DD/YYYY');
-    console.log(todayStr);
-    const docs = await taskBodyCollection
-      .find({ 'Date of Interview': todayStr })
-      .toArray();
+    try {
+      const todayStr = moment.tz("America/New_York").format("MM/DD/YYYY");
+      console.log(
+        `[getTasksToday] ${authUser.email} requested tasks for ${todayStr}`,
+      );
+      const docs = await taskBodyCollection
+        .find({ "Date of Interview": todayStr })
+        .toArray();
 
-    const lowerEmail = authUser.email.toLowerCase();
-    let teamEmails = [];
-    if (authUser.role === 'lead') {
-      const [first, last] = lowerEmail.split('@')[0].split('.');
-      const fullName = `${first[0].toUpperCase()}${first.slice(1)} ` +
-                       `${last[0].toUpperCase()}${last.slice(1)}`;
-      teamEmails = Object.entries(users)
-        .filter(([mail,u]) => u.teamLead === fullName || mail.toLowerCase() === lowerEmail )
-        .map(([e]) => e.toLowerCase());
+      const lowerEmail = authUser.email.toLowerCase();
+      let teamEmails = [];
+      if (authUser.role === "lead") {
+        const [first, last] = lowerEmail.split("@")[0].split(".");
+        const fullName =
+          `${first[0].toUpperCase()}${first.slice(1)} ` +
+          `${last[0].toUpperCase()}${last.slice(1)}`;
+        teamEmails = Object.entries(users)
+          .filter(
+            ([mail, u]) =>
+              u.teamLead === fullName || mail.toLowerCase() === lowerEmail,
+          )
+          .map(([e]) => e.toLowerCase());
       }
-    console.log(teamEmails);
+      console.log(teamEmails);
 
-    const tasks = [];
+      const tasks = [];
 
-    for (const doc of docs) {
-      if (!Array.isArray(doc.replies)) continue;
-      // find the latest “Assigned To” reply
-      const assignments = doc.replies
-      .map(r => {
-        const m = /Assigned To: @.+\[(.+?)\]/i.exec(r.body);
-        console.log(r.body)
-        return m && moment(r.receivedDateTime).isValid()
-        ? { ts: moment(r.receivedDateTime), email: m[1].toLowerCase() }
-        : null;
-      })
-      .filter(Boolean);
-      if (!assignments.length) continue;
-      const latest = assignments.reduce((a, b) => b.ts.isAfter(a.ts) ? b : a);
-      const assignedTo = latest.email;
-      const allowed = authUser.role === 'admin'
-      || lowerEmail === assignedTo
-      || teamEmails.includes(assignedTo);
-      if (!allowed) continue;
-      
-      // parse full datetime strings into Date objects
-      const startMoment = moment.tz(
-        `${doc['Date of Interview']} ${doc['Start Time Of Interview']}`,
-        'MM/DD/YYYY HH:mm',
-        'America/New_York'
-      );
-      const endMoment = moment.tz(
-        `${doc['Date of Interview']} ${doc['End Time Of Interview']}`,
-        'MM/DD/YYYY HH:mm',
-        'America/New_York'
-      );
-      
-      // standardized fields
-      const startTime = startMoment.toDate();
-      const endTime   = endMoment.toDate();
-      
-      const [f, l] = assignedTo.split('@')[0].split('.');
-      tasks.push({
-        ...doc,
-        assignedExpert: `${f[0].toUpperCase()}${f.slice(1)} ` +
-        `${l[0].toUpperCase()}${l.slice(1)}`,
-        assignedEmail: assignedTo,
-        assignedAt: latest.ts.toISOString(),
-        startTime,
-        endTime
+      for (const doc of docs) {
+        const task = formatTask(doc);
+        if (!task) continue;
+        const allowed =
+          authUser.role === "admin" ||
+          lowerEmail === task.assignedEmail.toLowerCase() ||
+          teamEmails.includes(task.assignedEmail.toLowerCase());
+        if (!allowed) continue;
+        tasks.push(task);
+      }
+
+      // **Sort once, outside the loop**:
+      //  - by startTime ascending
+      //  - tie-break by endTime ascending
+      tasks.sort((a, b) => {
+        const diff = a.startTime - b.startTime;
+        if (diff !== 0) return diff;
+        return a.endTime - b.endTime;
       });
-      
+      console.log(
+        `[getTasksToday] returning ${tasks.length} tasks to ${authUser.email}`,
+      );
+      callback({ success: true, tasks });
+    } catch (err) {
+      callback({ success: false, error: err.message });
     }
+  });
 
-    // **Sort once, outside the loop**:
-    //  - by startTime ascending
-    //  - tie-break by endTime ascending
-    tasks.sort((a, b) => {
-      const diff = a.startTime - b.startTime;
-      if (diff !== 0) return diff;
-      return a.endTime - b.endTime;
-    });
-    console.log(tasks)
-    callback({ success: true, tasks });
-  } catch (err) {
-    callback({ success: false, error: err.message });
-  }
-});
-
-
-  socket.on('disconnect', reason => console.log(`❌ Socket disconnected [id=${socket.id}] reason: ${reason}`));
+  socket.on("disconnect", (reason) =>
+    console.log(`❌ Socket disconnected [id=${socket.id}] reason: ${reason}`),
+  );
 });
 
 // --- Start Server ---
