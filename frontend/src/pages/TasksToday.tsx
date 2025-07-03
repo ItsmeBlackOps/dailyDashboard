@@ -1,3 +1,4 @@
+// src/components/TasksToday.tsx
 import { useEffect, useState, useRef, useMemo } from "react";
 import DOMPurify from "dompurify";
 import moment from "moment-timezone";
@@ -20,11 +21,10 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, API_URL } from "@/hooks/useAuth";
-import { playBeep, sendNotification } from "@/utils/notify";
+import { playTune, sendNotification } from "@/utils/notify";
+import { Toaster } from "@/components/ui/toaster";
 
 interface Task {
   _id: string;
@@ -38,25 +38,23 @@ interface Task {
   status?: string;
   assignedEmail?: string;
   assignedExpert?: string;
-  startTime?: Date;
-  endTime?: Date;
 }
+
+const TASK_STATUS_MAP = "tasksTodayStatusMap";
 
 export default function TasksToday() {
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [error, setError] = useState("");
-  const [activity, setActivity] = useState("");
-  const [message, setMessage] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [candidateFilter, setCandidateFilter] = useState("");
   const [expertFilter, setExpertFilter] = useState("");
+  const [error, setError] = useState("");
 
-  const seenIds = useRef<Set<string>>(new Set());
-  const reminderTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const firstLoad = useRef(true);
-  const { authFetch, refreshAccessToken } = useAuth();
+  const reminderTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const { refreshAccessToken } = useAuth();
   const { toast } = useToast();
 
+  // Initialize Socket.IO
   const socket: Socket = useMemo(() => {
     const token = localStorage.getItem("accessToken") || "";
     return io(API_URL, {
@@ -66,213 +64,197 @@ export default function TasksToday() {
     });
   }, []);
 
-  const getStatusBadge = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case "completed":
-        return "bg-emerald-500 text-white";
-      case "cancelled":
-        return "bg-red-500 text-white";
-      case "acknowledged":
-        return "bg-amber-500 text-white";
-      case "pending":
-        return "bg-blue-500 text-white";
-      default:
-        return "bg-gray-500 text-white";
-    }
-  };
-  const getRowBg = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case "completed":
-        return "bg-emerald-500/10 border-emerald-500/30";
-      case "cancelled":
-        return "bg-red-500/10 border-red-500/30";
-      case "acknowledged":
-        return "bg-amber-500/10 border-amber-500/30";
-      case "pending":
-        return "bg-blue-500/10 border-blue-500/30";
-      default:
-        return "bg-gray-500/10 border-gray-500/30";
-    }
-  };
+  // Helpers for styling
+  const getStatusBadge = (status = "") =>
+    ({
+      completed: "bg-emerald-500 text-white",
+      cancelled: "bg-red-500 text-white",
+      acknowledged: "bg-amber-500 text-white",
+      pending: "bg-blue-500 text-white",
+    }[status.toLowerCase()] || "bg-gray-500 text-white");
+
+  const getRowBg = (status = "") =>
+    ({
+      completed: "bg-emerald-500/10 border-emerald-500/30",
+      cancelled: "bg-red-500/10 border-red-500/30",
+      acknowledged: "bg-amber-500/10 border-amber-500/30",
+      pending: "bg-blue-500/10 border-blue-500/30",
+    }[status.toLowerCase()] || "bg-gray-500/10 border-gray-500/30");
 
   useEffect(() => {
-    // Handlers
-    const handleNew = (newTask: Task) => {
-      const isInitial = firstLoad.current;
-      if (seenIds.current.has(newTask._id)) return;
-      seenIds.current.add(newTask._id);
-      setTasks((prev) => [...prev, newTask]);
-      const desc = DOMPurify.sanitize(newTask.subject || "");
-      toast({ title: "New Task Added", description: desc });
-      sendNotification("New Task Added", desc);
-      if (!isInitial) {
+    const readMap = (): Record<string, string> =>
+      JSON.parse(localStorage.getItem(TASK_STATUS_MAP) || "{}");
+    const writeMap = (m: Record<string, string>) =>
+      localStorage.setItem(TASK_STATUS_MAP, JSON.stringify(m));
 
-        console.log("[socket] new task", newTask._id);
-      playBeep();}
-    };
+    const onNew = (task: Task) => {
+      const isInit = firstLoad.current;
+      const map = readMap();
+      map[task._id] = task.status || "";
+      writeMap(map);
 
-    const handleUpdate = (updated: Task) => {
-      setTasks((prev) =>
-        prev.map((t) => {
-          if (t._id !== updated._id) return t;
-          if (t.status !== updated.status) {
-            const desc = DOMPurify.sanitize(updated.subject || "");
-            const statusDesc = DOMPurify.sanitize(updated.status || "");
-            toast({
-              title: "Task Status Updated",
-              description: `${desc} is now ${statusDesc}`,
-            });
-            sendNotification(
-              "Task Status Updated",
-              `${desc} is now ${statusDesc}`,
-            );
-            console.log(
-              "[socket] status update",
-              updated._id,
-              "->",
-              updated.status,
-            );
-          }
-          return updated;
-        }),
-      );
-    };
+      setTasks((prev) => [...prev, task]);
 
-    const handleConnectError = async (err: Error) => {
-      if (err.message !== "Unauthorized") return;
-      console.log("[socket] unauthorized, refreshing token");
-      const refreshed = await refreshAccessToken();
-      if (!refreshed) {
-        socket.disconnect();
-        return;
+      if (!isInit) {
+        const desc = DOMPurify.sanitize(task.subject || "");
+        toast({ title: "New Task Added", description: desc });
+        sendNotification("New Task Added", desc);
+        console.log(`[tune] new task: id=${task._id}, subject="${task.subject}"`);
+        playTune();
       }
-      const newToken = localStorage.getItem("accessToken") || "";
-      socket.auth = { token: newToken };
+    };
+
+    const onUpdate = (task: Task) => {
+      const map = readMap();
+      const oldStatus = map[task._id] || "";
+      if (oldStatus !== task.status) {
+        const desc = DOMPurify.sanitize(task.subject || "");
+        const statusDesc = DOMPurify.sanitize(task.status || "");
+        toast({
+          title: "Task Status Updated",
+          description: `${desc} is now ${statusDesc}`,
+        });
+        sendNotification("Task Status Updated", `${desc} is now ${statusDesc}`);
+        console.log(
+          `[tune] status change: id=${task._id}, "${oldStatus}" → "${task.status}"`
+        );
+        playTune();
+      }
+      map[task._id] = task.status || "";
+      writeMap(map);
+
+      setTasks((list) => list.map((t) => (t._id === task._id ? task : t)));
+    };
+
+    const onAuthError = async (err: Error) => {
+      if (err.message !== "Unauthorized") return;
+      console.log("[socket] unauthorized – refreshing token");
+      const ok = await refreshAccessToken();
+      if (!ok) return socket.disconnect();
+      socket.auth = { token: localStorage.getItem("accessToken") || "" };
       socket.once("connect", fetchTasks);
       socket.connect();
     };
 
-    // Register listeners before connect
-    socket.on("taskCreated", handleNew);
-    socket.on("taskUpdated", handleUpdate);
-    socket.on("connect_error", handleConnectError);
-
     const fetchTasks = () => {
-      const isInitial = firstLoad.current;
-      console.log("[socket] fetching tasks", { isInitial });
+      
       socket.emit(
         "getTasksToday",
         (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
           if (!resp.success) {
-            const msg = resp.error || "Failed to load tasks";
-            setError(msg);
-            toast({ title: "Error", description: msg, variant: "destructive" });
+            setError(resp.error || "Failed to load tasks");
+            toast({
+              title: "Error",
+              description: resp.error || "Failed to load tasks",
+              variant: "destructive",
+            });
             return;
           }
 
-          firstLoad.current = false;
-          const received = resp.tasks || [];
-          console.log("[socket] received tasks", received.length);
-          setTasks((prev) => {
-            const map = new Map(prev.map((t) => [t._id, t]));
-            const updated = [...prev];
-            for (const task of received) {
-              const existing = map.get(task._id);
-              if (!existing) {
-                updated.push(task);
-                seenIds.current.add(task._id);
+          const incoming = resp.tasks || [];
+          const oldMap = readMap();
+          const newMap: Record<string, string> = {};
+          incoming.forEach((task) => {
+            newMap[task._id] = task.status || "";
+            if (!firstLoad.current) {
+              if (!(task._id in oldMap)) {
                 const desc = DOMPurify.sanitize(task.subject || "");
                 toast({ title: "New Task Added", description: desc });
                 sendNotification("New Task Added", desc);
-                if (!isInitial) {
-                  console.log("[beep] new", task._id);
-                  playBeep();
-                }
-              } else {
-                if (existing.status !== task.status) {
-                  const desc = DOMPurify.sanitize(task.subject || "");
-                  const statusDesc = DOMPurify.sanitize(task.status || "");
-                  toast({
-                    title: "Task Status Updated",
-                    description: `${desc} is now ${statusDesc}`,
-                  });
-                  sendNotification(
-                    "Task Status Updated",
-                    `${desc} is now ${statusDesc}`,
-                  );
-                  console.log("[beep] status", task._id);
-                }
-                Object.assign(existing, task);
+                console.log(
+                  `[tune] poll-new: id=${task._id}, subject="${task.subject}"`
+                );
+                playTune();
+              } else if (oldMap[task._id] !== task.status) {
+                const desc = DOMPurify.sanitize(task.subject || "");
+                const s = DOMPurify.sanitize(task.status || "");
+                toast({
+                  title: "Task Status Updated",
+                  description: `${desc} is now ${s}`,
+                });
+                sendNotification("Task Status Updated", `${desc} is now ${s}`);
+                console.log(
+                  `[tune] poll-status: id=${task._id}, "${oldMap[task._id]}" → "${task.status}"`
+                );
+                playTune();
               }
             }
-            return updated;
           });
-        },
+
+          writeMap(newMap);
+          firstLoad.current = false;
+          setTasks(incoming);
+        }
       );
     };
+
+    socket.on("taskCreated", onNew);
+    socket.on("taskUpdated", onUpdate);
+    socket.on("connect_error", onAuthError);
 
     socket.once("connect", () => {
       console.log("[socket] connected");
       fetchTasks();
+      
     });
     socket.connect();
-    const interval = setInterval(fetchTasks, 60_000);
 
+    const interval = setInterval(fetchTasks, 60_000);
     return () => {
-      socket.off("taskCreated", handleNew);
-      socket.off("taskUpdated", handleUpdate);
-      socket.off("connect_error", handleConnectError);
+      socket.off("taskCreated", onNew);
+      socket.off("taskUpdated", onUpdate);
+      socket.off("connect_error", onAuthError);
       socket.disconnect();
       clearInterval(interval);
     };
-  }, [socket, toast]);
+  }, [socket, toast, refreshAccessToken]);
 
+  // 35-minute reminder exactly at T–35m
   useEffect(() => {
-    // clear timers
     reminderTimers.current.forEach(clearTimeout);
     reminderTimers.current = [];
 
     const parseDT = (
-      task: Task,
-      key: "Start Time Of Interview" | "End Time Of Interview",
+      t: Task,
+      key: "Start Time Of Interview" | "End Time Of Interview"
     ) =>
       moment.tz(
-        `${task["Date of Interview"]} ${task[key]}`,
+        `${t["Date of Interview"]} ${t[key]}`,
         "MM/DD/YYYY hh:mm A",
-        "America/New_York",
+        "America/New_York"
       );
-
     const now = moment.tz("America/New_York");
 
-    tasks.forEach((task) => {
-      const start = parseDT(task, "Start Time Of Interview");
+    tasks.forEach((t) => {
+      const start = parseDT(t, "Start Time Of Interview");
       if (!start.isValid()) return;
-      const reminderTime = start.clone().subtract(35, "minutes");
-      const delay = reminderTime.diff(now);
 
-      const candidate = DOMPurify.sanitize(
-        task["Candidate Name"] || "candidate",
-      );
-      const startTime = DOMPurify.sanitize(
-        task["Start Time Of Interview"] || "",
-      );
-      const trigger = () => {
-        const msg =
-          `Interview with ${candidate} starts at ${startTime} in 35 minutes. ` +
-          `Please ensure the meeting is created.`;
-        toast({ title: "Interview Reminder", description: msg });
-        sendNotification("Interview Reminder", msg);
-        console.log("[reminder] interview", task._id);
-        playBeep();
-      };
+      const reminderAt = start.clone().subtract(35, "minutes");
+      const delay = reminderAt.diff(now);
 
       if (delay <= 0) {
-        if (start.isAfter(now)) trigger();
+        console.log(
+          `[reminder] skipping ${t._id}: less than 35m to start or passed`
+        );
         return;
       }
 
-      console.log("[reminder] scheduling", task._id, delay);
-      const timer = setTimeout(trigger, delay);
+      console.log(
+        `[reminder] scheduling ${t._id} at ${reminderAt.format()} (in ${delay}ms)`
+      );
+
+      const timer = setTimeout(() => {
+        const subj = DOMPurify.sanitize(t.subject || "");
+        toast({ title: "Interview Reminder", description: subj });
+        sendNotification("Interview Reminder", subj);
+        console.log(
+          `[tune] reminder for ${t._id} fired at ${moment
+            .tz("America/New_York")
+            .format()} — 35m before start`
+        );
+        playTune();
+      }, delay);
+
       reminderTimers.current.push(timer);
     });
 
@@ -282,79 +264,41 @@ export default function TasksToday() {
     };
   }, [tasks, toast]);
 
-  const handlePost = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMessage("");
-    console.log("[activity] posting", activity);
-    try {
-      const token = localStorage.getItem("accessToken") || "";
-      const { email } = JSON.parse(atob(token.split(".")[1]));
-      const role = localStorage.getItem("role") || "";
-      const teamLead = localStorage.getItem("teamLead") || "";
-      const manager = localStorage.getItem("manager") || "";
-      const res = await authFetch(`${API_URL}tasks/today`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, role, teamLead, manager, activity }),
-      });
-      if (!res.ok) throw new Error("Failed to post activity");
-      setActivity("");
-      const msg = "Activity logged";
-      setMessage(msg);
-      toast({ title: "Success", description: msg });
-      console.log("[activity] posted");
-    } catch (err) {
-      const msg = (err as Error).message;
-      setMessage(msg);
-      toast({ title: "Error", description: msg, variant: "destructive" });
-      console.log("[activity] error", msg);
-    }
-  };
-
+  // Filter & sort for rendering
   const statuses = Array.from(
-    new Set(tasks.map((t) => t.status).filter(Boolean)),
+    new Set(tasks.map((t) => t.status).filter(Boolean))
   );
-
-  const displayedTasks = tasks
+  const displayed = tasks
     .filter((t) => filterStatus === "all" || t.status === filterStatus)
     .filter((t) =>
       t["Candidate Name"]
         ?.toLowerCase()
-        .includes(candidateFilter.toLowerCase()),
+        .includes(candidateFilter.toLowerCase())
     )
     .filter((t) =>
-      t.assignedExpert?.toLowerCase().includes(expertFilter.toLowerCase()),
+      t.assignedExpert?.toLowerCase().includes(expertFilter.toLowerCase())
     )
     .sort((a, b) => {
-      const parseDT = (
-        task: Task,
-        key: "Start Time Of Interview" | "End Time Of Interview",
-      ) =>
+      const toDate = (x: Task, k: keyof Task) =>
         moment(
-          `${task["Date of Interview"]} ${task[key]}`,
-          "MM/DD/YYYY hh:mm A",
+          `${x["Date of Interview"]} ${x[k]}`,
+          "MM/DD/YYYY hh:mm A"
         ).toDate();
-
-      const aStart = parseDT(a, "Start Time Of Interview");
-      const bStart = parseDT(b, "Start Time Of Interview");
-      if (aStart < bStart) return -1;
-      if (aStart > bStart) return 1;
-
-      const aEnd = parseDT(a, "End Time Of Interview");
-      const bEnd = parseDT(b, "End Time Of Interview");
-      if (aEnd < bEnd) return -1;
-      if (aEnd > bEnd) return 1;
-
-      return 0;
+      const aS = toDate(a, "Start Time Of Interview"),
+        bS = toDate(b, "Start Time Of Interview");
+      if (aS !== bS) return aS < bS ? -1 : 1;
+      const aE = toDate(a, "End Time Of Interview"),
+        bE = toDate(b, "End Time Of Interview");
+      return aE < bE ? -1 : aE > bE ? 1 : 0;
     });
 
   return (
     <DashboardLayout>
+      <Toaster />
       <div className="p-4 space-y-4">
         <h2 className="text-xl font-semibold">Today's Tasks</h2>
-        {error && <p className="text-red-500 mb-2">{error}</p>}
-
-        {displayedTasks.length === 0 ? (
+        {error && <p className="text-red-500">{error}</p>}
+        {displayed.length === 0 ? (
           <p>No tasks found</p>
         ) : (
           <>
@@ -401,10 +345,10 @@ export default function TasksToday() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {displayedTasks.map((task) => (
+                {displayed.map((task) => (
                   <TableRow
                     key={task._id}
-                    className={getRowBg(task.status || "")}
+                    className={getRowBg(task.status)}
                   >
                     <TableCell>
                       {DOMPurify.sanitize(task.subject || "")}
@@ -417,11 +361,13 @@ export default function TasksToday() {
                     </TableCell>
                     <TableCell>
                       {DOMPurify.sanitize(
-                        task["Start Time Of Interview"] || "",
+                        task["Start Time Of Interview"] || ""
                       )}
                     </TableCell>
                     <TableCell>
-                      {DOMPurify.sanitize(task["End Time Of Interview"] || "")}
+                      {DOMPurify.sanitize(
+                        task["End Time Of Interview"] || ""
+                      )}
                     </TableCell>
                     <TableCell>
                       {DOMPurify.sanitize(task["End Client"] || "")}

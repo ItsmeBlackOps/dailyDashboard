@@ -182,6 +182,106 @@ const users = {
     teamLead: "Rujuwal Garg",
     manager: "Harsh Patel",
   },
+  "nikesh.raj@silverspaceinc.com": {
+  passwordHash: crypto
+    .createHash("sha256")
+    .update("NkRaj2025#x")
+    .digest("hex"),
+  role: "lead",
+  teamLead: "",
+  manager: "Harsh Patel",
+},
+"astha.singh@silverspaceinc.com": {
+  passwordHash: crypto
+    .createHash("sha256")
+    .update("Astha@9142")
+    .digest("hex"),
+  role: "user",
+  teamLead: "Nikesh Raj",
+  manager: "Harsh Patel",
+},
+"ayush.k@silverspaceinc.com": {
+  passwordHash: crypto
+    .createHash("sha256")
+    .update("Ayush9831$")
+    .digest("hex"),
+  role: "user",
+  teamLead: "Nikesh Raj",
+  manager: "Harsh Patel",
+},
+"bhavya.dutt@vizvainc.com": {
+  passwordHash: crypto
+    .createHash("sha256")
+    .update("Bhavya2025@")
+    .digest("hex"),
+  role: "user",
+  teamLead: "Nikesh Raj",
+  manager: "Harsh Patel",
+},
+"deep.gorai@silverspaceinc.com": {
+  passwordHash: crypto
+    .createHash("sha256")
+    .update("Deep7426$")
+    .digest("hex"),
+  role: "user",
+  teamLead: "Nikesh Raj",
+  manager: "Harsh Patel",
+},
+"dhiraj.sharma@silverspaceinc.com": {
+  passwordHash: crypto
+    .createHash("sha256")
+    .update("Dhiraj!562")
+    .digest("hex"),
+  role: "user",
+  teamLead: "Nikesh Raj",
+  manager: "Harsh Patel",
+},
+"sonali.das@silverspaceinc.com": {
+  passwordHash: crypto
+    .createHash("sha256")
+    .update("Sonali$885")
+    .digest("hex"),
+  role: "user",
+  teamLead: "Nikesh Raj",
+  manager: "Harsh Patel",
+},
+"shraavana@silverspaceinc.com": {
+  passwordHash: crypto
+    .createHash("sha256")
+    .update("Shraavana@23")
+    .digest("hex"),
+  role: "user",
+  teamLead: "Nikesh Raj",
+  manager: "Harsh Patel",
+},
+"hari.singh@silverspaceinc.com": {
+  passwordHash: crypto
+    .createHash("sha256")
+    .update("Hari!9021")
+    .digest("hex"),
+  role: "user",
+  teamLead: "Nikesh Raj",
+  manager: "Harsh Patel",
+},
+"izan.ahmad@silverspaceinc.com": {
+  passwordHash: crypto
+    .createHash("sha256")
+    .update("Izan6832@")
+    .digest("hex"),
+  role: "user",
+  teamLead: "Nikesh Raj",
+  manager: "Harsh Patel",
+},
+"ravikant.raj@silverspaceinc.com": {
+  passwordHash: crypto
+    .createHash("sha256")
+    .update("Ravi$7419")
+    .digest("hex"),
+  role: "user",
+  teamLead: "Nikesh Raj",
+  manager: "Harsh Patel",
+},
+
 };
 
 function getUserByEmail(email) {
@@ -219,11 +319,24 @@ function formatTask(doc) {
     "MM/DD/YYYY HH:mm",
     "America/New_York",
   );
+  console.log(assignedTo);
 
-  const [f, l] = assignedTo.split("@")[0].split(".");
+  const localPart = assignedTo.split("@")[0];
+const nameParts = localPart.split(".");
+
+// Build a safe “First Last” (or just “First” if there’s no dot)
+let assignedExpert;
+if (nameParts.length >= 2) {
+  const [f, l] = nameParts;
+  assignedExpert = `${f[0].toUpperCase()}${f.slice(1)} ${l[0].toUpperCase()}${l.slice(1)}`;
+} else {
+  const f = nameParts[0];
+  assignedExpert = `${f[0].toUpperCase()}${f.slice(1)}`;
+}
+
   return {
     ...doc,
-    assignedExpert: `${f[0].toUpperCase()}${f.slice(1)} ${l[0].toUpperCase()}${l.slice(1)}`,
+    assignedExpert: assignedExpert,
     assignedEmail: assignedTo,
     assignedAt: latest.ts.toISOString(),
     startTime: startMoment.toDate(),
@@ -380,6 +493,7 @@ io.on("connection", (socket) => {
 
   socket.on("getTasksToday", async (callback) => {
     const authUser = socket.data.user;
+    console.log(authUser);
     if (!authUser) return callback({ success: false, error: "Unauthorized" });
 
     try {
@@ -405,10 +519,10 @@ io.on("connection", (socket) => {
           )
           .map(([e]) => e.toLowerCase());
       }
+      
       console.log(teamEmails);
-
       const tasks = [];
-
+      
       console.log(`Starting to process ${docs.length} docs for user ${authUser.email}`);
       
       // normalize once
@@ -416,7 +530,7 @@ io.on("connection", (socket) => {
       
       for (const doc of docs) {
         // 1) Log which raw document we’re looking at
-        console.log(`\n[doc] id=${doc._id || doc.id || '(no-id)'} raw=`, doc);
+        console.log(`\n[doc] id=${doc._id || doc.id || '(no-id)'} raw=`, doc['Candidate Name']);
       
         // 2) Attempt to format
         const task = formatTask(doc);
@@ -432,6 +546,7 @@ io.on("connection", (socket) => {
       
         // 3) Compute permission
         const assignedEmailLower = task.assignedEmail?.toLowerCase() || '';
+        
         const isAdmin = authUser.role === 'admin';
         const isSelf = userEmailLower === assignedEmailLower;
         const isOnTeam = teamEmails.includes(assignedEmailLower);
