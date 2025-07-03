@@ -19,7 +19,7 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const API_URL = 'https://s02lbgvv-3004.inc1.devtunnels.ms/';
+  const API_URL = 'https://dailydb.tunn.dev/';
   
   const socket: Socket = useMemo(
     () => io(API_URL, { autoConnect: false, transports: ['websocket'] }),
