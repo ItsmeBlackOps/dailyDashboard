@@ -279,16 +279,17 @@ const users = {
     .digest("hex"),
   role: "user",
   teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",},
+  manager: "Harsh Patel",
+},
   "jayesh.nalawade@silverspaceinc.com" : {
-    passowrdHash: crypto
+    passowordHash: crypto
     .createHash("sha256")
     .update("Jayesh$7419")
     .digest("hex"),
   role: "user",
   teamLead: "Nikesh Raj",
   manager: "Harsh Patel"
-}
+},
 };
 
 function getUserByEmail(email) {
