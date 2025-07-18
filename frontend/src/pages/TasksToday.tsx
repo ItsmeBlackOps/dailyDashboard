@@ -388,7 +388,7 @@ export default function TasksToday() {
                 ))}
               </TableBody>
             </Table>
-          </>
+         
         )}
       </div>
     </DashboardLayout>
