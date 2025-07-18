@@ -320,54 +320,69 @@ function getUserByEmail(email) {
 }
 
 function formatTask(doc) {
-  if (!Array.isArray(doc.replies)) return null;
-
-  const assignments = doc.replies
-    .map((r) => {
-      const m = /Assigned To: @.+\[(.+?)\]/i.exec(r.body);
-      if (m && moment(r.receivedDateTime).isValid()) {
-        return { ts: moment(r.receivedDateTime), email: m[1].toLowerCase() };
-      }
-      return null;
-    })
-    .filter(Boolean);
-
-  if (!assignments.length) return null;
-  const latest = assignments.reduce((a, b) => (b.ts.isAfter(a.ts) ? b : a));
-  const assignedTo = latest.email;
-
+  // 1) Parse the interview window up front:
+  const dateStr = doc["Date of Interview"];
+  const startStr = doc["Start Time Of Interview"];
+  const endStr   = doc["End Time Of Interview"];
   const startMoment = moment.tz(
-    `${doc["Date of Interview"]} ${doc["Start Time Of Interview"]}`,
+    `${dateStr} ${startStr}`,
     "MM/DD/YYYY HH:mm",
-    "America/New_York",
+    "America/New_York"
   );
   const endMoment = moment.tz(
-    `${doc["Date of Interview"]} ${doc["End Time Of Interview"]}`,
+    `${dateStr} ${endStr}`,
     "MM/DD/YYYY HH:mm",
-    "America/New_York",
+    "America/New_York"
   );
-  console.log(assignedTo);
 
-  const localPart = assignedTo.split("@")[0];
-const nameParts = localPart.split(".");
+  // If the core date/times aren’t valid, skip (still returns null)
+  if (!startMoment.isValid() || !endMoment.isValid()) {
+    console.log("Invalid interview times, skipping task", doc._id);
+    return null;
+  }
 
-// Build a safe “First Last” (or just “First” if there’s no dot)
-let assignedExpert;
-if (nameParts.length >= 2) {
-  const [f, l] = nameParts;
-  assignedExpert = `${f[0].toUpperCase()}${f.slice(1)} ${l[0].toUpperCase()}${l.slice(1)}`;
-} else {
-  const f = nameParts[0];
-  assignedExpert = `${f[0].toUpperCase()}${f.slice(1)}`;
-}
+  // 2) Default values when nobody’s been assigned yet:
+  let assignedExpert = "Not Assigned";
+  let assignedEmail  = null;
+  let assignedAt     = null;
 
+  // 3) If we have replies, look for “Assigned To” stamps:
+  if (Array.isArray(doc.replies)) {
+    const assignments = doc.replies
+      .map((r) => {
+        const m = /Assigned To: @.+\[(.+?)\]/i.exec(r.body);
+        if (m && moment(r.receivedDateTime).isValid()) {
+          return {
+            ts:    moment(r.receivedDateTime),
+            email: m[1].toLowerCase(),
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+
+    if (assignments.length) {
+      // pick the latest one
+      const latest = assignments.reduce((a, b) => (b.ts.isAfter(a.ts) ? b : a));
+      assignedEmail = latest.email;
+      assignedAt    = latest.ts.toISOString();
+
+      // turn “first.last” → “First Last”
+      const parts = assignedEmail.split("@")[0].split(".");
+      assignedExpert = parts
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+        .join(" ");
+    }
+  }
+
+  // 4) Return the task object with guaranteed shape
   return {
     ...doc,
-    assignedExpert: assignedExpert,
-    assignedEmail: assignedTo,
-    assignedAt: latest.ts.toISOString(),
+    assignedExpert,
+    assignedEmail,
+    assignedAt,
     startTime: startMoment.toDate(),
-    endTime: endMoment.toDate(),
+    endTime:   endMoment.toDate(),
   };
 }
 
@@ -533,16 +548,15 @@ io.on("connection", (socket) => {
       let query;
       if (authUser.role === "MAM" || authUser.role === "MM") {
         query = {
-          "replies.receivedDateTime": { $regex: `^${todayIso}` },
-          cc: {
-            $elemMatch: { $regex: /tushar\.ahuja@silverspaceinc\.com/i }
-          }
+          "receivedDateTime": { $regex: `^${todayIso}` },
+          cc: { $regex: 'tushar\\.ahuja', $options:'i' }
+          
         };
       } else {
         query = { "Date of Interview": todayStr };
       }
       const docs = await taskBodyCollection.find(query).toArray();
-
+      console.log(query);
       const lowerEmail = authUser.email.toLowerCase();
       let teamEmails = [];
       const fullName = 'Not Assigned';

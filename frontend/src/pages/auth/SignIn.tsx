@@ -19,7 +19,7 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const API_URL = 'https://dailydb.tunn.dev/';
+  const API_URL = 'http://localhost:3004';
   
   const socket: Socket = useMemo(
     () => io(API_URL, { autoConnect: false, transports: ['websocket'] }),
