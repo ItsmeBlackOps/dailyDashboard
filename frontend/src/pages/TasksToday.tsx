@@ -298,11 +298,8 @@ export default function TasksToday() {
       <div className="p-4 space-y-4">
         <h2 className="text-xl font-semibold">Today's Tasks</h2>
         {error && <p className="text-red-500">{error}</p>}
-        {displayed.length === 0 ? (
-          <p>No tasks found</p>
-        ) : (
-          <>
-            <div className="flex flex-wrap gap-4 items-center">
+        <div className="flex flex-wrap gap-4 items-center">
+       
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="Filter status" />
@@ -328,9 +325,11 @@ export default function TasksToday() {
                 onChange={(e) => setExpertFilter(e.target.value)}
                 className="w-40"
               />
-            </div>
-
-            <Table>
+          </div>
+ {displayed.length === 0 ? (
+          <p>No tasks found</p>
+        ) : (
+          <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Subject</TableHead>
