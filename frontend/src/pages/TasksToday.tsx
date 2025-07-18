@@ -38,6 +38,7 @@ interface Task {
   status?: string;
   assignedEmail?: string;
   assignedExpert?: string;
+  recruiterName?: string;
 }
 
 const TASK_STATUS_MAP = "tasksTodayStatusMap";
@@ -46,12 +47,14 @@ export default function TasksToday() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [filterStatus, setFilterStatus] = useState("all");
   const [candidateFilter, setCandidateFilter] = useState("");
+  const [recruiterFilter, setRecruiterFilter] = useState("");
   const [expertFilter, setExpertFilter] = useState("");
   const [error, setError] = useState("");
 
   const firstLoad = useRef(true);
   const reminderTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const { refreshAccessToken } = useAuth();
+  const user = localStorage.getItem("role");
   const { toast } = useToast();
 
   // Initialize Socket.IO
@@ -99,7 +102,9 @@ export default function TasksToday() {
         const desc = DOMPurify.sanitize(task.subject || "");
         toast({ title: "New Task Added", description: desc });
         sendNotification("New Task Added", desc);
-        console.log(`[tune] new task: id=${task._id}, subject="${task.subject}"`);
+        console.log(
+          `[tune] new task: id=${task._id}, subject="${task.subject}"`
+        );
         playTune();
       }
     };
@@ -137,7 +142,6 @@ export default function TasksToday() {
     };
 
     const fetchTasks = () => {
-      
       socket.emit(
         "getTasksToday",
         (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
@@ -174,7 +178,9 @@ export default function TasksToday() {
                 });
                 sendNotification("Task Status Updated", `${desc} is now ${s}`);
                 console.log(
-                  `[tune] poll-status: id=${task._id}, "${oldMap[task._id]}" → "${task.status}"`
+                  `[tune] poll-status: id=${task._id}, "${
+                    oldMap[task._id]
+                  }" → "${task.status}"`
                 );
                 playTune();
               }
@@ -195,7 +201,6 @@ export default function TasksToday() {
     socket.once("connect", () => {
       console.log("[socket] connected");
       fetchTasks();
-      
     });
     socket.connect();
 
@@ -240,7 +245,9 @@ export default function TasksToday() {
       }
 
       console.log(
-        `[reminder] scheduling ${t._id} at ${reminderAt.format()} (in ${delay}ms)`
+        `[reminder] scheduling ${
+          t._id
+        } at ${reminderAt.format()} (in ${delay}ms)`
       );
 
       const timer = setTimeout(() => {
@@ -271,9 +278,7 @@ export default function TasksToday() {
   const displayed = tasks
     .filter((t) => filterStatus === "all" || t.status === filterStatus)
     .filter((t) =>
-      t["Candidate Name"]
-        ?.toLowerCase()
-        .includes(candidateFilter.toLowerCase())
+      t["Candidate Name"]?.toLowerCase().includes(candidateFilter.toLowerCase())
     )
     .filter((t) =>
       t.assignedExpert?.toLowerCase().includes(expertFilter.toLowerCase())
@@ -299,96 +304,105 @@ export default function TasksToday() {
         <h2 className="text-xl font-semibold">Today's Tasks</h2>
         {error && <p className="text-red-500">{error}</p>}
         <div className="flex flex-wrap gap-4 items-center">
-       
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Filter status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  {statuses.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                placeholder="Filter candidate"
-                value={candidateFilter}
-                onChange={(e) => setCandidateFilter(e.target.value)}
-                className="w-40"
-              />
-              <Input
-                placeholder="Filter expert"
-                value={expertFilter}
-                onChange={(e) => setExpertFilter(e.target.value)}
-                className="w-40"
-              />
-          </div>
- {displayed.length === 0 ? (
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Filter status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              {statuses.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            placeholder="Filter candidate"
+            value={candidateFilter}
+            onChange={(e) => setCandidateFilter(e.target.value)}
+            className="w-40"
+          />
+          <Input
+            placeholder="Filter expert"
+            value={expertFilter}
+            onChange={(e) => setExpertFilter(e.target.value)}
+            className="w-40"
+          />
+          {(user === "MAM" || user === "MM") && (
+            <Input
+              placeholder="Filter recruiter"
+              value={recruiterFilter}
+              onChange={(e) => setRecruiterFilter(e.target.value)}
+              className="w-40"
+            />
+          )}
+        </div>
+        {displayed.length === 0 ? (
           <p>No tasks found</p>
         ) : (
           <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Candidate</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Start</TableHead>
-                  <TableHead>End</TableHead>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Round</TableHead>
-                  <TableHead>Expert</TableHead>
-                  <TableHead>Status</TableHead>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Subject</TableHead>
+                <TableHead>Candidate</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Start</TableHead>
+                <TableHead>End</TableHead>
+                <TableHead>Client</TableHead>
+                <TableHead>Round</TableHead>
+                <TableHead>Expert</TableHead>
+                {(user === "MAM" || user === "MM") && (
+                  <TableHead>Recruiter</TableHead>
+                )}
+
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {displayed.map((task) => (
+                <TableRow key={task._id} className={getRowBg(task.status)}>
+                  <TableCell>
+                    {DOMPurify.sanitize(task.subject || "")}
+                  </TableCell>
+                  <TableCell>
+                    {DOMPurify.sanitize(task["Candidate Name"] || "")}
+                  </TableCell>
+                  <TableCell>
+                    {DOMPurify.sanitize(task["Date of Interview"] || "")}
+                  </TableCell>
+                  <TableCell>
+                    {DOMPurify.sanitize(task["Start Time Of Interview"] || "")}
+                  </TableCell>
+                  <TableCell>
+                    {DOMPurify.sanitize(task["End Time Of Interview"] || "")}
+                  </TableCell>
+                  <TableCell>
+                    {DOMPurify.sanitize(task["End Client"] || "")}
+                  </TableCell>
+                  <TableCell>
+                    {DOMPurify.sanitize(task["Interview Round"] || "")}
+                  </TableCell>
+                  <TableCell>
+                    {DOMPurify.sanitize(task.assignedExpert || "")}
+                  </TableCell>
+                  {(user === "MAM" || user === "MM") && (
+                    <TableCell>
+                      {DOMPurify.sanitize(task.recruiterName || "")}
+                    </TableCell>
+                  )}
+
+                  <TableCell>
+                    {task.status && (
+                      <Badge className={getStatusBadge(task.status)}>
+                        {task.status}
+                      </Badge>
+                    )}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {displayed.map((task) => (
-                  <TableRow
-                    key={task._id}
-                    className={getRowBg(task.status)}
-                  >
-                    <TableCell>
-                      {DOMPurify.sanitize(task.subject || "")}
-                    </TableCell>
-                    <TableCell>
-                      {DOMPurify.sanitize(task["Candidate Name"] || "")}
-                    </TableCell>
-                    <TableCell>
-                      {DOMPurify.sanitize(task["Date of Interview"] || "")}
-                    </TableCell>
-                    <TableCell>
-                      {DOMPurify.sanitize(
-                        task["Start Time Of Interview"] || ""
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {DOMPurify.sanitize(
-                        task["End Time Of Interview"] || ""
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {DOMPurify.sanitize(task["End Client"] || "")}
-                    </TableCell>
-                    <TableCell>
-                      {DOMPurify.sanitize(task["Interview Round"] || "")}
-                    </TableCell>
-                    <TableCell>
-                      {DOMPurify.sanitize(task.assignedExpert || "")}
-                    </TableCell>
-                    <TableCell>
-                      {task.status && (
-                        <Badge className={getStatusBadge(task.status)}>
-                          {task.status}
-                        </Badge>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-         
+              ))}
+            </TableBody>
+          </Table>
         )}
       </div>
     </DashboardLayout>
