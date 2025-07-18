@@ -599,7 +599,8 @@ io.on("connection", (socket) => {
             recruiterName
           });
           continue;
-        }        console.log(
+        }        
+        console.log(
           `[formatted] taskId=${task._id} assignedEmail=${task.assignedEmail}`
         );
       
