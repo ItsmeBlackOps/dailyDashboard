@@ -595,7 +595,7 @@ io.on("connection", (socket) => {
           }
 
           tasks.push({
-            ...t,
+            ...task,
             recruiterName
           });
           continue;
