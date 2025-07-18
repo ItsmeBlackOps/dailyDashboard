@@ -38,6 +38,25 @@ const users = {
     teamLead: "", // He’s the lead, so no one leads him
     manager: "Harsh Patel",
   },
+  "tushar.ahuja@silverspaceinc.com": {
+  passwordHash: crypto
+    .createHash("sha256")
+    .update("Manager@Secure2025!!")    // ← set a real password
+    .digest("hex"),
+  role: "MM",
+  teamLead: "",
+  manager: "Harsh Patel",                  // his boss
+},
+"brhamdev.sharma@vizvainc.com": {
+  passwordHash: crypto
+    .createHash("sha256")
+    .update("BrhamDev#Secure2025!")        // ← set a real password
+    .digest("hex"),
+  role: "MAM",
+  teamLead: "",
+  manager: "Tushar Ahuja",                // reports to the Marketing Manager
+},
+
   "admin@example.com": {
     passwordHash: crypto.createHash("sha256").update("adminpass").digest("hex"),
     role: "admin",
@@ -506,15 +525,27 @@ io.on("connection", (socket) => {
 
     try {
       const todayStr = moment.tz("America/New_York").format("MM/DD/YYYY");
+      const todayIso    = moment.tz("America/New_York").format("YYYY-MM-DD");
+      console.log(todayIso);
       console.log(
         `[getTasksToday] ${authUser.email} requested tasks for ${todayStr}`,
       );
-      const docs = await taskBodyCollection
-        .find({ "Date of Interview": todayStr })
-        .toArray();
+      let query;
+      if (authUser.role === "MAM" || authUser.role === "MM") {
+        query = {
+          "replies.receivedDateTime": { $regex: `^${todayIso}` },
+          cc: {
+            $elemMatch: { $regex: /tushar\.ahuja@silverspaceinc\.com/i }
+          }
+        };
+      } else {
+        query = { "Date of Interview": todayStr };
+      }
+      const docs = await taskBodyCollection.find(query).toArray();
 
       const lowerEmail = authUser.email.toLowerCase();
       let teamEmails = [];
+      const fullName = 'Not Assigned';
       if (authUser.role === "lead") {
         const [first, last] = lowerEmail.split("@")[0].split(".");
         const fullName =
@@ -548,7 +579,27 @@ io.on("connection", (socket) => {
           );
           continue;
         }
-        console.log(
+        if (authUser.role === "MAM" || authUser.role === "MM") {
+          const localPart = doc.sender.toLowerCase().split("@")[0];
+          const parts = localPart.split(".");
+
+          let recruiterName;
+          if (parts.length >= 2) {
+            const [first, last] = parts;
+            recruiterName =
+              `${first[0].toUpperCase()}${first.slice(1)} ` +
+              `${last[0].toUpperCase()}${last.slice(1)}`;
+          } else {
+            const only = parts[0];
+            recruiterName = `${only[0].toUpperCase()}${only.slice(1)}`;
+          }
+
+          tasks.push({
+            ...t,
+            recruiterName
+          });
+          continue;
+        }        console.log(
           `[formatted] taskId=${task._id} assignedEmail=${task.assignedEmail}`
         );
       
