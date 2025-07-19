@@ -1,5 +1,5 @@
 // src/components/TasksToday.tsx
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import DOMPurify from "dompurify";
 import moment from "moment-timezone";
 import { io, Socket } from "socket.io-client";
@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, API_URL } from "@/hooks/useAuth";
+import { useTab } from "@/hooks/useTabs";
 import { playTune, sendNotification } from "@/utils/notify";
 import { Toaster } from "@/components/ui/toaster";
 
@@ -56,6 +57,14 @@ export default function TasksToday() {
   const { refreshAccessToken } = useAuth();
   const user = localStorage.getItem("role");
   const { toast } = useToast();
+  const { selectedTab } = useTab();
+  const selectedTabRef = useRef(selectedTab);
+  useEffect(() => { selectedTabRef.current = selectedTab; }, [selectedTab]);
+
+  const readMap = (): Record<string, string> =>
+    JSON.parse(localStorage.getItem(TASK_STATUS_MAP) || "{}");
+  const writeMap = (m: Record<string, string>) =>
+    localStorage.setItem(TASK_STATUS_MAP, JSON.stringify(m));
 
   // Initialize Socket.IO
   const socket: Socket = useMemo(() => {
@@ -84,11 +93,59 @@ export default function TasksToday() {
       pending: "bg-blue-500/10 border-blue-500/30",
     }[status.toLowerCase()] || "bg-gray-500/10 border-gray-500/30");
 
+  const fetchTasks = useCallback(() => {
+    socket.emit(
+      "getTasksToday",
+      { tab: selectedTabRef.current },
+      (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
+        if (!resp.success) {
+          setError(resp.error || "Failed to load tasks");
+          toast({
+            title: "Error",
+            description: resp.error || "Failed to load tasks",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const incoming = resp.tasks || [];
+        const oldMap = readMap();
+        const newMap: Record<string, string> = {};
+        incoming.forEach((task) => {
+          newMap[task._id] = task.status || "";
+          if (!firstLoad.current) {
+            if (!(task._id in oldMap)) {
+              const desc = DOMPurify.sanitize(task.subject || "");
+              toast({ title: "New Task Added", description: desc });
+              sendNotification("New Task Added", desc);
+              console.log(
+                `[tune] poll-new: id=${task._id}, subject="${task.subject}"`
+              );
+              playTune();
+            } else if (oldMap[task._id] !== task.status) {
+              const desc = DOMPurify.sanitize(task.subject || "");
+              const s = DOMPurify.sanitize(task.status || "");
+              toast({
+                title: "Task Status Updated",
+                description: `${desc} is now ${s}`,
+              });
+              sendNotification("Task Status Updated", `${desc} is now ${s}`);
+              console.log(
+                `[tune] poll-status: id=${task._id}, "${oldMap[task._id]}" → "${task.status}"`
+              );
+              playTune();
+            }
+          }
+        });
+
+        writeMap(newMap);
+        firstLoad.current = false;
+        setTasks(incoming);
+      }
+    );
+  }, [socket, toast]);
+
   useEffect(() => {
-    const readMap = (): Record<string, string> =>
-      JSON.parse(localStorage.getItem(TASK_STATUS_MAP) || "{}");
-    const writeMap = (m: Record<string, string>) =>
-      localStorage.setItem(TASK_STATUS_MAP, JSON.stringify(m));
 
     const onNew = (task: Task) => {
       const isInit = firstLoad.current;
@@ -141,59 +198,6 @@ export default function TasksToday() {
       socket.connect();
     };
 
-    const fetchTasks = () => {
-      socket.emit(
-        "getTasksToday",
-        (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
-          if (!resp.success) {
-            setError(resp.error || "Failed to load tasks");
-            toast({
-              title: "Error",
-              description: resp.error || "Failed to load tasks",
-              variant: "destructive",
-            });
-            return;
-          }
-
-          const incoming = resp.tasks || [];
-          const oldMap = readMap();
-          const newMap: Record<string, string> = {};
-          incoming.forEach((task) => {
-            newMap[task._id] = task.status || "";
-            if (!firstLoad.current) {
-              if (!(task._id in oldMap)) {
-                const desc = DOMPurify.sanitize(task.subject || "");
-                toast({ title: "New Task Added", description: desc });
-                sendNotification("New Task Added", desc);
-                console.log(
-                  `[tune] poll-new: id=${task._id}, subject="${task.subject}"`
-                );
-                playTune();
-              } else if (oldMap[task._id] !== task.status) {
-                const desc = DOMPurify.sanitize(task.subject || "");
-                const s = DOMPurify.sanitize(task.status || "");
-                toast({
-                  title: "Task Status Updated",
-                  description: `${desc} is now ${s}`,
-                });
-                sendNotification("Task Status Updated", `${desc} is now ${s}`);
-                console.log(
-                  `[tune] poll-status: id=${task._id}, "${
-                    oldMap[task._id]
-                  }" → "${task.status}"`
-                );
-                playTune();
-              }
-            }
-          });
-
-          writeMap(newMap);
-          firstLoad.current = false;
-          setTasks(incoming);
-        }
-      );
-    };
-
     socket.on("taskCreated", onNew);
     socket.on("taskUpdated", onUpdate);
     socket.on("connect_error", onAuthError);
@@ -212,7 +216,13 @@ export default function TasksToday() {
       socket.disconnect();
       clearInterval(interval);
     };
-  }, [socket, toast, refreshAccessToken]);
+  }, [socket, toast, refreshAccessToken, fetchTasks]);
+
+  useEffect(() => {
+    if (socket.connected) {
+      fetchTasks();
+    }
+  }, [selectedTab, fetchTasks, socket]);
 
   // 35-minute reminder exactly at T–35m
   useEffect(() => {
