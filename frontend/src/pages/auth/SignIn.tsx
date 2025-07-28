@@ -12,14 +12,13 @@ import {
   CardTitle
 } from '@/components/ui/card';
 import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
-
+import { API_URL } from '../../hooks/useAuth';
 export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({email: '',password: ''});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const API_URL = 'http://localhost:3004';
   
   const socket: Socket = useMemo(
     () => io(API_URL, { autoConnect: false, transports: ['websocket'] }),

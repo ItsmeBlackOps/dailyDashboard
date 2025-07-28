@@ -533,7 +533,8 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("getTasksToday", async (callback) => {
+  socket.on("getTasksToday", async (payload, callback) => {
+    console.log(payload);
     const authUser = socket.data.user;
     console.log(authUser);
     if (!authUser) return callback({ success: false, error: "Unauthorized" });
@@ -542,16 +543,28 @@ io.on("connection", (socket) => {
       const todayStr = moment.tz("America/New_York").format("MM/DD/YYYY");
       const todayIso    = moment.tz("America/New_York").format("YYYY-MM-DD");
       console.log(todayIso);
+      // console.log(socket.data);
       console.log(
         `[getTasksToday] ${authUser.email} requested tasks for ${todayStr}`,
       );
       let query;
+      const field = String(payload.tab);
       if (authUser.role === "MAM" || authUser.role === "MM") {
-        query = {
-          "receivedDateTime": { $regex: `^${todayIso}` },
-          cc: { $regex: 'tushar\\.ahuja', $options:'i' }
-          
-        };
+        const mngr = authUser.manager.toLowerCase().split(' ').join('.');
+        const ccVal = authUser.role === "MM" ? authuser.email.split('@')[0] : mngr;
+  if (field === "Date of Interview") {
+    // direct match on todayStr for the Date of Interview field
+    query = {
+      [field]: todayStr,
+      cc:      { $regex: ccVal, $options: 'i' }
+    };
+  } else {
+    // regex on ISO date for any other field
+    query = {
+      [field]: { $regex: `^${todayIso}` },
+      cc:      { $regex: ccVal,   $options: 'i' }
+    };
+  }
       } else {
         query = { "Date of Interview": todayStr };
       }
@@ -658,7 +671,7 @@ io.on("connection", (socket) => {
       );
       callback({ success: true, tasks });
     } catch (err) {
-      callback({ success: false, error: err.message });
+      console.log(err.message);
     }
   });
 
