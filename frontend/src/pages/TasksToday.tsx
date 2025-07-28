@@ -57,7 +57,7 @@ export default function TasksToday() {
   const { refreshAccessToken } = useAuth();
   const user = localStorage.getItem("role");
   const { toast } = useToast();
-  const { selectedTab } = useTab();
+  const selectedTab = localStorage.getItem('tab');
   const selectedTabRef = useRef(selectedTab);
   useEffect(() => { selectedTabRef.current = selectedTab; }, [selectedTab]);
 
