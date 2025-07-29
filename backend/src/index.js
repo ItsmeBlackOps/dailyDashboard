@@ -56,6 +56,15 @@ const users = {
   teamLead: "",
   manager: "Tushar Ahuja",                // reports to the Marketing Manager
 },
+  "shashank.sharma@silverspaceinc.com": {
+    passwordHash: crypto
+      .createHash("sha256")
+      .update("Shashank#Vizva2025!")
+      .digest("hex"),
+    role: "MAM",      // ← set Shashank’s role
+    teamLead: "",  // ← if applicable
+    manager: "Tushar Ahuja",   // ← if applicable
+  },
 
   "admin@example.com": {
     passwordHash: crypto.createHash("sha256").update("adminpass").digest("hex"),
