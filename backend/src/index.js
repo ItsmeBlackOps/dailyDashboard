@@ -26,297 +26,43 @@ const refreshTokens = new Map();
 
 // --- In-memory Refresh Token Store ---
 // --- User store & helpers ---
-const users = {
-  "rujuwal.garg@silverspaceinc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("Rujuwal#2025!")
-      .digest("hex"),
-    role: "lead",
-    teamLead: "", // He’s the lead, so no one leads him
-    manager: "Harsh Patel",
-  },
-  "tushar.ahuja@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Manager@Secure2025!!")    // ← set a real password
-    .digest("hex"),
-  role: "MM",
-  teamLead: "",
-  manager: "Harsh Patel",                  // his boss
-},
-"brhamdev.sharma@vizvainc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("BrhamDev#Secure2025!")        // ← set a real password
-    .digest("hex"),
-  role: "MAM",
-  teamLead: "",
-  manager: "Tushar Ahuja",                // reports to the Marketing Manager
-},
-  "shashank.sharma@silverspaceinc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("Shashank#Vizva2025!")
-      .digest("hex"),
-    role: "MAM",      // ← set Shashank’s role
-    teamLead: "",  // ← if applicable
-    manager: "Tushar Ahuja",   // ← if applicable
-  },
+const users = new Map();
 
-  "admin@example.com": {
-    passwordHash: crypto.createHash("sha256").update("adminpass").digest("hex"),
-    role: "admin",
-    teamLead: "Lead A",
-    manager: "Manager A",
-  },
-  "darshan.singh@vizvainc.com": {
-    passwordHash: crypto.createHash("sha256").update("userpass").digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "aditya.sharma@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("asharma123")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "ajay.krishna@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("ajshna@123")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "anusree.vasudevan@vizvainc.com": {
-    passwordHash: crypto.createHash("sha256").update("sree123").digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "prateek.narvariya@silverspaceinc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("rasilasantra")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "amartya.kumar@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("N3wP@ssw0rd!1")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "aman.agnihotri@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("Aman$321New")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "harshit@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("H@rsh!t2025")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "Hamid.Ansari@silverspaceinc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("H@midN3xtGen")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "pooja.kumari@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("Pooja#456!New")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "jayshree.rana@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("Jay$hr33@2025")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "vaibhav.kaushik@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("V@ibhav#2025!")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "rahul.agarwal@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("Rahul2025@Up")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "vansh.malhotra@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("V@nsh!Power99")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "Kartikeya.Baijal@silverspaceinc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("K@rtik22#Next")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "Aayush.Shukla@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("A@yush_007x!")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "nikesh.raj@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("NkRaj2025#x")
-    .digest("hex"),
-  role: "lead",
-  teamLead: "",
-  manager: "Harsh Patel",
-},
-"astha.singh@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Astha@9142")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"ayush.k@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Ayush9831$")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"bhavya.dutt@vizvainc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Bhavya2025@")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"deep.gorai@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Deep7426$")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"dhiraj.sharma@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Dhiraj!562")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"sonali.das@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Sonali$885")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"shraavana@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Shraavana@23")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"hari.singh@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Hari!9021")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"izan.ahmad@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Izan6832@")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"ravikant.raj@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Ravi$7419")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-  "jayesh.nalawade@silverspaceinc.com" : {
-    passowordHash: crypto
-    .createHash("sha256")
-    .update("Jayesh$7419")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel"
-},
-};
+async function loadUsers() {
+  const all = await db.collection('users').find().toArray();
+  users.clear();
+  for (const u of all) {
+    users.set(u.email.toLowerCase(), {
+      passwordHash: u.passwordHash,
+      role:         u.role,
+      teamLead:     u.teamLead,
+      manager:      u.manager,
+    });
+  }
+  console.log(`✅ Loaded ${users.size} users`);
+}
+
+// then, after you do `await client.connect()` in your initMongo/initDB function:
+await loadUsers();
+
+// (optional) watch for changes in the users collection and update cache:
+const usersStream = db.collection('users').watch();
+usersStream.on('change', async change => {
+  if (change.operationType === 'delete') {
+    // simplest: just reload everything
+    await loadUsers();
+  } else {
+    // insert/replace/update:
+    const doc = change.fullDocument || await db.collection('users').findOne({ _id: change.documentKey._id });
+    users.set(doc.email.toLowerCase(), {
+      passwordHash: doc.passwordHash,
+      role:         doc.role,
+      teamLead:     doc.teamLead,
+      manager:      doc.manager,
+    });
+    console.log(`🔄 User cache upserted: ${doc.email}`);
+  }
+});
 
 function getUserByEmail(email) {
   const lower = email.toLowerCase();
