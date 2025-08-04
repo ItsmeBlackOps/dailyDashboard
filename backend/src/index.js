@@ -12,9 +12,7 @@ import morgan from "morgan";
 
 // --- Environment & Config ---
 const { JWT_SECRET = "secret", MONGODB_URI } = process.env;
-const mongoURI =
-  MONGODB_URI ||
-  "mongodb+srv://USER:***REMOVED-MONGO-PWD***@cluster0.jlncjtp.mongodb.net/?retryWrites=true&w=majority";
+const mongoURI = MONGODB_URI
 const PORT = process.env.PORT || 3004;
 
 // --- Express Setup ---
