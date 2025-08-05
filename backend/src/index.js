@@ -12,24 +12,18 @@ import morgan from "morgan";
 
 // --- Environment & Config ---
 const { JWT_SECRET = "secret", MONGODB_URI } = process.env;
-const mongoURI = MONGODB_URI
+const mongoURI = MONGODB_URI;
 const PORT = process.env.PORT || 3004;
 
-// --- Express Setup ---
-const app = express();
-app.use(cors());
-app.use(express.json());
-app.use(morgan("dev"));
-
-// --- In-memory Refresh Token Store ---
+// --- Globals ---
+let db;
+let taskBodyCollection;
+const users = new Map();
 const refreshTokens = new Map();
 
-// --- In-memory Refresh Token Store ---
-// --- User store & helpers ---
-const users = new Map();
-
+// --- Helpers ---
 async function loadUsers() {
-  const all = await db.collection('users').find().toArray();
+  const all = await db.collection("users").find().toArray();
   users.clear();
   for (const u of all) {
     users.set(u.email.toLowerCase(), {
@@ -42,41 +36,15 @@ async function loadUsers() {
   console.log(`✅ Loaded ${users.size} users`);
 }
 
-// then, after you do `await client.connect()` in your initMongo/initDB function:
-await loadUsers();
-
-// (optional) watch for changes in the users collection and update cache:
-const usersStream = db.collection('users').watch();
-usersStream.on('change', async change => {
-  if (change.operationType === 'delete') {
-    // simplest: just reload everything
-    await loadUsers();
-  } else {
-    // insert/replace/update:
-    const doc = change.fullDocument || await db.collection('users').findOne({ _id: change.documentKey._id });
-    users.set(doc.email.toLowerCase(), {
-      passwordHash: doc.passwordHash,
-      role:         doc.role,
-      teamLead:     doc.teamLead,
-      manager:      doc.manager,
-    });
-    console.log(`🔄 User cache upserted: ${doc.email}`);
-  }
-});
-
 function getUserByEmail(email) {
-  const lower = email.toLowerCase();
-  return (
-    Object.entries(users).find(([key]) => key.toLowerCase() === lower)?.[1] ||
-    null
-  );
+  return users.get(email.toLowerCase()) || null;
 }
 
 function formatTask(doc) {
-  // 1) Parse the interview window up front:
-  const dateStr = doc["Date of Interview"];
+  const dateStr  = doc["Date of Interview"];
   const startStr = doc["Start Time Of Interview"];
   const endStr   = doc["End Time Of Interview"];
+
   const startMoment = moment.tz(
     `${dateStr} ${startStr}`,
     "MM/DD/YYYY HH:mm",
@@ -88,21 +56,18 @@ function formatTask(doc) {
     "America/New_York"
   );
 
-  // If the core date/times aren’t valid, skip (still returns null)
   if (!startMoment.isValid() || !endMoment.isValid()) {
     console.log("Invalid interview times, skipping task", doc._id);
     return null;
   }
 
-  // 2) Default values when nobody’s been assigned yet:
   let assignedExpert = "Not Assigned";
   let assignedEmail  = null;
   let assignedAt     = null;
 
-  // 3) If we have replies, look for “Assigned To” stamps:
   if (Array.isArray(doc.replies)) {
     const assignments = doc.replies
-      .map((r) => {
+      .map(r => {
         const m = /Assigned To: @.+\[(.+?)\]/i.exec(r.body);
         if (m && moment(r.receivedDateTime).isValid()) {
           return {
@@ -115,20 +80,20 @@ function formatTask(doc) {
       .filter(Boolean);
 
     if (assignments.length) {
-      // pick the latest one
-      const latest = assignments.reduce((a, b) => (b.ts.isAfter(a.ts) ? b : a));
+      const latest = assignments.reduce((a, b) =>
+        b.ts.isAfter(a.ts) ? b : a
+      );
       assignedEmail = latest.email;
       assignedAt    = latest.ts.toISOString();
 
-      // turn “first.last” → “First Last”
-      const parts = assignedEmail.split("@")[0].split(".");
-      assignedExpert = parts
-        .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+      assignedExpert = assignedEmail
+        .split("@")[0]
+        .split(".")
+        .map(p => p.charAt(0).toUpperCase() + p.slice(1))
         .join(" ");
     }
   }
 
-  // 4) Return the task object with guaranteed shape
   return {
     ...doc,
     assignedExpert,
@@ -142,59 +107,85 @@ function formatTask(doc) {
 function shouldSendTask(user, assignedEmail) {
   const lowerEmail = user.email.toLowerCase();
   let teamEmails = [];
+
   if (user.role === "lead") {
     const [first, last] = lowerEmail.split("@")[0].split(".");
-    const fullName = `${first[0].toUpperCase()}${first.slice(1)} ${last[0].toUpperCase()}${last.slice(1)}`;
-    teamEmails = Object.entries(users)
-      .filter(
-        ([mail, u]) =>
-          u.teamLead === fullName || mail.toLowerCase() === lowerEmail,
-      )
-      .map(([e]) => e.toLowerCase());
+    const fullName = `${first[0].toUpperCase()}${first.slice(1)} ` +
+                     `${last[0].toUpperCase()}${last.slice(1)}`;
+
+    for (const [mail, u] of users.entries()) {
+      if (u.teamLead === fullName || mail === lowerEmail) {
+        teamEmails.push(mail);
+      }
+    }
   }
 
   return (
     user.role === "admin" ||
-    lowerEmail === assignedEmail.toLowerCase() ||
-    teamEmails.includes(assignedEmail.toLowerCase())
+    lowerEmail === assignedEmail?.toLowerCase() ||
+    teamEmails.includes(assignedEmail?.toLowerCase())
   );
 }
 
 function emitToRelevant(event, task) {
   for (const socket of io.of("/").sockets.values()) {
     const user = socket.data.user;
-    if (!user) continue;
-    if (shouldSendTask(user, task.assignedEmail)) {
+    if (user && shouldSendTask(user, task.assignedEmail)) {
       socket.emit(event, task);
     }
   }
 }
 
-// --- MongoDB Connection ---
-let taskBodyCollection;
+// --- Mongo Connection & Watchers ---
 async function connectMongo() {
   console.log("🚀 Connecting to MongoDB...");
   const client = new MongoClient(mongoURI);
   await client.connect();
-  const db = client.db("interviewSupport");
+
+  db = client.db("interviewSupport");
   taskBodyCollection = db.collection("taskBody");
   console.log("✅ Connected to MongoDB");
 
-  // WATCH FOR REAL-TIME CHANGES IN taskBody
+  // Initial load of users
+  await loadUsers();
+
+  // Watch users collection for cache updates
+  const usersStream = db.collection("users").watch();
+  usersStream.on("change", async change => {
+    if (change.operationType === "delete") {
+      await loadUsers();
+    } else {
+      const doc = change.fullDocument
+        ?? await db.collection("users")
+             .findOne({ _id: change.documentKey._id });
+      users.set(doc.email.toLowerCase(), {
+        passwordHash: doc.passwordHash,
+        role:         doc.role,
+        teamLead:     doc.teamLead,
+        manager:      doc.manager,
+      });
+      console.log(`🔄 User cache upserted: ${doc.email}`);
+    }
+  });
+
+  // Watch taskBody for real-time emits
   const changeStream = taskBodyCollection.watch([
-    { $match: { operationType: { $in: ["insert", "update"] } } },
+    { $match: { operationType: { $in: ["insert", "update"] } } }
   ]);
 
-  changeStream.on("change", async (change) => {
+  changeStream.on("change", async change => {
     try {
-      const doc =
-        change.operationType === "insert"
-          ? change.fullDocument
-          : await taskBodyCollection.findOne({ _id: change.documentKey._id });
+      const doc = change.operationType === "insert"
+        ? change.fullDocument
+        : await taskBodyCollection.findOne({ _id: change.documentKey._id });
+
       const formatted = formatTask(doc);
       if (!formatted) return;
-      const event =
-        change.operationType === "insert" ? "taskCreated" : "taskUpdated";
+
+      const event = change.operationType === "insert"
+        ? "taskCreated"
+        : "taskUpdated";
+
       console.log(`[changeStream] ${event} for ${formatted.assignedEmail}`);
       emitToRelevant(event, formatted);
     } catch (err) {
@@ -202,32 +193,36 @@ async function connectMongo() {
     }
   });
 
-  changeStream.on("error", (err) => {
-    console.error("Change stream error:", err);
-  });
+  changeStream.on("error", err =>
+    console.error("Change stream error:", err)
+  );
 }
 
-// --- HTTP Server & Socket.IO Setup ---
+// --- App & Socket.IO Setup in Async IIFE ---
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(morgan("dev"));
+
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] },
+  cors: { origin: "*", methods: ["GET","POST"] }
 });
 
-await connectMongo();
-
-// --- Socket Authentication Middleware ---
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next();
+
   try {
     const { email } = jwt.verify(token, JWT_SECRET);
     const user = getUserByEmail(email);
-    if (!user) throw new Error();
+    if (!user) throw new Error("Unauthorized");
+
     socket.data.user = {
       email,
-      role: user.role,
+      role:     user.role,
       teamLead: user.teamLead,
-      manager: user.manager,
+      manager:  user.manager,
     };
     console.log(`[Auth] Socket authenticated: ${email}`);
     next();
@@ -236,202 +231,143 @@ io.use((socket, next) => {
   }
 });
 
-// --- Socket.IO Event Handling ---
-io.on("connection", (socket) => {
+io.on("connection", socket => {
   console.log(`🔌 Socket connected [id=${socket.id}]`);
 
-  socket.on("login", ({ email, password }, callback) => {
+  socket.on("login", ({ email, password }, cb) => {
     try {
       const user = getUserByEmail(email);
       if (!user) throw new Error("Invalid credentials");
-      const hash = crypto.createHash("sha256").update(password).digest("hex");
-      if (hash !== user.passwordHash) throw new Error("Invalid credentials");
 
-      const accessToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: "15m" });
+      const hash = crypto
+        .createHash("sha256")
+        .update(password)
+        .digest("hex");
+
+      if (hash !== user.passwordHash) {
+        throw new Error("Invalid credentials");
+      }
+
+      const accessToken  = jwt.sign({ email }, JWT_SECRET, { expiresIn: "15m" });
       const refreshToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: "7d" });
       refreshTokens.set(refreshToken, email);
 
-      socket.data.user = {
-        email,
-        role: user.role,
-        teamLead: user.teamLead,
-        manager: user.manager,
-      };
+      socket.data.user = { email, role: user.role, teamLead: user.teamLead, manager: user.manager };
       console.log(`[Auth] ${email} logged in via socket`);
 
-      callback({
+      cb({
         success: true,
         accessToken,
         refreshToken,
-        role: user.role,
+        role:     user.role,
         teamLead: user.teamLead,
-        manager: user.manager,
+        manager:  user.manager,
       });
     } catch (err) {
-      callback({ success: false, error: err.message });
-    }
-  });
-  socket.on("refresh", ({ refreshToken }, callback) => {
-    try {
-      // 1) Check we issued it
-      if (!refreshToken || !refreshTokens.has(refreshToken)) {
-        return callback({ success: false, error: "Invalid refresh token" });
-      }
-      // 2) Verify & re‐sign a fresh access token
-      const { email } = jwt.verify(refreshToken, JWT_SECRET);
-      const accessToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: "15m" });
-      callback({ success: true, accessToken });
-    } catch (err) {
-      callback({ success: false, error: "Invalid refresh token" });
+      cb({ success: false, error: err.message });
     }
   });
 
-  socket.on("getTasksToday", async (payload, callback) => {
-    console.log(payload);
+  socket.on("refresh", ({ refreshToken }, cb) => {
+    if (!refreshToken || !refreshTokens.has(refreshToken)) {
+      return cb({ success: false, error: "Invalid refresh token" });
+    }
+    try {
+      const { email } = jwt.verify(refreshToken, JWT_SECRET);
+      const accessToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: "15m" });
+      cb({ success: true, accessToken });
+    } catch {
+      cb({ success: false, error: "Invalid refresh token" });
+    }
+  });
+
+  socket.on("getTasksToday", async ({ tab }, cb) => {
     const authUser = socket.data.user;
-    console.log(authUser);
-    if (!authUser) return callback({ success: false, error: "Unauthorized" });
+    if (!authUser) return cb({ success: false, error: "Unauthorized" });
 
     try {
       const todayStr = moment.tz("America/New_York").format("MM/DD/YYYY");
-      const todayIso    = moment.tz("America/New_York").format("YYYY-MM-DD");
-      console.log(todayIso);
-      // console.log(socket.data);
-      console.log(
-        `[getTasksToday] ${authUser.email} requested tasks for ${todayStr}`,
-      );
+      const todayIso = moment.tz("America/New_York").format("YYYY-MM-DD");
+
       let query;
-      const field = String(payload.tab);
-      if (authUser.role === "MAM" || authUser.role === "MM") {
-        const mngr = authUser.manager.toLowerCase().split(' ').join('.');
-        const ccVal = authUser.role === "MM" ? authuser.email.split('@')[0] : mngr;
-  if (field === "Date of Interview") {
-    // direct match on todayStr for the Date of Interview field
-    query = {
-      [field]: todayStr,
-      cc:      { $regex: ccVal, $options: 'i' }
-    };
-  } else {
-    // regex on ISO date for any other field
-    query = {
-      [field]: { $regex: `^${todayIso}` },
-      cc:      { $regex: ccVal,   $options: 'i' }
-    };
-  }
+      if (["MAM","MM"].includes(authUser.role)) {
+        const mngr  = authUser.manager.toLowerCase().split(" ").join(".");
+        const ccVal = authUser.role === "MM"
+          ? authUser.email.split("@")[0]
+          : mngr;
+
+        if (tab === "Date of Interview") {
+          query = { [tab]: todayStr, cc: { $regex: ccVal, $options: "i" } };
+        } else {
+          query = { [tab]: { $regex: `^${todayIso}` }, cc: { $regex: ccVal, $options: "i" } };
+        }
       } else {
         query = { "Date of Interview": todayStr };
       }
+
       const docs = await taskBodyCollection.find(query).toArray();
-      console.log(query);
-      const lowerEmail = authUser.email.toLowerCase();
-      let teamEmails = [];
-      const fullName = 'Not Assigned';
-      if (authUser.role === "lead") {
-        const [first, last] = lowerEmail.split("@")[0].split(".");
-        const fullName =
-          `${first[0].toUpperCase()}${first.slice(1)} ` +
-          `${last[0].toUpperCase()}${last.slice(1)}`;
-        teamEmails = Object.entries(users)
-          .filter(
-            ([mail, u]) =>
-              u.teamLead === fullName || mail.toLowerCase() === lowerEmail,
-          )
-          .map(([e]) => e.toLowerCase());
-      }
-      
-      console.log(teamEmails);
-      const tasks = [];
-      
-      console.log(`Starting to process ${docs.length} docs for user ${authUser.email}`);
-      
-      // normalize once
       const userEmailLower = authUser.email.toLowerCase();
-      
-      for (const doc of docs) {
-        // 1) Log which raw document we’re looking at
-        console.log(`\n[doc] id=${doc._id || doc.id || '(no-id)'} raw=`, doc['Candidate Name']);
-      
-        // 2) Attempt to format
-        const task = formatTask(doc);
-        if (!task) {
-          console.log(
-            `[skip] formatTask returned null/undefined for doc id=${doc._id || '(no-id)'}`
-          );
-          continue;
+      let teamEmails = [];
+
+      if (authUser.role === "lead") {
+        const [first, last] = userEmailLower.split("@")[0].split(".");
+        const fullName = `${first[0].toUpperCase()}${first.slice(1)} ` +
+                         `${last[0].toUpperCase()}${last.slice(1)}`;
+
+        for (const [mail,u] of users.entries()) {
+          if (u.teamLead === fullName || mail === userEmailLower) {
+            teamEmails.push(mail);
+          }
         }
-        if (authUser.role === "MAM" || authUser.role === "MM") {
+      }
+
+      const tasks = [];
+      for (const doc of docs) {
+        const task = formatTask(doc);
+        if (!task) continue;
+
+        if (["MAM","MM"].includes(authUser.role)) {
           const localPart = doc.sender.toLowerCase().split("@")[0];
           const parts = localPart.split(".");
+          const recruiterName = parts.length >= 2
+            ? `${parts[0][0].toUpperCase()}${parts[0].slice(1)} ` +
+              `${parts[1][0].toUpperCase()}${parts[1].slice(1)}`
+            : `${parts[0][0].toUpperCase()}${parts[0].slice(1)}`;
 
-          let recruiterName;
-          if (parts.length >= 2) {
-            const [first, last] = parts;
-            recruiterName =
-              `${first[0].toUpperCase()}${first.slice(1)} ` +
-              `${last[0].toUpperCase()}${last.slice(1)}`;
-          } else {
-            const only = parts[0];
-            recruiterName = `${only[0].toUpperCase()}${only.slice(1)}`;
-          }
-
-          tasks.push({
-            ...task,
-            recruiterName
-          });
-          continue;
-        }        
-        console.log(
-          `[formatted] taskId=${task._id} assignedEmail=${task.assignedEmail}`
-        );
-      
-        // 3) Compute permission
-        const assignedEmailLower = task.assignedEmail?.toLowerCase() || '';
-        
-        const isAdmin = authUser.role === 'admin';
-        const isSelf = userEmailLower === assignedEmailLower;
-        const isOnTeam = teamEmails.includes(assignedEmailLower);
-      
-        console.log(
-          `[check] role=${authUser.role} isAdmin=${isAdmin} isSelf=${isSelf} isOnTeam=${isOnTeam}`
-        );
-      
-        const allowed = isAdmin || isSelf || isOnTeam;
-        if (!allowed) {
-          console.log(
-            `[skip] user not allowed to see task ${task._id} (assigned to ${assignedEmailLower})`
-          );
+          tasks.push({ ...task, recruiterName });
           continue;
         }
-      
-        // 4) All good → push
-        tasks.push(task);
-        console.log(`[push] task ${task._id} added (total so far: ${tasks.length})`);
+
+        const assignedEmailLower = task.assignedEmail?.toLowerCase() || "";
+        const allowed = (
+          authUser.role === "admin" ||
+          userEmailLower === assignedEmailLower ||
+          teamEmails.includes(assignedEmailLower)
+        );
+        if (allowed) tasks.push(task);
       }
-      
-      console.log(`Done processing docs — final task count: ${tasks.length}`);
 
-
-      // **Sort once, outside the loop**:
-      //  - by startTime ascending
-      //  - tie-break by endTime ascending
-      tasks.sort((a, b) => {
+      tasks.sort((a,b) => {
         const diff = a.startTime - b.startTime;
-        if (diff !== 0) return diff;
-        return a.endTime - b.endTime;
+        return diff !== 0 ? diff : a.endTime - b.endTime;
       });
-      console.log(
-        `[getTasksToday] returning ${tasks.length} tasks to ${authUser.email}`,
-      );
-      callback({ success: true, tasks });
+
+      cb({ success: true, tasks });
     } catch (err) {
-      console.log(err.message);
+      console.error(err);
+      cb({ success: false, error: err.message });
     }
   });
 
-  socket.on("disconnect", (reason) =>
-    console.log(`❌ Socket disconnected [id=${socket.id}] reason: ${reason}`),
+  socket.on("disconnect", reason =>
+    console.log(`❌ Socket disconnected [id=${socket.id}] reason: ${reason}`)
   );
 });
 
-// --- Start Server ---
-server.listen(PORT, () => console.log(`🚀 Server listening on port ${PORT}`));
+// --- Start Everything ---
+(async () => {
+  await connectMongo();
+  server.listen(PORT, () =>
+    console.log(`🚀 Server listening on port ${PORT}`)
+  );
+})();
