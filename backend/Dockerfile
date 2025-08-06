@@ -11,15 +11,5 @@ RUN npm install
 # Copy the rest of your app
 COPY . .
 
-# Install tunnelto globally
-RUN npm install -g tunnelto
-
-# Expose the port your backend listens on
-EXPOSE 3004  # Change this if your backend uses a different port
-
-# Environment variable for subdomain (you can override when running)
-ENV SUBDOMAIN=dailydb
-ENV PORT=3004
-
-# Start both the backend and tunnelto
-CMD ["/bin/bash", "-c", "node index.js & tunnelto --subdomain $SUBDOMAIN --port $PORT"]
+# Start the backend
+CMD ["node", "src/index.js"]
