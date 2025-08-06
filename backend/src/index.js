@@ -26,311 +26,19 @@ const refreshTokens = new Map();
 
 // --- In-memory Refresh Token Store ---
 // --- User store & helpers ---
-const users = {
-  "rujuwal.garg@silverspaceinc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("Rujuwal#2025!")
-      .digest("hex"),
-    role: "lead",
-    teamLead: "", // He’s the lead, so no one leads him
-    manager: "Harsh Patel",
-  },
-  "tushar.ahuja@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Manager@Secure2025!!")    // ← set a real password
-    .digest("hex"),
-  role: "MM",
-  teamLead: "",
-  manager: "Harsh Patel",                  // his boss
-},
-"brhamdev.sharma@vizvainc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("BrhamDev#Secure2025!")        // ← set a real password
-    .digest("hex"),
-  role: "MAM",
-  teamLead: "",
-  manager: "Tushar Ahuja",                // reports to the Marketing Manager
-},
-  "shashank.sharma@silverspaceinc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("Shashank#Vizva2025!")
-      .digest("hex"),
-    role: "MAM",      // ← set Shashank’s role
-    teamLead: "",  // ← if applicable
-    manager: "Tushar Ahuja",   // ← if applicable
-  },
+const users = new Map();
 
-  "admin@example.com": {
-    passwordHash: crypto.createHash("sha256").update("adminpass").digest("hex"),
-    role: "admin",
-    teamLead: "Lead A",
-    manager: "Manager A",
-  },
-  "darshan.singh@vizvainc.com": {
-    passwordHash: crypto.createHash("sha256").update("userpass").digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "aditya.sharma@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("asharma123")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "ajay.krishna@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("ajshna@123")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "anusree.vasudevan@vizvainc.com": {
-    passwordHash: crypto.createHash("sha256").update("sree123").digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "prateek.narvariya@silverspaceinc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("rasilasantra")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "amartya.kumar@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("N3wP@ssw0rd!1")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "aman.agnihotri@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("Aman$321New")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "harshit@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("H@rsh!t2025")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "Hamid.Ansari@silverspaceinc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("H@midN3xtGen")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "pooja.kumari@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("Pooja#456!New")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "jayshree.rana@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("Jay$hr33@2025")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "vaibhav.kaushik@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("V@ibhav#2025!")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "rahul.agarwal@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("Rahul2025@Up")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "vansh.malhotra@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("V@nsh!Power99")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "Kartikeya.Baijal@silverspaceinc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("K@rtik22#Next")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "Aayush.Shukla@vizvainc.com": {
-    passwordHash: crypto
-      .createHash("sha256")
-      .update("A@yush_007x!")
-      .digest("hex"),
-    role: "user",
-    teamLead: "Rujuwal Garg",
-    manager: "Harsh Patel",
-  },
-  "nikesh.raj@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("NkRaj2025#x")
-    .digest("hex"),
-  role: "lead",
-  teamLead: "",
-  manager: "Harsh Patel",
-},
-"astha.singh@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Astha@9142")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"ayush.k@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Ayush9831$")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"bhavya.dutt@vizvainc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Bhavya2025@")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"deep.gorai@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Deep7426$")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"dhiraj.sharma@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Dhiraj!562")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"sonali.das@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Sonali$885")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"shraavana@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Shraavana@23")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"hari.singh@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Hari!9021")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"izan.ahmad@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Izan6832@")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-"ravikant.raj@silverspaceinc.com": {
-  passwordHash: crypto
-    .createHash("sha256")
-    .update("Ravi$7419")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel",
-},
-  "jayesh.nalawade@silverspaceinc.com" : {
-    passowordHash: crypto
-    .createHash("sha256")
-    .update("Jayesh$7419")
-    .digest("hex"),
-  role: "user",
-  teamLead: "Nikesh Raj",
-  manager: "Harsh Patel"
-},
-};
 
 function getUserByEmail(email) {
-  const lower = email.toLowerCase();
-  return (
-    Object.entries(users).find(([key]) => key.toLowerCase() === lower)?.[1] ||
-    null
-  );
+  return users.get(email.toLowerCase()) || null;
 }
+
 
 function formatTask(doc) {
   // 1) Parse the interview window up front:
   const dateStr = doc["Date of Interview"];
   const startStr = doc["Start Time Of Interview"];
-  const endStr   = doc["End Time Of Interview"];
+  const endStr = doc["End Time Of Interview"];
   const startMoment = moment.tz(
     `${dateStr} ${startStr}`,
     "MM/DD/YYYY HH:mm",
@@ -350,8 +58,8 @@ function formatTask(doc) {
 
   // 2) Default values when nobody’s been assigned yet:
   let assignedExpert = "Not Assigned";
-  let assignedEmail  = null;
-  let assignedAt     = null;
+  let assignedEmail = null;
+  let assignedAt = null;
 
   // 3) If we have replies, look for “Assigned To” stamps:
   if (Array.isArray(doc.replies)) {
@@ -360,7 +68,7 @@ function formatTask(doc) {
         const m = /Assigned To: @.+\[(.+?)\]/i.exec(r.body);
         if (m && moment(r.receivedDateTime).isValid()) {
           return {
-            ts:    moment(r.receivedDateTime),
+            ts: moment(r.receivedDateTime),
             email: m[1].toLowerCase(),
           };
         }
@@ -372,7 +80,7 @@ function formatTask(doc) {
       // pick the latest one
       const latest = assignments.reduce((a, b) => (b.ts.isAfter(a.ts) ? b : a));
       assignedEmail = latest.email;
-      assignedAt    = latest.ts.toISOString();
+      assignedAt = latest.ts.toISOString();
 
       // turn “first.last” → “First Last”
       const parts = assignedEmail.split("@")[0].split(".");
@@ -389,7 +97,7 @@ function formatTask(doc) {
     assignedEmail,
     assignedAt,
     startTime: startMoment.toDate(),
-    endTime:   endMoment.toDate(),
+    endTime: endMoment.toDate(),
   };
 }
 
@@ -423,16 +131,34 @@ function emitToRelevant(event, task) {
     }
   }
 }
-
+let db;
 // --- MongoDB Connection ---
 let taskBodyCollection;
 async function connectMongo() {
   console.log("🚀 Connecting to MongoDB...");
   const client = new MongoClient(mongoURI);
   await client.connect();
-  const db = client.db("interviewSupport");
+  db = client.db("interviewSupport");
   taskBodyCollection = db.collection("taskBody");
   console.log("✅ Connected to MongoDB");
+  await loadUsers();
+  const usersStream = db.collection('users').watch();
+  usersStream.on('change', async change => {
+    if (change.operationType === 'delete') {
+      // simplest: just reload everything
+      await loadUsers();
+    } else {
+      // insert/replace/update:
+      const doc = change.fullDocument || await db.collection('users').findOne({ _id: change.documentKey._id });
+      users.set(doc.email.toLowerCase(), {
+        passwordHash: doc.passwordHash,
+        role:         doc.role,
+        teamLead:     doc.teamLead,
+        manager:      doc.manager,
+      });
+      console.log(`🔄 User cache upserted: ${doc.email}`);
+    }
+  });
 
   // WATCH FOR REAL-TIME CHANGES IN taskBody
   const changeStream = taskBodyCollection.watch([
@@ -460,6 +186,22 @@ async function connectMongo() {
     console.error("Change stream error:", err);
   });
 }
+
+async function loadUsers() {
+  const all = await db.collection("users").find().toArray();
+  users.clear();
+  for (const u of all) {
+    users.set(u.email.toLowerCase(), {
+      passwordHash: u.password_hash,
+      role: u.role,
+      teamLead: u.teamLead,
+      manager: u.manager,
+    });
+  }
+  console.log(`✅ Loaded ${users.size} users`);
+}
+
+
 
 // --- HTTP Server & Socket.IO Setup ---
 const server = http.createServer(app);
@@ -499,6 +241,7 @@ io.on("connection", (socket) => {
       const user = getUserByEmail(email);
       if (!user) throw new Error("Invalid credentials");
       const hash = crypto.createHash("sha256").update(password).digest("hex");
+
       if (hash !== user.passwordHash) throw new Error("Invalid credentials");
 
       const accessToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: "15m" });
@@ -548,7 +291,7 @@ io.on("connection", (socket) => {
 
     try {
       const todayStr = moment.tz("America/New_York").format("MM/DD/YYYY");
-      const todayIso    = moment.tz("America/New_York").format("YYYY-MM-DD");
+      const todayIso = moment.tz("America/New_York").format("YYYY-MM-DD");
       console.log(todayIso);
       // console.log(socket.data);
       console.log(
@@ -558,24 +301,46 @@ io.on("connection", (socket) => {
       const field = String(payload.tab);
       if (authUser.role === "MAM" || authUser.role === "MM") {
         const mngr = authUser.manager.toLowerCase().split(' ').join('.');
-        const ccVal = authUser.role === "MM" ? authuser.email.split('@')[0] : mngr;
-  if (field === "Date of Interview") {
-    // direct match on todayStr for the Date of Interview field
-    query = {
-      [field]: todayStr,
-      cc:      { $regex: ccVal, $options: 'i' }
-    };
-  } else {
-    // regex on ISO date for any other field
-    query = {
-      [field]: { $regex: `^${todayIso}` },
-      cc:      { $regex: ccVal,   $options: 'i' }
-    };
-  }
+        const ccVal = authUser.role === "MM" ? authUser.email.split('@')[0] : mngr;
+        if (field === "Date of Interview") {
+          // direct match on todayStr for the Date of Interview field
+          query = {
+            [field]: todayStr,
+            cc: { $regex: ccVal, $options: 'i' }
+          };
+        } else {
+          // regex on ISO date for any other field
+          query = {
+            [field]: { $regex: `^${todayIso}` },
+            cc: { $regex: ccVal, $options: 'i' }
+          };
+        }
       } else {
         query = { "Date of Interview": todayStr };
       }
-      const docs = await taskBodyCollection.find(query).toArray();
+      // 1) Fetch lightweight docs (exclude replies & body)
+      const docsLight = await taskBodyCollection
+        .find(query, { projection: { replies: 0, body: 0 } })
+        .toArray();
+
+      // 2) Collect IDs
+      const ids = docsLight.map(doc => doc._id);
+
+      // 3) Fetch only replies & body for those IDs
+      const heavyDocs = await taskBodyCollection
+        .find(
+          { _id: { $in: ids } },
+          { projection: { replies: 1, body: 1 } }
+        )
+        .toArray();
+
+      // 4) Merge
+      const heavyMap = new Map(heavyDocs.map(d => [d._id.toString(), d]));
+      const docs = docsLight.map(doc => ({
+        ...doc,
+        replies: heavyMap.get(doc._id.toString())?.replies || [],
+        body: heavyMap.get(doc._id.toString())?.body || null
+      }));
       console.log(query);
       const lowerEmail = authUser.email.toLowerCase();
       let teamEmails = [];
@@ -592,19 +357,19 @@ io.on("connection", (socket) => {
           )
           .map(([e]) => e.toLowerCase());
       }
-      
+
       console.log(teamEmails);
       const tasks = [];
-      
+
       console.log(`Starting to process ${docs.length} docs for user ${authUser.email}`);
-      
+
       // normalize once
       const userEmailLower = authUser.email.toLowerCase();
-      
+
       for (const doc of docs) {
         // 1) Log which raw document we’re looking at
         console.log(`\n[doc] id=${doc._id || doc.id || '(no-id)'} raw=`, doc['Candidate Name']);
-      
+
         // 2) Attempt to format
         const task = formatTask(doc);
         if (!task) {
@@ -633,22 +398,22 @@ io.on("connection", (socket) => {
             recruiterName
           });
           continue;
-        }        
+        }
         console.log(
           `[formatted] taskId=${task._id} assignedEmail=${task.assignedEmail}`
         );
-      
+
         // 3) Compute permission
         const assignedEmailLower = task.assignedEmail?.toLowerCase() || '';
-        
+
         const isAdmin = authUser.role === 'admin';
         const isSelf = userEmailLower === assignedEmailLower;
         const isOnTeam = teamEmails.includes(assignedEmailLower);
-      
+
         console.log(
           `[check] role=${authUser.role} isAdmin=${isAdmin} isSelf=${isSelf} isOnTeam=${isOnTeam}`
         );
-      
+
         const allowed = isAdmin || isSelf || isOnTeam;
         if (!allowed) {
           console.log(
@@ -656,12 +421,12 @@ io.on("connection", (socket) => {
           );
           continue;
         }
-      
+
         // 4) All good → push
         tasks.push(task);
         console.log(`[push] task ${task._id} added (total so far: ${tasks.length})`);
       }
-      
+
       console.log(`Done processing docs — final task count: ${tasks.length}`);
 
 
