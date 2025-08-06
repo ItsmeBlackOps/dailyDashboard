@@ -1,0 +1,51 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dailydb-backend
+    ports:
+      - "3004:3004"
+    environment:
+      - SUBDOMAIN=dailydb
+      - PORT=3004
+      - JWT_SECRET=${JWT_SECRET:-secret}
+      - MONGODB_URI=${MONGODB_URI}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dailydb-frontend
+    ports:
+      - "8180:8180"
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  tunnelto-backend:
+    image: backdevs/tunnelto:0.1.18
+    restart: unless-stopped
+    environment:
+      KEY:        "acbe873a8517a13f3e846a739249a8c7"
+      SCHEME:     "http"
+      HOST:       "dailydb-backend"
+      SUBDOMAIN:  "dailydb"
+      PORT:       "3004"
+    depends_on:
+      - backend
+
+  tunnelto-frontend:
+    image: backdevs/tunnelto:0.1.18
+    restart: unless-stopped
+    environment:
+      KEY:        "acbe873a8517a13f3e846a739249a8c7"
+      SCHEME:     "http"
+      HOST:       "frontend"
+      SUBDOMAIN:  "dailydf"
+      PORT:       "8180"
+    depends_on:
+      - frontend

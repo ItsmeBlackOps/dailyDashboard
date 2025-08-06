@@ -103,6 +103,7 @@ function formatTask(doc) {
 
 function shouldSendTask(user, assignedEmail) {
   const lowerEmail = user.email.toLowerCase();
+  console.log(`[shouldSendTask] Checking for user=${user.email} assignedEmail=${assignedEmail}`);
   let teamEmails = [];
   if (user.role === "lead") {
     const [first, last] = lowerEmail.split("@")[0].split(".");
@@ -114,6 +115,7 @@ function shouldSendTask(user, assignedEmail) {
       )
       .map(([e]) => e.toLowerCase());
   }
+  console.log(`[shouldSendTask] user=${user.email} role=${user.role} assignedEmail=${assignedEmail} teamEmails=${teamEmails.join(", ")}`);
 
   return (
     user.role === "admin" ||
@@ -192,7 +194,7 @@ async function loadUsers() {
   users.clear();
   for (const u of all) {
     users.set(u.email.toLowerCase(), {
-      passwordHash: u.password_hash,
+      passwordHash: u.passwordHash,
       role: u.role,
       teamLead: u.teamLead,
       manager: u.manager,
@@ -239,9 +241,10 @@ io.on("connection", (socket) => {
   socket.on("login", ({ email, password }, callback) => {
     try {
       const user = getUserByEmail(email);
-      if (!user) throw new Error("Invalid credentials");
+      if (!user) throw new Error("User Not Found");
       const hash = crypto.createHash("sha256").update(password).digest("hex");
-
+      console.log(`[Auth] Login attempt for ${email} with hash ${hash}`);
+      console.log(`[Auth] DB Hash ${user.passwordHash}`);
       if (hash !== user.passwordHash) throw new Error("Invalid credentials");
 
       const accessToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: "15m" });
@@ -344,21 +347,26 @@ io.on("connection", (socket) => {
       console.log(query);
       const lowerEmail = authUser.email.toLowerCase();
       let teamEmails = [];
-      const fullName = 'Not Assigned';
+      let fullName = 'Not Assigned';
       if (authUser.role === "lead") {
+        console.log(`User is a lead: ${authUser.email}`);
         const [first, last] = lowerEmail.split("@")[0].split(".");
-        const fullName =
-          `${first[0].toUpperCase()}${first.slice(1)} ` +
-          `${last[0].toUpperCase()}${last.slice(1)}`;
-        teamEmails = Object.entries(users)
-          .filter(
-            ([mail, u]) =>
-              u.teamLead === fullName || mail.toLowerCase() === lowerEmail,
-          )
-          .map(([e]) => e.toLowerCase());
+        fullName = `${first[0].toUpperCase()}${first.slice(1)} ${last[0].toUpperCase()}${last.slice(1)}`;
+        console.log(`Full name for team lead: ${fullName}`);
+
+        teamEmails = Array.from(users.entries())
+            .filter(([mail, u]) => {
+              const teamLeadMatch = (u.teamLead || "").trim().toLowerCase() === fullName.toLowerCase();
+              const emailMatch = mail.toLowerCase() === lowerEmail;
+              console.log(`Comparing: u.teamLead='${u.teamLead}' === fullName='${fullName}' => ${teamLeadMatch}`);
+              console.log(`Comparing: mail.toLowerCase()='${mail.toLowerCase()}' === lowerEmail='${lowerEmail}' => ${emailMatch}`);
+              return teamLeadMatch || emailMatch;
+            })
+            .map(([e]) => e.toLowerCase());
+
       }
 
-      console.log(teamEmails);
+      console.log("Team emails:", teamEmails);
       const tasks = [];
 
       console.log(`Starting to process ${docs.length} docs for user ${authUser.email}`);
@@ -368,7 +376,7 @@ io.on("connection", (socket) => {
 
       for (const doc of docs) {
         // 1) Log which raw document we’re looking at
-        console.log(`\n[doc] id=${doc._id || doc.id || '(no-id)'} raw=`, doc['Candidate Name']);
+        // console.log(`\n[doc] id=${doc._id || doc.id || '(no-id)'} raw=`, doc['Candidate Name']);
 
         // 2) Attempt to format
         const task = formatTask(doc);
