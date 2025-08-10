@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
+  BarChart3,
   ClipboardList,
   ChevronLeft,
   ChevronRight,
@@ -174,6 +175,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   isCollapsed={isCollapsed}
                 />
               )}
+              
 
               {/* Tasks for everyone */}
               <NavItem
@@ -205,6 +207,14 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
               href="/support"
               isCollapsed={isCollapsed}
             /> */}
+            {role === 'MAM' && (
+                <NavItem
+                  icon={BarChart3}
+                  label="Reports"
+                  href="/reports"
+                  isCollapsed={isCollapsed}
+                />
+              )}
             <Button
               variant="ghost"
               className={cn(
