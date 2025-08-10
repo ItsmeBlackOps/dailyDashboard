@@ -1,9 +1,12 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@radix-ui/react-tooltip';
+
 import SignIn from './pages/auth/SignIn';
 import TasksToday from './pages/TasksToday';
 import { Toast } from './components/ui/toast';
+import Index from './pages/Index';
+import AuthorizedRoute from './routes/AuthorizedRoute';
 
 const queryClient = new QueryClient();
 
@@ -12,11 +15,18 @@ const App = () => (
     <TooltipProvider>
       <BrowserRouter>
         <Routes>
+          <Route path="/" element={<Index />} />
           <Route path="/auth/signin" element={<SignIn />} />
-          <Route path="/dashboard" element={<TasksToday />} />
           <Route path="/toast" element={<Toast />} />
-          {/* Default to SignIn for any unmatched route */}
-          <Route path="*" element={<SignIn />} />
+
+          {/* Protected */}
+          <Route element={<AuthorizedRoute />}>
+            <Route path="/tasks" element={<TasksToday />} />
+            {/* Add any other protected routes here */}
+          </Route>
+
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>

@@ -1,4 +1,4 @@
-import { LogOut } from 'lucide-react';
+import { LogOut, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -6,7 +6,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTab } from '@/hooks/useTabs';
 import { useEffect, useMemo } from 'react';
 
-export function Header() {
+interface HeaderProps {
+  toggleSidebar: () => void;
+  openSettings?: () => void; // keep if you plan to use it later
+}
+
+export function Header({ toggleSidebar }: HeaderProps) {
   const { logout } = useAuth();
   const { selectedTab, setSelectedTab } = useTab();
   const STORAGE_KEY = 'tab';
@@ -15,7 +20,8 @@ export function Header() {
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) setSelectedTab(saved as any);
-  }, [setSelectedTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Handler that both updates state _and_ localStorage
   const handleTabChange = (v: string) => {
@@ -29,8 +35,13 @@ export function Header() {
   const showTabs = userRole === 'MM' || userRole === 'MAM';
 
   return (
-    <header className="sticky top-0 z-30 bg-background border-b border-border h-16 flex items-center px-4 shadow-sm">
-      <Link to="/dashboard" className="ml-2 text-xl font-bold">
+    <header className="sticky top-0 z-30 bg-background border-b border-border h-16 flex items-center px-3 md:px-4 shadow-sm gap-2">
+      {/* Sidebar toggle */}
+      <Button onClick={toggleSidebar} variant="ghost" size="icon" aria-label="Toggle sidebar">
+        <Menu className="h-5 w-5" />
+      </Button>
+
+      <Link to="/dashboard" className="text-lg md:text-xl font-bold">
         Daily Dashboard
       </Link>
 
@@ -38,7 +49,7 @@ export function Header() {
         <Tabs
           value={selectedTab}
           onValueChange={handleTabChange}
-          className="ml-4"
+          className="ml-2 sm:ml-4"
         >
           <TabsList>
             <TabsTrigger value="Date of Interview">
