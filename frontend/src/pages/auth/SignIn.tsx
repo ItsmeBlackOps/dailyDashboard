@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
-import { useNavigate, Link } from 'react-router-dom';
+import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,11 +20,17 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  
+  const location = useLocation();
+  const from = location.state?.from?.pathname || '/tasks';  
   const socket: Socket = useMemo(
     () => io(API_URL, { autoConnect: false, transports: ['websocket'] }),
     []
   );
+  useEffect(() => {
+  if (localStorage.getItem('accessToken')) {
+    navigate('/tasks', { replace: true });
+  }
+}, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +63,8 @@ export default function SignIn() {
         socket.connect();
 
         // Full-page navigation (no Router needed)
-        window.location.href = '/dashboard';
+        navigate(from, { replace: true });
+
       }
     );
   };

@@ -294,7 +294,7 @@ io.on("connection", (socket) => {
 
     try {
       const todayStr = moment.tz("America/New_York").format("MM/DD/YYYY");
-      const todayIso = moment.tz("America/New_York").format("YYYY-MM-DD");
+      const todayIso = moment.tz("America/New_York").startOf("day").toISOString();
       console.log(todayIso);
       // console.log(socket.data);
       console.log(
@@ -308,18 +308,18 @@ io.on("connection", (socket) => {
         if (field === "Date of Interview") {
           // direct match on todayStr for the Date of Interview field
           query = {
-            [field]: todayStr,
+            [field]: { $gte: todayStr },
             cc: { $regex: ccVal, $options: 'i' }
           };
         } else {
           // regex on ISO date for any other field
           query = {
-            [field]: { $regex: `^${todayIso}` },
+            [field]: { $gte: `${todayIso}` },
             cc: { $regex: ccVal, $options: 'i' }
           };
         }
       } else {
-        query = { "Date of Interview": todayStr };
+        query = { "Date of Interview": {"$gte": todayStr} };
       }
       // 1) Fetch lightweight docs (exclude replies & body)
       const docsLight = await taskBodyCollection

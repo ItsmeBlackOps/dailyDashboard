@@ -1,7 +1,7 @@
 // src/components/TasksToday.tsx
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import DOMPurify from "dompurify";
-import moment from "moment-timezone";
+import moment, { Moment } from "moment-timezone";
 import { io, Socket } from "socket.io-client";
 import {
   Table,
@@ -20,22 +20,29 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, API_URL } from "@/hooks/useAuth";
-import { useTab } from "@/hooks/useTabs";
 import { playTune, sendNotification } from "@/utils/notify";
 import { Toaster } from "@/components/ui/toaster";
 
 interface Task {
   _id: string;
   subject?: string;
+
+  // NEW preferred keys
+  startTime?: string; // "MM/DD/YYYY HH:mm" or ISO
+  endTime?: string;
+
+  // Legacy keys (fallbacks)
   "Candidate Name"?: string;
   "Date of Interview"?: string;
   "Start Time Of Interview"?: string;
   "End Time Of Interview"?: string;
   "End Client"?: string;
   "Interview Round"?: string;
+
   status?: string;
   assignedEmail?: string;
   assignedExpert?: string;
@@ -43,6 +50,10 @@ interface Task {
 }
 
 const TASK_STATUS_MAP = "tasksTodayStatusMap";
+const TZ = "America/New_York";
+const PARSE_FMT = "MM/DD/YYYY HH:mm"; // 24h parsing
+const DATE_FMT = "MM/DD/YYYY";
+const TIME_FMT = "hh:mm A";
 
 export default function TasksToday() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -50,6 +61,7 @@ export default function TasksToday() {
   const [candidateFilter, setCandidateFilter] = useState("");
   const [recruiterFilter, setRecruiterFilter] = useState("");
   const [expertFilter, setExpertFilter] = useState("");
+  const [dateScope, setDateScope] = useState<"today" | "all">("today"); // "all" means AFTER today
   const [error, setError] = useState("");
 
   const firstLoad = useRef(true);
@@ -57,16 +69,20 @@ export default function TasksToday() {
   const { refreshAccessToken } = useAuth();
   const user = localStorage.getItem("role");
   const { toast } = useToast();
-  const selectedTab = localStorage.getItem('tab');
+
+  // Persisted tab (set elsewhere)
+  const selectedTab = localStorage.getItem("tab");
   const selectedTabRef = useRef(selectedTab);
-  useEffect(() => { selectedTabRef.current = selectedTab; }, [selectedTab]);
+  useEffect(() => {
+    selectedTabRef.current = selectedTab;
+  }, [selectedTab]);
 
   const readMap = (): Record<string, string> =>
     JSON.parse(localStorage.getItem(TASK_STATUS_MAP) || "{}");
   const writeMap = (m: Record<string, string>) =>
     localStorage.setItem(TASK_STATUS_MAP, JSON.stringify(m));
 
-  // Initialize Socket.IO
+  // Socket.IO
   const socket: Socket = useMemo(() => {
     const token = localStorage.getItem("accessToken") || "";
     return io(API_URL, {
@@ -76,7 +92,7 @@ export default function TasksToday() {
     });
   }, []);
 
-  // Helpers for styling
+  // Styling helpers
   const getStatusBadge = (status = "") =>
     ({
       completed: "bg-emerald-500 text-white",
@@ -93,6 +109,47 @@ export default function TasksToday() {
       pending: "bg-blue-500/10 border-blue-500/30",
     }[status.toLowerCase()] || "bg-gray-500/10 border-gray-500/30");
 
+  // --- Date/time helpers (new-first, legacy fallback) ---
+  const parseStart = (t: Task): Moment | null => {
+    if (t.startTime) {
+      const m = moment.tz(t.startTime, PARSE_FMT, TZ);
+      if (m.isValid()) return m;
+      const iso = moment.tz(t.startTime, TZ);
+      if (iso.isValid()) return iso;
+    }
+    if (t["Date of Interview"] && t["Start Time Of Interview"]) {
+      const m = moment.tz(
+        `${t["Date of Interview"]} ${t["Start Time Of Interview"]}`,
+        "MM/DD/YYYY hh:mm A",
+        TZ
+      );
+      return m.isValid() ? m : null;
+    }
+    return null;
+  };
+
+  const parseEnd = (t: Task): Moment | null => {
+    if (t.endTime) {
+      const m = moment.tz(t.endTime, PARSE_FMT, TZ);
+      if (m.isValid()) return m;
+      const iso = moment.tz(t.endTime, TZ);
+      if (iso.isValid()) return iso;
+    }
+    if (t["Date of Interview"] && t["End Time Of Interview"]) {
+      const m = moment.tz(
+        `${t["Date of Interview"]} ${t["End Time Of Interview"]}`,
+        "MM/DD/YYYY hh:mm A",
+        TZ
+      );
+      return m.isValid() ? m : null;
+    }
+    return null;
+  };
+
+  const formatDate = (m: Moment | null) => (m ? m.tz(TZ).format(DATE_FMT) : "");
+  const formatTime = (m: Moment | null) => (m ? m.tz(TZ).format(TIME_FMT) : "");
+
+  // Load tasks
   const fetchTasks = useCallback(() => {
     socket.emit(
       "getTasksToday",
@@ -111,6 +168,7 @@ export default function TasksToday() {
         const incoming = resp.tasks || [];
         const oldMap = readMap();
         const newMap: Record<string, string> = {};
+
         incoming.forEach((task) => {
           newMap[task._id] = task.status || "";
           if (!firstLoad.current) {
@@ -118,9 +176,6 @@ export default function TasksToday() {
               const desc = DOMPurify.sanitize(task.subject || "");
               toast({ title: "New Task Added", description: desc });
               sendNotification("New Task Added", desc);
-              console.log(
-                `[tune] poll-new: id=${task._id}, subject="${task.subject}"`
-              );
               playTune();
             } else if (oldMap[task._id] !== task.status) {
               const desc = DOMPurify.sanitize(task.subject || "");
@@ -130,9 +185,6 @@ export default function TasksToday() {
                 description: `${desc} is now ${s}`,
               });
               sendNotification("Task Status Updated", `${desc} is now ${s}`);
-              console.log(
-                `[tune] poll-status: id=${task._id}, "${oldMap[task._id]}" → "${task.status}"`
-              );
               playTune();
             }
           }
@@ -146,22 +198,17 @@ export default function TasksToday() {
   }, [socket, toast]);
 
   useEffect(() => {
-
     const onNew = (task: Task) => {
       const isInit = firstLoad.current;
       const map = readMap();
       map[task._id] = task.status || "";
       writeMap(map);
-
       setTasks((prev) => [...prev, task]);
 
       if (!isInit) {
         const desc = DOMPurify.sanitize(task.subject || "");
         toast({ title: "New Task Added", description: desc });
         sendNotification("New Task Added", desc);
-        console.log(
-          `[tune] new task: id=${task._id}, subject="${task.subject}"`
-        );
         playTune();
       }
     };
@@ -177,20 +224,15 @@ export default function TasksToday() {
           description: `${desc} is now ${statusDesc}`,
         });
         sendNotification("Task Status Updated", `${desc} is now ${statusDesc}`);
-        console.log(
-          `[tune] status change: id=${task._id}, "${oldStatus}" → "${task.status}"`
-        );
         playTune();
       }
       map[task._id] = task.status || "";
       writeMap(map);
-
       setTasks((list) => list.map((t) => (t._id === task._id ? task : t)));
     };
 
     const onAuthError = async (err: Error) => {
       if (err.message !== "Unauthorized") return;
-      console.log("[socket] unauthorized – refreshing token");
       const ok = await refreshAccessToken();
       if (!ok) return socket.disconnect();
       socket.auth = { token: localStorage.getItem("accessToken") || "" };
@@ -203,7 +245,6 @@ export default function TasksToday() {
     socket.on("connect_error", onAuthError);
 
     socket.once("connect", () => {
-      console.log("[socket] connected");
       fetchTasks();
     });
     socket.connect();
@@ -224,51 +265,26 @@ export default function TasksToday() {
     }
   }, [selectedTab, fetchTasks, socket]);
 
-  // 35-minute reminder exactly at T–35m
+  // 35-minute reminders based on startTime
   useEffect(() => {
     reminderTimers.current.forEach(clearTimeout);
     reminderTimers.current = [];
 
-    const parseDT = (
-      t: Task,
-      key: "Start Time Of Interview" | "End Time Of Interview"
-    ) =>
-      moment.tz(
-        `${t["Date of Interview"]} ${t[key]}`,
-        "MM/DD/YYYY hh:mm A",
-        "America/New_York"
-      );
-    const now = moment.tz("America/New_York");
+    const now = moment.tz(TZ);
 
     tasks.forEach((t) => {
-      const start = parseDT(t, "Start Time Of Interview");
-      if (!start.isValid()) return;
+      const start = parseStart(t);
+      if (!start || !start.isValid()) return;
 
       const reminderAt = start.clone().subtract(35, "minutes");
       const delay = reminderAt.diff(now);
 
-      if (delay <= 0) {
-        console.log(
-          `[reminder] skipping ${t._id}: less than 35m to start or passed`
-        );
-        return;
-      }
-
-      console.log(
-        `[reminder] scheduling ${
-          t._id
-        } at ${reminderAt.format()} (in ${delay}ms)`
-      );
+      if (delay <= 0) return;
 
       const timer = setTimeout(() => {
         const subj = DOMPurify.sanitize(t.subject || "");
         toast({ title: "Interview Reminder", description: subj });
         sendNotification("Interview Reminder", subj);
-        console.log(
-          `[tune] reminder for ${t._id} fired at ${moment
-            .tz("America/New_York")
-            .format()} — 35m before start`
-        );
         playTune();
       }, delay);
 
@@ -281,29 +297,56 @@ export default function TasksToday() {
     };
   }, [tasks, toast]);
 
-  // Filter & sort for rendering
+  // Distinct statuses for filter
   const statuses = Array.from(
     new Set(tasks.map((t) => t.status).filter(Boolean))
   );
+
+  // === Date scope logic ===
+  // "today" -> tasks whose startTime is on today's date (NY)
+  // "all"   -> tasks strictly AFTER today (i.e., start > endOfTodayNY)
+  const nowNY = moment.tz(TZ);
+  const startOfTodayNY = nowNY.clone().startOf("day");
+  const endOfTodayNY = nowNY.clone().endOf("day");
+
   const displayed = tasks
+    .filter((t) => {
+      const s = parseStart(t);
+      if (!s) return false;
+
+      if (dateScope === "today") {
+        // same calendar day in TZ
+        return s.isSame(startOfTodayNY, "day");
+      }
+
+      // "all" = strictly after today
+      return s.isAfter(endOfTodayNY);
+    })
     .filter((t) => filterStatus === "all" || t.status === filterStatus)
     .filter((t) =>
-      t["Candidate Name"]?.toLowerCase().includes(candidateFilter.toLowerCase())
+      (t["Candidate Name"] || "")
+        .toLowerCase()
+        .includes(candidateFilter.toLowerCase())
     )
     .filter((t) =>
-      t.assignedExpert?.toLowerCase().includes(expertFilter.toLowerCase())
+      (t.assignedExpert || "")
+        .toLowerCase()
+        .includes(expertFilter.toLowerCase())
+    )
+    .filter((t) =>
+      user === "MAM" || user === "MM"
+        ? (t.recruiterName || "")
+            .toLowerCase()
+            .includes(recruiterFilter.toLowerCase())
+        : true
     )
     .sort((a, b) => {
-      const toDate = (x: Task, k: keyof Task) =>
-        moment(
-          `${x["Date of Interview"]} ${x[k]}`,
-          "MM/DD/YYYY hh:mm A"
-        ).toDate();
-      const aS = toDate(a, "Start Time Of Interview"),
-        bS = toDate(b, "Start Time Of Interview");
-      if (aS !== bS) return aS < bS ? -1 : 1;
-      const aE = toDate(a, "End Time Of Interview"),
-        bE = toDate(b, "End Time Of Interview");
+      const aS = parseStart(a)?.toDate() ?? new Date(0);
+      const bS = parseStart(b)?.toDate() ?? new Date(0);
+      if (aS.getTime() !== bS.getTime()) return aS < bS ? -1 : 1;
+
+      const aE = parseEnd(a)?.toDate() ?? new Date(0);
+      const bE = parseEnd(b)?.toDate() ?? new Date(0);
       return aE < bE ? -1 : aE > bE ? 1 : 0;
     });
 
@@ -313,7 +356,32 @@ export default function TasksToday() {
       <div className="p-4 space-y-4">
         <h2 className="text-xl font-semibold">Today's Tasks</h2>
         {error && <p className="text-red-500">{error}</p>}
+
+        {/* Filters */}
         <div className="flex flex-wrap gap-4 items-center">
+          {/* Today / All (All = After Today) */}
+          <div className="flex rounded-md border border-border overflow-hidden">
+            <Button
+              variant="ghost"
+              className={`rounded-none px-4 ${
+                dateScope === "today" ? "bg-accent" : ""
+              }`}
+              onClick={() => setDateScope("today")}
+            >
+              Today
+            </Button>
+            <Button
+              variant="ghost"
+              className={`rounded-none px-4 border-l border-border ${
+                dateScope === "all" ? "bg-accent" : ""
+              }`}
+              onClick={() => setDateScope("all")}
+              title="All = after today"
+            >
+              All
+            </Button>
+          </div>
+
           <Select value={filterStatus} onValueChange={setFilterStatus}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Filter status" />
@@ -321,12 +389,13 @@ export default function TasksToday() {
             <SelectContent>
               <SelectItem value="all">All</SelectItem>
               {statuses.map((s) => (
-                <SelectItem key={s} value={s}>
+                <SelectItem key={s} value={s!}>
                   {s}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+
           <Input
             placeholder="Filter candidate"
             value={candidateFilter}
@@ -348,6 +417,7 @@ export default function TasksToday() {
             />
           )}
         </div>
+
         {displayed.length === 0 ? (
           <p>No tasks found</p>
         ) : (
@@ -365,52 +435,48 @@ export default function TasksToday() {
                 {(user === "MAM" || user === "MM") && (
                   <TableHead>Recruiter</TableHead>
                 )}
-
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {displayed.map((task) => (
-                <TableRow key={task._id} className={getRowBg(task.status)}>
-                  <TableCell>
-                    {DOMPurify.sanitize(task.subject || "")}
-                  </TableCell>
-                  <TableCell>
-                    {DOMPurify.sanitize(task["Candidate Name"] || "")}
-                  </TableCell>
-                  <TableCell>
-                    {DOMPurify.sanitize(task["Date of Interview"] || "")}
-                  </TableCell>
-                  <TableCell>
-                    {DOMPurify.sanitize(task["Start Time Of Interview"] || "")}
-                  </TableCell>
-                  <TableCell>
-                    {DOMPurify.sanitize(task["End Time Of Interview"] || "")}
-                  </TableCell>
-                  <TableCell>
-                    {DOMPurify.sanitize(task["End Client"] || "")}
-                  </TableCell>
-                  <TableCell>
-                    {DOMPurify.sanitize(task["Interview Round"] || "")}
-                  </TableCell>
-                  <TableCell>
-                    {DOMPurify.sanitize(task.assignedExpert || "")}
-                  </TableCell>
-                  {(user === "MAM" || user === "MM") && (
+              {displayed.map((task) => {
+                const start = parseStart(task);
+                const end = parseEnd(task);
+                return (
+                  <TableRow key={task._id} className={getRowBg(task.status)}>
                     <TableCell>
-                      {DOMPurify.sanitize(task.recruiterName || "")}
+                      {DOMPurify.sanitize(task.subject || "")}
                     </TableCell>
-                  )}
-
-                  <TableCell>
-                    {task.status && (
-                      <Badge className={getStatusBadge(task.status)}>
-                        {task.status}
-                      </Badge>
+                    <TableCell>
+                      {DOMPurify.sanitize(task["Candidate Name"] || "")}
+                    </TableCell>
+                    <TableCell>{formatDate(start)}</TableCell>
+                    <TableCell>{formatTime(start)}</TableCell>
+                    <TableCell>{formatTime(end)}</TableCell>
+                    <TableCell>
+                      {DOMPurify.sanitize(task["End Client"] || "")}
+                    </TableCell>
+                    <TableCell>
+                      {DOMPurify.sanitize(task["Interview Round"] || "")}
+                    </TableCell>
+                    <TableCell>
+                      {DOMPurify.sanitize(task.assignedExpert || "")}
+                    </TableCell>
+                    {(user === "MAM" || user === "MM") && (
+                      <TableCell>
+                        {DOMPurify.sanitize(task.recruiterName || "")}
+                      </TableCell>
                     )}
-                  </TableCell>
-                </TableRow>
-              ))}
+                    <TableCell>
+                      {task.status && (
+                        <Badge className={getStatusBadge(task.status)}>
+                          {task.status}
+                        </Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
