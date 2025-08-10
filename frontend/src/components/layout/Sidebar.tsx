@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo } from 'react';
-import { NavLink, Link, useLocation } from 'react-router-dom';
+import { useNavigate, NavLink, Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   BarChart3,
@@ -61,7 +61,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const role = useMemo(() => localStorage.getItem('role'), []);
-
+  const navigate = useNavigate();
   // Scroll to active nav item on route change
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -187,7 +187,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
               )}
               onClick={() => {
                 localStorage.clear();
-                window.location.href = '/auth/signin';
+                navigate('/auth/signin');
               }}
             >
               <LogOut className="h-5 w-5 flex-shrink-0" />
