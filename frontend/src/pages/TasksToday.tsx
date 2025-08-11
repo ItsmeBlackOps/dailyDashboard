@@ -464,7 +464,7 @@ export default function TasksToday() {
       (t.assignedExpert || "").toLowerCase().includes(expertFilter.toLowerCase())
     )
     .filter((t) =>
-      user === "MAM" || user === "MM"
+      user === "MAM" || user === "MM" || user === "mlead"
         ? (t.recruiterName || "").toLowerCase().includes(recruiterFilter.toLowerCase())
         : true
     )
@@ -559,7 +559,7 @@ export default function TasksToday() {
                 <TableHead>Client</TableHead>
                 <TableHead>Round</TableHead>
                 <TableHead>Expert</TableHead>
-                {(user === "MAM" || user === "MM") && <TableHead>Recruiter</TableHead>}
+                {(user === "MAM" || user === "MM" || user === "mlead") && <TableHead>Recruiter</TableHead>}
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -577,7 +577,7 @@ export default function TasksToday() {
                     <TableCell>{DOMPurify.sanitize(task["End Client"] || "")}</TableCell>
                     <TableCell>{DOMPurify.sanitize(task["Interview Round"] || "")}</TableCell>
                     <TableCell>{DOMPurify.sanitize(task.assignedExpert || "")}</TableCell>
-                    {(user === "MAM" || user === "MM") && (
+                    {(user === "MAM" || user === "MM" || user === "mlead") && (
                       <TableCell>{DOMPurify.sanitize(task.recruiterName || "")}</TableCell>
                     )}
                     <TableCell>
