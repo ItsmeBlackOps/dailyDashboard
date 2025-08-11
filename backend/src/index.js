@@ -41,14 +41,15 @@ function formatTask(doc) {
   const endStr = doc["End Time Of Interview"];
   const startMoment = moment.tz(
     `${dateStr} ${startStr}`,
-    "MM/DD/YYYY HH:mm",
+    ["MM/DD/YYYY h:mm A", "MM/DD/YYYY hh:mm A"],
     "America/New_York"
   );
   const endMoment = moment.tz(
     `${dateStr} ${endStr}`,
-    "MM/DD/YYYY HH:mm",
+    "MM/DD/YYYY HH:mm a",
     "America/New_York"
   );
+  console.log(`[formatTask] Processing task for ${doc._id} start="${doc["Start Time Of Interview"]} -> $with start=${startMoment.format()}}`);
 
   // If the core date/times aren’t valid, skip (still returns null)
   if (!startMoment.isValid() || !endMoment.isValid()) {
@@ -96,8 +97,8 @@ function formatTask(doc) {
     assignedExpert,
     assignedEmail,
     assignedAt,
-    startTime: startMoment.toDate(),
-    endTime: endMoment.toDate(),
+    startTime: startMoment,
+    endTime: endMoment,
   };
 }
 
@@ -436,7 +437,7 @@ io.on("connection", (socket) => {
       }
 
       console.log(`Done processing docs — final task count: ${tasks.length}`);
-
+      
 
       // **Sort once, outside the loop**:
       //  - by startTime ascending
