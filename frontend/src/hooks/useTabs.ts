@@ -7,9 +7,9 @@ export function useTab() {
   // 1️⃣ Initialize state from localStorage (fallback to 'first')
   const [selectedTab, setSelectedTab] = useState<string>(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY) ?? 'first';
+      return localStorage.getItem(STORAGE_KEY) ?? 'Date of Interview';
     } catch {
-      return 'first';
+      return 'Date of Interview';
     }
   });
 
