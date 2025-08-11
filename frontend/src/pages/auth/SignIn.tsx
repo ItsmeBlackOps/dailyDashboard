@@ -1,61 +1,61 @@
-import { useState, useMemo } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { io, Socket } from 'socket.io-client';
-import { useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { useState, useMemo } from "react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { io, Socket } from "socket.io-client";
+import { useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle
-} from '@/components/ui/card';
-import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
-import { API_URL } from '../../hooks/useAuth';
+  CardTitle,
+} from "@/components/ui/card";
+import { Eye, EyeOff, Mail, Lock } from "lucide-react";
+import { API_URL } from "../../hooks/useAuth";
 export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({email: '',password: ''});
+  const [formData, setFormData] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from?.pathname || '/tasks';  
+  const from = location.state?.from?.pathname || "/tasks";
   const socket: Socket = useMemo(
-    () => io(API_URL, { autoConnect: false, transports: ['websocket'] }),
+    () => io(API_URL, { autoConnect: false, transports: ["websocket"] }),
     []
   );
   useEffect(() => {
-  if (localStorage.getItem('accessToken')) {
-    navigate('/tasks', { replace: true });
-  }
-}, [navigate]);
+    if (localStorage.getItem("accessToken")) {
+      navigate("/tasks", { replace: true });
+    }
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    setError("");
 
     socket.connect();
     socket.emit(
-      'login',
+      "login",
       { email: formData.email, password: formData.password },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (response: any) => {
         setLoading(false);
         if (!response.success) {
-          setError(response.error || 'Login failed');
+          setError(response.error || "Login failed");
           socket.disconnect();
           return;
         }
 
         // Persist credentials
-        localStorage.setItem('accessToken', response.accessToken);
-        localStorage.setItem('refreshToken', response.refreshToken);
-        localStorage.setItem('role', response.role);
-        localStorage.setItem('teamLead', response.teamLead);
-        localStorage.setItem('manager', response.manager);
+        localStorage.setItem("accessToken", response.accessToken);
+        localStorage.setItem("refreshToken", response.refreshToken);
+        localStorage.setItem("role", response.role);
+        localStorage.setItem("teamLead", response.teamLead);
+        localStorage.setItem("manager", response.manager);
 
         // Reconnect socket with token for future events
         socket.disconnect();
@@ -64,7 +64,6 @@ export default function SignIn() {
 
         // Full-page navigation (no Router needed)
         navigate(from, { replace: true });
-
       }
     );
   };
@@ -72,7 +71,7 @@ export default function SignIn() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [e.target.name]: e.target.value,
     });
   };
 
@@ -80,11 +79,16 @@ export default function SignIn() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <div className="flex items-center justify-center mb-4">
-            <div className="bg-primary rounded h-10 w-10 flex items-center justify-center text-white font-bold text-xl">
-              P
+          <div className="flex items-center justify-center">
+            <div className="flex justify-center items-center text-white font-bold">
+              <img
+                src="https://egvjgtfjstxgszpzvvbx.supabase.co/storage/v1/object/public/images//20250610_1111_3D%20Gradient%20Logo_remix_01jxd69dc9ex29jbj9r701yjkf%20(2).png"
+                alt="SilverspaceCRM"
+                style={{ width: "25%", height: "25%" }}
+              />
             </div>
           </div>
+
           <CardTitle className="text-2xl text-center">Welcome back</CardTitle>
           <CardDescription className="text-center">
             Enter your credentials to access your account
@@ -119,7 +123,7 @@ export default function SignIn() {
                 <Input
                   id="password"
                   name="password"
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   placeholder="Enter your password"
                   value={formData.password}
                   onChange={handleInputChange}
@@ -152,15 +156,8 @@ export default function SignIn() {
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? "Signing in..." : "Sign In"}
             </Button>
-
-            <div className="text-center text-sm">
-              Don't have an account?{' '}
-              <Link to="/auth/signup" className="text-primary hover:underline">
-                Sign up
-              </Link>
-            </div>
           </form>
         </CardContent>
       </Card>
