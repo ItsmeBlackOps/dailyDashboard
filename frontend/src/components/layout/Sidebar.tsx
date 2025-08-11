@@ -172,7 +172,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
         {/* Footer */}
         <div className="border-t border-border p-2 flex-shrink-0">
           <nav className="grid gap-1">
-            {role === 'MAM' && (
+            {role === 'MAM' || role === "MM" && (
               <NavItem
                 icon={BarChart3}
                 label="Reports"
