@@ -155,9 +155,9 @@ async function connectMongo() {
       const doc = change.fullDocument || await db.collection('users').findOne({ _id: change.documentKey._id });
       users.set(doc.email.toLowerCase(), {
         passwordHash: doc.passwordHash,
-        role:         doc.role,
-        teamLead:     doc.teamLead,
-        manager:      doc.manager,
+        role: doc.role,
+        teamLead: doc.teamLead,
+        manager: doc.manager,
       });
       console.log(`🔄 User cache upserted: ${doc.email}`);
     }
@@ -310,17 +310,43 @@ io.on("connection", (socket) => {
           // direct match on todayStr for the Date of Interview field
           query = {
             [field]: { $gte: todayStr },
-            cc: { $regex: ccVal, $options: 'i' }
+            $or: [
+              { cc: { $regex: ccVal, $options: 'i' } },
+              { sender: ccVal }
+            ]
           };
         } else {
           // regex on ISO date for any other field
           query = {
             [field]: { $gte: `${todayIso}` },
-            cc: { $regex: ccVal, $options: 'i' }
+            $or: [
+              { cc: { $regex: ccVal, $options: 'i' } },
+              { sender: ccVal }
+            ]
+          };
+        }
+      } else if (authUser.role === "mlead") {
+        if (field === "Date of Interview") {
+          // direct match on todayStr for the Date of Interview field
+          console.log(`${authUser.email}+`);
+          query = {
+            [field]: { $gte: todayStr }, $or: [
+              { cc: { $regex: authUser.email.toLowerCase(), $options: 'i' } },
+              { sender: authUser.email.toLowerCase() }
+            ]
+          };
+        } else {
+          console.log(`${authUser.email}+`);
+
+          query = {
+            [field]: { $gte: `${todayIso}` }, $or: [
+              { cc: { $regex: authUser.email.toLowerCase(), $options: 'i' } },
+              { sender: authUser.email.toLowerCase() }
+            ]
           };
         }
       } else {
-        query = { "Date of Interview": {"$gte": todayStr} };
+        query = { "Date of Interview": { "$gte": todayStr } };
       }
       // 1) Fetch lightweight docs (exclude replies & body)
       const docsLight = await taskBodyCollection
@@ -356,14 +382,14 @@ io.on("connection", (socket) => {
         console.log(`Full name for team lead: ${fullName}`);
 
         teamEmails = Array.from(users.entries())
-            .filter(([mail, u]) => {
-              const teamLeadMatch = (u.teamLead || "").trim().toLowerCase() === fullName.toLowerCase();
-              const emailMatch = mail.toLowerCase() === lowerEmail;
-              console.log(`Comparing: u.teamLead='${u.teamLead}' === fullName='${fullName}' => ${teamLeadMatch}`);
-              console.log(`Comparing: mail.toLowerCase()='${mail.toLowerCase()}' === lowerEmail='${lowerEmail}' => ${emailMatch}`);
-              return teamLeadMatch || emailMatch;
-            })
-            .map(([e]) => e.toLowerCase());
+          .filter(([mail, u]) => {
+            const teamLeadMatch = (u.teamLead || "").trim().toLowerCase() === fullName.toLowerCase();
+            const emailMatch = mail.toLowerCase() === lowerEmail;
+            console.log(`Comparing: u.teamLead='${u.teamLead}' === fullName='${fullName}' => ${teamLeadMatch}`);
+            console.log(`Comparing: mail.toLowerCase()='${mail.toLowerCase()}' === lowerEmail='${lowerEmail}' => ${emailMatch}`);
+            return teamLeadMatch || emailMatch;
+          })
+          .map(([e]) => e.toLowerCase());
 
       }
 
@@ -387,7 +413,7 @@ io.on("connection", (socket) => {
           );
           continue;
         }
-        if (authUser.role === "MAM" || authUser.role === "MM") {
+        if (authUser.role === "MAM" || authUser.role === "MM" || authUser.role === "mlead") {
           const localPart = doc.sender.toLowerCase().split("@")[0];
           const parts = localPart.split(".");
 
@@ -437,7 +463,7 @@ io.on("connection", (socket) => {
       }
 
       console.log(`Done processing docs — final task count: ${tasks.length}`);
-      
+
 
       // **Sort once, outside the loop**:
       //  - by startTime ascending
