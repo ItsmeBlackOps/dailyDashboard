@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 
-export const API_URL = 'https://daillydf.tunn.dev';
+export const API_URL = 'https://dailydf.tunn.dev';
 
 interface RefreshResponse {
   success: boolean;
