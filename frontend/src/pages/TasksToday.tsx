@@ -31,9 +31,10 @@ interface Task {
   _id: string;
   subject?: string;
 
-  // NEW preferred keys
+  // Preferred keys (if available)
   startTime?: string; // "MM/DD/YYYY HH:mm" or ISO
   endTime?: string;
+  receivedDateTime?: string;
 
   // Legacy keys (fallbacks)
   "Candidate Name"?: string;
@@ -51,9 +52,18 @@ interface Task {
 
 const TASK_STATUS_MAP = "tasksTodayStatusMap";
 const TZ = "America/New_York";
-const PARSE_FMT = "MM/DD/YYYY HH:mm"; // 24h parsing
+const PARSE_FMT = "MM/DD/YYYY HH:mm"; // 24h parsing for preferred keys
+const LEGACY_FMT = "MM/DD/YYYY hh:mm A"; // legacy input format
 const DATE_FMT = "MM/DD/YYYY";
 const TIME_FMT = "hh:mm A";
+
+// Reminder persistence keys
+const REM_SCHEDULE_KEY = "interviewRemindersScheduled"; // JSON: { [key]: triggerAtISO }
+const REM_FIRED_KEY = "interviewRemindersFired"; // JSON: string[]
+
+// Reminder settings
+const MINUTES_BEFORE = 35;
+const MAX_DELAY = 2147483647; // ~24.85 days (2^31 - 1)
 
 export default function TasksToday() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -61,28 +71,56 @@ export default function TasksToday() {
   const [candidateFilter, setCandidateFilter] = useState("");
   const [recruiterFilter, setRecruiterFilter] = useState("");
   const [expertFilter, setExpertFilter] = useState("");
-  const [dateScope, setDateScope] = useState<"today" | "all">("today"); // "all" means AFTER today
+  const [dateScope, setDateScope] = useState<"today" | "all">("today");
   const [error, setError] = useState("");
 
   const firstLoad = useRef(true);
-  const reminderTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  // timersRef keeps active timeout ids per reminder key
+  const timersRef = useRef<Map<string, number>>(new Map());
   const { refreshAccessToken } = useAuth();
   const user = localStorage.getItem("role");
   const { toast } = useToast();
 
-  // Persisted tab (set elsewhere)
+  // Tab
   const selectedTab = localStorage.getItem("tab");
   const selectedTabRef = useRef(selectedTab);
   useEffect(() => {
     selectedTabRef.current = selectedTab;
   }, [selectedTab]);
 
-  const readMap = (): Record<string, string> =>
-    JSON.parse(localStorage.getItem(TASK_STATUS_MAP) || "{}");
-  const writeMap = (m: Record<string, string>) =>
-    localStorage.setItem(TASK_STATUS_MAP, JSON.stringify(m));
+  // === Storage helpers ===
+  const readScheduled = (): Record<string, string> => {
+    try {
+      const raw = localStorage.getItem(REM_SCHEDULE_KEY) || "{}";
+      const obj = JSON.parse(raw);
+      return obj && typeof obj === "object" ? obj : {};
+    } catch {
+      localStorage.setItem(REM_SCHEDULE_KEY, "{}");
+      return {};
+    }
+  };
 
-  // Socket.IO
+  const writeScheduled = (m: Record<string, string>) => {
+    localStorage.setItem(REM_SCHEDULE_KEY, JSON.stringify(m));
+  };
+
+  const readFired = (): Set<string> => {
+    try {
+      const raw = localStorage.getItem(REM_FIRED_KEY) || "[]";
+      const arr = JSON.parse(raw);
+      return new Set<string>(Array.isArray(arr) ? arr : []);
+    } catch {
+      localStorage.setItem(REM_FIRED_KEY, "[]");
+      return new Set<string>();
+    }
+  };
+
+  const writeFired = (fired: Set<string>) => {
+    localStorage.setItem(REM_FIRED_KEY, JSON.stringify([...fired]));
+  };
+
+  // === Socket ===
   const socket: Socket = useMemo(() => {
     const token = localStorage.getItem("accessToken") || "";
     return io(API_URL, {
@@ -92,7 +130,7 @@ export default function TasksToday() {
     });
   }, []);
 
-  // Styling helpers
+  // === Styling helpers ===
   const getStatusBadge = (status = "") =>
     ({
       completed: "bg-emerald-500 text-white",
@@ -109,47 +147,166 @@ export default function TasksToday() {
       pending: "bg-blue-500/10 border-blue-500/30",
     }[status.toLowerCase()] || "bg-gray-500/10 border-gray-500/30");
 
-  // --- Date/time helpers (new-first, legacy fallback) ---
-  const parseStart = (t: Task): Moment | null => {
-    if (t.startTime) {
-      const m = moment.tz(t.startTime, PARSE_FMT, TZ);
-      if (m.isValid()) return m;
-      const iso = moment.tz(t.startTime, TZ);
-      if (iso.isValid()) return iso;
-    }
-    if (t["Date of Interview"] && t["Start Time Of Interview"]) {
-      const m = moment.tz(
-        `${t["Date of Interview"]} ${t["Start Time Of Interview"]}`,
-        "MM/DD/YYYY hh:mm A",
-        TZ
-      );
-      return m.isValid() ? m : null;
-    }
-    return null;
+  // === Parsing helpers (strict) ===
+  const parsePreferredStrict = (val?: string): Moment | null => {
+    if (!val) return null;
+    const m = moment(val, PARSE_FMT, true); // strict
+    if (m.isValid()) return m.tz(TZ);
+    const iso = moment(val, moment.ISO_8601, true);
+    return iso.isValid() ? iso.tz(TZ) : null;
   };
 
-  const parseEnd = (t: Task): Moment | null => {
-    if (t.endTime) {
-      const m = moment.tz(t.endTime, PARSE_FMT, TZ);
-      if (m.isValid()) return m;
-      const iso = moment.tz(t.endTime, TZ);
-      if (iso.isValid()) return iso;
-    }
-    if (t["Date of Interview"] && t["End Time Of Interview"]) {
-      const m = moment.tz(
-        `${t["Date of Interview"]} ${t["End Time Of Interview"]}`,
-        "MM/DD/YYYY hh:mm A",
-        TZ
-      );
-      return m.isValid() ? m : null;
-    }
-    return null;
+  const parseLegacyStrict = (date?: string, time?: string): Moment | null => {
+    if (!date || !time) return null;
+    const base = moment(`${date} ${time}`, LEGACY_FMT, true); // strict
+    return base.isValid() ? base.tz(TZ) : null;
+  };
+
+  const parseStart = (t: Task): Moment | null =>
+    parsePreferredStrict(t.startTime) ||
+    parseLegacyStrict(t["Date of Interview"], t["Start Time Of Interview"]);
+
+  const parseEnd = (t: Task): Moment | null =>
+    parsePreferredStrict(t.endTime) ||
+    parseLegacyStrict(t["Date of Interview"], t["End Time Of Interview"]);
+
+  const parseReceived = (t: Task): Moment | null =>
+    parsePreferredStrict(t.receivedDateTime);
+
+  // Which timestamp powers filters/sorting (depends on tab)
+  const primaryStart = (t: Task): Moment | null => {
+    const tab = selectedTabRef.current;
+    if (tab === "receivedDateTime") return parseReceived(t);
+    return parseStart(t);
   };
 
   const formatDate = (m: Moment | null) => (m ? m.tz(TZ).format(DATE_FMT) : "");
   const formatTime = (m: Moment | null) => (m ? m.tz(TZ).format(TIME_FMT) : "");
 
-  // Load tasks
+  // === Reminder key helpers ===
+  const reminderKeyFor = (t: Task, start: Moment) => `${t._id}|${start.toISOString()}`;
+
+  // === Schedule a long timeout by chaining if needed ===
+  const ensureLargeTimeout = (key: string, ms: number, onFire: () => void) => {
+    // If already scheduled, skip
+    if (timersRef.current.has(key)) return;
+
+    if (ms > MAX_DELAY) {
+      const id = window.setTimeout(() => {
+        timersRef.current.delete(key);
+        ensureLargeTimeout(key, ms - MAX_DELAY, onFire);
+      }, MAX_DELAY);
+      timersRef.current.set(key, id);
+      return;
+    }
+
+    const id = window.setTimeout(() => {
+      timersRef.current.delete(key);
+      onFire();
+    }, Math.max(0, ms));
+    timersRef.current.set(key, id);
+  };
+
+  // === Fire a reminder ===
+  const fireReminder = (key: string, t: Task, firedSet: Set<string>) => {
+    if (firedSet.has(key)) return; // already fired
+    const subj = DOMPurify.sanitize(t.subject || "");
+    toast({ title: "Interview Reminder", description: subj });
+    sendNotification("Interview Reminder", subj);
+    playTune();
+    firedSet.add(key);
+    writeFired(firedSet);
+
+    // Remove from schedule store after firing
+    const scheduled = readScheduled();
+    delete scheduled[key];
+    writeScheduled(scheduled);
+  };
+
+  // === Reconcile reminder schedules with tasks (persist + schedule timers) ===
+  const reconcileReminders = useCallback(
+    (incoming: Task[]) => {
+      const now = moment.tz(TZ);
+      const scheduled = readScheduled(); // key -> triggerAtISO
+      const firedSet = readFired();
+
+      // Build a set of valid keys from current tasks
+      const validKeys = new Set<string>();
+
+      for (const t of incoming) {
+        const start = parseStart(t);
+        if (!start || !start.isValid()) continue;
+
+        const triggerAt = start.clone().subtract(MINUTES_BEFORE, "minutes");
+        if (!triggerAt.isAfter(now)) continue; // skip past/too late
+
+        const key = reminderKeyFor(t, start);
+        validKeys.add(key);
+
+        // If already fired, skip
+        if (firedSet.has(key)) {
+          // ensure it's not lingering in schedule store
+          if (scheduled[key]) {
+            delete scheduled[key];
+          }
+          continue;
+        }
+
+        // If not scheduled or trigger time changed, (re)schedule & persist
+        const triggerISO = triggerAt.toISOString();
+        if (scheduled[key] !== triggerISO) {
+          // Update persistence
+          scheduled[key] = triggerISO;
+
+          // Clear any previous timer for this key
+          const oldId = timersRef.current.get(key);
+          if (oldId) {
+            window.clearTimeout(oldId);
+            timersRef.current.delete(key);
+          }
+
+          // Schedule new timer (with long-delay support)
+          const delay = triggerAt.diff(now);
+          ensureLargeTimeout(key, delay, () => fireReminder(key, t, firedSet));
+        } else {
+          // Already persisted; ensure a timer exists (reschedule on mount/reloads)
+          if (!timersRef.current.has(key)) {
+            const delay = triggerAt.diff(now);
+            if (delay > 0) {
+              ensureLargeTimeout(key, delay, () => fireReminder(key, t, firedSet));
+            } else {
+              // If it's already due but not fired, fire immediately and clean up
+              fireReminder(key, t, firedSet);
+            }
+          }
+        }
+      }
+
+      // Remove schedules for keys that are no longer valid (task removed or changed time)
+      for (const schedKey of Object.keys(scheduled)) {
+        if (!validKeys.has(schedKey)) {
+          // cancel timer if exists
+          const id = timersRef.current.get(schedKey);
+          if (id) {
+            window.clearTimeout(id);
+            timersRef.current.delete(schedKey);
+          }
+          delete scheduled[schedKey];
+        }
+      }
+
+      writeScheduled(scheduled);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  // === Fetch & socket wiring ===
+  const readMap = (): Record<string, string> =>
+    JSON.parse(localStorage.getItem(TASK_STATUS_MAP) || "{}");
+  const writeMap = (m: Record<string, string>) =>
+    localStorage.setItem(TASK_STATUS_MAP, JSON.stringify(m));
+
   const fetchTasks = useCallback(() => {
     socket.emit(
       "getTasksToday",
@@ -165,13 +322,15 @@ export default function TasksToday() {
           return;
         }
 
-              const incoming = (resp.tasks || []).sort((a, b) => {
-        // If startTime is a string like "2025-08-11T10:00:00"
-        return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
-      });
+        const incoming = (resp.tasks || []).sort((a, b) => {
+          const aS = (primaryStart(a)?.toDate() ?? new Date(0)).getTime();
+          const bS = (primaryStart(b)?.toDate() ?? new Date(0)).getTime();
+          return aS - bS;
+        });
+
+        // Notifications for adds/updates
         const oldMap = readMap();
         const newMap: Record<string, string> = {};
-
         incoming.forEach((task) => {
           newMap[task._id] = task.status || "";
           if (!firstLoad.current) {
@@ -192,13 +351,16 @@ export default function TasksToday() {
             }
           }
         });
-
         writeMap(newMap);
         firstLoad.current = false;
+
         setTasks(incoming);
+
+        // *** CRITICAL: persist & schedule reminders whenever tasks load ***
+        reconcileReminders(incoming);
       }
     );
-  }, [socket, toast]);
+  }, [socket, toast, reconcileReminders]);
 
   useEffect(() => {
     const onNew = (task: Task) => {
@@ -206,7 +368,12 @@ export default function TasksToday() {
       const map = readMap();
       map[task._id] = task.status || "";
       writeMap(map);
-      setTasks((prev) => [...prev, task]);
+      setTasks((prev) => {
+        const next = [...prev, task];
+        // reconcile with the updated list
+        reconcileReminders(next);
+        return next;
+      });
 
       if (!isInit) {
         const desc = DOMPurify.sanitize(task.subject || "");
@@ -231,7 +398,12 @@ export default function TasksToday() {
       }
       map[task._id] = task.status || "";
       writeMap(map);
-      setTasks((list) => list.map((t) => (t._id === task._id ? task : t)));
+
+      setTasks((list) => {
+        const next = list.map((t) => (t._id === task._id ? task : t));
+        reconcileReminders(next);
+        return next;
+      });
     };
 
     const onAuthError = async (err: Error) => {
@@ -247,107 +419,59 @@ export default function TasksToday() {
     socket.on("taskUpdated", onUpdate);
     socket.on("connect_error", onAuthError);
 
-    socket.once("connect", () => {
-      fetchTasks();
-    });
+    socket.once("connect", fetchTasks);
     socket.connect();
 
     const interval = setInterval(fetchTasks, 60_000);
+
     return () => {
       socket.off("taskCreated", onNew);
       socket.off("taskUpdated", onUpdate);
       socket.off("connect_error", onAuthError);
       socket.disconnect();
       clearInterval(interval);
-    };
-  }, [socket, toast, refreshAccessToken, fetchTasks]);
 
+      // Clean all timers
+      for (const [, id] of timersRef.current.entries()) window.clearTimeout(id);
+      timersRef.current.clear();
+    };
+  }, [socket, toast, refreshAccessToken, fetchTasks, reconcileReminders]);
+
+  // When tab changes, refetch & reconcile
   useEffect(() => {
-    if (socket.connected) {
-      fetchTasks();
-    }
+    if (socket.connected) fetchTasks();
   }, [selectedTab, fetchTasks, socket]);
 
-  // 35-minute reminders based on startTime
-  useEffect(() => {
-    reminderTimers.current.forEach(clearTimeout);
-    reminderTimers.current = [];
+  // === Filtering / sorting ===
+  const statuses = Array.from(new Set(tasks.map((t) => t.status).filter(Boolean)));
 
-    const now = moment.tz(TZ);
-
-    tasks.forEach((t) => {
-      const start = parseStart(t);
-      if (!start || !start.isValid()) return;
-
-      const reminderAt = start.clone().subtract(35, "minutes");
-      const delay = reminderAt.diff(now);
-
-      if (delay <= 0) return;
-
-      const timer = setTimeout(() => {
-        const subj = DOMPurify.sanitize(t.subject || "");
-        toast({ title: "Interview Reminder", description: subj });
-        sendNotification("Interview Reminder", subj);
-        playTune();
-      }, delay);
-
-      reminderTimers.current.push(timer);
-    });
-
-    return () => {
-      reminderTimers.current.forEach(clearTimeout);
-      reminderTimers.current = [];
-    };
-  }, [tasks, toast]);
-
-  // Distinct statuses for filter
-  const statuses = Array.from(
-    new Set(tasks.map((t) => t.status).filter(Boolean))
-  );
-
-  // === Date scope logic ===
-  // "today" -> tasks whose startTime is on today's date (NY)
-  // "all"   -> tasks strictly AFTER today (i.e., start > endOfTodayNY)
   const nowNY = moment.tz(TZ);
   const startOfTodayNY = nowNY.clone().startOf("day");
   const endOfTodayNY = nowNY.clone().endOf("day");
 
   const displayed = tasks
     .filter((t) => {
-      const s = parseStart(t);
+      const s = primaryStart(t);
       if (!s) return false;
-
-      if (dateScope === "today") {
-        // same calendar day in TZ
-        return s.isSame(startOfTodayNY, "day");
-      }
-
-      // "all" = strictly after today
+      if (dateScope === "today") return s.isSame(startOfTodayNY, "day");
       return s.isAfter(endOfTodayNY);
     })
     .filter((t) => filterStatus === "all" || t.status === filterStatus)
     .filter((t) =>
-      (t["Candidate Name"] || "")
-        .toLowerCase()
-        .includes(candidateFilter.toLowerCase())
+      (t["Candidate Name"] || "").toLowerCase().includes(candidateFilter.toLowerCase())
     )
     .filter((t) =>
-      (t.assignedExpert || "")
-        .toLowerCase()
-        .includes(expertFilter.toLowerCase())
+      (t.assignedExpert || "").toLowerCase().includes(expertFilter.toLowerCase())
     )
     .filter((t) =>
       user === "MAM" || user === "MM"
-        ? (t.recruiterName || "")
-            .toLowerCase()
-            .includes(recruiterFilter.toLowerCase())
+        ? (t.recruiterName || "").toLowerCase().includes(recruiterFilter.toLowerCase())
         : true
     )
     .sort((a, b) => {
-      const aS = parseStart(a)?.toDate() ?? new Date(0);
-      const bS = parseStart(b)?.toDate() ?? new Date(0);
+      const aS = primaryStart(a)?.toDate() ?? new Date(0);
+      const bS = primaryStart(b)?.toDate() ?? new Date(0);
       if (aS.getTime() !== bS.getTime()) return aS < bS ? -1 : 1;
-
       const aE = parseEnd(a)?.toDate() ?? new Date(0);
       const bE = parseEnd(b)?.toDate() ?? new Date(0);
       return aE < bE ? -1 : aE > bE ? 1 : 0;
@@ -363,27 +487,27 @@ export default function TasksToday() {
         {/* Filters */}
         <div className="flex flex-wrap gap-4 items-center">
           {/* Today / All (All = After Today) */}
-          <div className="flex rounded-md border border-border overflow-hidden">
-            <Button
-              variant="ghost"
-              className={`rounded-none px-4 ${
-                dateScope === "today" ? "bg-accent" : ""
-              }`}
-              onClick={() => setDateScope("today")}
-            >
-              Today
-            </Button>
-            <Button
-              variant="ghost"
-              className={`rounded-none px-4 border-l border-border ${
-                dateScope === "all" ? "bg-accent" : ""
-              }`}
-              onClick={() => setDateScope("all")}
-              title="All = after today"
-            >
-              All
-            </Button>
-          </div>
+          {selectedTab === "Date of Interview" && (
+            <div className="flex rounded-md border border-border overflow-hidden">
+              <Button
+                variant="ghost"
+                className={`rounded-none px-4 ${dateScope === "today" ? "bg-accent" : ""}`}
+                onClick={() => setDateScope("today")}
+              >
+                Today
+              </Button>
+              <Button
+                variant="ghost"
+                className={`rounded-none px-4 border-l border-border ${
+                  dateScope === "all" ? "bg-accent" : ""
+                }`}
+                onClick={() => setDateScope("all")}
+                title="All = after today"
+              >
+                All
+              </Button>
+            </div>
+          )}
 
           <Select value={filterStatus} onValueChange={setFilterStatus}>
             <SelectTrigger className="w-40">
@@ -435,9 +559,7 @@ export default function TasksToday() {
                 <TableHead>Client</TableHead>
                 <TableHead>Round</TableHead>
                 <TableHead>Expert</TableHead>
-                {(user === "MAM" || user === "MM") && (
-                  <TableHead>Recruiter</TableHead>
-                )}
+                {(user === "MAM" || user === "MM") && <TableHead>Recruiter</TableHead>}
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -447,34 +569,20 @@ export default function TasksToday() {
                 const end = parseEnd(task);
                 return (
                   <TableRow key={task._id} className={getRowBg(task.status)}>
-                    <TableCell>
-                      {DOMPurify.sanitize(task.subject || "")}
-                    </TableCell>
-                    <TableCell>
-                      {DOMPurify.sanitize(task["Candidate Name"] || "")} </TableCell>
-                   <TableCell>{DOMPurify.sanitize(task["Date of Interview"] || "")}</TableCell>
-                    <TableCell>{DOMPurify.sanitize(task["Start Time Of Interview"] || "")}</TableCell>
-                    <TableCell>{DOMPurify.sanitize(task["End Time Of Interview"] || "")}</TableCell>
-                    
-                    <TableCell>
-                      {DOMPurify.sanitize(task["End Client"] || "")}
-                    </TableCell>
-                    <TableCell>
-                      {DOMPurify.sanitize(task["Interview Round"] || "")}
-                    </TableCell>
-                    <TableCell>
-                      {DOMPurify.sanitize(task.assignedExpert || "")}
-                    </TableCell>
+                    <TableCell>{DOMPurify.sanitize(task.subject || "")}</TableCell>
+                    <TableCell>{DOMPurify.sanitize(task["Candidate Name"] || "")}</TableCell>
+                    <TableCell>{formatDate(start)}</TableCell>
+                    <TableCell>{formatTime(start)}</TableCell>
+                    <TableCell>{formatTime(end)}</TableCell>
+                    <TableCell>{DOMPurify.sanitize(task["End Client"] || "")}</TableCell>
+                    <TableCell>{DOMPurify.sanitize(task["Interview Round"] || "")}</TableCell>
+                    <TableCell>{DOMPurify.sanitize(task.assignedExpert || "")}</TableCell>
                     {(user === "MAM" || user === "MM") && (
-                      <TableCell>
-                        {DOMPurify.sanitize(task.recruiterName || "")}
-                      </TableCell>
+                      <TableCell>{DOMPurify.sanitize(task.recruiterName || "")}</TableCell>
                     )}
                     <TableCell>
                       {task.status && (
-                        <Badge className={getStatusBadge(task.status)}>
-                          {task.status}
-                        </Badge>
+                        <Badge className={getStatusBadge(task.status)}>{task.status}</Badge>
                       )}
                     </TableCell>
                   </TableRow>
