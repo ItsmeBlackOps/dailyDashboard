@@ -165,7 +165,10 @@ export default function TasksToday() {
           return;
         }
 
-        const incoming = resp.tasks || [];
+              const incoming = (resp.tasks || []).sort((a, b) => {
+        // If startTime is a string like "2025-08-11T10:00:00"
+        return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+      });
         const oldMap = readMap();
         const newMap: Record<string, string> = {};
 
