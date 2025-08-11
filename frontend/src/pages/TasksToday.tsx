@@ -451,7 +451,7 @@ export default function TasksToday() {
                       {DOMPurify.sanitize(task.subject || "")}
                     </TableCell>
                     <TableCell>
-                      {DOMPurify.sanitize(task["Candidate Name"] || "")}
+                      {DOMPurify.sanitize(task["Candidate Name"] || "")} </TableCell>
                    <TableCell>{DOMPurify.sanitize(task["Date of Interview"] || "")}</TableCell>
                     <TableCell>{DOMPurify.sanitize(task["Start Time Of Interview"] || "")}</TableCell>
                     <TableCell>{DOMPurify.sanitize(task["End Time Of Interview"] || "")}</TableCell>
