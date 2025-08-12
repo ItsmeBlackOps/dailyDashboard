@@ -66,7 +66,7 @@ function formatTask(doc) {
   if (Array.isArray(doc.replies)) {
     const assignments = doc.replies
       .map((r) => {
-        const m = /Assigned To: @.+\[(.+?)\]/i.exec(r.body);
+        const m = /Assign(?:ed)?\s+To[:;]?\s*@.+\[(.+?)\]/i.exec(r.body);
         if (m && moment(r.receivedDateTime).isValid()) {
           return {
             ts: moment(r.receivedDateTime),
