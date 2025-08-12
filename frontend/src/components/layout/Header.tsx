@@ -32,7 +32,7 @@ export function Header({ toggleSidebar }: HeaderProps) {
 
   // read role once
   const userRole = useMemo(() => localStorage.getItem('role'), []);
-  const showTabs = userRole === 'MM' || userRole === 'MAM';
+  const showTabs = userRole === 'MM' || userRole === 'MAM' || userRole === 'mlead';
 
   return (
     <header className="sticky top-0 z-30 bg-background border-b border-border h-16 flex items-center px-3 md:px-4 shadow-sm gap-2">
