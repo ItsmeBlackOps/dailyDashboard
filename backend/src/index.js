@@ -12,7 +12,7 @@ import morgan from "morgan";
 
 // --- Environment & Config ---
 const { JWT_SECRET = "secret", MONGODB_URI } = process.env;
-const mongoURI = MONGODB_URI
+const mongoURI = MONGODB_URI;
 const PORT = process.env.PORT || 3004;
 
 // --- Express Setup ---
@@ -28,11 +28,9 @@ const refreshTokens = new Map();
 // --- User store & helpers ---
 const users = new Map();
 
-
 function getUserByEmail(email) {
   return users.get(email.toLowerCase()) || null;
 }
-
 
 function formatTask(doc) {
   // 1) Parse the interview window up front:
@@ -49,7 +47,11 @@ function formatTask(doc) {
     "MM/DD/YYYY HH:mm a",
     "America/New_York"
   );
-  console.log(`[formatTask] Processing task for ${doc._id} start="${doc["Start Time Of Interview"]} -> $with start=${startMoment.format()}}`);
+  console.log(
+    `[formatTask] Processing task for ${doc._id} start="${
+      doc["Start Time Of Interview"]
+    } -> $with start=${startMoment.format()}}`
+  );
 
   // If the core date/times aren’t valid, skip (still returns null)
   if (!startMoment.isValid() || !endMoment.isValid()) {
@@ -104,19 +106,27 @@ function formatTask(doc) {
 
 function shouldSendTask(user, assignedEmail) {
   const lowerEmail = user.email.toLowerCase();
-  console.log(`[shouldSendTask] Checking for user=${user.email} assignedEmail=${assignedEmail}`);
+  console.log(
+    `[shouldSendTask] Checking for user=${user.email} assignedEmail=${assignedEmail}`
+  );
   let teamEmails = [];
   if (user.role === "lead") {
     const [first, last] = lowerEmail.split("@")[0].split(".");
-    const fullName = `${first[0].toUpperCase()}${first.slice(1)} ${last[0].toUpperCase()}${last.slice(1)}`;
+    const fullName = `${first[0].toUpperCase()}${first.slice(
+      1
+    )} ${last[0].toUpperCase()}${last.slice(1)}`;
     teamEmails = Object.entries(users)
       .filter(
         ([mail, u]) =>
-          u.teamLead === fullName || mail.toLowerCase() === lowerEmail,
+          u.teamLead === fullName || mail.toLowerCase() === lowerEmail
       )
       .map(([e]) => e.toLowerCase());
   }
-  console.log(`[shouldSendTask] user=${user.email} role=${user.role} assignedEmail=${assignedEmail} teamEmails=${teamEmails.join(", ")}`);
+  console.log(
+    `[shouldSendTask] user=${user.email} role=${
+      user.role
+    } assignedEmail=${assignedEmail} teamEmails=${teamEmails.join(", ")}`
+  );
 
   return (
     user.role === "admin" ||
@@ -145,14 +155,16 @@ async function connectMongo() {
   taskBodyCollection = db.collection("taskBody");
   console.log("✅ Connected to MongoDB");
   await loadUsers();
-  const usersStream = db.collection('users').watch();
-  usersStream.on('change', async change => {
-    if (change.operationType === 'delete') {
+  const usersStream = db.collection("users").watch();
+  usersStream.on("change", async (change) => {
+    if (change.operationType === "delete") {
       // simplest: just reload everything
       await loadUsers();
     } else {
       // insert/replace/update:
-      const doc = change.fullDocument || await db.collection('users').findOne({ _id: change.documentKey._id });
+      const doc =
+        change.fullDocument ||
+        (await db.collection("users").findOne({ _id: change.documentKey._id }));
       users.set(doc.email.toLowerCase(), {
         passwordHash: doc.passwordHash,
         role: doc.role,
@@ -203,8 +215,6 @@ async function loadUsers() {
   }
   console.log(`✅ Loaded ${users.size} users`);
 }
-
-
 
 // --- HTTP Server & Socket.IO Setup ---
 const server = http.createServer(app);
@@ -295,34 +305,32 @@ io.on("connection", (socket) => {
 
     try {
       const todayStr = moment.tz("America/New_York").format("MM/DD/YYYY");
-      const todayIso = moment.tz("America/New_York").startOf("day").toISOString();
+      const todayIso = moment
+        .tz("America/New_York")
+        .startOf("day")
+        .toISOString();
       console.log(todayIso);
       // console.log(socket.data);
       console.log(
-        `[getTasksToday] ${authUser.email} requested tasks for ${todayStr}`,
+        `[getTasksToday] ${authUser.email} requested tasks for ${todayStr}`
       );
       let query;
       const field = String(payload.tab);
       if (authUser.role === "MAM" || authUser.role === "MM") {
-        const mngr = authUser.manager.toLowerCase().split(' ').join('.');
-        const ccVal = authUser.role === "MM" ? authUser.email.split('@')[0] : mngr;
+        const mngr = authUser.manager.toLowerCase().split(" ").join(".");
+        const ccVal =
+          authUser.role === "MM" ? authUser.email.split("@")[0] : mngr;
         if (field === "Date of Interview") {
           // direct match on todayStr for the Date of Interview field
           query = {
             [field]: { $gte: todayStr },
-            $or: [
-              { cc: { $regex: ccVal, $options: 'i' } },
-              { sender: ccVal }
-            ]
+            $or: [{ cc: { $regex: ccVal, $options: "i" } }, { sender: ccVal }],
           };
         } else {
           // regex on ISO date for any other field
           query = {
             [field]: { $gte: `${todayIso}` },
-            $or: [
-              { cc: { $regex: ccVal, $options: 'i' } },
-              { sender: ccVal }
-            ]
+            $or: [{ cc: { $regex: ccVal, $options: "i" } }, { sender: ccVal }],
           };
         }
       } else if (authUser.role === "mlead") {
@@ -330,23 +338,25 @@ io.on("connection", (socket) => {
           // direct match on todayStr for the Date of Interview field
           console.log(`${authUser.email}+`);
           query = {
-            [field]: { $gte: todayStr }, $or: [
-              { cc: { $regex: authUser.email.toLowerCase(), $options: 'i' } },
-              { sender: authUser.email.toLowerCase() }
-            ]
+            [field]: { $gte: todayStr },
+            $or: [
+              { cc: { $regex: authUser.email.toLowerCase(), $options: "i" } },
+              { sender: authUser.email.toLowerCase() },
+            ],
           };
         } else {
           console.log(`${authUser.email}+`);
 
           query = {
-            [field]: { $gte: `${todayIso}` }, $or: [
-              { cc: { $regex: authUser.email.toLowerCase(), $options: 'i' } },
-              { sender: authUser.email.toLowerCase() }
-            ]
+            [field]: { $gte: `${todayIso}` },
+            $or: [
+              { cc: { $regex: authUser.email.toLowerCase(), $options: "i" } },
+              { sender: authUser.email.toLowerCase() },
+            ],
           };
         }
       } else {
-        query = { "Date of Interview": { "$gte": todayStr } };
+        query = { "Date of Interview": { $gte: todayStr } };
       }
       // 1) Fetch lightweight docs (exclude replies & body)
       const docsLight = await taskBodyCollection
@@ -354,49 +364,55 @@ io.on("connection", (socket) => {
         .toArray();
 
       // 2) Collect IDs
-      const ids = docsLight.map(doc => doc._id);
+      const ids = docsLight.map((doc) => doc._id);
 
       // 3) Fetch only replies & body for those IDs
       const heavyDocs = await taskBodyCollection
-        .find(
-          { _id: { $in: ids } },
-          { projection: { replies: 1, body: 1 } }
-        )
+        .find({ _id: { $in: ids } }, { projection: { replies: 1, body: 1 } })
         .toArray();
 
       // 4) Merge
-      const heavyMap = new Map(heavyDocs.map(d => [d._id.toString(), d]));
-      const docs = docsLight.map(doc => ({
+      const heavyMap = new Map(heavyDocs.map((d) => [d._id.toString(), d]));
+      const docs = docsLight.map((doc) => ({
         ...doc,
         replies: heavyMap.get(doc._id.toString())?.replies || [],
-        body: heavyMap.get(doc._id.toString())?.body || null
+        body: heavyMap.get(doc._id.toString())?.body || null,
       }));
       console.log(query);
       const lowerEmail = authUser.email.toLowerCase();
       let teamEmails = [];
-      let fullName = 'Not Assigned';
+      let fullName = "Not Assigned";
       if (authUser.role === "lead") {
         console.log(`User is a lead: ${authUser.email}`);
         const [first, last] = lowerEmail.split("@")[0].split(".");
-        fullName = `${first[0].toUpperCase()}${first.slice(1)} ${last[0].toUpperCase()}${last.slice(1)}`;
+        fullName = `${first[0].toUpperCase()}${first.slice(
+          1
+        )} ${last[0].toUpperCase()}${last.slice(1)}`;
         console.log(`Full name for team lead: ${fullName}`);
 
         teamEmails = Array.from(users.entries())
           .filter(([mail, u]) => {
-            const teamLeadMatch = (u.teamLead || "").trim().toLowerCase() === fullName.toLowerCase();
+            const teamLeadMatch =
+              (u.teamLead || "").trim().toLowerCase() ===
+              fullName.toLowerCase();
             const emailMatch = mail.toLowerCase() === lowerEmail;
-            console.log(`Comparing: u.teamLead='${u.teamLead}' === fullName='${fullName}' => ${teamLeadMatch}`);
-            console.log(`Comparing: mail.toLowerCase()='${mail.toLowerCase()}' === lowerEmail='${lowerEmail}' => ${emailMatch}`);
+            console.log(
+              `Comparing: u.teamLead='${u.teamLead}' === fullName='${fullName}' => ${teamLeadMatch}`
+            );
+            console.log(
+              `Comparing: mail.toLowerCase()='${mail.toLowerCase()}' === lowerEmail='${lowerEmail}' => ${emailMatch}`
+            );
             return teamLeadMatch || emailMatch;
           })
           .map(([e]) => e.toLowerCase());
-
       }
 
       console.log("Team emails:", teamEmails);
       const tasks = [];
 
-      console.log(`Starting to process ${docs.length} docs for user ${authUser.email}`);
+      console.log(
+        `Starting to process ${docs.length} docs for user ${authUser.email}`
+      );
 
       // normalize once
       const userEmailLower = authUser.email.toLowerCase();
@@ -409,11 +425,17 @@ io.on("connection", (socket) => {
         const task = formatTask(doc);
         if (!task) {
           console.log(
-            `[skip] formatTask returned null/undefined for doc id=${doc._id || '(no-id)'}`
+            `[skip] formatTask returned null/undefined for doc id=${
+              doc._id || "(no-id)"
+            }`
           );
           continue;
         }
-        if (authUser.role === "MAM" || authUser.role === "MM" || authUser.role === "mlead") {
+        if (
+          authUser.role === "MAM" ||
+          authUser.role === "MM" ||
+          authUser.role === "mlead"
+        ) {
           const localPart = doc.sender.toLowerCase().split("@")[0];
           const parts = localPart.split(".");
 
@@ -430,7 +452,7 @@ io.on("connection", (socket) => {
 
           tasks.push({
             ...task,
-            recruiterName
+            recruiterName,
           });
           continue;
         }
@@ -439,9 +461,9 @@ io.on("connection", (socket) => {
         );
 
         // 3) Compute permission
-        const assignedEmailLower = task.assignedEmail?.toLowerCase() || '';
+        const assignedEmailLower = task.assignedEmail?.toLowerCase() || "";
 
-        const isAdmin = authUser.role === 'admin';
+        const isAdmin = authUser.role === "admin";
         const isSelf = userEmailLower === assignedEmailLower;
         const isOnTeam = teamEmails.includes(assignedEmailLower);
 
@@ -459,11 +481,12 @@ io.on("connection", (socket) => {
 
         // 4) All good → push
         tasks.push(task);
-        console.log(`[push] task ${task._id} added (total so far: ${tasks.length})`);
+        console.log(
+          `[push] task ${task._id} added (total so far: ${tasks.length})`
+        );
       }
 
       console.log(`Done processing docs — final task count: ${tasks.length}`);
-
 
       // **Sort once, outside the loop**:
       //  - by startTime ascending
@@ -474,7 +497,7 @@ io.on("connection", (socket) => {
         return a.endTime - b.endTime;
       });
       console.log(
-        `[getTasksToday] returning ${tasks.length} tasks to ${authUser.email}`,
+        `[getTasksToday] returning ${tasks.length} tasks to ${authUser.email}`
       );
       callback({ success: true, tasks });
     } catch (err) {
@@ -482,8 +505,236 @@ io.on("connection", (socket) => {
     }
   });
 
+  // --- Dashboard status summary (role/email gated) ---
+  socket.on("getDashboardSummary", async ({ start, end } = {}, callback) => {
+    console.log("==============================================");
+    console.log("[getDashboardSummary] Event received");
+    console.log("[getDashboardSummary] Raw payload:", { start, end });
+
+    const authUser = socket.data.user;
+    if (!authUser) {
+      console.log("[getDashboardSummary] Unauthorized: no socket.data.user");
+      return callback({ success: false, error: "Unauthorized" });
+    }
+
+    console.log("[getDashboardSummary] Authenticated user:", authUser);
+
+    try {
+      // 1) Date window (defaults to Aug 1 -> < Sept 1, 2025)
+      const startIso = start || "2025-08-01T00:00:00Z";
+      const endIso = end || "2025-09-01T00:00:00Z";
+      console.log("[getDashboardSummary] Using date window:", {
+        startIso,
+        endIso,
+      });
+
+      // Helpers
+      const lowerEmail = String(authUser.email || "").toLowerCase();
+      const emailLocal = lowerEmail.split("@")[0];
+      const emailParts = emailLocal.split(".");
+      const firstLast =
+        emailParts.length >= 2
+          ? `${emailParts[0].charAt(0).toUpperCase()}${emailParts[0].slice(
+              1
+            )} ${emailParts[1].charAt(0).toUpperCase()}${emailParts[1].slice(
+              1
+            )}`
+          : `${emailParts[0].charAt(0).toUpperCase()}${emailParts[0].slice(1)}`;
+
+      console.log("[getDashboardSummary] Derived identifiers:", {
+        lowerEmail,
+        emailLocal,
+        firstLast,
+      });
+
+      // 2) Build role-based $match that works on RAW docs (pre-group)
+      // NOTE: We match on fields present before $group: sender, cc, assignedTo, receivedDateTime, etc.
+      let roleMatch = {};
+      console.log(
+        "[getDashboardSummary] Building role-based match for role:",
+        authUser.role
+      );
+
+      if (authUser.role === "admin") {
+        // Admin sees everything in the date window
+        roleMatch = {};
+        console.log("[getDashboardSummary] (admin) no extra role filter");
+      } else if (authUser.role === "MM" || authUser.role === "MAM") {
+        // MM: self local-part; MAM: manager "first.last"
+        const managerLocal = String(authUser.manager || "")
+          .toLowerCase()
+          .split(" ")
+          .join(".");
+        const ccVal = authUser.role === "MM" ? emailLocal : managerLocal;
+        console.log("[getDashboardSummary] (MM/MAM) cc/sender gating with:", {
+          ccVal,
+          managerLocal,
+        });
+
+        roleMatch = {
+          $or: [
+            { cc: { $regex: ccVal, $options: "i" } },
+            { sender: ccVal }, // local-part exact match
+          ],
+        };
+      } else if (authUser.role === "mlead") {
+        // mlead: full email in cc OR sender as exact local/email
+        const fullEmail = lowerEmail;
+        console.log("[getDashboardSummary] (mlead) email gating:", {
+          fullEmail,
+          emailLocal,
+        });
+
+        roleMatch = {
+          $or: [
+            { cc: { $regex: fullEmail, $options: "i" } },
+            { sender: emailLocal }, // local-part
+            { sender: fullEmail }, // full email if stored like that
+          ],
+        };
+      } else if (authUser.role === "lead") {
+        // lead: match by their TEAM's experts (assignedTo)
+        const [f, l] = emailLocal.split(".");
+        const leadFullName = `${f?.charAt(0).toUpperCase()}${(f || "").slice(
+          1
+        )} ${l?.charAt(0).toUpperCase()}${(l || "").slice(1)}`;
+        console.log(
+          "[getDashboardSummary] (lead) computed fullName:",
+          leadFullName
+        );
+
+        // Build team list from in-memory user cache
+        const teamEmails = Array.from(users.entries())
+          .filter(([mail, u]) => {
+            const teamLeadMatch =
+              (u.teamLead || "").trim().toLowerCase() ===
+              leadFullName.toLowerCase();
+            const selfMatch = mail.toLowerCase() === lowerEmail;
+            console.log(
+              `[lead] compare u.teamLead='${(
+                u.teamLead || ""
+              ).trim()}' vs '${leadFullName}' => ${teamLeadMatch}`
+            );
+            console.log(
+              `[lead] compare mail='${mail.toLowerCase()}' vs user='${lowerEmail}' => ${selfMatch}`
+            );
+            return teamLeadMatch || selfMatch;
+          })
+          .map(([email]) => email.toLowerCase());
+
+        const teamLocals = teamEmails.map((e) => e.split("@")[0]);
+        console.log("[getDashboardSummary] (lead) teamEmails:", teamEmails);
+        console.log("[getDashboardSummary] (lead) teamLocals:", teamLocals);
+
+        // Match assignedTo (Expert) by any team email, local, or display full name
+        roleMatch = {
+          $or: [
+            { assignedTo: { $regex: teamEmails.join("|"), $options: "i" } },
+            { assignedTo: { $regex: teamLocals.join("|"), $options: "i" } },
+            { assignedTo: { $regex: leadFullName, $options: "i" } },
+          ],
+        };
+      } else {
+        // user (or any other non-privileged role):
+        // "users can match with Expert" => assignedTo must match *their* identifiers
+        console.log(
+          "[getDashboardSummary] (user/other) gating by Expert (= assignedTo)"
+        );
+
+        roleMatch = {
+          $or: [
+            { assignedTo: { $regex: `^${emailLocal}$`, $options: "i" } },
+            { assignedTo: { $regex: `^${lowerEmail}$`, $options: "i" } },
+            { assignedTo: { $regex: `^${firstLast}$`, $options: "i" } },
+          ],
+        };
+      }
+
+      console.log(
+        "[getDashboardSummary] roleMatch constructed as:",
+        JSON.stringify(roleMatch, null, 2)
+      );
+
+      // 3) Final $match with date window
+      const baseMatch = {
+        receivedDateTime: { $gte: startIso, $lt: endIso },
+        ...roleMatch,
+      };
+      console.log(
+        "[getDashboardSummary] Final $match:",
+        JSON.stringify(baseMatch, null, 2)
+      );
+
+      // 4) Aggregation pipeline
+      //    - Keep group by Candidate Name (as provided)
+      //    - Project Expert from lastDocument.assignedTo
+      const pipeline = [
+        { $match: baseMatch },
+        {
+          $group: {
+            _id: "$Candidate Name",
+            statusCount: { $push: "$status" },
+            lastDocument: { $last: "$$ROOT" },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            "Candidate Name": "$_id",
+            statusCount: {
+              $arrayToObject: {
+                $map: {
+                  input: { $setUnion: ["$statusCount"] },
+                  as: "status",
+                  in: {
+                    k: "$$status",
+                    v: {
+                      $size: {
+                        $filter: {
+                          input: "$statusCount",
+                          cond: { $eq: ["$$this", "$$status"] },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            "Last Sender": "$lastDocument.sender",
+            "Last CC": "$lastDocument.cc",
+            Expert: "$lastDocument.assignedTo",
+          },
+        },
+      ];
+
+      console.log("[getDashboardSummary] Executing aggregation with pipeline:");
+      console.log(JSON.stringify(pipeline, null, 2));
+
+      const summary = await taskBodyCollection.aggregate(pipeline).toArray();
+
+      console.log(
+        "[getDashboardSummary] Aggregation complete. Result count:",
+        summary.length
+      );
+      if (summary.length > 0) {
+        console.log("[getDashboardSummary] Sample first doc:", summary[0]);
+      }
+
+      // 5) Return
+      console.log("[getDashboardSummary] Sending success response");
+      callback({ success: true, summary });
+
+      console.log("[getDashboardSummary] Done");
+      console.log("==============================================");
+    } catch (err) {
+      console.error("[getDashboardSummary] ERROR:", err);
+      callback({ success: false, error: "Server error" });
+      console.log("==============================================");
+    }
+  });
+
   socket.on("disconnect", (reason) =>
-    console.log(`❌ Socket disconnected [id=${socket.id}] reason: ${reason}`),
+    console.log(`❌ Socket disconnected [id=${socket.id}] reason: ${reason}`)
   );
 });
 
