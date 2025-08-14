@@ -14,24 +14,24 @@ const Index = () => {
           <p className="text-muted-foreground">Welcome back! Here's what's happening with your sales today.</p>
         </div>
 
-        <DashboardStats />
+        {/* <DashboardStats /> */}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="col-span-2">
+          {/* <div className="col-span-2">
             <RevenueChart />
-          </div>
+          </div> */}
           <div className="col-span-1">
             <TopAgents />
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="col-span-1">
+          {/* <div className="col-span-1">
             <SalesPipeline />
-          </div>
-          <div className="col-span-1 lg:col-span-2">
+          </div> */}
+          {/* <div className="col-span-1 lg:col-span-2">
             <ActivityFeed />
-          </div>
+          </div> */}
         </div>
       </div>
     </DashboardLayout>
