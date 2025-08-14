@@ -160,14 +160,14 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
         <div ref={scrollAreaRef} className="flex-1 overflow-y-auto p-2 min-h-0">
           <div className="flex flex-col gap-1">
             <nav className="grid gap-1">
-              {role === "admin" && (
+              
                 <NavItem
                   icon={LayoutDashboard}
                   label="Dashboard"
                   href="/"
                   isOpen={isOpen}
                 />
-              )}
+              
               <NavItem
                 icon={ClipboardList}
                 label="Tasks"
