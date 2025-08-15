@@ -14,6 +14,15 @@ services:
       - JWT_SECRET=${JWT_SECRET:-secret}
       - MONGODB_URI=${MONGODB_URI}
     restart: unless-stopped
+    # Healthcheck: Socket.IO polling (returns 200)
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 5 'http://localhost:3004/socket.io/?EIO=4&transport=polling' >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 1
+      start_period: 15s
+    labels:
+      - autoheal=true
 
   frontend:
     build:
@@ -24,7 +33,17 @@ services:
       - "8180:8180"
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    # Healthcheck: homepage (HTTP/200)
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 5 'http://localhost:8180/' >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 1
+      start_period: 15s
+    labels:
+      - autoheal=true
 
   tunnelto-backend:
     image: backdevs/tunnelto:0.1.18
@@ -36,7 +55,17 @@ services:
       SUBDOMAIN:  "dailydb"
       PORT:       "3004"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    # Healthcheck: verify upstream is reachable through service DNS
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 5 'http://dailydb-backend:3004/socket.io/?EIO=4&transport=polling' >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 1
+      start_period: 20s
+    labels:
+      - autoheal=true
 
   tunnelto-frontend:
     image: backdevs/tunnelto:0.1.18
@@ -48,4 +77,25 @@ services:
       SUBDOMAIN:  "dailydf"
       PORT:       "8180"
     depends_on:
-      - frontend
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 5 'http://frontend:8180/' >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 1
+      start_period: 20s
+    labels:
+      - autoheal=true
+
+  # Auto-healer: restarts containers that go UNHEALTHY
+  autoheal:
+    image: willfarrell/autoheal
+    restart: unless-stopped
+    environment:
+      - AUTOHEAL_INTERVAL=5        # check every 5s
+      - AUTOHEAL_START_PERIOD=120  # give time for first boot
+      - CURL_TIMEOUT=5
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
