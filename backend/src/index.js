@@ -319,7 +319,7 @@ io.on("connection", (socket) => {
       if (authUser.role === "MAM" || authUser.role === "MM") {
         const mngr = authUser.manager.toLowerCase().split(" ").join(".");
         const [mm, dd, yyyy] = todayStr.split("/").map(Number);
-        const monthRegex = `^${mm}`;
+        const monthRegex = `^${mm}/\\d{2}/${yyyyStr}$`; // ^08/\d{2}/2025$
         const ccVal =
           authUser.role === "MM" ? authUser.email.split("@")[0] : mngr;
         if (field === "Date of Interview") {
