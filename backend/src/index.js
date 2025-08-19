@@ -318,13 +318,17 @@ io.on("connection", (socket) => {
       const field = String(payload.tab);
       if (authUser.role === "MAM" || authUser.role === "MM") {
         const mngr = authUser.manager.toLowerCase().split(" ").join(".");
+        const [mm, dd, yyyy] = todayStr.split("/").map(Number);
+        const monthRegex = `^${mm}`;
         const ccVal =
           authUser.role === "MM" ? authUser.email.split("@")[0] : mngr;
         if (field === "Date of Interview") {
           // direct match on todayStr for the Date of Interview field
           query = {
-            [field]: { $gte: todayStr },
-            $or: [{ cc: { $regex: ccVal, $options: "i" } }, { sender: ccVal }],
+            $and: [
+              { [field]: { $regex: monthRegex} },
+              { $or: [{ cc: { $regex: ccVal, $options: "i" } }, { sender: ccVal }] }
+            ]
           };
         } else {
           // regex on ISO date for any other field
