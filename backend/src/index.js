@@ -318,7 +318,7 @@ io.on("connection", (socket) => {
       const field = String(payload.tab);
       if (authUser.role === "MAM" || authUser.role === "MM") {
         const mngr = authUser.manager.toLowerCase().split(" ").join(".");
-        const [mm, dd, yyyy] = todayStr.split("/").map(Number);
+        const [mm, dd, yyyy] = todayStr.split("/");
         const monthRegex = `^${mm}`; // ^08/\d{2}/2025$
         const ccVal =
           authUser.role === "MM" ? authUser.email.split("@")[0] : mngr;
