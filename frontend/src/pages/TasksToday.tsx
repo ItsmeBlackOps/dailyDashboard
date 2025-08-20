@@ -454,8 +454,13 @@ export default function TasksToday() {
     .filter((t) => {
       const s = primaryStart(t);
       if (!s) return false;
-      if (dateScope === "today") return s.isSame(startOfTodayNY, "day");
-      return s.isAfter(startOfMonthNY);
+  
+      if (dateScope === "today") {
+        return s.isSame(startOfTodayNY, "day");
+      }
+  
+      // if "all", don't filter by date at all
+      return true;
     })
     .filter((t) => filterStatus === "all" || t.status === filterStatus)
     .filter((t) =>
@@ -477,6 +482,7 @@ export default function TasksToday() {
       const bE = parseEnd(b)?.toDate() ?? new Date(0);
       return aE < bE ? -1 : aE > bE ? 1 : 0;
     });
+
 
   return (
     <DashboardLayout>
