@@ -448,13 +448,14 @@ export default function TasksToday() {
   const nowNY = moment.tz(TZ);
   const startOfTodayNY = nowNY.clone().startOf("day");
   const endOfTodayNY = nowNY.clone().endOf("day");
+  const startOfMonthNY = nowNY.clone().startOf("month");
 
   const displayed = tasks
     .filter((t) => {
       const s = primaryStart(t);
       if (!s) return false;
       if (dateScope === "today") return s.isSame(startOfTodayNY, "day");
-      return s.isAfter(endOfTodayNY);
+      return s.isAfter(startOfMonthNY);
     })
     .filter((t) => filterStatus === "all" || t.status === filterStatus)
     .filter((t) =>
