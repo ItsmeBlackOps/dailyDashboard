@@ -470,7 +470,7 @@ export default function TasksToday() {
       (t.assignedExpert || "").toLowerCase().includes(expertFilter.toLowerCase())
     )
     .filter((t) =>
-      user === "MAM" || user === "MM" || user === "mlead"
+      user !== 'user'
         ? (t.recruiterName || "").toLowerCase().includes(recruiterFilter.toLowerCase())
         : true
     )
