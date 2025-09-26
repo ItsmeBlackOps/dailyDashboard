@@ -1,3 +1,4 @@
+import "newrelic";
 // index.js
 import "dotenv/config";
 import express from "express";

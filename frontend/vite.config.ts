@@ -7,12 +7,12 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: '::',
     port: 8180,
-    open: true,
+    open: false,
   },
   preview: {
     port: 8180,
     host: '::',
-    allowedHosts: ['dailydf.tunn.dev'], // 👈 THIS IS THE FIX
+    allowedHosts: ['dailydf.tunn.dev','dailydf.silverspace.tech'], // 👈 THIS IS THE FIX
   },
   plugins: [react()].filter(Boolean),
   resolve: {
