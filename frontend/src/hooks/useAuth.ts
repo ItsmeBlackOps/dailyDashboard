@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 
-export const API_URL = 'https://dailydb.tunn.dev'; // Replace with your actual API URL
+export const API_URL = import.meta.env.VITE_API_URL! || "https://dailydb.silverspace.tech"; // Replace with your actual API URL
 
 interface RefreshResponse {
   success: boolean;

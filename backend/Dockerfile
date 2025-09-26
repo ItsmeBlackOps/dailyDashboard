@@ -1,15 +1,12 @@
-# Use Node.js base image
-FROM node:18
+FROM node:20-alpine
 
-# Create app directory
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Copy package files and install dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm ci --only=production && npm i newrelic
 
-# Copy the rest of your app
 COPY . .
 
-# Start the backend
+EXPOSE 3004
+
 CMD ["node", "src/index.js"]

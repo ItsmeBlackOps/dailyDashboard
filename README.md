@@ -1,5 +1,13 @@
 # Daily Dashboard
 
+## Getting Started
+
+1. Copy the sample environment file and update secrets:
+   ```bash
+   cp .env.example .env
+   ```
+2. Follow the backend and frontend setup sections below to install dependencies and run the apps.
+
 ## Backend
 
 ### Setup
@@ -15,6 +23,11 @@
    JWT_SECRET=<random secret>
    # Allowed origin for CORS
    FRONTEND_ORIGIN=http://localhost:5173
+   # New Relic instrumentation (optional locally)
+   NEW_RELIC_LICENSE_KEY=<your license key>
+   NEW_RELIC_APP_NAME=dailydb-backend
+   NEW_RELIC_LOG_LEVEL=info
+   NEW_RELIC_NO_CONFIG_FILE=true
    ```
 3. Start the server:
    ```bash
@@ -34,6 +47,10 @@
 - `PORT` – Port for the HTTP server (default `3000`).
 - `JWT_SECRET` – Secret for signing JWT tokens.
 - `FRONTEND_ORIGIN` – Allowed origin for CORS requests (default `http://localhost:5173`).
+- `NEW_RELIC_LICENSE_KEY` – New Relic account license key (required in staging/production).
+- `NEW_RELIC_APP_NAME` / `NEW_RELIC_BACKEND_APP_NAME` – Service name reported to New Relic (default `dailydb-backend`).
+- `NEW_RELIC_LOG_LEVEL` – Log verbosity for the agent (default `info`).
+- `NEW_RELIC_NO_CONFIG_FILE` – Set to `true` to rely on environment configuration only.
 
 ### Dev Scripts
 - `npm start` – runs the server
@@ -86,4 +103,24 @@ background.
 - `npm run dev` – start the Vite dev server
 - `npm run build` – build production assets
 - `npm run lint` – run ESLint
+- `npm run start` – serve the built bundle with the New Relic agent
 
+### Environment Variables
+- `API_URL` – Backend base URL.
+- `FRONTEND_PORT` – Port the preview server listens on (default `8180`).
+- `NEW_RELIC_LICENSE_KEY` – New Relic account license key (required in staging/production).
+- `NEW_RELIC_APP_NAME` / `NEW_RELIC_FRONTEND_APP_NAME` – Service name reported to New Relic (default `dailydb-frontend`).
+- `NEW_RELIC_LOG_LEVEL` – Log verbosity for the agent (default `info`).
+- `NEW_RELIC_NO_CONFIG_FILE` – Set to `true` to rely on environment configuration only.
+- `FRONTEND_HOST` – Host binding for the preview server (default `0.0.0.0`).
+- `FRONTEND_OPEN` – Whether to auto-open a browser window (default `false`).
+
+## Docker Compose
+
+Run both services together with New Relic instrumentation:
+
+```bash
+docker compose up --build
+```
+
+The stack consumes values from `.env` (or `.env.example` as a starting point) and forwards the New Relic environment variables into each container.
