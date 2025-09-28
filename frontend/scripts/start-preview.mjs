@@ -1,5 +1,24 @@
-import "newrelic";
 import { preview } from "vite";
+
+const ensureNewRelic = async () => {
+  const appName =
+    process.env.FRONTEND_NEW_RELIC_APP_NAME ||
+    process.env.NEW_RELIC_APP_NAME;
+
+  if (!process.env.NEW_RELIC_APP_NAME && appName) {
+    process.env.NEW_RELIC_APP_NAME = appName;
+  }
+
+  if (process.env.NEW_RELIC_LICENSE_KEY && process.env.NEW_RELIC_APP_NAME) {
+    try {
+      await import("newrelic");
+    } catch (error) {
+      console.warn("⚠️ Failed to initialize New Relic on frontend:", error?.message ?? error);
+    }
+  }
+};
+
+await ensureNewRelic();
 
 const port = Number.parseInt(process.env.FRONTEND_PORT ?? "8180", 10);
 const hostEnv = process.env.FRONTEND_HOST;

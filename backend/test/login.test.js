@@ -1,33 +1,86 @@
-import request from 'supertest';
-import { app } from '../src/index.js';
+import { describe, it, beforeAll, afterAll, afterEach, expect, jest } from '@jest/globals';
+import { setupSocketTestHarness, SOCKET_TEST_CONFIG } from './helpers/socketTestHarness.js';
 
-describe('POST /login', () => {
-  test('returns tokens for valid credentials', async () => {
-    const res = await request(app)
-      .post('/login')
-      .send({ email: 'admin@example.com', password: 'adminpass' })
-      .expect(200);
-    expect(res.body.accessToken).toBeDefined();
-    expect(res.body.refreshToken).toBeDefined();
+jest.setTimeout(30000);
+
+describe('Socket Authentication Flow', () => {
+  let harness;
+  let emit;
+  let issuedTokens = null;
+
+  beforeAll(async () => {
+    harness = await setupSocketTestHarness();
+    emit = harness.emitWithAck;
   });
 
-  test('rejects invalid password', async () => {
-    await request(app)
-      .post('/login')
-      .send({ email: 'admin@example.com', password: 'wrong' })
-      .expect(401);
+  afterEach(async () => {
+    if (issuedTokens?.refreshToken) {
+      await emit('logout', { refreshToken: issuedTokens.refreshToken });
+      issuedTokens = null;
+    }
   });
-});
 
-describe('POST /refresh', () => {
-  test('returns new access token', async () => {
-    const loginRes = await request(app)
-      .post('/login')
-      .send({ email: 'darshan.singh@vizvainc.com', password: 'userpass' });
-    const refreshRes = await request(app)
-      .post('/refresh')
-      .send({ refreshToken: loginRes.body.refreshToken })
-      .expect(200);
-    expect(refreshRes.body.accessToken).toBeDefined();
+  afterAll(async () => {
+    if (harness) {
+      await harness.shutdown();
+    }
   });
-});
+
+  it('authenticates valid credentials and returns tokens', async () => {
+    const response = await emit('login', SOCKET_TEST_CONFIG.credentials);
+
+    expect(response.success).toBe(true);
+    expect(response.accessToken).toBeDefined();
+    expect(response.refreshToken).toBeDefined();
+    expect(response.role).toBe('admin');
+    expect(response.teamLead).toBe('Lead A');
+    expect(response.manager).toBe('Manager A');
+
+    issuedTokens = response;
+  });
+
+  it('rejects invalid passwords for the same user', async () => {
+    const response = await emit('login', {
+      ...SOCKET_TEST_CONFIG.credentials,
+      password: 'incorrect-password'
+    });
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe('Invalid credentials');
+  });
+
+  it('refreshes the access token using the issued refresh token', async () => {
+    const loginResponse = await emit('login', SOCKET_TEST_CONFIG.credentials);
+    issuedTokens = loginResponse;
+
+    const refreshResponse = await emit('refresh', {
+      refreshToken: loginResponse.refreshToken
+    });
+
+    expect(refreshResponse.success).toBe(true);
+    expect(typeof refreshResponse.accessToken).toBe('string');
+    expect(refreshResponse.accessToken.length).toBeGreaterThan(0);
+  });
+
+  it('logs out and invalidates the refresh token', async () => {
+    const loginResponse = await emit('login', SOCKET_TEST_CONFIG.credentials);
+    issuedTokens = loginResponse;
+
+    const logoutResponse = await emit('logout', {
+      refreshToken: loginResponse.refreshToken
+    });
+
+    expect(logoutResponse.success).toBe(true);
+    expect(logoutResponse.message).toBe('Logged out successfully');
+
+    // Attempt to refresh after logout should fail
+    const refreshAfterLogout = await emit('refresh', {
+      refreshToken: loginResponse.refreshToken
+    });
+
+    expect(refreshAfterLogout.success).toBe(false);
+    expect(refreshAfterLogout.error).toBe('Invalid refresh token');
+
+    issuedTokens = null;
+  });
+  });
