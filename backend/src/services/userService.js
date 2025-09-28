@@ -607,7 +607,7 @@ export class UserService {
     const requester = normalizeRoleName(requesterRole);
     const target = normalizeRoleName(targetRole);
 
-    if (isAdminRole(requesterRole) || requester === 'manager') return true;
+    if (isAdminRole(requesterRole) || isManagerRole(requesterRole)) return true;
     if (requester === 'mm') return ['mam'].includes(target);
     if (requester === 'mam') return ['mlead', 'recruiter'].includes(target);
     if (requester === 'mlead') return ['recruiter'].includes(target);
