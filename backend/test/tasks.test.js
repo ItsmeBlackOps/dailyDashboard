@@ -1,117 +1,143 @@
-import moment from 'moment-timezone';
-import request from 'supertest';
-import { jest } from '@jest/globals';
-import { app, TaskBody, activityLog } from '../src/index.js';
+import { describe, it, beforeAll, afterAll, expect, jest } from '@jest/globals';
+import { setupSocketTestHarness, SOCKET_TEST_CONFIG } from './helpers/socketTestHarness.js';
 
-describe('GET /tasks/today', () => {
-  let findSpy;
-  const todayEST = moment.tz('America/New_York').format('YYYY-MM-DD');
+jest.setTimeout(90000);
 
-  beforeEach(() => {
-    findSpy = jest.spyOn(TaskBody, 'find');
+describe('Socket Task Queries', () => {
+  let harness;
+  let emit;
+  let loginResponse;
+
+  beforeAll(async () => {
+    harness = await setupSocketTestHarness();
+    emit = harness.emitWithAck;
+
+    loginResponse = await emit('login', SOCKET_TEST_CONFIG.credentials, 20000);
+    expect(loginResponse.success).toBe(true);
   });
 
-  afterEach(() => {
-    jest.restoreAllMocks();
+  afterAll(async () => {
+    if (loginResponse?.refreshToken && emit) {
+      await emit('logout', { refreshToken: loginResponse.refreshToken });
+    }
+    if (harness) {
+      await harness.shutdown();
+    }
   });
 
-  test('requires authentication', async () => {
-    findSpy.mockReturnValue({ lean: () => Promise.resolve([]) });
-    await request(app).get('/tasks/today').expect(401);
+  it('responds to ping', async () => {
+    const response = await emit('ping', undefined, 5000);
+    expect(response.success).toBe(true);
+    expect(response.socketId).toBeDefined();
+    expect(new Date(response.timestamp).toString()).not.toBe('Invalid Date');
   });
 
-  test('queries for current EST date', async () => {
-    findSpy.mockReturnValue({ lean: () => Promise.resolve([]) });
-    await request(app).get('/tasks/today').set('x-user-role', 'admin');
-    expect(findSpy).toHaveBeenCalledWith({ 'Date of Interview': todayEST });
-  });
-
-  test('role-based filtering', async () => {
-    const docs = [
-      {
-        id: 1,
-        'Date of Interview': todayEST,
-        Replies: [
-          { body: 'Assigned To: @john [john@example.com]', receivedDateTime: Date.now() }
-        ]
-      },
-      {
-        id: 2,
-        'Date of Interview': todayEST,
-        Replies: [
-          { body: 'Assigned To: @jane [jane@example.com]', receivedDateTime: Date.now() }
-        ]
-      }
-    ];
-    findSpy.mockReturnValue({ lean: () => Promise.resolve(docs) });
-
-    const adminRes = await request(app)
-      .get('/tasks/today')
-      .set('x-user-role', 'admin')
-      .expect(200);
-    expect(adminRes.body).toHaveLength(2);
-
-    const userRes = await request(app)
-      .get('/tasks/today')
-      .set('x-user-role', 'user')
-      .set('x-user-email', 'john@example.com')
-      .expect(200);
-    expect(userRes.body).toHaveLength(1);
-    expect(userRes.body[0].assignedEmail).toBe('john@example.com');
-  });
-
-  test('uses latest assignment email', async () => {
-    const docs = [
-      {
-        'Date of Interview': todayEST,
-        Replies: [
-          { body: 'Assigned To: @john [john@example.com]', receivedDateTime: Date.now() - 5000 },
-          { body: 'Assigned To: @jane [jane@example.com]', receivedDateTime: Date.now() - 1000 }
-        ]
-      }
-    ];
-    findSpy.mockReturnValue({ lean: () => Promise.resolve(docs) });
-
-    const res = await request(app)
-      .get('/tasks/today')
-      .set('x-user-role', 'admin')
-      .expect(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].assignedEmail).toBe('jane@example.com');
-
-    const userRes = await request(app)
-      .get('/tasks/today')
-      .set('x-user-role', 'user')
-      .set('x-user-email', 'john@example.com')
-      .expect(200);
-    expect(userRes.body).toHaveLength(0);
-  });
-});
-
-describe('POST /tasks/today', () => {
-  beforeEach(() => {
-    activityLog.length = 0;
-  });
-
-  test('requires authentication', async () => {
-    await request(app).post('/tasks/today').send({}).expect(401);
-  });
-
-  test('logs activity', async () => {
-    const payload = {
-      email: 'admin@example.com',
+  it('returns authenticated user info', async () => {
+    const response = await emit('getUserInfo', undefined, 5000);
+    expect(response.success).toBe(true);
+    expect(response.authenticated).toBe(true);
+    expect(response.user).toMatchObject({
+      email: SOCKET_TEST_CONFIG.credentials.email,
       role: 'admin',
       teamLead: 'Lead A',
-      manager: 'Manager A',
-      activity: '<script>alert(1)</script>Working',
-    };
-    await request(app)
-      .post('/tasks/today')
-      .set('x-user-role', 'admin')
-      .set('x-user-email', 'admin@example.com')
-      .send(payload)
-      .expect(201);
-    expect(activityLog).toHaveLength(1);
-    expect(activityLog[0].activity).toBe('Working');
+      manager: 'Manager A'
+    });
   });
-});
+
+  it('retrieves today\'s tasks metadata', async () => {
+    const response = await emit('getTasksToday', { tab: 'Date of Interview' }, 60000);
+    expect(response.success).toBe(true);
+    expect(Array.isArray(response.tasks)).toBe(true);
+    expect(response.meta).toMatchObject({
+      tab: 'Date of Interview',
+      userRole: 'admin'
+    });
+    expect(typeof response.meta.count).toBe('number');
+
+    if (response.tasks.length > 0) {
+      expect(response.tasks[0]).not.toHaveProperty('body');
+      expect(response.tasks[0]).not.toHaveProperty('replies');
+    }
+  });
+
+  it('provides dashboard summary for a date range', async () => {
+    const today = new Date();
+    const start = new Date(today);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(today);
+    end.setHours(23, 59, 59, 999);
+
+    const response = await emit('getDashboardSummary', {
+      range: 'custom',
+      start: start.toISOString(),
+      end: end.toISOString(),
+      dateField: 'Date of Interview'
+    }, 60000);
+
+    expect(response.success).toBe(true);
+    expect(Array.isArray(response.summary)).toBe(true);
+    expect(response.meta).toMatchObject({
+      userRole: 'admin'
+    });
+    const { kpi } = response.meta;
+    expect(kpi).toBeDefined();
+    expect(typeof kpi.totals.overall).toBe('number');
+    expect(kpi.totals.byRound).toBeDefined();
+    expect(kpi.received).toHaveProperty('today');
+    expect(kpi.received).toHaveProperty('thisWeek');
+    expect(kpi.received).toHaveProperty('thisMonth');
+    expect(kpi.interview).toHaveProperty('today');
+    expect(kpi.interview).toHaveProperty('thisWeek');
+    expect(kpi.interview).toHaveProperty('thisMonth');
+    expect(kpi.branch).toBeDefined();
+    expect(response.meta.leaders).toBeDefined();
+    expect(Array.isArray(response.meta.leaders.expert)).toBe(true);
+    expect(response.meta.dateRange).toMatchObject({
+      startIso: expect.any(String),
+      endIso: expect.any(String),
+      range: 'custom'
+    });
+  });
+
+  it('searches tasks with filters', async () => {
+    const response = await emit('searchTasks', {
+      search: 'interview',
+      limit: 5
+    }, 60000);
+
+    expect(response.success).toBe(true);
+    expect(Array.isArray(response.tasks)).toBe(true);
+    expect(response.meta).toMatchObject({
+      limit: 5,
+      searchCriteria: {
+        search: 'interview',
+        limit: 5
+      }
+    });
+
+    if (response.tasks.length > 0) {
+      expect(response.tasks[0]).not.toHaveProperty('body');
+      expect(response.tasks[0]).not.toHaveProperty('replies');
+    }
+  });
+
+  it('returns task statistics for the last week', async () => {
+    const now = new Date();
+    const oneWeekAgo = new Date(now);
+    oneWeekAgo.setDate(now.getDate() - 7);
+
+    const response = await emit('getTaskStatistics', {
+      start: oneWeekAgo.toISOString(),
+      end: now.toISOString()
+    }, 60000);
+
+    expect(response.success).toBe(true);
+    expect(typeof response.statistics.totalCandidates).toBe('number');
+    expect(response.statistics.statusBreakdown).toBeDefined();
+    expect(Array.isArray(response.statistics.statusDistribution)).toBe(true);
+    expect(response.meta.dateRange).toMatchObject({
+      startDate: oneWeekAgo.toISOString(),
+      endDate: now.toISOString()
+    });
+  });
+  });

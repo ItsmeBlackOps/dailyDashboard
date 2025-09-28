@@ -1,0 +1,1006 @@
+{
+  "timestamp": "2025-09-27T01:36:58.899Z",
+  "testCredentials": {
+    "email": "harsh.patel@silverspaceinc.com",
+    "password": "Hkpatel@21"
+  },
+  "socketEvents": {
+    "connect": [
+      {
+        "type": "event",
+        "timestamp": "2025-09-27T01:36:58.928Z",
+        "data": {
+          "socketId": "UZqYiYk7JI13TH8QAAAB"
+        }
+      }
+    ],
+    "login": [
+      {
+        "type": "emit",
+        "timestamp": "2025-09-27T01:36:58.928Z",
+        "data": {
+          "email": "harsh.patel@silverspaceinc.com",
+          "password": "Hkpatel@21"
+        }
+      },
+      {
+        "type": "callback",
+        "timestamp": "2025-09-27T01:37:00.505Z",
+        "data": {
+          "success": true,
+          "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImhhcnNoLnBhdGVsQHNpbHZlcnNwYWNlaW5jLmNvbSIsImlhdCI6MTc1ODkzNzAxOCwiZXhwIjoxNzU4OTM3OTE4fQ.deLwzg78MVeWjOf_SABRsgXSlvlAEh-qy2MdLYKznl0",
+          "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImhhcnNoLnBhdGVsQHNpbHZlcnNwYWNlaW5jLmNvbSIsImlhdCI6MTc1ODkzNzAxOCwiZXhwIjoxNzU5NTQxODE4fQ.Ocp72JXB5od6LZ_B81jOQ5hJavdfVzYZ0yjEAL_FsSE",
+          "role": "admin",
+          "teamLead": "Lead A",
+          "manager": "Manager A"
+        }
+      }
+    ],
+    "ping": [
+      {
+        "type": "emit",
+        "timestamp": "2025-09-27T01:37:01.508Z",
+        "data": {}
+      },
+      {
+        "type": "callback",
+        "timestamp": "2025-09-27T01:37:01.511Z",
+        "data": {
+          "success": true,
+          "timestamp": "2025-09-27T01:37:01.510Z",
+          "socketId": "UZqYiYk7JI13TH8QAAAB"
+        }
+      }
+    ],
+    "getUserInfo": [
+      {
+        "type": "emit",
+        "timestamp": "2025-09-27T01:37:01.514Z",
+        "data": {}
+      },
+      {
+        "type": "callback",
+        "timestamp": "2025-09-27T01:37:01.516Z",
+        "data": {
+          "success": true,
+          "user": {
+            "email": "harsh.patel@silverspaceinc.com",
+            "role": "admin",
+            "teamLead": "Lead A",
+            "manager": "Manager A"
+          },
+          "authenticated": true
+        }
+      }
+    ],
+    "getTasksToday": [
+      {
+        "type": "emit",
+        "timestamp": "2025-09-27T01:37:01.516Z",
+        "data": {
+          "tab": "Date of Interview"
+        }
+      }
+    ],
+    "getDashboardSummary": [
+      {
+        "type": "emit",
+        "timestamp": "2025-09-27T01:37:11.520Z",
+        "data": {
+          "start": "2025-09-27T00:00:00.000Z",
+          "end": "2025-09-27T23:59:59.999Z"
+        }
+      },
+      {
+        "type": "callback",
+        "timestamp": "2025-09-27T01:37:13.091Z",
+        "data": {
+          "success": true,
+          "summary": [],
+          "meta": {
+            "count": 0,
+            "dateRange": {
+              "startDate": "2025-09-27T00:00:00.000Z",
+              "endDate": "2025-09-27T23:59:59.999Z"
+            },
+            "userRole": "admin",
+            "teamSize": 1
+          }
+        }
+      }
+    ],
+    "searchTasks": [
+      {
+        "type": "emit",
+        "timestamp": "2025-09-27T01:37:13.091Z",
+        "data": {
+          "search": "interview",
+          "limit": 10
+        }
+      },
+      {
+        "type": "callback",
+        "timestamp": "2025-09-27T01:37:14.995Z",
+        "data": {
+          "success": true,
+          "tasks": [
+            {
+              "_id": "68804b5e0c2864ceb6b2e26f",
+              "receivedDateTime": "2025-07-22T08:41:25Z",
+              "subject": "Interview Support - Manasa Banoth - It Support Engineer - Jul 24, 2025 at 10:00 AM",
+              "sender": "manisha.sajnani@vizvaconsultancy.co.uk",
+              "to": "tech.leaders@silverspaceinc.com",
+              "cc": "vishal@vizvaconsultancy.co.uk, avinash@vizvaconsultancy.co.uk, vishnu.p@vizvaconsultancy.co.uk, Aakash.khan@vizvainc.com, sakshi.katiyar@vizvaconsultancy.co.uk",
+              "body": "\nHi Team, Hope you are well.  Please can you help a candidate with an Interview I have attached the required document  Candidate NameManasa BanothGenderFemaleTechnologyIt Support EngineerEnd ClientIglu Tech GroupJob Title1st Line Technical Support AnalystInterview Round2ndDate and Time of Interview (EST)Jul 24, 2025 at 10:00 AMDuration60 minutesEmail IDmanasabanoth190699@gmail.comContact Number+44 (741) 475-6757  Kind regards,Manisha SajnaniDirect Line : +44 020 4515 7543Email : manisha.sajnani@vizvaconsultancy.co.ukWebsite : www.vizvaconsultancy.co.uk   ",
+              "Candidate Name": "Manasa Banoth",
+              "Technology": "It Support Engineer",
+              "End Client": "Iglu Tech Group",
+              "Interview Round": "2nd",
+              "Job Title": "1st Line Technical Support Analyst",
+              "Email ID": "manasabanoth190699@gmail.com",
+              "Contact No": "7414756757",
+              "Date of Interview": "07/24/2025",
+              "Start Time Of Interview": "10:00 AM",
+              "End Time Of Interview": "11:00 AM",
+              "status": "Completed",
+              "replies": [
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEJAAADdzZYpEekSLFEu_fZYlW-AAJbtEzHAAA=",
+                  "subject": "Re: Interview Support - Manasa Banoth - It Support Engineer - Jul 24, 2025 at 10:00 AM",
+                  "body": "Assigned To: @Jayesh Nalawade [jayesh.nalawade@silverspaceinc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-22T14:05:16Z",
+                  "sender": "Harsh.patel@silverspaceinc.com",
+                  "to": "manisha.sajnani@vizvaconsultancy.co.uk;tech.leaders@silverspaceinc.com;jayesh.nalawade@silverspaceinc.com",
+                  "cc": "vishal@vizvaconsultancy.co.uk;avinash@vizvaconsultancy.co.uk;vishnu.p@vizvaconsultancy.co.uk;Aakash.khan@vizvainc.com;sakshi.katiyar@vizvaconsultancy.co.uk",
+                  "all_recipients_str": "manisha.sajnani@vizvaconsultancy.co.uk;tech.leaders@silverspaceinc.com;jayesh.nalawade@silverspaceinc.com;vishal@vizvaconsultancy.co.uk;avinash@vizvaconsultancy.co.uk;vishnu.p@vizvaconsultancy.co.uk;Aakash.khan@vizvainc.com;sakshi.katiyar@vizvaconsultancy.co.uk",
+                  "splitBodies": [
+                    "Assigned To: @Jayesh Nalawade [jayesh.nalawade@silverspaceinc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJbsxmEAAA=",
+                  "subject": "Re: Interview Support - Manasa Banoth - It Support Engineer - Jul 24, 2025 at 10:00 AM",
+                  "body": "Acknowledged.",
+                  "receivedAt": "2025-07-22T14:12:18Z",
+                  "sender": "jayesh.nalawade@silverspaceinc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;manisha.sajnani@vizvaconsultancy.co.uk;tech.leaders@silverspaceinc.com",
+                  "cc": "vishal@vizvaconsultancy.co.uk;avinash@vizvaconsultancy.co.uk;vishnu.p@vizvaconsultancy.co.uk;Aakash.khan@vizvainc.com;sakshi.katiyar@vizvaconsultancy.co.uk",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;manisha.sajnani@vizvaconsultancy.co.uk;tech.leaders@silverspaceinc.com;vishal@vizvaconsultancy.co.uk;avinash@vizvaconsultancy.co.uk;vishnu.p@vizvaconsultancy.co.uk;Aakash.khan@vizvainc.com;sakshi.katiyar@vizvaconsultancy.co.uk",
+                  "splitBodies": [
+                    "Acknowledged."
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJd-cHBAAA=",
+                  "subject": "Re: Interview Support - Manasa Banoth - It Support Engineer - Jul 24, 2025 at 10:00 AM",
+                  "body": "Task Status: Completed \nInterview round: 2nd\nFeedback/ Reason: interview answer quality was good, candidate efforts were also\ngood, Candidate told me that she is relocated to new location now so internet\nconnection problem was there but still we managed everything well. Next round is\nface-to-face, There is strong possibility of next round.\nAsked Interviews Questions:  questions list\nWhat interested you in this particular job as the 1st Line Support Analyst?\nWhy are you looking to leave your current position?\nCan you give us an overview of what you do in your current role and what a\ntypical day looks like?\nYou have certifications like MS-900, MS-100, and AZ-900 completed, and you’re\nworking towards MD-102—can you tell us about that?\nApart from Active Directory and Microsoft 365, are you familiar and comfortable\nusing other Microsoft 365 admin centers? Which ones?\nHow do you handle tickets on a day-to-day basis, and what do you think is the\nmost important aspect?\nWhat do you define as excellent customer service from a help desk?\nHow do you differentiate between 1st, 2nd, and 3rd line tasks?\nHow familiar are you with SharePoint, and do you know how to set permissions?\nHow are you with Mac and macOS?\nA user reports their computer is running slow—how do you approach diagnosing and\nresolving this?\nWhat is the difference between a public IP address and a private IP address?\nA user is unable to access a shared folder they had access to yesterday—how\nwould you troubleshoot?\nWhat steps would you take if a user reports their laptop won’t power on?\nCan you give an example of when using the command line would be more efficient\nthan the GUI?\nA user can access local network resources but cannot browse the internet—how\nwould you troubleshoot?\nA user calls saying they cannot access the company VPN—how do you handle that?\nA user cannot log into Office 365 with the Microsoft Authenticator app on a new\nphone—how would you help?\nHow would you give multiple users permissions to a folder within SharePoint?\nA user calls saying they received a spam or phishing email—how do you verify it?\nWhat does a DHCP server do?\nWhat would you do if a user account has been compromised or hacked?\nHow would you handle a customer who is angry or upset on the phone?\nIf you were to join us, what would you aim to achieve in your first 12 months?\nDo you have any questions for us about the position or the company?",
+                  "receivedAt": "2025-07-24T14:50:31Z",
+                  "sender": "jayesh.nalawade@silverspaceinc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;manisha.sajnani@vizvaconsultancy.co.uk;tech.leaders@silverspaceinc.com",
+                  "cc": "vishal@vizvaconsultancy.co.uk;avinash@vizvaconsultancy.co.uk;vishnu.p@vizvaconsultancy.co.uk;Aakash.khan@vizvainc.com;sakshi.katiyar@vizvaconsultancy.co.uk",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;manisha.sajnani@vizvaconsultancy.co.uk;tech.leaders@silverspaceinc.com;vishal@vizvaconsultancy.co.uk;avinash@vizvaconsultancy.co.uk;vishnu.p@vizvaconsultancy.co.uk;Aakash.khan@vizvainc.com;sakshi.katiyar@vizvaconsultancy.co.uk",
+                  "splitBodies": [
+                    "Task Status: Completed \nInterview round: 2nd\nFeedback/ Reason: interview answer quality was good, candidate efforts were also\ngood, Candidate told me that she is relocated to new location now so internet\nconnection problem was there but still we managed everything well. Next round is\nface-to-face, There is strong possibility of next round.\nAsked Interviews Questions:  questions list\nWhat interested you in this particular job as the 1st Line Support Analyst?\nWhy are you looking to leave your current position?\nCan you give us an overview of what you do in your current role and what a\ntypical day looks like?\nYou have certifications like MS-900, MS-100, and AZ-900 completed, and you’re\nworking towards MD-102—can you tell us about that?\nApart from Active Directory and Microsoft 365, are you familiar and comfortable\nusing other Microsoft 365 admin centers? Which ones?\nHow do you handle tickets on a day-to-day basis, and what do you think is the\nmost important aspect?\nWhat do you define as excellent customer service from a help desk?\nHow do you differentiate between 1st, 2nd, and 3rd line tasks?\nHow familiar are you with SharePoint, and do you know how to set permissions?\nHow are you with Mac and macOS?\nA user reports their computer is running slow—how do you approach diagnosing and\nresolving this?\nWhat is the difference between a public IP address and a private IP address?\nA user is unable to access a shared folder they had access to yesterday—how\nwould you troubleshoot?\nWhat steps would you take if a user reports their laptop won’t power on?\nCan you give an example of when using the command line would be more efficient\nthan the GUI?\nA user can access local network resources but cannot browse the internet—how\nwould you troubleshoot?\nA user calls saying they cannot access the company VPN—how do you handle that?\nA user cannot log into Office 365 with the Microsoft Authenticator app on a new\nphone—how would you help?\nHow would you give multiple users permissions to a folder within SharePoint?\nA user calls saying they received a spam or phishing email—how do you verify it?\nWhat does a DHCP server do?\nWhat would you do if a user account has been compromised or hacked?\nHow would you handle a customer who is angry or upset on the phone?\nIf you were to join us, what would you aim to achieve in your first 12 months?\nDo you have any questions for us about the position or the company?"
+                  ]
+                }
+              ],
+              "assignment": {
+                "acknowledged": false
+              },
+              "assignedTo": "jayesh.nalawade@silverspaceinc.com",
+              "actualRound": "2nd",
+              "assignedExpert": "Jayesh Nalawade",
+              "assignedEmail": "jayesh.nalawade@silverspaceinc.com",
+              "assignedAt": "2025-09-27T01:37:14.985Z",
+              "startTime": "2025-07-24T14:00:00.000Z",
+              "endTime": "2025-07-24T15:00:00.000Z"
+            },
+            {
+              "_id": "68804b6a0c2864ceb6b2e270",
+              "receivedDateTime": "2025-07-22T13:28:48Z",
+              "subject": "Interview Support - Saransh Thakur - Data Scientist - Jul 22, 2025 at 5:00 PM",
+              "sender": "suheelahmad@vizvainc.com",
+              "to": "tech.leaders@silverspaceinc.com",
+              "cc": "tushar.ahuja@silverspaceinc.com, satyam.gupta@silverspaceinc.com",
+              "body": "\nCandidate NameSaransh ThakurGenderMaleTechnologyData ScientistEnd ClientMoenJob TitleData ScientistInterview RoundScreeningDate and Time of Interview (EST)Jul 22, 2025 at 5:00 PMDuration30 minutesEmail IDsaranshthakur051998@gmail.comContact Number+1 (669) 260-4308Job DescriptionAre you a passionate and talented AI and Data Scientist looking for an opportunity to make your mark? Leverage your expertise in data science and AI to develop solutions that tackle complex, real-world problems for both internal and external customers. If you thrive in a dynamic environment and want to take ownership over your work, in a mission-driven organization, we would love to hear from you.Position location: Hybrid onsite in Deerfield, IL How You'll Make an ImpactLead and drive the development and implementation of AI/ML models and algorithms to drive innovation across the AI within our water productsCreate the technical strategic vision for data science within water productsCollaborate with business stakeholders and cross-functional teams across the organization to identify and prioritize high-impact use cases for AI/ML applicationsDrive rapid prototyping efforts, focusing on learning from experiments, iterating on solutionsDemonstrate innovative and creative thinking to develop novel AI/ML approaches and solutionsPartner with product teams in order to embed AI/ML model solutions into physical and digital productsConduct in-depth data analysis and feature engineering to extract valuable insights and improve model performanceIdentify key insights from large data sources; interpret and communicate insights from data and analysis to product, service, and business managersPartner with our ML engineering team to design, develop, and deploy scalable and robust AI/ML solutions to solve complex business problems and improve operational efficiencyContinuously monitor and optimize AI/ML models to ensure their accuracy, reliability, and performance in production environmentsStay up-to-date with the latest advancements in AI/ML technologies and apply them to drive innovation and maintain a competitive edgeLead projects with both hands-on coding/analysis and thought leadership with a minimum viable product and minimum lovable product mindset leveraging the best technologies and methodologies appropriate for the business need and maturityProactively identify and communicate the challenges, opportunities, risks, and threats associated with project work to ensure the timely completion of the entire productWhat We OfferA dynamic, innovative, and collaborative work environment that fosters creativity and encourages out-of-the-box thinkingOpportunity to work on cutting-edge AI/ML projects that make a measurable impact on our products and to our customersAccess to state-of-the-art technology, tools, and resources to support your work and professional developmentMentorship from experienced AI/ML professionals who are leaders in their field and dedicated to helping you grow and succeedCollaborative opportunities with cross-functional teams, allowing you to expand your skills and knowledge across various domainsContinuous learning and development opportunities, including workshops, conferences, and training programs to keep you updated with the latest advancements in AI/MLFlexible work arrangements that promote work-life balance and support your personal and professional well-beingCompetitive compensation packageBe part of a collaborative, inclusive, and supportive team that values diversity, integrity, and excellenceEnjoy a culture that promotes work-life balance, fosters continuous learning, and celebrates individual and collective achievementsA diverse and inclusive workplace that values and celebrates individual differences and fosters a sense of belonging QualificationsExperience You'll BringMaster's degree in Computer Science, Statistics, Mathematics, or a related quantitative field (we will consider exceptional candidates without advanced degrees)8+ years of hands-on experience in developing and deploying AI/ML models in a production environmentExperience operating as a technical leadStrong expertise in machine learning algorithms, deep learning frameworks (e.g., TensorFlow, PyTorch), and statistical modeling techniquesExtremely experienced in programming languages such as Python, R, and SQL for data manipulation and analysisExperience with end-to-end feature development (owning feature definition, roadmap development, and experimentation)Experience distilling informal customer requirements into problem definitions, dealing with ambiguity, and competing objectivesExperience with big data technologies (e.g., Snowflake, Google BigQuery) and cloud computing platforms (e.g., AWS, GCP, Azure)Excellent problem-solving skills and ability to think creatively to develop innovative AI/ML solutionsStrong communication and collaboration skills to effectively work with cross-functional teams and stakeholdersProven track record of delivering high-impact AI/ML projects in a fast-paced and dynamic environmentDemonstrated ability to persevere and iterate through solutions in the face of technical challenges and setbacksHands-on experience in building solutions leveraging the latest AI capabilities and advancements, including large language models, generative AI, and other state-of-the-art techniquesAdditional InformationFortune Brands believes in fair and equitable pay. A reasonable estimate of the base salary range for this role is Hiring Pay Range: $130,000 USD - $175,000 USD. Please note that actual salaries may vary within the range, or be above or below the range, based on factors including, but not limited to, education, training, experience, professional achievement, business need, and location. In addition to base salary, employees will participate in either an annual bonus plan based on company and individual performance, or a role-based sales incentive plan.At Fortune Brands, we support the overall health and wellness of our associates by offering comprehensive, competitive benefits that prioritize all aspects of wellbeing and provide flexibility for our teammates’ unique needs. This includes robust health plans, a market-leading 401(k) program with a company contribution, product discounts, flexible time off benefits (including half-day summer Fridays per policy), inclusive fertility / adoption benefits, and more. We offer numerous Employee Resource Groups to support inclusivity and our associates’ feeling of belonging at work.Fortune Brands is a brand, innovation and channel leader focused on exciting, supercharged categories in the home products, security and commercial building markets. Our portfolio of brands includes Moen, House of Rohl, Aqualisa, SpringWell, Therma-Tru, Larson, Fiberon, Master Lock, SentrySafe and Yale residential.Fortune Brands is headquartered in Deerfield, Illinois and trades on the NYSE as FBINEqual Employment Opportunity:FBIN is an equal employment opportunity employer and does not discriminate against any applicant based on race, color, religion, sex, gender identity or expression, national origin, ancestry, age, disability, marital status, protected veteran status, sexual orientation, genetic history or information, or any other legally protected characteristic.We are committed to a diverse and inclusive workplace and encourage applicants from all backgrounds to apply. To support our efforts, we invite you to voluntarily share your gender, ethnicity, and veteran status. This information is confidential and helps us ensure an inclusive hiring process and improve our diversity initiatives.Reasonable Accommodations:FBIN is committed to working with and providing reasonable accommodation to applicants with disabilities. If you need a reasonable accommodation for any part of the application or interview process, please contact us at fbinleave.fbhs@fbin.com and let us know the nature of your request along with your contact information. Resumes submitted to this email address will not be responded to.",
+              "Candidate Name": "Saransh Thakur",
+              "Technology": "Data Scientist, AI/ML",
+              "End Client": "Moen",
+              "Interview Round": "Screening",
+              "Job Title": "Data Scientist",
+              "Email ID": "saranshthakur051998@gmail.com",
+              "Contact No": "6692604308",
+              "Date of Interview": "07/22/2025",
+              "Start Time Of Interview": "05:00 PM",
+              "End Time Of Interview": "05:30 PM",
+              "status": "Cancelled",
+              "replies": [
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEJAAADdzZYpEekSLFEu_fZYlW-AAJbtEzJAAA=",
+                  "subject": "Re: Interview Support - Saransh Thakur - Data Scientist - Jul 22, 2025 at 5:00 PM",
+                  "body": "Assigned To: @Kartikeya Baijal [Kartikeya.Baijal@silverspaceinc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-22T14:20:35Z",
+                  "sender": "Harsh.patel@silverspaceinc.com",
+                  "to": "suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com;Kartikeya.Baijal@silverspaceinc.com",
+                  "cc": "tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "all_recipients_str": "suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com;Kartikeya.Baijal@silverspaceinc.com;tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "splitBodies": [
+                    "Assigned To: @Kartikeya Baijal [Kartikeya.Baijal@silverspaceinc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJbsxmrAAA=",
+                  "subject": "Re: Interview Support - Saransh Thakur - Data Scientist - Jul 22, 2025 at 5:00 PM",
+                  "body": "Acknowledged \n\n\n[cid:5df0cff7-3c6c-4ffb-8e7d-3f6728d93d6b]",
+                  "receivedAt": "2025-07-22T14:56:43Z",
+                  "sender": "Kartikeya.Baijal@silverspaceinc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com;tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "splitBodies": [
+                    "Acknowledged \n\n\n[cid:5df0cff7-3c6c-4ffb-8e7d-3f6728d93d6b]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJbsxqxAAA=",
+                  "subject": "Re: Interview Support - Saransh Thakur - Data Scientist - Jul 22, 2025 at 5:00 PM",
+                  "body": "* Task Status: Cancelled \n * Interview Round: Screening\n * Feedback: He didn't receive a call from the interviewer\n   \n   \n * Interview Questions Asked: na\n   \n   \n\n\n\n\n\n[cid:43426875-2d31-4ba5-bd68-ecf51203ca4f]",
+                  "receivedAt": "2025-07-22T21:32:05Z",
+                  "sender": "Kartikeya.Baijal@silverspaceinc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com;tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "splitBodies": [
+                    "* Task Status: Cancelled \n * Interview Round: Screening\n * Feedback: He didn't receive a call from the interviewer\n   \n   \n * Interview Questions Asked: na\n   \n   \n\n\n\n\n\n[cid:43426875-2d31-4ba5-bd68-ecf51203ca4f]"
+                  ]
+                }
+              ],
+              "assignment": {
+                "acknowledged": false
+              },
+              "assignedTo": "Kartikeya.Baijal@silverspaceinc.com",
+              "actualRound": "Screening",
+              "assignedExpert": "Kartikeya Baijal",
+              "assignedEmail": "kartikeya.baijal@silverspaceinc.com",
+              "assignedAt": "2025-09-27T01:37:14.986Z",
+              "startTime": "2025-07-22T21:00:00.000Z",
+              "endTime": "2025-07-22T21:30:00.000Z"
+            },
+            {
+              "_id": "68804b6f0c2864ceb6b2e271",
+              "receivedDateTime": "2025-07-22T13:28:03Z",
+              "subject": "Interview Support - Oohasripriya Nandipati - Data Analyst - Jul 23, 2025 at 2:00 PM",
+              "sender": "ashish.negi@vizvainc.com",
+              "to": "tech.leaders@silverspaceinc.com",
+              "cc": "tushar.ahuja@silverspaceinc.com, Brhamdev.Sharma@vizvainc.com",
+              "body": "\nCandidate NameOohasripriya NandipatiGenderFemaleTechnologyData AnalystEnd ClientTeladoc HealthJob TitleSenior Eligibility AnalystInterview Round1stDate and Time of Interview (EST)Jul 23, 2025 at 2:00 PMDuration60 minutesEmail IDnandipati2001@gmail.comContact Number+1 (405) 370-3748Job Description:Teladoc Health is a global, whole person care company made up of a diverse community of people dedicated to transforming the healthcare experience. As an employee, you’re empowered to show up every day as your most authentic self and be a part of something bigger – thriving both personally and professionally. Together, let’s empower people everywhere to live their healthiest lives.Summary of PositionUnder the direction of the Director, Technical Eligibility, the Senior Eligibility Analyst will work on key revenue impacting processes within the Teladoc business model. Their responsibilities will include researching, analyzing data, and maintaining accuracy within the member database. Work will be measured by the achievement of business objectives and progress towards strategic goals leading to improved productivity or profitability. Essential Duties and ResponsibilitiesDevelop an understanding of medical data feeds, including Medical/Provider Claims Data, Pharmacy Benefit Management/Pharmacy Claims, and similar clinical evidence dataWork with technical and non-technical client stakeholders to explain data concepts and enforce data requirementsEstablish strong relationships with partners and clients with a goal of standardizing data file templates and operationsCollaborate with Product, Reporting, Clinical, Data Operations and Engineering teams on developing data-driven solutionsEnsure quality and integrity of our data through both manual querying and automated templatesDevelop various dashboards using our internal data visualization tools, Meta base and Power BIPerform root cause analysis on client or member issues leveraging multiple internal systemsResolve eligibility inquiries and effectively communicate outcomes to other departments while keeping to established timelines Review and correct eligibility data in Teladoc’s records, ensuring accuracy Assist with training and onboarding of new hires Participate in internal audit processesAct as a Subject Matter Expert on internal and client-facing calls as needed Maintain knowledge of industry standards for eligibility verificationUnderstand and adhere to HIPAA policies, procedures, and regulation, maintaining strict confidentiality Must access PHI/PIIThe time spent on each responsibility reflects an estimate and is subject to change dependent on business needs.                                                           Supervisory ResponsibilitiesNoQualifications Expected for Position1 – 3 years experience with data processing and analytics1 – 3 years experience with working with healthcare dataStrong SQL skills (MSSQL, MySQL, PostgreSQL, Redshift)Advanced excel skills Critical attention to detail Comfort and success working in a fast-paced environment with tight deadlines A proactive approach to identifying and resolving issues Strong communication, project management, and organizational skillsData warehousing and ETL experienceExperience developing and maintaining operational processesDegree in Computer Science, Information Systems or a related field",
+              "Candidate Name": "Oohasripriya Nandipati",
+              "Technology": "Data Analyst",
+              "End Client": "Teladoc Health",
+              "Interview Round": "1st",
+              "Job Title": "Senior Eligibility Analyst",
+              "Email ID": "nandipati2001@gmail.com",
+              "Contact No": "4053703748",
+              "Date of Interview": "07/23/2025",
+              "Start Time Of Interview": "02:00 PM",
+              "End Time Of Interview": "03:00 PM",
+              "status": "Completed",
+              "replies": [
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEJAAADdzZYpEekSLFEu_fZYlW-AAJbtEzUAAA=",
+                  "subject": "Re: Interview Support - Oohasripriya Nandipati - Data Analyst - Jul 23, 2025 at 2:00 PM",
+                  "body": "Assigned To: @Dhiraj Sharma [dhiraj.sharma@silverspaceinc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-22T14:50:11Z",
+                  "sender": "Harsh.patel@silverspaceinc.com",
+                  "to": "ashish.negi@vizvainc.com;tech.leaders@silverspaceinc.com;dhiraj.sharma@silverspaceinc.com",
+                  "cc": "tushar.ahuja@silverspaceinc.com;Brhamdev.Sharma@vizvainc.com",
+                  "all_recipients_str": "ashish.negi@vizvainc.com;tech.leaders@silverspaceinc.com;dhiraj.sharma@silverspaceinc.com;tushar.ahuja@silverspaceinc.com;Brhamdev.Sharma@vizvainc.com",
+                  "splitBodies": [
+                    "Assigned To: @Dhiraj Sharma [dhiraj.sharma@silverspaceinc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEJAAADdzZYpEekSLFEu_fZYlW-AAJbtEzgAAA=",
+                  "subject": "Re: Interview Support - Oohasripriya Nandipati - Data Analyst - Jul 23, 2025 at 2:00 PM",
+                  "body": "Assigned To: @Nikesh Raj [Nikesh.Raj@silverspaceinc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-22T15:46:19Z",
+                  "sender": "Harsh.patel@silverspaceinc.com",
+                  "to": "ashish.negi@vizvainc.com;tech.leaders@silverspaceinc.com;Nikesh.Raj@silverspaceinc.com",
+                  "cc": "tushar.ahuja@silverspaceinc.com;Brhamdev.Sharma@vizvainc.com",
+                  "all_recipients_str": "ashish.negi@vizvainc.com;tech.leaders@silverspaceinc.com;Nikesh.Raj@silverspaceinc.com;tushar.ahuja@silverspaceinc.com;Brhamdev.Sharma@vizvainc.com",
+                  "splitBodies": [
+                    "Assigned To: @Nikesh Raj [Nikesh.Raj@silverspaceinc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJbsxoHAAA=",
+                  "subject": "Re: Interview Support - Oohasripriya Nandipati - Data Analyst - Jul 23, 2025 at 2:00 PM",
+                  "body": "Acknowledged.\n\n\n[cid:b6eb7c12-7853-4549-8d1d-0198bf8ab06b]",
+                  "receivedAt": "2025-07-22T16:44:52Z",
+                  "sender": "Nikesh.Raj@silverspaceinc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;ashish.negi@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "tushar.ahuja@silverspaceinc.com;Brhamdev.Sharma@vizvainc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;ashish.negi@vizvainc.com;tech.leaders@silverspaceinc.com;tushar.ahuja@silverspaceinc.com;Brhamdev.Sharma@vizvainc.com",
+                  "splitBodies": [
+                    "Acknowledged.\n\n\n[cid:b6eb7c12-7853-4549-8d1d-0198bf8ab06b]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJdYCU_AAA=",
+                  "subject": "Re: Interview Support - Oohasripriya Nandipati - Data Analyst - Jul 23, 2025 at 2:00 PM",
+                  "body": "Hello Team,\nTask Status: Completed \nInterview round: 1st (Might be Final)\nFeedback: Initially, she seemed nervous and I tried to discuss with her about\nwhat she could expect in this interview. They started with some behavioural\nquestions which candidate was able to answer but at some instances, I noticed\nshe didn't follow the document when the interviewer asked a follow-up question.\nI suggested her to stick to it. A SQL exercise was also done in the second half\nof the session and all queries were correct and the interviewer asked just one\nfollow-up that why she didn't use inner join but she was able to handle it even\nthough I provided the response. This seemed like a first and final round.\nAsked Interviews Questions:\n* Can you tell me what career accomplishment makes you most proud?\n* Who was the audience for the reporting you built? Were they technical or\nnon-technical? How did you cater your work to them?\n* How did you define requirements when working with multiple stakeholder groups\nlike clinical leadership and pharmacy ops?\n* When explaining complex data findings to non-technical teams, how do you\napproach that?\n* Can you give an example of a time when your data insights led directly to an\noperational change or process improvement?\n* What challenges have you faced when presenting data to non-technical\nstakeholders, and what do you find most difficult in communicating your point?\n* Can you elaborate on how you managed a situation where stakeholders had\npreconceived ideas about what the data should show?\n* How do you personally deal with competing priorities, especially when\nmember-impacting escalations arise?\n* What is something that’s not on your resume that you’d want us to know about\nyou?\n* Would you prefer using DB Fiddle or writing answers directly in the shared\nassessment document?\n* Why did you choose to use a JOIN versus a WHERE clause in your SQL approach?\n* Do you have any questions for us before we wrap up?\nRegards,\n\n\n[cid:047e2294-9a46-49d6-bf07-8c7d7aa3b3f3]",
+                  "receivedAt": "2025-07-23T19:34:04Z",
+                  "sender": "Nikesh.Raj@silverspaceinc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;ashish.negi@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "tushar.ahuja@silverspaceinc.com;Brhamdev.Sharma@vizvainc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;ashish.negi@vizvainc.com;tech.leaders@silverspaceinc.com;tushar.ahuja@silverspaceinc.com;Brhamdev.Sharma@vizvainc.com",
+                  "splitBodies": [
+                    "Hello Team,\nTask Status: Completed \nInterview round: 1st (Might be Final)\nFeedback: Initially, she seemed nervous and I tried to discuss with her about\nwhat she could expect in this interview. They started with some behavioural\nquestions which candidate was able to answer but at some instances, I noticed\nshe didn't follow the document when the interviewer asked a follow-up question.\nI suggested her to stick to it. A SQL exercise was also done in the second half\nof the session and all queries were correct and the interviewer asked just one\nfollow-up that why she didn't use inner join but she was able to handle it even\nthough I provided the response. This seemed like a first and final round.\nAsked Interviews Questions:\n* Can you tell me what career accomplishment makes you most proud?\n* Who was the audience for the reporting you built? Were they technical or\nnon-technical? How did you cater your work to them?\n* How did you define requirements when working with multiple stakeholder groups\nlike clinical leadership and pharmacy ops?\n* When explaining complex data findings to non-technical teams, how do you\napproach that?\n* Can you give an example of a time when your data insights led directly to an\noperational change or process improvement?\n* What challenges have you faced when presenting data to non-technical\nstakeholders, and what do you find most difficult in communicating your point?\n* Can you elaborate on how you managed a situation where stakeholders had\npreconceived ideas about what the data should show?\n* How do you personally deal with competing priorities, especially when\nmember-impacting escalations arise?\n* What is something that’s not on your resume that you’d want us to know about\nyou?\n* Would you prefer using DB Fiddle or writing answers directly in the shared\nassessment document?\n* Why did you choose to use a JOIN versus a WHERE clause in your SQL approach?\n* Do you have any questions for us before we wrap up?\nRegards,\n\n\n[cid:047e2294-9a46-49d6-bf07-8c7d7aa3b3f3]"
+                  ]
+                }
+              ],
+              "assignment": {
+                "acknowledged": false
+              },
+              "assignedTo": "dhiraj.sharma@silverspaceinc.com",
+              "actualRound": "1st (Might be Final)",
+              "assignedExpert": "Dhiraj Sharma",
+              "assignedEmail": "dhiraj.sharma@silverspaceinc.com",
+              "assignedAt": "2025-09-27T01:37:14.986Z",
+              "startTime": "2025-07-23T18:00:00.000Z",
+              "endTime": "2025-07-23T19:00:00.000Z"
+            },
+            {
+              "_id": "68804b730c2864ceb6b2e272",
+              "receivedDateTime": "2025-07-22T13:24:13Z",
+              "subject": "Interview Support - Yaswanth Potnuru - .net Full Stack Developer - Jul 23, 2025 at 1:00 PM",
+              "sender": "Priyanshu.gupta@vizvainc.com",
+              "to": "tech.leaders@silverspaceinc.com",
+              "cc": "shivani.ujjwal@silverspaceinc.com, tushar.ahuja@silverspaceinc.com",
+              "body": "\nCandidate NameYaswanth PotnuruGenderMaleTechnology.net Full Stack DeveloperEnd ClientThyssenkruppJob TitleIt Applications Systems DeveloperInterview Round1stDate and Time of Interview (EST)Jul 23, 2025 at 1:00 PMDuration45 minutesEmail IDyaswanthpotnuru119@gmail.comContact Number+1 (513) 888-2668Your responsibilitiesIT Applications Systems Developer for thyssenkrupp Bilstein of America, Inc. in Hamilton, Ohio. Duties include: Develop, enhance, debug, support, maintain, and test software solutions to support logistics processes and initiatives; provide software solutions for SAP-based logistics IT systems and programs, including interfacing with SAP MM, LE, WM, and PP modules, and configuring SAP master data elements, including data mapping and data conversion; connect company logistics system needs with applicable technology solutions, including reading and interpreting logistics process flow documentation and systematically developing software processes to provide specific logistics system functionality; and design, develop, and modify logistics-related programs, objects, and processes, including identifying required resources and communicating system requirements and project timelines to affected parties.Your profileRequirements: Bachelor degree in Computer Engineering, Computer Science, Business Information Systems, or foreign equivalent degree. 2 years of experience in a logistics systems analysis or specialist position in the automotive suspension system industry. Must have 2 years of experience with each of the following: developing software solutions for SAP-based logistics IT systems and programs in the automotive industry, including interfacing with SAP MM, LE, WM, and PP modules, for production and material planning, capacity planning of machinery, packaging management, and shipping and receiving operations; supporting operative logistics processes in the automotive industry, including planning for infrastructure and equipment needs, warehouse management and layout organization, internal transportation with vehicle fleets, transport management with forwarders and overseeing logistics service providers, inventory storage and cost reduction, and implementing 5S and lean management methodologies; developing and implementing new logistics system functionality into SAP systems utilizing BADI, and BAPI to enable external applications to access logistics processes and data in SAP R/3 systems; developing methods of facilitating communications between SAP-based logistics systems and MS Windows devices with Visual Basic .NET; and utilizing LSMW tools to develop methods for bulk transfer and conversion of data from non-SAP systems to SAP R/3-based logistics systems. Apply online at www.thyssenkrupp.com; email bernardo.samaniego@thyssenkrupp-automotive.com with questions. EOE.The [above] is intended to describe the general content of and requirements for the performance of this job. It is not to be construed as an exhaustive statement of duties, responsibilities, or requirements. To perform this job successfully, an individual must be able to perform each essential duty satisfactorily. The requirements are representative of the knowledge, skill, and/or ability required. Reasonable accommodations may be made to enable individuals with disabilities to perform the essential functions.Your benefitsBilstein has great benefits to offer!A state-of-the-art OE manufacturing plant with a strong focus on safety and cleanliness.Multiple competitive Health, Dental & Vision Coverage options.401K matching program.Paid time off + 13 paid holidays.Paid volunteer hours.Tuition reimbursement program.Gym reimbursement.Company-paid short-term disability and life insurance.Internal growth opportunities.Employee Assistance Program (EAP).Discounted BILSTEIN products.Companythyssenkrupp Bilstein of America, Inc. is a world class manufacturer of suspension solutions headquartered in Hamilton, Ohio USA. thyssenkrupp Bilstein of America supplies products to a wide range of Original Equipment Automotive Manufacturers as well as Aftermarket and Motorsports customers. Our Aftermarket operations are based out of Poway, CA and our Motorsports operations are based out of Mooresville, NC.For decades, the name BILSTEIN has been synonymous with high tech in suspension design, driving comfort, and safety. In order to expand this position BILSTEIN became a division of thyssenkrupp Technologies AG in 1988, and a wholly owned subsidiary in 2005. This partnership has enabled us to continue the BILSTEIN tradition of excellence.ContactWe only accept online applications submitted through the 'Apply Now' button on this job posting. You can find all current job openings on our career site at: https://jobs.thyssenkrupp.com/en Thank you for your interest in joining our team!",
+              "Candidate Name": "Yaswanth Potnuru",
+              "Technology": ".net Full Stack Developer",
+              "End Client": "Thyssenkrupp",
+              "Interview Round": "1st",
+              "Job Title": "It Applications Systems Developer",
+              "Email ID": "yaswanthpotnuru119@gmail.com",
+              "Contact No": "5138882668",
+              "Date of Interview": "07/23/2025",
+              "Start Time Of Interview": "01:00 PM",
+              "End Time Of Interview": "01:45 PM",
+              "status": "Completed",
+              "replies": [
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEJAAADdzZYpEekSLFEu_fZYlW-AAJbtEzTAAA=",
+                  "subject": "Re: Interview Support - Yaswanth Potnuru - .net Full Stack Developer - Jul 23, 2025 at 1:00 PM",
+                  "body": "Assigned To: @Prateek Narvariya [Prateek.Narvariya@silverspaceinc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-22T14:49:10Z",
+                  "sender": "Harsh.patel@silverspaceinc.com",
+                  "to": "Priyanshu.gupta@vizvainc.com;tech.leaders@silverspaceinc.com;Prateek.Narvariya@silverspaceinc.com",
+                  "cc": "shivani.ujjwal@silverspaceinc.com;tushar.ahuja@silverspaceinc.com",
+                  "all_recipients_str": "Priyanshu.gupta@vizvainc.com;tech.leaders@silverspaceinc.com;Prateek.Narvariya@silverspaceinc.com;shivani.ujjwal@silverspaceinc.com;tushar.ahuja@silverspaceinc.com",
+                  "splitBodies": [
+                    "Assigned To: @Prateek Narvariya [Prateek.Narvariya@silverspaceinc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJbsxmpAAA=",
+                  "subject": "Re: Interview Support - Yaswanth Potnuru - .net Full Stack Developer - Jul 23, 2025 at 1:00 PM",
+                  "body": "Acknowledged",
+                  "receivedAt": "2025-07-22T14:52:39Z",
+                  "sender": "Prateek.Narvariya@silverspaceinc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;Priyanshu.gupta@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "shivani.ujjwal@silverspaceinc.com;tushar.ahuja@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;Priyanshu.gupta@vizvainc.com;tech.leaders@silverspaceinc.com;shivani.ujjwal@silverspaceinc.com;tushar.ahuja@silverspaceinc.com",
+                  "splitBodies": [
+                    "Acknowledged"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJd-cF5AAA=",
+                  "subject": "Re: Interview Support - Yaswanth Potnuru - .net Full Stack Developer - Jul 23, 2025 at 1:00 PM",
+                  "body": "Hello Team,\nHope you all are doing well.\nTask Status: Completed \nInterview Round:  1st\nFeedback: The interview went average. It was completely technical, focusing on\nthe candidate’s resume, covering his past experience and work. The candidate\nreferred to a document to provide answers.\nInterview Questions Asked:\nDo you have any other experience in the automotive industry?\nWere warehouse management, inventory planning, and material management within\nSAP or in a different ERP?\nTalk to me more about material planning—what was your level of exposure to that\nand what were you involved in with material in SAP?\nDid you have any experience or exposure to packaging management or shipping or\nreceiving?\nDo you have any experience with warehouse layout, organization, or warehouse\noptimization?\nWhat is the difference between a storage type, storage section, and a storage\nbin?\nWhat is your experience with internal transportation vehicles and logistics\nservice providers?\nWhat is your experience with inventory storage and cost reductions?\nDo you have any experience with 5S methodologies or lean management\nmethodologies?\nWhat is your experience using BAdIs?\nWhat is your experience with BAPIs?\nWhat is your experience with LSMW?\n\n\nSilverspace Inc. logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/svg-300%25.png?alt=media]\nPrateek Narvariya\nSoftware Development Engineer\nSilverspace Inc.\n📧 Prateek.Narvariya@silverspaceinc.com\n[Prateek.Narvariya@silverspaceinc.com]📞 (910) 378-3454🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-24T13:33:30Z",
+                  "sender": "Prateek.Narvariya@silverspaceinc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;Priyanshu.gupta@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "shivani.ujjwal@silverspaceinc.com;tushar.ahuja@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;Priyanshu.gupta@vizvainc.com;tech.leaders@silverspaceinc.com;shivani.ujjwal@silverspaceinc.com;tushar.ahuja@silverspaceinc.com",
+                  "splitBodies": [
+                    "Hello Team,\nHope you all are doing well.\nTask Status: Completed \nInterview Round:  1st\nFeedback: The interview went average. It was completely technical, focusing on\nthe candidate’s resume, covering his past experience and work. The candidate\nreferred to a document to provide answers.\nInterview Questions Asked:\nDo you have any other experience in the automotive industry?\nWere warehouse management, inventory planning, and material management within\nSAP or in a different ERP?\nTalk to me more about material planning—what was your level of exposure to that\nand what were you involved in with material in SAP?\nDid you have any experience or exposure to packaging management or shipping or\nreceiving?\nDo you have any experience with warehouse layout, organization, or warehouse\noptimization?\nWhat is the difference between a storage type, storage section, and a storage\nbin?\nWhat is your experience with internal transportation vehicles and logistics\nservice providers?\nWhat is your experience with inventory storage and cost reductions?\nDo you have any experience with 5S methodologies or lean management\nmethodologies?\nWhat is your experience using BAdIs?\nWhat is your experience with BAPIs?\nWhat is your experience with LSMW?\n\n\nSilverspace Inc. logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/svg-300%25.png?alt=media]\nPrateek Narvariya\nSoftware Development Engineer\nSilverspace Inc.\n📧 Prateek.Narvariya@silverspaceinc.com\n[Prateek.Narvariya@silverspaceinc.com]📞 (910) 378-3454🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                }
+              ],
+              "assignment": {
+                "acknowledged": false
+              },
+              "assignedTo": "Prateek.Narvariya@silverspaceinc.com",
+              "actualRound": "1st",
+              "assignedExpert": "Prateek Narvariya",
+              "assignedEmail": "prateek.narvariya@silverspaceinc.com",
+              "assignedAt": "2025-09-27T01:37:14.987Z",
+              "startTime": "2025-07-23T17:00:00.000Z",
+              "endTime": "2025-07-23T17:45:00.000Z"
+            },
+            {
+              "_id": "68804b770c2864ceb6b2e273",
+              "receivedDateTime": "2025-07-22T13:22:54Z",
+              "subject": "Interview Support - Shafwat Mustafa - Data Analyst - Jul 22, 2025 at 3:00 PM",
+              "sender": "suheelahmad@vizvainc.com",
+              "to": "tech.leaders@silverspaceinc.com",
+              "cc": "tushar.ahuja@silverspaceinc.com, satyam.gupta@silverspaceinc.com",
+              "body": "\nCandidate NameShafwat MustafaGenderMaleTechnologyData AnalystEnd ClientDishJob TitleData AnalystInterview Round2ndDate and Time of Interview (EST)Jul 22, 2025 at 3:00 PMDuration60 minutesEmail IDshafwat3@gmail.comContact Number+1 (856) 796-0284Company SummaryEchoStar is reimagining the future of connectivity. Our business reach spans satellite television service, live-streaming and on-demand programming, smart home installation services, mobile plans and products.Today, our brands include Boost Mobile, DISH TV, Gen Mobile, Hughes and Sling TV.Department SummaryThe In-Home Services field professionals lead all field operations and thousands of technicians across nearly 100 facilities across the country. Devoted to building a collaborative and committed group of employees who manage inventory, fleet and performance - IHS is the driving force that connects our customers with the industry’s best products and services for DISH.Job Duties And ResponsibilitiesThis is a position in the Command Center Organization within In Home Services. The Command Center is an organization consisting of five different strategic teams, all focused on optimizing efficiency in the field. This role will have the opportunity to interact with internal and external customers across the country. Accuracy, timeliness and effective communication are expectations for success in the Command Center. A Data Analyst will also have the ability to identify and implement innovative strategies and projects.Key ResponsibilitiesNurture and enhance our relationships with Field Managers, leveraging both quantitative and qualitative insights from data sources across the enterpriseCollect, model, analyze, report, and present large amounts of data with meticulous attention to detailGarner key insights from data and communicate these findings to key stakeholders to help make data-driven decisions. Key technologies include SQL, Python, R, Tableau, Microsoft, and Google suite of toolsLeverage AWS services for data storage, processing, and analyticsEmploy creativity and critical thinking in problem-solving and achieving business goals, using statistical techniques, advanced approaches, and/or new technologiesDevelop and deliver recommendations for continuous improvement to internal and external field management, executives, and other business partnersFoster engagement and excitement around initiatives during presentationsConduct long-term and short-term data analysis focusing on increasing productivity and lowering fixed and variable costs while improving customer experienceSkills, Experience And RequirementsEducation and Experience:Bachelor's Degree with a focus in Business or related field (Business Analytics, Finance, Business Development Economics, Statistics, Mathematics, Education); Master's Degree a plusExperience with SQL, Python, R, Tableau, AWS, Snowflake, and Excel in a business environment requiredExperience manipulating large datasets in a business environment requiredExperience translating data to actionable insights requiredSkills And QualificationsExcellent facilitation skills, strong desire to communicate in all settingsApply objective, analytical, and orderly thinking to the analysis of complex problemsEmbrace the Adventure, willing to take risks, try innovative approaches, be adaptable to change, and learn from failuresDemonstrate Curiosity, strong desire to learn and add value to all aspects of the DISH businessVisa sponsorship not available for this roleSalary RangesCompensation: $63,150.00/Year - $90,200.00/YearBenefitsWe offer versatile health perks, including flexible spending accounts, HSA, a 401(k) Plan with company match, ESPP, career opportunities, and a flexible time away plan; all benefits can be viewed here: DISH Benefits.The base pay range shown is a guideline. Individual total compensation will vary based on factors such as qualifications, skill level, and competencies; compensation is based on the role's location and is subject to change based on work location.Candidates need to successfully complete a pre-employment screen, which may include a drug test and DMV check. Our company is committed to fostering an inclusive and equitable workplace where every individual has the opportunity to succeed. We are dedicated to providing individuals with criminal or arrest records a fair chance of employment in accordance with local, state, and federal laws.The posting will be active for a minimum of 3 days. The active posting will continue to extend by 3 days until the position is filled.",
+              "Candidate Name": "Shafwat Mustafa",
+              "Technology": "Data Analyst, SQL, Python, R, Tableau, AWS, Snowflake, Excel",
+              "End Client": "Dish",
+              "Interview Round": "2nd",
+              "Job Title": "Data Analyst",
+              "Email ID": "shafwat3@gmail.com",
+              "Contact No": "8567960284",
+              "Date of Interview": "07/22/2025",
+              "Start Time Of Interview": "03:00 PM",
+              "End Time Of Interview": "04:00 PM",
+              "status": "Completed",
+              "replies": [
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEJAAADdzZYpEekSLFEu_fZYlW-AAJbtEzLAAA=",
+                  "subject": "Re: Interview Support - Shafwat Mustafa - Data Analyst - Jul 22, 2025 at 3:00 PM",
+                  "body": "Assigned To: @Darshan Singh [Darshan.Singh@vizvainc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-22T14:24:34Z",
+                  "sender": "Harsh.patel@silverspaceinc.com",
+                  "to": "suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com;Darshan.Singh@vizvainc.com",
+                  "cc": "tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "all_recipients_str": "suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com;Darshan.Singh@vizvainc.com;tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "splitBodies": [
+                    "Assigned To: @Darshan Singh [Darshan.Singh@vizvainc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJbsxmMAAA=",
+                  "subject": "Re: Interview Support - Shafwat Mustafa - Data Analyst - Jul 22, 2025 at 3:00 PM",
+                  "body": "Acknowledged\n\n\n\nRegards,\n\n\nVizva Consultancy Services logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/vizva%20final.png?alt=media]\nDarshan Singh\nData Analyst\nVizva Consultancy Services\n📧 Darshan.singh@vizvainc.com [Darshan.singh@vizvainc.com]📞 (281)\n640-2312🔗 www.vizvaconsultancyservices.com\n[https://www.vizvaconsultancyservices.com/]",
+                  "receivedAt": "2025-07-22T14:25:29Z",
+                  "sender": "Darshan.Singh@vizvainc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com;tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "splitBodies": [
+                    "Acknowledged\n\n\n\nRegards,\n\n\nVizva Consultancy Services logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/vizva%20final.png?alt=media]\nDarshan Singh\nData Analyst\nVizva Consultancy Services\n📧 Darshan.singh@vizvainc.com [Darshan.singh@vizvainc.com]📞 (281)\n640-2312🔗 www.vizvaconsultancyservices.com\n[https://www.vizvaconsultancyservices.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJdYCWPAAA=",
+                  "subject": "Re: Interview Support - Shafwat Mustafa - Data Analyst - Jul 22, 2025 at 3:00 PM",
+                  "body": "Task Status: Completed \nInterview Round : 2nd\n\nFeedback: The interviewers primarily focused on questions related to the job\nrequirements and explored them in depth. The candidate partially referred to the\nprovided document but mostly attempted to answer independently. However, the\nresponses were not well explained and were insufficient in addressing the\nquestions asked. In the end, I advised the candidate to refer to the document\nfor a more structured and complete response.\n\n\n\n\nRegards,\nVizva Consultancy Services logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/vizva%20final.png?alt=media]\nDarshan Singh\nData Analyst\nVizva Consultancy Services\n📧 Darshan.singh@vizvainc.com [Darshan.singh@vizvainc.com]📞 (281)\n640-2312🔗 www.vizvaconsultancyservices.com\n[https://www.vizvaconsultancyservices.com/]",
+                  "receivedAt": "2025-07-23T21:19:57Z",
+                  "sender": "Darshan.Singh@vizvainc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com;tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "splitBodies": [
+                    "Task Status: Completed \nInterview Round : 2nd\n\nFeedback: The interviewers primarily focused on questions related to the job\nrequirements and explored them in depth. The candidate partially referred to the\nprovided document but mostly attempted to answer independently. However, the\nresponses were not well explained and were insufficient in addressing the\nquestions asked. In the end, I advised the candidate to refer to the document\nfor a more structured and complete response.\n\n\n\n\nRegards,\nVizva Consultancy Services logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/vizva%20final.png?alt=media]\nDarshan Singh\nData Analyst\nVizva Consultancy Services\n📧 Darshan.singh@vizvainc.com [Darshan.singh@vizvainc.com]📞 (281)\n640-2312🔗 www.vizvaconsultancyservices.com\n[https://www.vizvaconsultancyservices.com/]"
+                  ]
+                }
+              ],
+              "assignment": {
+                "acknowledged": false
+              },
+              "assignedTo": "Darshan.Singh@vizvainc.com",
+              "actualRound": "2nd",
+              "assignedExpert": "Darshan Singh",
+              "assignedEmail": "darshan.singh@vizvainc.com",
+              "assignedAt": "2025-09-27T01:37:14.987Z",
+              "startTime": "2025-07-22T19:00:00.000Z",
+              "endTime": "2025-07-22T20:00:00.000Z"
+            },
+            {
+              "_id": "68804b7c0c2864ceb6b2e274",
+              "receivedDateTime": "2025-07-22T13:20:27Z",
+              "subject": "Interview Support - Shafwat Mustafa - Data Analyst - Jul 22, 2025 at 12:30 PM",
+              "sender": "suheelahmad@vizvainc.com",
+              "to": "tech.leaders@silverspaceinc.com",
+              "cc": "tushar.ahuja@silverspaceinc.com, satyam.gupta@silverspaceinc.com",
+              "body": "\nCandidate NameShafwat MustafaGenderMaleTechnologyData AnalystEnd ClientCignaJob TitleData AnalystInterview Round1stDate and Time of Interview (EST)Jul 22, 2025 at 12:30 PMDuration30 minutesEmail IDshafwat3@gmail.comContact Number+1 (856) 796-0284Role Overview:A Cigna Data Analyst primarily works with healthcare claims data, using SQL to query and manipulate databases, and Python for data analysis and reporting tasks. The daily work will vary, but here’s a typical breakdown of tasks:Daily Responsibilities:Data Extraction & Querying (SQL)Writing and optimizing SQL queries to pull healthcare claims data from databases.Ensuring data accuracy and completeness by troubleshooting and validating queries.Creating and maintaining complex database views or reports that are shared across teams.Data Analysis & Reporting (SQL & Python)Analyzing trends in healthcare claims data (e.g., claims processing times, patient outcomes, or provider performance).Using Python (often with libraries like pandas, NumPy, or matplotlib) to clean, transform, and analyze large datasets.Building dashboards or visualizations for reporting using tools like Tableau or Power BI or generating reports through Python scripts.Data Quality AssuranceEnsuring the data extracted is consistent, accurate, and in line with business rules or compliance requirements (e.g., HIPAA).Identifying data anomalies or errors in claims data and coordinating with relevant teams to resolve issues.Collaboration and Stakeholder CommunicationRegular communication with cross-functional teams, such as healthcare operations, finance, or IT, to understand data needs and provide analytical insights.Presenting findings to leadership or other stakeholders, often using visualizations to make complex data understandable.Automation and Optimization (Python)Automating repetitive tasks or reports using Python scripts to save time and improve efficiency.Creating scripts to clean and preprocess incoming data from various sources.Compliance and DocumentationEnsuring that all data analysis and reporting is compliant with Cigna’s internal policies and external regulations (such as healthcare privacy standards like HIPAA).Documenting the data analysis processes and methodologies for future reference. Typical Workflow:Morning: Start the day by reviewing the data requests and priorities, often meeting with team members or stakeholders to align on deliverables.Midday: Extract data from SQL databases, run queries, and begin initial analysis using Python. Review and refine dashboards or reports based on feedback from earlier meetings.Afternoon: Focus on deeper analysis or automation tasks, review findings with leadership, and finalize reports. Address any ad-hoc data questions or issues that may arise. ",
+              "Candidate Name": "Shafwat Mustafa",
+              "Technology": "Data Analyst, SQL, Python",
+              "End Client": "Cigna",
+              "Interview Round": "1st",
+              "Job Title": "Data Analyst",
+              "Email ID": "shafwat3@gmail.com",
+              "Contact No": "8567960284",
+              "Date of Interview": "07/22/2025",
+              "Start Time Of Interview": "12:30 PM",
+              "End Time Of Interview": "01:00 PM",
+              "status": "Completed",
+              "replies": [
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEJAAADdzZYpEekSLFEu_fZYlW-AAJbtEzIAAA=",
+                  "subject": "Re: Interview Support - Shafwat Mustafa - Data Analyst - Jul 22, 2025 at 12:30 PM",
+                  "body": "Assigned To: @Darshan Singh [Darshan.Singh@vizvainc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-22T14:11:41Z",
+                  "sender": "Harsh.patel@silverspaceinc.com",
+                  "to": "suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com;Darshan.Singh@vizvainc.com",
+                  "cc": "tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "all_recipients_str": "suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com;Darshan.Singh@vizvainc.com;tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "splitBodies": [
+                    "Assigned To: @Darshan Singh [Darshan.Singh@vizvainc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJbsxmCAAA=",
+                  "subject": "Re: Interview Support - Shafwat Mustafa - Data Analyst - Jul 22, 2025 at 12:30 PM",
+                  "body": "Acknowledged\n\n\n\nRegards,\n\n\nVizva Consultancy Services logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/vizva%20final.png?alt=media]\nDarshan Singh\nData Analyst\nVizva Consultancy Services\n📧 Darshan.singh@vizvainc.com [Darshan.singh@vizvainc.com]📞 (281)\n640-2312🔗 www.vizvaconsultancyservices.com\n[https://www.vizvaconsultancyservices.com/]",
+                  "receivedAt": "2025-07-22T14:12:06Z",
+                  "sender": "Darshan.Singh@vizvainc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com;tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "splitBodies": [
+                    "Acknowledged\n\n\n\nRegards,\n\n\nVizva Consultancy Services logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/vizva%20final.png?alt=media]\nDarshan Singh\nData Analyst\nVizva Consultancy Services\n📧 Darshan.singh@vizvainc.com [Darshan.singh@vizvainc.com]📞 (281)\n640-2312🔗 www.vizvaconsultancyservices.com\n[https://www.vizvaconsultancyservices.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJd-cHIAAA=",
+                  "subject": "Re: Interview Support - Shafwat Mustafa - Data Analyst - Jul 22, 2025 at 12:30 PM",
+                  "body": "Task Status: Completed\nInterview Round : 1st\nFeedback: This was a panel interview. The panel asked the candidate questions\nrelated to the job role and the tools required for it. The candidate either did\nnot refer to the provided document or only referred to it partially, often\nattempting to answer based on his own understanding. Most of the responses\nlacked depth, but he made an effort to manage. Overall, the interview\nperformance was not very strong.\n\n\n\n\nRegards,\n\n\nVizva Consultancy Services logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/vizva%20final.png?alt=media]\nDarshan Singh\nData Analyst\nVizva Consultancy Services\n📧 Darshan.singh@vizvainc.com [Darshan.singh@vizvainc.com]📞 (281)\n640-2312🔗 www.vizvaconsultancyservices.com\n[https://www.vizvaconsultancyservices.com/]",
+                  "receivedAt": "2025-07-24T15:00:54Z",
+                  "sender": "Darshan.Singh@vizvainc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;suheelahmad@vizvainc.com;tech.leaders@silverspaceinc.com;tushar.ahuja@silverspaceinc.com;satyam.gupta@silverspaceinc.com",
+                  "splitBodies": [
+                    "Task Status: Completed\nInterview Round : 1st\nFeedback: This was a panel interview. The panel asked the candidate questions\nrelated to the job role and the tools required for it. The candidate either did\nnot refer to the provided document or only referred to it partially, often\nattempting to answer based on his own understanding. Most of the responses\nlacked depth, but he made an effort to manage. Overall, the interview\nperformance was not very strong.\n\n\n\n\nRegards,\n\n\nVizva Consultancy Services logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/vizva%20final.png?alt=media]\nDarshan Singh\nData Analyst\nVizva Consultancy Services\n📧 Darshan.singh@vizvainc.com [Darshan.singh@vizvainc.com]📞 (281)\n640-2312🔗 www.vizvaconsultancyservices.com\n[https://www.vizvaconsultancyservices.com/]"
+                  ]
+                }
+              ],
+              "assignment": {
+                "acknowledged": false
+              },
+              "assignedTo": "Darshan.Singh@vizvainc.com",
+              "actualRound": "1st",
+              "assignedExpert": "Darshan Singh",
+              "assignedEmail": "darshan.singh@vizvainc.com",
+              "assignedAt": "2025-09-27T01:37:14.987Z",
+              "startTime": "2025-07-22T16:30:00.000Z",
+              "endTime": "2025-07-22T17:00:00.000Z"
+            },
+            {
+              "_id": "68804b800c2864ceb6b2e275",
+              "receivedDateTime": "2025-07-22T13:15:50Z",
+              "subject": "Interview Support - Sairam Reddy Pol Reddy - Data Analyst - Jul 29, 2025 at 10:45 AM",
+              "sender": "nandini@vizvainc.com",
+              "to": "tech.leaders@silverspaceinc.com",
+              "cc": "aryan.mishra@silverspaceinc.com, valish@silverspaceinc.com, Avinash.Mishra@vizvainc.com",
+              "body": "\nCandidate NameSairam Reddy Pol ReddyGenderMaleTechnologyData AnalystEnd ClientStonebankJob TitleData Manager PositionInterview Round1stDate and Time of Interview (EST)Jul 29, 2025 at 10:45 AMDuration30 minutesEmail IDspolreddy0899@gmail.comContact Number+1 (309) 370-0910A Data Manager at Stone Bank would likely be responsible for overseeing the bank's data systems, ensuring data quality, security, and efficient access. This includes tasks like developing data management policies, implementing data quality controls, and managing data storage and access procedures. The role may also involve collaborating with various teams to support data-driven decision-making. Here's a more detailed breakdown of potential responsibilities:Data Management & Strategy:Developing and enforcing data management policies: This includes creating guidelines for data collection, storage, and usage to ensure consistency and compliance.Formulating techniques for data collection: Ensuring data is accurate, complete, and reliable.Devising and implementing data handling and analysis procedures: Establishing efficient and secure methods for managing and analyzing data.Managing data storage and access: Overseeing the storage and retrieval of data, ensuring it is readily available for authorized users.Developing data management strategies: Continuously improving how data is managed within the bank.Guaranteeing adherence to legal and company regulations: Ensuring compliance with data privacy laws and internal policies. Data Quality and Security:Implementing and maintaining data quality controls: Establishing processes to identify and correct data errors.Monitoring and evaluating information and data systems: Assessing the effectiveness of systems and making recommendations for improvements.Ensuring data security: Protecting sensitive data from unauthorized access and breaches. Collaboration and Communication:Working with various departments: Collaborating with teams like IT, marketing, and compliance to support their data needs.Training end-users on data systems: Providing guidance on how to effectively use data tools and systems.Communicating data insights: Translating complex data findings into actionable information for various stakeholders.Participating in study element team meetings: Contributing to projects that involve data collection and analysis. Technical Skills:Strong understanding of database management systems: Knowledge of how databases are structured, maintained, and queried.Proficiency in data analysis and reporting tools: Skills in tools like SQL, Python, or other relevant software for analyzing and visualizing data.Experience with data warehousing and business intelligence: Understanding how to manage and analyze large datasets for reporting and decision-making. Additional Responsibilities:Managing data files: Overseeing the organization and storage of incoming data files.Contributing to process improvement initiatives: Identifying opportunities to optimize data management processes.Granting user access to data systems: Managing permissions and access rights to ensure data security.Staying updated on data management best practices: Continuously learning about new technologies and methodologies in data management. In essence, the Data Manager at Stone Bank will play a critical role in ensuring the bank's data is accurate, secure, and readily available to support business operations and strategic decision-making",
+              "Candidate Name": "Sairam Reddy Pol Reddy",
+              "Technology": "Data Analyst",
+              "End Client": "Stonebank",
+              "Interview Round": "1st",
+              "Job Title": "Data Manager Position",
+              "Email ID": "spolreddy0899@gmail.com",
+              "Contact No": "3093700910",
+              "Date of Interview": "07/29/2025",
+              "Start Time Of Interview": "10:45 AM",
+              "End Time Of Interview": "11:15 AM",
+              "status": "Rescheduled",
+              "replies": [
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEJAAADdzZYpEekSLFEu_fZYlW-AAJbtEzSAAA=",
+                  "subject": "Re: Interview Support - Sairam Reddy Pol Reddy - Data Analyst - Jul 29, 2025 at 10:45 AM",
+                  "body": "Assigned To: @Ayush K [ayush.k@silverspaceinc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-22T14:47:33Z",
+                  "sender": "Harsh.patel@silverspaceinc.com",
+                  "to": "nandini@vizvainc.com;tech.leaders@silverspaceinc.com;ayush.k@silverspaceinc.com",
+                  "cc": "aryan.mishra@silverspaceinc.com;valish@silverspaceinc.com;Avinash.Mishra@vizvainc.com",
+                  "all_recipients_str": "nandini@vizvainc.com;tech.leaders@silverspaceinc.com;ayush.k@silverspaceinc.com;aryan.mishra@silverspaceinc.com;valish@silverspaceinc.com;Avinash.Mishra@vizvainc.com",
+                  "splitBodies": [
+                    "Assigned To: @Ayush K [ayush.k@silverspaceinc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJbsxnCAAA=",
+                  "subject": "Re: Interview Support - Sairam Reddy Pol Reddy - Data Analyst - Jul 29, 2025 at 10:45 AM",
+                  "body": "Acknowledged",
+                  "receivedAt": "2025-07-22T15:39:06Z",
+                  "sender": "ayush.k@silverspaceinc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;nandini@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "aryan.mishra@silverspaceinc.com;valish@silverspaceinc.com;Avinash.Mishra@vizvainc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;nandini@vizvainc.com;tech.leaders@silverspaceinc.com;aryan.mishra@silverspaceinc.com;valish@silverspaceinc.com;Avinash.Mishra@vizvainc.com",
+                  "splitBodies": [
+                    "Acknowledged"
+                  ]
+                },
+                {
+                  "id": "46",
+                  "sender": "nandini@vizvainc.com",
+                  "body": "Hi Team,\nPlease note that the interview for Sairam Reddy Pol Reddy (Data Analyst – End\nClient: Stone bank) has been rescheduled to 11:45 AM EST on July 29, 2025.\nI’m sending a new calendar invite and updated email shortly. Kindly acknowledge\nthe change once received.\nThank you for your support.\nBest regards,\nNandini",
+                  "to": "ayush.k@silverspaceinc.com;Harsh.patel@silverspaceinc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "aryan.mishra@silverspaceinc.com;valish@silverspaceinc.com;Avinash.Mishra@vizvainc.com",
+                  "receivedDateTime": "2025-07-29T15:06:05+00:00",
+                  "subject": "Re: Interview Support - Sairam Reddy Pol Reddy - Data Analyst - Jul 29, 2025 at 10:45 AM",
+                  "receivedAt": "2025-07-29T15:06:05+00:00",
+                  "splitBodies": [
+                    "Hi Team,\nPlease note that the interview for Sairam Reddy Pol Reddy (Data Analyst – End\nClient: Stone bank) has been rescheduled to 11:45 AM EST on July 29, 2025.\nI’m sending a new calendar invite and updated email shortly. Kindly acknowledge\nthe change once received.\nThank you for your support.\nBest regards,\nNandini"
+                  ]
+                }
+              ],
+              "assignment": {
+                "acknowledged": true
+              },
+              "assignedTo": "ayush.k@silverspaceinc.com",
+              "assignedExpert": "Ayush K",
+              "assignedEmail": "ayush.k@silverspaceinc.com",
+              "assignedAt": "2025-09-27T01:37:14.989Z",
+              "startTime": "2025-07-29T14:45:00.000Z",
+              "endTime": "2025-07-29T15:15:00.000Z"
+            },
+            {
+              "_id": "68804b890c2864ceb6b2e276",
+              "receivedDateTime": "2025-07-22T13:12:22Z",
+              "subject": "Interview Support - Manisha Bhopalli - Business Data Analyst  - Jul 22, 2025 at 03:00 PM EST",
+              "sender": "Vaibhav.Tripathi@vizvainc.com",
+              "to": "tech.leaders@silverspaceinc.com",
+              "cc": "Avinash.Mishra@vizvainc.com, aryan.mishra@silverspaceinc.com, valish@silverspaceinc.com",
+              "body": "\nCandidate NameManisha BhopalliGenderFemaleTechnologyBusiness Data AnalystEnd ClientLancesoftJob TitleBA ConsultantInterview Round2nd (may be Final with stack holder )Date and Time of Interview (EST)Jul 22, 2025 at 03:00 PM ESTDuration30 minutesEmail IDmanishabm599@gmail.comContact Number+1 (312) 852-2852 onsite Business System Analyst role based in Portland, Oregon, with a contract duration of 12–24 months.Role Overview:The position involves acting as a bridge between business needs and technical solutions, including:·                     Gathering and documenting business requirements through meetings and interviews·                     Analysing systems and workflows to identify improvement areas·                     Translating business needs into functional and technical specifications·                     Supporting development teams with requirement clarifications·                     Assisting in UAT and validating system functionality·                     Creating documentation, user guides, and training materials·                     Ensuring solutions meet business goals and compliance standards·                     Working on Dealer Management Software (DMS) and Warranty Management systems to support scalable dealer and warranty operationsimportant : they want someone who has an understanding of Java applications           Candidate informed to recruiter that she is local from Portland, Oregon, I am available to attend in-person as needed.",
+              "Candidate Name": "Manisha Bhopalli",
+              "Technology": "Business Data Analyst",
+              "End Client": "Lancesoft",
+              "Interview Round": "2nd",
+              "Job Title": "BA Consultant",
+              "Email ID": "manishabm599@gmail.com",
+              "Contact No": "3128522852",
+              "Date of Interview": "07/22/2025",
+              "Start Time Of Interview": "03:00 PM",
+              "End Time Of Interview": "03:30 PM",
+              "status": "Completed",
+              "replies": [
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEJAAADdzZYpEekSLFEu_fZYlW-AAJbtEzMAAA=",
+                  "subject": "Re: Interview Support - Manisha Bhopalli - Business Data Analyst  - Jul 22, 2025 at 03:00 PM EST",
+                  "body": "Assigned To: @Bhavya Dutt [Bhavya.Dutt@vizvainc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-22T14:26:16Z",
+                  "sender": "Harsh.patel@silverspaceinc.com",
+                  "to": "Vaibhav.Tripathi@vizvainc.com;tech.leaders@silverspaceinc.com;Bhavya.Dutt@vizvainc.com",
+                  "cc": "Avinash.Mishra@vizvainc.com;aryan.mishra@silverspaceinc.com;valish@silverspaceinc.com",
+                  "all_recipients_str": "Vaibhav.Tripathi@vizvainc.com;tech.leaders@silverspaceinc.com;Bhavya.Dutt@vizvainc.com;Avinash.Mishra@vizvainc.com;aryan.mishra@silverspaceinc.com;valish@silverspaceinc.com",
+                  "splitBodies": [
+                    "Assigned To: @Bhavya Dutt [Bhavya.Dutt@vizvainc.com]\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJbsxmOAAA=",
+                  "subject": "RE: Interview Support - Manisha Bhopalli - Business Data Analyst  - Jul 22, 2025 at 03:00 PM EST",
+                  "body": "Acknowledged\n\n \n\nFrom: Harsh Patel <Harsh.patel@silverspaceinc.com>\nSent: 22 July 2025 10:26\nTo: Vaibhav Tripathi <Vaibhav.Tripathi@vizvainc.com>; Techleaders\n<tech.leaders@silverspaceinc.com>; Bhavya Dutt <Bhavya.Dutt@vizvainc.com>\nCc: Avinash Mishra <Avinash.Mishra@vizvainc.com>; aryan Mishra\n<aryan.mishra@silverspaceinc.com>; valish D'souza <valish@silverspaceinc.com>\nSubject: Re: Interview Support - Manisha Bhopalli - Business Data Analyst - Jul\n22, 2025 at 03:00 PM EST\n\n \n\nAssigned To: @Bhavya Dutt [Bhavya.Dutt@vizvainc.com]\n\n \n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\n\nHarsh Patel\n\nManager, Technical Team\n\nSilverspace Inc.\n\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-22T14:26:39Z",
+                  "sender": "Bhavya.Dutt@vizvainc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;Vaibhav.Tripathi@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "Avinash.Mishra@vizvainc.com;aryan.mishra@silverspaceinc.com;valish@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;Vaibhav.Tripathi@vizvainc.com;tech.leaders@silverspaceinc.com;Avinash.Mishra@vizvainc.com;aryan.mishra@silverspaceinc.com;valish@silverspaceinc.com",
+                  "splitBodies": [
+                    "Acknowledged\n\n \n\nFrom: Harsh Patel <Harsh.patel@silverspaceinc.com>\nSent: 22 July 2025 10:26\nTo: Vaibhav Tripathi <Vaibhav.Tripathi@vizvainc.com>; Techleaders\n<tech.leaders@silverspaceinc.com>; Bhavya Dutt <Bhavya.Dutt@vizvainc.com>\nCc: Avinash Mishra <Avinash.Mishra@vizvainc.com>; aryan Mishra\n<aryan.mishra@silverspaceinc.com>; valish D'souza <valish@silverspaceinc.com>\nSubject: Re: Interview Support - Manisha Bhopalli - Business Data Analyst - Jul\n22, 2025 at 03:00 PM EST\n\n \n\nAssigned To: @Bhavya Dutt [Bhavya.Dutt@vizvainc.com]\n\n \n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\n\nHarsh Patel\n\nManager, Technical Team\n\nSilverspace Inc.\n\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJdYCPIAAA=",
+                  "subject": "RE: Interview Support - Manisha Bhopalli - Business Data Analyst  - Jul 22, 2025 at 03:00 PM EST",
+                  "body": "* Task Status: Completed\n\nInterview Round: 2nd (may be Final with stack holder )\n\n * Feedback: Interview went really well interview asked some few important\n   questions and candidate was able to answer it pretty well. Everything went\n   really well and client said they gonna answer in couple of days though they\n   where in hurry to give offer but now they said couple of days so slight\n   confusion here with the result but hoping for the best.\n\nInterview Questions Asked:\n\n·  Can you tell me about your current project at Blue Cross Blue Shield?\n\n·  What are your key responsibilities in this project?\n\n·  How do you support the business and technical teams in your current role?\n\n·  Can you explain your experience with ERP and CRM systems?\n\n·  What kind of analysis and reporting have you done in your past projects?\n\n·  How do you handle requirement gathering and documentation?\n\n·  Describe your experience with Agile methodology and tools like JIRA and\nConfluence.\n\n·  What is your understanding of Java applications in relation to business\nsystems?\n\n·  Can you explain a project where you performed GAP analysis?\n\n·  How have you contributed to data quality and validation?\n\n·  Describe a time when you worked on process automation or cost-benefit\nanalysis.\n\n·  How do you manage stakeholder communication and expectations?\n\n·  Tell me about your experience with UAT and defect management.\n\n·  What kind of dashboards or BI tools have you developed?\n\n·  How do you ensure compliance and regulatory standards in your projects?\n\n *  \n\n \n\nFrom: Harsh Patel <Harsh.patel@silverspaceinc.com>\nSent: 22 July 2025 10:26\nTo: Vaibhav Tripathi <Vaibhav.Tripathi@vizvainc.com>; Techleaders\n<tech.leaders@silverspaceinc.com>; Bhavya Dutt <Bhavya.Dutt@vizvainc.com>\nCc: Avinash Mishra <Avinash.Mishra@vizvainc.com>; aryan Mishra\n<aryan.mishra@silverspaceinc.com>; valish D'souza <valish@silverspaceinc.com>\nSubject: Re: Interview Support - Manisha Bhopalli - Business Data Analyst - Jul\n22, 2025 at 03:00 PM EST\n\n \n\nAssigned To: @Bhavya Dutt [Bhavya.Dutt@vizvainc.com]\n\n \n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\n\nHarsh Patel\n\nManager, Technical Team\n\nSilverspace Inc.\n\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-23T13:31:42Z",
+                  "sender": "Bhavya.Dutt@vizvainc.com",
+                  "to": "Harsh.patel@silverspaceinc.com;Vaibhav.Tripathi@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "cc": "Avinash.Mishra@vizvainc.com;aryan.mishra@silverspaceinc.com;valish@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;Vaibhav.Tripathi@vizvainc.com;tech.leaders@silverspaceinc.com;Avinash.Mishra@vizvainc.com;aryan.mishra@silverspaceinc.com;valish@silverspaceinc.com",
+                  "splitBodies": [
+                    "* Task Status: Completed\n\nInterview Round: 2nd (may be Final with stack holder )\n\n * Feedback: Interview went really well interview asked some few important\n   questions and candidate was able to answer it pretty well. Everything went\n   really well and client said they gonna answer in couple of days though they\n   where in hurry to give offer but now they said couple of days so slight\n   confusion here with the result but hoping for the best.\n\nInterview Questions Asked:\n\n·  Can you tell me about your current project at Blue Cross Blue Shield?\n\n·  What are your key responsibilities in this project?\n\n·  How do you support the business and technical teams in your current role?\n\n·  Can you explain your experience with ERP and CRM systems?\n\n·  What kind of analysis and reporting have you done in your past projects?\n\n·  How do you handle requirement gathering and documentation?\n\n·  Describe your experience with Agile methodology and tools like JIRA and\nConfluence.\n\n·  What is your understanding of Java applications in relation to business\nsystems?\n\n·  Can you explain a project where you performed GAP analysis?\n\n·  How have you contributed to data quality and validation?\n\n·  Describe a time when you worked on process automation or cost-benefit\nanalysis.\n\n·  How do you manage stakeholder communication and expectations?\n\n·  Tell me about your experience with UAT and defect management.\n\n·  What kind of dashboards or BI tools have you developed?\n\n·  How do you ensure compliance and regulatory standards in your projects?\n\n *  \n\n \n\nFrom: Harsh Patel <Harsh.patel@silverspaceinc.com>\nSent: 22 July 2025 10:26\nTo: Vaibhav Tripathi <Vaibhav.Tripathi@vizvainc.com>; Techleaders\n<tech.leaders@silverspaceinc.com>; Bhavya Dutt <Bhavya.Dutt@vizvainc.com>\nCc: Avinash Mishra <Avinash.Mishra@vizvainc.com>; aryan Mishra\n<aryan.mishra@silverspaceinc.com>; valish D'souza <valish@silverspaceinc.com>\nSubject: Re: Interview Support - Manisha Bhopalli - Business Data Analyst - Jul\n22, 2025 at 03:00 PM EST\n\n \n\nAssigned To: @Bhavya Dutt [Bhavya.Dutt@vizvainc.com]\n\n \n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\n\nHarsh Patel\n\nManager, Technical Team\n\nSilverspace Inc.\n\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                }
+              ],
+              "assignment": {
+                "acknowledged": false
+              },
+              "assignedTo": "Bhavya.Dutt@vizvainc.com",
+              "actualRound": "2nd (may be Final with stack holder )",
+              "assignedExpert": "Bhavya Dutt",
+              "assignedEmail": "bhavya.dutt@vizvainc.com",
+              "assignedAt": "2025-09-27T01:37:14.989Z",
+              "startTime": "2025-07-22T19:00:00.000Z",
+              "endTime": "2025-07-22T19:30:00.000Z"
+            },
+            {
+              "_id": "68804b8c0c2864ceb6b2e277",
+              "receivedDateTime": "2025-07-22T13:09:22Z",
+              "subject": "Interview Support - Ranjith Reddy Anumula - Data Analyst - Jul 24, 2025 at 11:00 AM",
+              "sender": "adambullock1224@gmail.com",
+              "to": "Harsh.patel@silverspaceinc.com, Umang.pandya@silverspaceinc.com",
+              "cc": "",
+              "body": "\n---------- Forwarded message ---------From: Sunil <sunil@theessencestaffing.com>Date: Mon, Jul 21, 2025 at 5:04 PMSubject: Interview Support - Ranjith Reddy Anumula - Data Analyst - Jul 24, 2025 at 11:00 AMTo: adambullock1224 <adambullock1224@gmail.com>Candidate NameRanjith Reddy AnumulaGenderMaleTechnologyData AnalystEnd ClientNmq DigitalJob TitleSr. Data AnalystInterview Round1stDate and Time of Interview (EST)Jul 24, 2025 at 11:00 AMDuration30 minutesEmail IDanumularanjithreddy98@gmail.comContact Number+1 (334) 610-9705",
+              "Candidate Name": "Ranjith Reddy Anumula",
+              "Technology": "Data Analyst",
+              "End Client": "Nmq Digital",
+              "Interview Round": "1st",
+              "Job Title": "Sr. Data Analyst",
+              "Email ID": "anumularanjithreddy98@gmail.com",
+              "Contact No": "3346109705",
+              "Date of Interview": "07/24/2025",
+              "Start Time Of Interview": "11:00 AM",
+              "End Time Of Interview": "11:30 AM",
+              "status": "Completed",
+              "replies": [
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEJAAADdzZYpEekSLFEu_fZYlW-AAJdYIOhAAA=",
+                  "subject": "Re: Interview Support - Ranjith Reddy Anumula - Data Analyst - Jul 24, 2025 at 11:00 AM",
+                  "body": "Assigned To: @Rujuwal Garg [Rujuwal.Garg@silverspaceinc.com]\n\n\n\n\n\nCandidate Name\nRanjith Reddy Anumula\nGender\nMale\nTechnology\nData Analyst\nEnd Client\nNmq Digital\nJob Title\nSr. Data Analyst\nInterview Round\n1st\nDate and Time of Interview (EST)\nJul 24, 2025 at 11:00 AM\nDuration\n30 minutes\nEmail ID\nanumularanjithreddy98@gmail.com\nContact Number\n+1 (334) 610-9705\n\n\n\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/cJzN0TGv/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞 336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-23T21:19:39Z",
+                  "sender": "Harsh.patel@silverspaceinc.com",
+                  "to": "Rujuwal.Garg@silverspaceinc.com",
+                  "cc": "tech.leaders@silverspaceinc.com",
+                  "all_recipients_str": "Rujuwal.Garg@silverspaceinc.com;tech.leaders@silverspaceinc.com",
+                  "splitBodies": [
+                    "Assigned To: @Rujuwal Garg [Rujuwal.Garg@silverspaceinc.com]\n\n\n\n\n\nCandidate Name\nRanjith Reddy Anumula\nGender\nMale\nTechnology\nData Analyst\nEnd Client\nNmq Digital\nJob Title\nSr. Data Analyst\nInterview Round\n1st\nDate and Time of Interview (EST)\nJul 24, 2025 at 11:00 AM\nDuration\n30 minutes\nEmail ID\nanumularanjithreddy98@gmail.com\nContact Number\n+1 (334) 610-9705\n\n\n\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/cJzN0TGv/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞 336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJdYCWQAAA=",
+                  "subject": "Re: Interview Support - Ranjith Reddy Anumula - Data Analyst - Jul 24, 2025 at 11:00 AM",
+                  "body": "Acknowledged \n\nRegards,\nSilverspace Inc. logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/svg-300%25.png?alt=media]\nRujuwal Garg\nTeam Lead | Technical Team\nSilverspace Inc.\n\n📧 Rujuwal.Garg@silverspaceinc.com [Rujuwal.Garg@silverspaceinc.com]📞 (980)\n272-3826🔗 www.silverspaceinc.com [https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-23T21:20:33Z",
+                  "sender": "Rujuwal.Garg@silverspaceinc.com",
+                  "to": "Harsh.patel@silverspaceinc.com",
+                  "cc": "tech.leaders@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;tech.leaders@silverspaceinc.com",
+                  "splitBodies": [
+                    "Acknowledged \n\nRegards,\nSilverspace Inc. logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/svg-300%25.png?alt=media]\nRujuwal Garg\nTeam Lead | Technical Team\nSilverspace Inc.\n\n📧 Rujuwal.Garg@silverspaceinc.com [Rujuwal.Garg@silverspaceinc.com]📞 (980)\n272-3826🔗 www.silverspaceinc.com [https://www.silverspaceinc.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJd-cJ2AAA=",
+                  "subject": "Re: Interview Support - Ranjith Reddy Anumula - Data Analyst - Jul 24, 2025 at 11:00 AM",
+                  "body": "Hello Team,\n\n\nHope you all are doing well.\n\n\n\n\nTask Status: Completed \n\nInterview Round: 1st\nFeedback: The interview went well, as it was an introductory call to understand\nthe candidate’s skills and background. The questions were related to the\ncandidate’s past experiences, and the candidate answered accordingly. The\ncandidate partially followed the provided document. While referring to it, a few\nlines were skipped, but it was still manageable at that point. However, I\nrecommend the candidate to follow the document more closely to maintain better\nflow. At the end of the discussion, the interviewer mentioned that there will be\nan assessment, which will be treated as the first round. Overall it was decent. \nRegards,\nSilverspace Inc. logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/svg-300%25.png?alt=media]\nRujuwal Garg\nTeam Lead | Technical Team\nSilverspace Inc.\n\n📧 Rujuwal.Garg@silverspaceinc.com [Rujuwal.Garg@silverspaceinc.com]📞 (980)\n272-3826🔗 www.silverspaceinc.com [https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-24T18:59:44Z",
+                  "sender": "Rujuwal.Garg@silverspaceinc.com",
+                  "to": "Harsh.patel@silverspaceinc.com",
+                  "cc": "tech.leaders@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;tech.leaders@silverspaceinc.com",
+                  "splitBodies": [
+                    "Hello Team,\n\n\nHope you all are doing well.\n\n\n\n\nTask Status: Completed \n\nInterview Round: 1st\nFeedback: The interview went well, as it was an introductory call to understand\nthe candidate’s skills and background. The questions were related to the\ncandidate’s past experiences, and the candidate answered accordingly. The\ncandidate partially followed the provided document. While referring to it, a few\nlines were skipped, but it was still manageable at that point. However, I\nrecommend the candidate to follow the document more closely to maintain better\nflow. At the end of the discussion, the interviewer mentioned that there will be\nan assessment, which will be treated as the first round. Overall it was decent. \nRegards,\nSilverspace Inc. logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/svg-300%25.png?alt=media]\nRujuwal Garg\nTeam Lead | Technical Team\nSilverspace Inc.\n\n📧 Rujuwal.Garg@silverspaceinc.com [Rujuwal.Garg@silverspaceinc.com]📞 (980)\n272-3826🔗 www.silverspaceinc.com [https://www.silverspaceinc.com/]"
+                  ]
+                }
+              ],
+              "assignment": {
+                "acknowledged": false
+              },
+              "assignedTo": "Rujuwal.Garg@silverspaceinc.com",
+              "actualRound": "1st",
+              "assignedExpert": "Rujuwal Garg",
+              "assignedEmail": "rujuwal.garg@silverspaceinc.com",
+              "assignedAt": "2025-09-27T01:37:14.989Z",
+              "startTime": "2025-07-24T15:00:00.000Z",
+              "endTime": "2025-07-24T15:30:00.000Z"
+            },
+            {
+              "_id": "68804b8f0c2864ceb6b2e278",
+              "receivedDateTime": "2025-07-22T13:09:11Z",
+              "subject": "Interview Support - Rohan Neemkar - Data Analyst - Jul 23, 2025 at 2:30 PM EST",
+              "sender": "adambullock1224@gmail.com",
+              "to": "Harsh.patel@silverspaceinc.com, Umang.pandya@silverspaceinc.com",
+              "cc": "",
+              "body": "\n---------- Forwarded message ---------From: Sunil <sunil@theessencestaffing.com>Date: Mon, Jul 21, 2025 at 5:03 PMSubject: Interview Support - Rohan Neemkar - Data Analyst - Jul 23, 2025 at 2:30 PM ESTTo: adambullock1224 <adambullock1224@gmail.com>Please find the interview support of Rohan NeemkarCandidate NameRohan NeemkarGenderMaleTechnologyData AnalystEnd ClientJunction Integrated LogisticsJob TitleOperations AssociateInterview Round1stDate and Time of Interview (EST)Jul 23, 2025 at 2:30 PM ESTDuration30 minutesEmail IDrohann4717@gmail.comContact Number+1 (773) 410-7945",
+              "Candidate Name": "Rohan Neemkar",
+              "Technology": "Data Analyst",
+              "End Client": "Junction Integrated Logistics",
+              "Interview Round": "1st",
+              "Job Title": "Operations Associate",
+              "Email ID": "rohann4717@gmail.com",
+              "Contact No": "7734107945",
+              "Date of Interview": "07/23/2025",
+              "Start Time Of Interview": "02:30 PM",
+              "End Time Of Interview": "03:00 PM",
+              "status": "Completed",
+              "replies": [
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEJAAADdzZYpEekSLFEu_fZYlW-AAJbtEzQAAA=",
+                  "subject": "Re: Interview Support - Rohan Neemkar - Data Analyst - Jul 23, 2025 at 2:30 PM EST",
+                  "body": "Assigned To: @Pooja Kumari [pooja.kumari@vizvainc.com]\n\n\n\n\nCandidate Name\nRohan Neemkar\nGender\nMale\nTechnology\nData Analyst\nEnd Client\nJunction Integrated Logistics\nJob Title\nOperations Associate\nInterview Round\n1st\nDate and Time of Interview (EST)\nJul 23, 2025 at 2:30 PM EST\nDuration\n30 minutes\nEmail ID\nrohann4717@gmail.com\nContact Number\n+1 (773) 410-7945\n\n\n\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]",
+                  "receivedAt": "2025-07-22T14:41:54Z",
+                  "sender": "Harsh.patel@silverspaceinc.com",
+                  "to": "pooja.kumari@vizvainc.com",
+                  "cc": "tech.leaders@silverspaceinc.com",
+                  "all_recipients_str": "pooja.kumari@vizvainc.com;tech.leaders@silverspaceinc.com",
+                  "splitBodies": [
+                    "Assigned To: @Pooja Kumari [pooja.kumari@vizvainc.com]\n\n\n\n\nCandidate Name\nRohan Neemkar\nGender\nMale\nTechnology\nData Analyst\nEnd Client\nJunction Integrated Logistics\nJob Title\nOperations Associate\nInterview Round\n1st\nDate and Time of Interview (EST)\nJul 23, 2025 at 2:30 PM EST\nDuration\n30 minutes\nEmail ID\nrohann4717@gmail.com\nContact Number\n+1 (773) 410-7945\n\n\n\n\n\nSilverspace Inc. logo\n[https://i.postimg.cc/Y91CW7Ty/20250610-1111-3-D-Gradient-Logo-remix-01jxd69dc9ex29jbj9r701yjkf-2.png]\nHarsh Patel\nManager, Technical Team\nSilverspace Inc.\n📧 harsh.patel@silverspaceinc.com\n[harsh.patel@silverspaceinc.com]📞  336-860-0879🔗 www.silverspaceinc.com\n[https://www.silverspaceinc.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJbsxmdAAA=",
+                  "subject": "Re: Interview Support - Rohan Neemkar - Data Analyst - Jul 23, 2025 at 2:30 PM EST",
+                  "body": "Acknowledged\n\n\nVizva Consultancy Services logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/vizva%20final.png?alt=media]\nPooja Kumari\nData Analyst\nVizva Consultancy Services\n📧 pooja.kumari@vizvainc.com [pooja.kumari@vizvainc.com]📞\n984-246-2941🔗 www.vizvaconsultancyservices.com\n[https://www.vizvaconsultancyservices.com/]",
+                  "receivedAt": "2025-07-22T14:43:21Z",
+                  "sender": "pooja.kumari@vizvainc.com",
+                  "to": "Harsh.patel@silverspaceinc.com",
+                  "cc": "tech.leaders@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;tech.leaders@silverspaceinc.com",
+                  "splitBodies": [
+                    "Acknowledged\n\n\nVizva Consultancy Services logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/vizva%20final.png?alt=media]\nPooja Kumari\nData Analyst\nVizva Consultancy Services\n📧 pooja.kumari@vizvainc.com [pooja.kumari@vizvainc.com]📞\n984-246-2941🔗 www.vizvaconsultancyservices.com\n[https://www.vizvaconsultancyservices.com/]"
+                  ]
+                },
+                {
+                  "id": "AAMkADcyZDYyYTZmLTFkMGItNDQzMy05ZTBlLWEyNTBmZjU1NDQ2YgBGAAAAAAA90r38asIpR5ma_huuPzriBwADdzZYpEekSLFEu_fZYlW-AAAAAAEMAAADdzZYpEekSLFEu_fZYlW-AAJd-cF0AAA=",
+                  "subject": "Re: Interview Support - Rohan Neemkar - Data Analyst - Jul 23, 2025 at 2:30 PM EST",
+                  "body": "Hello Team,\nHope you all are doing well.\n\nTask Status: Completed \nInterview Round : 1st\nFeedback:  The interview went well. The interviewer asked behavioral and\nexperience-based questions, and also gave a clear overview of the company, team\nculture, and how the team operates. The role wasn’t a perfect match for the\ncandidate’s profile, so the candidate asked about this. The interviewer\nresponded that they would let him know whether there’s a possibility to move\ninto a Data Analyst role after 7–8 months on the job. I have shared the relevant\nresponses in the document that the candidate referred to during the interview.\nThe candidate also expressed satisfaction with the support provided. Overall,\nthe feedback from the interviewers was positive.\nAsked Interviews Questions:  questions list:\n 1.  “Do you wanna run me through your resume?”\n 2.  “Why do you wanna leave Uber?”\n 3.  “This role isn’t directly related to your background—what interests you\n     about it?”\n 4.  “What do you want out of your next role?”\n 5.  “What do you think you would do really well in your first week here?”\n 6.  “Where do you think you would struggle in your first week?”\n 7.  “Can you tell me about a tough situation you were in and how you overcame\n     it?”\n 8.  “Can you give an example of a vague task or incomplete instruction and how\n     you handled it?”\n 9.  “What do you think is your biggest professional accomplishment?”\n 10. “What do you think was your biggest professional failure?”\n 11. “What’s your current visa status?”\n\nBest Regards,\n\n\nVizva Consultancy Services logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/vizva%20final.png?alt=media]\nPooja Kumari\nData Analyst\nVizva Consultancy Services\n📧 pooja.kumari@vizvainc.com [pooja.kumari@vizvainc.com]📞\n984-246-2941🔗 www.vizvaconsultancyservices.com\n[https://www.vizvaconsultancyservices.com/]",
+                  "receivedAt": "2025-07-24T13:29:20Z",
+                  "sender": "pooja.kumari@vizvainc.com",
+                  "to": "Harsh.patel@silverspaceinc.com",
+                  "cc": "tech.leaders@silverspaceinc.com",
+                  "all_recipients_str": "Harsh.patel@silverspaceinc.com;tech.leaders@silverspaceinc.com",
+                  "splitBodies": [
+                    "Hello Team,\nHope you all are doing well.\n\nTask Status: Completed \nInterview Round : 1st\nFeedback:  The interview went well. The interviewer asked behavioral and\nexperience-based questions, and also gave a clear overview of the company, team\nculture, and how the team operates. The role wasn’t a perfect match for the\ncandidate’s profile, so the candidate asked about this. The interviewer\nresponded that they would let him know whether there’s a possibility to move\ninto a Data Analyst role after 7–8 months on the job. I have shared the relevant\nresponses in the document that the candidate referred to during the interview.\nThe candidate also expressed satisfaction with the support provided. Overall,\nthe feedback from the interviewers was positive.\nAsked Interviews Questions:  questions list:\n 1.  “Do you wanna run me through your resume?”\n 2.  “Why do you wanna leave Uber?”\n 3.  “This role isn’t directly related to your background—what interests you\n     about it?”\n 4.  “What do you want out of your next role?”\n 5.  “What do you think you would do really well in your first week here?”\n 6.  “Where do you think you would struggle in your first week?”\n 7.  “Can you tell me about a tough situation you were in and how you overcame\n     it?”\n 8.  “Can you give an example of a vague task or incomplete instruction and how\n     you handled it?”\n 9.  “What do you think is your biggest professional accomplishment?”\n 10. “What do you think was your biggest professional failure?”\n 11. “What’s your current visa status?”\n\nBest Regards,\n\n\nVizva Consultancy Services logo\n[https://firebasestorage.googleapis.com/v0/b/reportcraft-164f6.appspot.com/o/vizva%20final.png?alt=media]\nPooja Kumari\nData Analyst\nVizva Consultancy Services\n📧 pooja.kumari@vizvainc.com [pooja.kumari@vizvainc.com]📞\n984-246-2941🔗 www.vizvaconsultancyservices.com\n[https://www.vizvaconsultancyservices.com/]"
+                  ]
+                }
+              ],
+              "assignment": {
+                "acknowledged": false
+              },
+              "assignedTo": "pooja.kumari@vizvainc.com",
+              "actualRound": "1st",
+              "assignedExpert": "Pooja Kumari",
+              "assignedEmail": "pooja.kumari@vizvainc.com",
+              "assignedAt": "2025-09-27T01:37:14.989Z",
+              "startTime": "2025-07-23T18:30:00.000Z",
+              "endTime": "2025-07-23T19:00:00.000Z"
+            }
+          ],
+          "meta": {
+            "count": 10,
+            "offset": 0,
+            "limit": 10,
+            "searchCriteria": {
+              "search": "interview",
+              "limit": 10
+            }
+          }
+        }
+      }
+    ],
+    "getTaskStatistics": [
+      {
+        "type": "emit",
+        "timestamp": "2025-09-27T01:37:14.997Z",
+        "data": {
+          "start": "2025-09-20T01:37:14.997Z",
+          "end": "2025-09-27T01:37:14.997Z"
+        }
+      },
+      {
+        "type": "callback",
+        "timestamp": "2025-09-27T01:37:15.956Z",
+        "data": {
+          "success": true,
+          "statistics": {
+            "totalCandidates": 188,
+            "statusBreakdown": {
+              "Completed": 200,
+              "Acknowledged": 65,
+              "Cancelled": 54,
+              "Pending": 11,
+              "Rescheduled": 15,
+              "Not Done": 9,
+              "Assigned": 6
+            },
+            "expertBreakdown": {
+              "ajay.krishna@vizvainc.com": 10,
+              "harshit@vizvainc.com": 1,
+              "ayush.k@silverspaceinc.com": 5,
+              "Kartikeya.Baijal@silverspaceinc.com": 9,
+              "Darshan.Singh@vizvainc.com": 13,
+              "sonali.das@silverspaceinc.com": 12,
+              "vaibhav.kaushik@vizvainc.com": 6,
+              "Unassigned": 11,
+              "Hamid.Ansari@silverspaceinc.com": 4,
+              "rahul.agarwal@vizvainc.com": 10,
+              "Jay.prakash@vizvainc.com": 8,
+              "aman.agnihotri@vizvainc.com": 6,
+              "jayesh.nalawade@silverspaceinc.com": 4,
+              "shraavana@silverspaceinc.com": 8,
+              "vansh.malhotra@vizvainc.com": 3,
+              "aditya.sharma@vizvainc.com": 9,
+              "jayshree.rana@vizvainc.com": 4,
+              "amartya.kumar@vizvainc.com": 8,
+              "hari.singh@silverspaceinc.com": 9,
+              "Nikesh.Raj@silverspaceinc.com": 4,
+              "izan.ahmad@silverspaceinc.com": 5,
+              "anusree.vasudevan@vizvainc.com": 6,
+              "Prateek.Narvariya@silverspaceinc.com": 3,
+              "dhiraj.sharma@silverspaceinc.com": 15,
+              "abhijeet.chavan@vizvainc.com": 1,
+              "Bhavya.Dutt@vizvainc.com": 5,
+              "ravikant.raj@silverspaceinc.com": 3,
+              "astha.singh@silverspaceinc.com": 4,
+              "Rujuwal.Garg@silverspaceinc.com": 1,
+              "Prateek.dwivedi@vizvainc.com": 1
+            },
+            "averageStatusCount": 1.9148936170212767,
+            "mostActiveExpert": "dhiraj.sharma@silverspaceinc.com",
+            "statusDistribution": [
+              {
+                "status": "Completed",
+                "count": 200,
+                "percentage": "55.56"
+              },
+              {
+                "status": "Acknowledged",
+                "count": 65,
+                "percentage": "18.06"
+              },
+              {
+                "status": "Cancelled",
+                "count": 54,
+                "percentage": "15.00"
+              },
+              {
+                "status": "Pending",
+                "count": 11,
+                "percentage": "3.06"
+              },
+              {
+                "status": "Rescheduled",
+                "count": 15,
+                "percentage": "4.17"
+              },
+              {
+                "status": "Not Done",
+                "count": 9,
+                "percentage": "2.50"
+              },
+              {
+                "status": "Assigned",
+                "count": 6,
+                "percentage": "1.67"
+              }
+            ]
+          },
+          "meta": {
+            "dateRange": {
+              "startDate": "2025-09-20T01:37:14.997Z",
+              "endDate": "2025-09-27T01:37:14.997Z"
+            },
+            "userRole": "admin",
+            "teamSize": 1
+          }
+        }
+      }
+    ],
+    "refresh": [
+      {
+        "type": "emit",
+        "timestamp": "2025-09-27T01:37:15.957Z",
+        "data": {
+          "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImhhcnNoLnBhdGVsQHNpbHZlcnNwYWNlaW5jLmNvbSIsImlhdCI6MTc1ODkzNzAxOCwiZXhwIjoxNzU5NTQxODE4fQ.Ocp72JXB5od6LZ_B81jOQ5hJavdfVzYZ0yjEAL_FsSE"
+        }
+      },
+      {
+        "type": "callback",
+        "timestamp": "2025-09-27T01:37:15.959Z",
+        "data": {
+          "success": true,
+          "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImhhcnNoLnBhdGVsQHNpbHZlcnNwYWNlaW5jLmNvbSIsImlhdCI6MTc1ODkzNzAzNSwiZXhwIjoxNzU4OTM3OTM1fQ.ZJ4KqzyTuqXntiGYnW9p90iTMEc4JbbejOOXEb_B8EE"
+        }
+      }
+    ],
+    "logout": [
+      {
+        "type": "emit",
+        "timestamp": "2025-09-27T01:37:15.960Z",
+        "data": {
+          "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImhhcnNoLnBhdGVsQHNpbHZlcnNwYWNlaW5jLmNvbSIsImlhdCI6MTc1ODkzNzAxOCwiZXhwIjoxNzU5NTQxODE4fQ.Ocp72JXB5od6LZ_B81jOQ5hJavdfVzYZ0yjEAL_FsSE"
+        }
+      },
+      {
+        "type": "callback",
+        "timestamp": "2025-09-27T01:37:16.189Z",
+        "data": {
+          "success": true,
+          "message": "Logged out successfully"
+        }
+      }
+    ]
+  },
+  "errors": []
+}

@@ -2,7 +2,9 @@ import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 
-export const API_URL = import.meta.env.VITE_API_URL! || "https://dailydb.silverspace.tech"; // Replace with your actual API URL
+export const API_URL =
+  import.meta.env.VITE_API_URL ??
+  (import.meta.env.DEV ? "https://dailydb.silverspace.tech" : "https://dailydb.silverspace.tech");
 
 interface RefreshResponse {
   success: boolean;
@@ -40,6 +42,11 @@ export function useAuth() {
   const logout = useCallback(() => {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem('role');
+    localStorage.removeItem('teamLead');
+    localStorage.removeItem('manager');
+    localStorage.removeItem('email');
+    localStorage.removeItem('displayName');
     navigate('/auth/signin');
   }, [navigate]);
 
