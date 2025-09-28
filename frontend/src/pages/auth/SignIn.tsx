@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Eye, EyeOff, Mail, Lock } from "lucide-react";
 import { API_URL } from "../../hooks/useAuth";
+import { deriveDisplayNameFromEmail } from "@/utils/userNames";
 export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ email: "", password: "" });
@@ -50,12 +51,16 @@ export default function SignIn() {
           return;
         }
 
+        const normalizedEmail = formData.email.trim().toLowerCase();
+
         // Persist credentials
         localStorage.setItem("accessToken", response.accessToken);
         localStorage.setItem("refreshToken", response.refreshToken);
         localStorage.setItem("role", response.role);
         localStorage.setItem("teamLead", response.teamLead);
         localStorage.setItem("manager", response.manager);
+        localStorage.setItem("email", normalizedEmail);
+        localStorage.setItem("displayName", deriveDisplayNameFromEmail(normalizedEmail));
 
         // Reconnect socket with token for future events
         socket.disconnect();

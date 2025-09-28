@@ -13,6 +13,7 @@ describe('requestRefreshToken', () => {
       connect: vi.fn(),
       emit: mockEmit,
       disconnect: vi.fn(),
+      on: vi.fn(),
     });
     const token = await requestRefreshToken('r');
     expect(token).toBe('new');
@@ -24,6 +25,7 @@ describe('requestRefreshToken', () => {
       connect: vi.fn(),
       emit: mockEmit,
       disconnect: vi.fn(),
+      on: vi.fn(),
     });
     const token = await requestRefreshToken('r');
     expect(token).toBeNull();

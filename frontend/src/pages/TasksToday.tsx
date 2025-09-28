@@ -20,12 +20,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, API_URL } from "@/hooks/useAuth";
 import { playTune, sendNotification } from "@/utils/notify";
 import { Toaster } from "@/components/ui/toaster";
+import { useTab } from "@/hooks/useTabs";
 
 interface Task {
   _id: string;
@@ -71,7 +71,6 @@ export default function TasksToday() {
   const [candidateFilter, setCandidateFilter] = useState("");
   const [recruiterFilter, setRecruiterFilter] = useState("");
   const [expertFilter, setExpertFilter] = useState("");
-  const [dateScope, setDateScope] = useState<"today" | "all">("today");
   const [error, setError] = useState("");
 
   const firstLoad = useRef(true);
@@ -79,15 +78,56 @@ export default function TasksToday() {
   // timersRef keeps active timeout ids per reminder key
   const timersRef = useRef<Map<string, number>>(new Map());
   const { refreshAccessToken } = useAuth();
-  const user = localStorage.getItem("role");
+  const { selectedTab, setSelectedTab } = useTab();
+  const roleRaw = localStorage.getItem("role") || "";
+  const normalizedRole = roleRaw.trim().toLowerCase();
+  const user = roleRaw;
   const { toast } = useToast();
 
-  // Tab
-  const selectedTab = localStorage.getItem("tab");
-  const selectedTabRef = useRef(selectedTab);
+  // Date field preference
+  const allowReceivedDate = useMemo(() => {
+    return ["admin", "mm", "mam", "mlead", "recruiter"].includes(normalizedRole);
+  }, [normalizedRole]);
+
+  const selectedTabRef = useRef<string>(
+    allowReceivedDate && selectedTab === "receivedDateTime"
+      ? "receivedDateTime"
+      : "Date of Interview"
+  );
+
   useEffect(() => {
-    selectedTabRef.current = selectedTab;
-  }, [selectedTab]);
+    if (!allowReceivedDate && selectedTab === "receivedDateTime") {
+      setSelectedTab("Date of Interview");
+      selectedTabRef.current = "Date of Interview";
+      return;
+    }
+
+    selectedTabRef.current = allowReceivedDate ? selectedTab : "Date of Interview";
+  }, [allowReceivedDate, selectedTab, setSelectedTab]);
+
+  const dateFieldOptions = useMemo(() => {
+    const base = [
+      { value: "Date of Interview", label: "Date of Interview" },
+    ];
+    if (allowReceivedDate) {
+      base.push({ value: "receivedDateTime", label: "Received Date Time" });
+    }
+    return base;
+  }, [allowReceivedDate]);
+
+  const currentDateField = useMemo(() => {
+    if (!allowReceivedDate) {
+      return "Date of Interview";
+    }
+    return selectedTab === "receivedDateTime" ? "receivedDateTime" : "Date of Interview";
+  }, [allowReceivedDate, selectedTab]);
+
+  const handleDateFieldChange = useCallback(
+    (value: string) => {
+      setSelectedTab(value);
+    },
+    [setSelectedTab]
+  );
 
   // === Storage helpers ===
   const readScheduled = (): Record<string, string> => {
@@ -174,11 +214,31 @@ export default function TasksToday() {
     parsePreferredStrict(t.receivedDateTime);
 
   // Which timestamp powers filters/sorting (depends on tab)
-  const primaryStart = (t: Task): Moment | null => {
+  const todayStart = useMemo(() => moment.tz(TZ).startOf('day'), []);
+  const todayIso = useMemo(() => todayStart.toISOString(), [todayStart]);
+
+  const primaryStart = useCallback((t: Task): Moment | null => {
     const tab = selectedTabRef.current;
     if (tab === "receivedDateTime") return parseReceived(t);
     return parseStart(t);
-  };
+  }, []);
+
+  const isTodayForCurrentTab = useCallback((task: Task) => {
+    const start = primaryStart(task);
+    if (!start) return false;
+    return start.isSame(todayStart, 'day');
+  }, [primaryStart, todayStart]);
+
+  const sortByPrimaryStart = useCallback((list: Task[]) => {
+    return [...list].sort((a, b) => {
+      const aS = primaryStart(a)?.toDate() ?? new Date(0);
+      const bS = primaryStart(b)?.toDate() ?? new Date(0);
+      if (aS.getTime() !== bS.getTime()) return aS.getTime() - bS.getTime();
+      const aE = parseEnd(a)?.toDate() ?? new Date(0);
+      const bE = parseEnd(b)?.toDate() ?? new Date(0);
+      return aE.getTime() - bE.getTime();
+    });
+  }, [primaryStart]);
 
   const formatDate = (m: Moment | null) => (m ? m.tz(TZ).format(DATE_FMT) : "");
   const formatTime = (m: Moment | null) => (m ? m.tz(TZ).format(TIME_FMT) : "");
@@ -310,7 +370,7 @@ export default function TasksToday() {
   const fetchTasks = useCallback(() => {
     socket.emit(
       "getTasksToday",
-      { tab: selectedTabRef.current },
+      { tab: selectedTabRef.current, targetDate: todayIso },
       (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
         if (!resp.success) {
           setError(resp.error || "Failed to load tasks");
@@ -322,16 +382,14 @@ export default function TasksToday() {
           return;
         }
 
-        const incoming = (resp.tasks || []).sort((a, b) => {
-          const aS = (primaryStart(a)?.toDate() ?? new Date(0)).getTime();
-          const bS = (primaryStart(b)?.toDate() ?? new Date(0)).getTime();
-          return aS - bS;
-        });
+        const incoming = sortByPrimaryStart(resp.tasks || []);
+
+        const todays = incoming.filter(isTodayForCurrentTab);
 
         // Notifications for adds/updates
         const oldMap = readMap();
         const newMap: Record<string, string> = {};
-        incoming.forEach((task) => {
+        todays.forEach((task) => {
           newMap[task._id] = task.status || "";
           if (!firstLoad.current) {
             if (!(task._id in oldMap)) {
@@ -354,28 +412,46 @@ export default function TasksToday() {
         writeMap(newMap);
         firstLoad.current = false;
 
-        setTasks(incoming);
+        setTasks(todays);
 
         // *** CRITICAL: persist & schedule reminders whenever tasks load ***
-        reconcileReminders(incoming);
+        reconcileReminders(todays);
       }
     );
-  }, [socket, toast, reconcileReminders]);
+  }, [socket, toast, reconcileReminders, sortByPrimaryStart, isTodayForCurrentTab, todayIso]);
 
   useEffect(() => {
     const onNew = (task: Task) => {
       const isInit = firstLoad.current;
       const map = readMap();
+
+      if (!isTodayForCurrentTab(task)) {
+        if (map[task._id]) {
+          delete map[task._id];
+          writeMap(map);
+        }
+        setTasks((prev) => {
+          const filtered = prev.filter((t) => t._id !== task._id);
+          const sorted = sortByPrimaryStart(filtered);
+          reconcileReminders(sorted);
+          return sorted;
+        });
+        return;
+      }
+
+      const alreadyTracked = map[task._id] !== undefined;
       map[task._id] = task.status || "";
       writeMap(map);
+
       setTasks((prev) => {
-        const next = [...prev, task];
-        // reconcile with the updated list
-        reconcileReminders(next);
-        return next;
+        const exists = prev.some((t) => t._id === task._id);
+        const next = exists ? prev.map((t) => (t._id === task._id ? task : t)) : [...prev, task];
+        const sorted = sortByPrimaryStart(next);
+        reconcileReminders(sorted);
+        return sorted;
       });
 
-      if (!isInit) {
+      if (!isInit && !alreadyTracked) {
         const desc = DOMPurify.sanitize(task.subject || "");
         toast({ title: "New Task Added", description: desc });
         sendNotification("New Task Added", desc);
@@ -385,8 +461,33 @@ export default function TasksToday() {
 
     const onUpdate = (task: Task) => {
       const map = readMap();
-      const oldStatus = map[task._id] || "";
-      if (oldStatus !== task.status) {
+      const previousStatus = map[task._id] || "";
+
+      if (!isTodayForCurrentTab(task)) {
+        if (map[task._id]) {
+          delete map[task._id];
+          writeMap(map);
+        }
+        setTasks((list) => {
+          const filtered = list.filter((t) => t._id !== task._id);
+          const sorted = sortByPrimaryStart(filtered);
+          reconcileReminders(sorted);
+          return sorted;
+        });
+        return;
+      }
+
+      map[task._id] = task.status || "";
+      writeMap(map);
+
+      setTasks((list) => {
+        const next = list.map((t) => (t._id === task._id ? task : t));
+        const sorted = sortByPrimaryStart(next);
+        reconcileReminders(sorted);
+        return sorted;
+      });
+
+      if (previousStatus !== (task.status || "")) {
         const desc = DOMPurify.sanitize(task.subject || "");
         const statusDesc = DOMPurify.sanitize(task.status || "");
         toast({
@@ -396,14 +497,6 @@ export default function TasksToday() {
         sendNotification("Task Status Updated", `${desc} is now ${statusDesc}`);
         playTune();
       }
-      map[task._id] = task.status || "";
-      writeMap(map);
-
-      setTasks((list) => {
-        const next = list.map((t) => (t._id === task._id ? task : t));
-        reconcileReminders(next);
-        return next;
-      });
     };
 
     const onAuthError = async (err: Error) => {
@@ -435,32 +528,22 @@ export default function TasksToday() {
       for (const [, id] of timersRef.current.entries()) window.clearTimeout(id);
       timersRef.current.clear();
     };
-  }, [socket, toast, refreshAccessToken, fetchTasks, reconcileReminders]);
+  }, [socket, toast, refreshAccessToken, fetchTasks, reconcileReminders, isTodayForCurrentTab, sortByPrimaryStart]);
 
   // When tab changes, refetch & reconcile
   useEffect(() => {
     if (socket.connected) fetchTasks();
-  }, [selectedTab, fetchTasks, socket]);
+  }, [currentDateField, fetchTasks, socket]);
 
   // === Filtering / sorting ===
   const statuses = Array.from(new Set(tasks.map((t) => t.status).filter(Boolean)));
 
-  const nowNY = moment.tz(TZ);
-  const startOfTodayNY = nowNY.clone().startOf("day");
-  const endOfTodayNY = nowNY.clone().endOf("day");
-  const startOfMonthNY = nowNY.clone().startOf("month");
+  const sortedTasks = useMemo(() => sortByPrimaryStart(tasks), [tasks, sortByPrimaryStart]);
 
-  const displayed = tasks
+  const displayed = sortedTasks
     .filter((t) => {
       const s = primaryStart(t);
-      if (!s) return false;
-  
-      if (dateScope === "today") {
-        return s.isSame(startOfTodayNY, "day");
-      }
-  
-      // if "all", don't filter by date at all
-      return true;
+      return !!s;
     })
     .filter((t) => filterStatus === "all" || t.status === filterStatus)
     .filter((t) =>
@@ -473,15 +556,7 @@ export default function TasksToday() {
       user !== 'user'
         ? (t.recruiterName || "").toLowerCase().includes(recruiterFilter.toLowerCase())
         : true
-    )
-    .sort((a, b) => {
-      const aS = primaryStart(a)?.toDate() ?? new Date(0);
-      const bS = primaryStart(b)?.toDate() ?? new Date(0);
-      if (aS.getTime() !== bS.getTime()) return aS < bS ? -1 : 1;
-      const aE = parseEnd(a)?.toDate() ?? new Date(0);
-      const bE = parseEnd(b)?.toDate() ?? new Date(0);
-      return aE < bE ? -1 : aE > bE ? 1 : 0;
-    });
+    );
 
 
   return (
@@ -493,29 +568,21 @@ export default function TasksToday() {
 
         {/* Filters */}
         <div className="flex flex-wrap gap-4 items-center">
-          {/* Today / All (All = After Today) */}
-          {selectedTab === "Date of Interview" && (
-            <div className="flex rounded-md border border-border overflow-hidden">
-              <Button
-                variant="ghost"
-                className={`rounded-none px-4 ${dateScope === "today" ? "bg-accent" : ""}`}
-                onClick={() => setDateScope("today")}
-              >
-                Today
-              </Button>
-              <Button
-                variant="ghost"
-                className={`rounded-none px-4 border-l border-border ${
-                  dateScope === "all" ? "bg-accent" : ""
-                }`}
-                onClick={() => setDateScope("all")}
-                title="All = after today"
-              >
-                All
-              </Button>
-            </div>
-          )}
-
+          <div className="space-y-1">
+            {/* <p className="text-xs text-muted-foreground uppercase tracking-wide">Date Field</p> */}
+            <Select value={currentDateField} onValueChange={handleDateFieldChange}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Select date field" />
+              </SelectTrigger>
+              <SelectContent>
+                {dateFieldOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Filter status" />
@@ -553,7 +620,7 @@ export default function TasksToday() {
         </div>
 
         {displayed.length === 0 ? (
-          <p>No tasks found</p>
+          <p>No tasks scheduled for today.</p>
         ) : (
           <Table>
             <TableHeader>

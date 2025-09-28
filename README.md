@@ -47,14 +47,29 @@
 - `PORT` – Port for the HTTP server (default `3000`).
 - `JWT_SECRET` – Secret for signing JWT tokens.
 - `FRONTEND_ORIGIN` – Allowed origin for CORS requests (default `http://localhost:5173`).
+- `OPENAI_API_KEY` – (Required for report assistant) API key used to call OpenAI's chat completion endpoint.
+- `OPENAI_BASE_URL` – Optional base URL for OpenAI-compatible providers (default `https://api.openai.com/v1`).
+- `OPENAI_REPORTING_MODEL` – Chat model identifier used by the report assistant (default `gpt-5`).
+- `OPENAI_TIMEOUT_MS` – Request timeout in milliseconds for OpenAI calls (default `20000`).
 - `NEW_RELIC_LICENSE_KEY` – New Relic account license key (required in staging/production).
 - `NEW_RELIC_APP_NAME` / `NEW_RELIC_BACKEND_APP_NAME` – Service name reported to New Relic (default `dailydb-backend`).
 - `NEW_RELIC_LOG_LEVEL` – Log verbosity for the agent (default `info`).
 - `NEW_RELIC_NO_CONFIG_FILE` – Set to `true` to rely on environment configuration only.
 
+### AI Report Assistant
+- Available over WebSocket events `reportBotQuery` and `reportBotDownload`.
+- Restricted to users with roles `admin`, `MM`, or `mtl` (case-insensitive).
+- Given a natural-language request, the assistant generates a MongoDB filter against the `taskBody` collection and returns a preview plus a download token.
+- The frontend exposes the assistant at `/reports/assistant` with a chat interface, preview table, and Excel download button.
+
 ### Dev Scripts
 - `npm start` – runs the server
 - `npm test` – runs Jest unit tests
+
+### Testing
+- Ensure a MongoDB instance is available and export `MONGODB_URI`, `DB_NAME`, `JWT_SECRET`, `TEST_USER_EMAIL`, and `TEST_USER_PASSWORD` before executing `npm test`.
+- Populate deterministic fixtures for integration tests with `node scripts/seed-test-data.mjs` (runs against the URI in the active environment).
+- The test harness depends on Socket.IO; keep the database credentials scoped to non-production data sources when running tests locally or in CI.
 
 ### Authentication
 Use `POST /login` with `email` and `password` to obtain an access token and a refresh token. Send the access token in the `Authorization: Bearer` header for protected endpoints. The `/tasks/today` route and other future APIs require a valid token.
@@ -114,6 +129,10 @@ background.
 - `NEW_RELIC_NO_CONFIG_FILE` – Set to `true` to rely on environment configuration only.
 - `FRONTEND_HOST` – Host binding for the preview server (default `0.0.0.0`).
 - `FRONTEND_OPEN` – Whether to auto-open a browser window (default `false`).
+
+## Continuous Integration
+
+Automated workflows live in `.github/workflows/ci.yml`. The pipeline installs dependencies with Node.js 22, seeds MongoDB with test fixtures, and executes the backend and frontend test suites on every push and pull request.
 
 ## Docker Compose
 
