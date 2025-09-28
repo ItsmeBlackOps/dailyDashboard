@@ -84,7 +84,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [candidates, setCandidates] = useState<CandidateRow[]>([]);
   const normalizedRole = role.trim().toLowerCase();
   const canView = ["admin", "mm", "mam", "mlead", "lead", "user", "am", "manager", "recruiter"].includes(normalizedRole);
-  const canEdit = ["mm", "mam", "mlead", "recruiter", "lead", "am"].includes(normalizedRole);
+  const canEdit = ["mm", "mam", "mlead", "recruiter", "lead", "am","admin"].includes(normalizedRole);
   const canEditBasicFields = ["mm", "mam", "mlead", "recruiter"].includes(normalizedRole);
   const canChangeRecruiterField = ['mm', 'mam', 'mlead'].includes(normalizedRole);
   const canChangeContactField = ['mm', 'mam','mlead', 'recruiter'].includes(normalizedRole);
