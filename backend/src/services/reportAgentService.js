@@ -40,16 +40,34 @@ const SORTABLE_FIELDS = new Map([
 const SYSTEM_PROMPT = `You are a planning assistant that translates report requests for the MongoDB collection \
 \`taskBody\`. Respond ONLY with JSON that respects the schema below. Never include prose or markdown.\n\nSchema summary (string fields unless noted):\n- subject\n- Candidate Name\n- Date of Interview (format MM/DD/YYYY)\n- Start Time Of Interview\n- End Time Of Interview\n- Interview Round\n- End Client\n- status\n- assignedExpert\n- assignedTo\n- sender\n- cc\n- receivedDateTime (ISO string: YYYY-MM-DDTHH:mm:ssZ)\n\nJSON schema:\n{\n  \\"summary\\": "short plain sentence describing the dataset",\n  \\"filters\\": {\n    \\"dateField\\": "Date of Interview" | "receivedDateTime" | "",\n    \\"from\\": "YYYY-MM-DD" | "",\n    \\"to\\": "YYYY-MM-DD" | "",\n    \\"rounds\\": string[],\n    \\"statuses\\": string[],\n    \\"clients\\": string[],\n    \\"experts\\": string[],\n    \\"recruiters\\": string[],\n    \\"candidates\\": string[],\n    \\"keywords\\": string[]\n  },\n  \\"columns\\": string[],\n  \\"sort\\": {\n    \\"field\\": string,\n    \\"direction\\": "asc" | "desc"\n  },\n  \\"limit\\": number\n}\n\nGuidelines:\n- Dates must be ISO (YYYY-MM-DD). If user omits dates, leave empty strings.\n- Columns must be drawn from the schema summary names or obvious synonyms.\n- Limit must be between 1 and 500 (default 100).\n- Keywords should capture free-text matches (e.g. subject words).\n- Output valid JSON only.`;
 
+/**
+ * Escape all regular-expression metacharacters in a string so it can be used safely in a regex literal.
+ * @param {string} value - The string whose regex metacharacters should be escaped.
+ * @returns {string} The input string with regex metacharacters escaped.
+ */
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Build a regular expression pattern string from a user-provided value, treating runs of whitespace as `\s+` and optionally anchoring start/end.
+ * @param {string} value - Input string to convert into a regex-safe pattern; leading/trailing whitespace is trimmed.
+ * @param {{anchorStart?: boolean, anchorEnd?: boolean}} [options] - Pattern options.
+ * @param {boolean} [options.anchorStart=false] - If true, prefix pattern with `^`.
+ * @param {boolean} [options.anchorEnd=false] - If true, suffix pattern with `$`.
+ * @returns {string} The generated regex pattern string.
+ */
 function buildRegexPattern(value, options = {}) {
   const { anchorStart = false, anchorEnd = false } = options;
   const base = escapeRegex(value.trim()).replace(/\s+/g, '\\s+');
   return `${anchorStart ? '^' : ''}${base}${anchorEnd ? '$' : ''}`;
 }
 
+/**
+ * Normalize a cell value for safe string output.
+ * @param {*} value - The input cell value (string, Array, Date, null/undefined, or other).
+ * @returns {string} A single-line string suitable for display: empty for null/undefined; strings with internal whitespace collapsed and trimmed; arrays flattened to comma-separated sanitized items; Date objects formatted as ISO strings; other values converted via `String()`.
+ */
 function sanitizeCell(value) {
   if (value === null || value === undefined) return '';
   if (typeof value === 'string') {
@@ -64,6 +82,11 @@ function sanitizeCell(value) {
   return String(value);
 }
 
+/**
+ * Infer the internal column key for a human-readable column label.
+ * @param {string} value - Human-readable column name or label to resolve (e.g., "candidate", "round", "received date").
+ * @returns {string|null} The matching internal column key (e.g., "candidate", "subject", "round", "status", "assignedExpert", "assignedTo", "received", "client", "interviewStart", "interviewEnd", "interviewDate", "sender", "cc"), or `null` if the label cannot be resolved.
+ */
 function resolveColumnKey(value) {
   if (typeof value !== 'string') return null;
   const lower = value.trim().toLowerCase();

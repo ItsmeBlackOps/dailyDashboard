@@ -69,6 +69,15 @@ interface BranchCandidatesResponse {
 const MAX_LIMIT = 200;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * Convert an email or identifier into a human-friendly display name.
+ *
+ * Splits the input on '@' (taking the local part) and on common separators ('.', '_', '-', or whitespace),
+ * capitalizes each segment, and joins them with spaces.
+ *
+ * @param value - The email or identifier to format; may be an empty string
+ * @returns The formatted display name, or an empty string if `value` is falsy
+ */
 function formatEmailDisplay(value: string): string {
   if (!value) return '';
   const local = value.includes('@') ? value.split('@')[0] : value;
@@ -79,6 +88,16 @@ function formatEmailDisplay(value: string): string {
     .join(' ');
 }
 
+/**
+ * Renders the "Branch Candidates" UI section for managing and viewing candidates within a branch/hierarchy/expert scope.
+ *
+ * The component displays a searchable table of candidates, a scope badge, and conditional dialogs for creating or editing
+ * candidates. UI controls and editable fields are enabled or disabled based on the provided `role`. It also loads and
+ * refreshes candidate data from the server (using a socket connection) and updates recruiter/expert option lists returned by the server.
+ *
+ * @param role - The current user's role; governs visibility, editing permissions, and available actions.
+ * @returns The component's rendered UI, or `null` when the `role` does not permit viewing candidates.
+ */
 export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [scope, setScope] = useState<{ type: 'branch' | 'hierarchy' | 'expert'; value: string | string[] } | null>(null);
   const [candidates, setCandidates] = useState<CandidateRow[]>([]);

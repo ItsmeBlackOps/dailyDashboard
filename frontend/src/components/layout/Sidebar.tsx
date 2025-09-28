@@ -77,6 +77,19 @@ function NavItem({ icon: Icon, label, href, badge, isOpen }: NavItemProps) {
   );
 }
 
+/**
+ * Render the application sidebar with navigation, role-aware items, and account controls.
+ *
+ * Renders navigation links conditioned on the current user's role, keeps the active
+ * item scrolled into view, and manages interactive footer actions including a
+ * "What's New" update log and a change-password dialog. When applicable for the
+ * user's role, subscribes to a server-side resume-understanding count via WebSocket
+ * and displays it as a badge.
+ *
+ * @param isOpen - Whether the sidebar is expanded (true) or collapsed (false)
+ * @param toggleSidebar - Callback to toggle the sidebar open/collapsed state
+ * @returns The sidebar element containing navigation, dialogs, and footer controls
+ */
 export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
   const isMobile = useIsMobile();
   const scrollAreaRef = useRef<HTMLDivElement>(null);

@@ -63,7 +63,15 @@ const REM_FIRED_KEY = "interviewRemindersFired"; // JSON: string[]
 
 // Reminder settings
 const MINUTES_BEFORE = 35;
-const MAX_DELAY = 2147483647; // ~24.85 days (2^31 - 1)
+const MAX_DELAY = 2147483647; /**
+ * Render a real-time dashboard of today's interview tasks with filtering and reminder management.
+ *
+ * Establishes an authenticated WebSocket to receive live task updates, persists and schedules
+ * interview reminders in localStorage (including long-delay chaining), and shows toasts and desktop
+ * notifications for new tasks, status changes, and fired reminders.
+ *
+ * @returns A React element containing the TasksToday dashboard UI
+ */
 
 export default function TasksToday() {
   const [tasks, setTasks] = useState<Task[]>([]);

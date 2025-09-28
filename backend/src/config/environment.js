@@ -220,7 +220,12 @@ const typeConverters = {
 };
 
 /**
- * Build configuration from schema
+ * Constructs a runtime configuration object from a schema, applying environment overrides, type conversion, custom transforms, and validation.
+ *
+ * @param {Object} schema - Nested schema describing configuration keys. Each leaf may include `env` (environment variable name), `type` (converter key), `default`, `required` (boolean), `transform` (function), and `validate` (predicate).
+ * @param {string} [prefix=''] - Internal prefix used for nested key paths in error messages.
+ * @returns {Object} The resolved configuration object with the same structure as `schema` and values converted and validated.
+ * @throws {Error} If a required value is missing, a type conversion fails, or a validation predicate returns false.
  */
 function buildConfig(schema, prefix = '') {
   const config = {};
@@ -293,7 +298,9 @@ try {
 }
 
 /**
- * Configuration getter with dot notation support
+ * Retrieve a configuration value using an optional dot-separated path.
+ * @param {string} [path] - Dot-separated path to a nested config value (e.g. "server.port"); omit to get the full config object.
+ * @returns {*} The value at the given path, the full config object if `path` is omitted, or `undefined` if the path does not exist.
  */
 export function getConfig(path) {
   if (!path) return config;
@@ -304,16 +311,25 @@ export function getConfig(path) {
 }
 
 /**
- * Check if running in specific environment
+ * Determine whether the current runtime environment is production.
+ * @returns {boolean} `true` if the configured environment equals `'production'`, `false` otherwise.
  */
 export function isProduction() {
   return config.app.environment === 'production';
 }
 
+/**
+ * Determine if the application is running in the development environment.
+ * @returns {boolean} `true` if the application's environment is 'development', `false` otherwise.
+ */
 export function isDevelopment() {
   return config.app.environment === 'development';
 }
 
+/**
+ * Checks whether the application's current environment is 'test'.
+ * @returns {boolean} `true` if the current environment equals 'test', `false` otherwise.
+ */
 export function isTest() {
   return config.app.environment === 'test';
 }

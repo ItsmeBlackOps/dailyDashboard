@@ -47,6 +47,14 @@ type TopAgentsProps = {
   role: string;
 };
 
+/**
+ * Formats a raw name or email/local-part into a human-readable, capitalized name.
+ *
+ * Splits on dots, underscores, hyphens, and spaces, capitalizes each part, and joins with spaces. If `input` is an email, the local-part (before `@`) is used. Empty or missing inputs yield `"Unknown"`.
+ *
+ * @param input - A raw name string or an email address; may be undefined.
+ * @returns The humanized name (e.g., `john.doe@example.com` → `John Doe`) or `"Unknown"` if no usable input is provided.
+ */
 function humanizeName(input?: string): string {
   if (!input) return "Unknown";
   let s = String(input).trim();
@@ -56,6 +64,14 @@ function humanizeName(input?: string): string {
   return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(" ");
 }
 
+/**
+ * Create a two-character initials string from a person's name.
+ *
+ * @param name - The full name to derive initials from; may contain extra spaces or be empty.
+ * @returns `'NA'` if `name` is empty or only whitespace, otherwise a two-character uppercase initials string:
+ * - For a single word, the first two characters of that word uppercased.
+ * - For multiple words, the first letter of the first and last word uppercased.
+ */
 function initialsFrom(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "NA";
@@ -63,6 +79,12 @@ function initialsFrom(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+/**
+ * Maps a round name to the CSS classes used for that round's badge color and text.
+ *
+ * @param round - The round label (e.g., "1st", "2", "Final"); whitespace and case are ignored.
+ * @returns The CSS class string to apply for the badge (background color and text color).
+ */
 function roundBadgeClass(round: string) {
   const key = round.trim().toLowerCase();
   if (key.startsWith("1")) return "bg-emerald-600 text-white";
@@ -74,6 +96,15 @@ function roundBadgeClass(round: string) {
 
 const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
+/**
+ * Render a "Top Performing Agents" dashboard card that displays a chart and ranked list of agents (experts, recruiters, or candidates) based on the provided filters and user role.
+ *
+ * The component retrieves leader data over a websocket, refreshes data periodically, and attempts to refresh the session token on authorization errors. Visible views and selectable perspectives are determined by `role`.
+ *
+ * @param filters - Dashboard filter state that controls date range, date field, and other query parameters used to fetch leaders.
+ * @param role - Current user's role; determines which views (expert, recruiter, candidate) are available.
+ * @returns A React element containing the card UI with chart, leader list, loading/error/empty states, and view selection. 
+ */
 export function TopAgents({ filters, role }: TopAgentsProps) {
   const [leaders, setLeaders] = useState<LeadersPayload>({
     expert: [],

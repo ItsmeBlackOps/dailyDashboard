@@ -36,6 +36,16 @@ export async function requestRefreshToken(
   });
 }
 
+/**
+ * Provides authentication utilities for making authorized requests and managing session state.
+ *
+ * Includes functions to remove stored auth state and navigate to the sign-in page, refresh the stored access token using the saved refresh token, and perform fetch requests with automatic Authorization header handling and token refresh on 401 responses.
+ *
+ * @returns An object with the following properties:
+ * - `authFetch`: a function `(url: string, options?: RequestInit) => Promise<Response>` that performs a fetch with the current access token, attempts a token refresh and retry on 401, and may call `logout` and throw on failure.
+ * - `logout`: a function `() => void` that clears authentication and user-related keys from localStorage and navigates to `/auth/signin`.
+ * - `refreshAccessToken`: a function `() => Promise<boolean>` that attempts to obtain and store a new access token using the stored refresh token and returns `true` on success, `false` otherwise.
+ */
 export function useAuth() {
   const navigate = useNavigate();
 

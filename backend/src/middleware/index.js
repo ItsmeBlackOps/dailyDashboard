@@ -21,7 +21,12 @@ import { securityMiddleware } from './security.js';
 import { performanceMiddleware } from './performance.js';
 
 /**
- * Security middleware configuration
+ * Configure security-related middleware on the provided Express application.
+ *
+ * Applies HTTP security headers (including a Content Security Policy), CORS with configured origins and headers,
+ * rate limiting for routes under /api/, and response compression with a configurable threshold and override header.
+ *
+ * @param {import('express').Application} app - The Express application instance to configure.
  */
 export function setupSecurityMiddleware(app) {
   // Helmet for security headers
@@ -90,7 +95,12 @@ export function setupSecurityMiddleware(app) {
 }
 
 /**
- * Parsing middleware configuration
+ * Configure request body parsing: JSON and URL-encoded parsers with size limits, and raw body parsing for /api/webhooks.
+ *
+ * Applies:
+ * - JSON parser: 10mb limit, strict mode, application/json only.
+ * - URL-encoded parser: extended, 10mb limit, parameter limit 1000.
+ * - Raw parser for /api/webhooks: application/json, 1mb limit.
  */
 export function setupParsingMiddleware(app) {
   // Body parsing with size limits
@@ -115,7 +125,13 @@ export function setupParsingMiddleware(app) {
 }
 
 /**
- * Logging middleware configuration
+ * Registers HTTP request logging on the provided Express application.
+ *
+ * Adds a structured request logger for all routes and configures Morgan:
+ * in development it uses the 'dev' format; otherwise it uses the 'combined'
+ * format and skips logging responses with status codes less than 400.
+ *
+ * @param {import('express').Application} app - Express application instance to attach logging middleware to.
  */
 export function setupLoggingMiddleware(app) {
   // Request logging
@@ -132,7 +148,12 @@ export function setupLoggingMiddleware(app) {
 }
 
 /**
- * API middleware configuration
+ * Register API-specific middleware on the Express application.
+ *
+ * Applies performance tracking and security middleware to all routes under `/api`.
+ * The request validation middleware is intentionally not applied here and is exported for per-route use.
+ *
+ * @param {import('express').Application} app - Express application to register middleware on.
  */
 export function setupApiMiddleware(app) {
   // Custom performance tracking
@@ -146,7 +167,10 @@ export function setupApiMiddleware(app) {
 }
 
 /**
- * Error handling middleware configuration
+ * Register the 404 handler, error logger, and global error handler on an Express application in the required order.
+ *
+ * The 404 handler is registered before the error logger and global error handler; the global error handler is registered last.
+ * @param {import('express').Application} app - The Express application to configure.
  */
 export function setupErrorMiddleware(app) {
   // 404 handler (must be before error handler)
@@ -160,7 +184,17 @@ export function setupErrorMiddleware(app) {
 }
 
 /**
- * Health check middleware
+ * Register health, readiness, and liveness endpoints on the given Express application.
+ *
+ * Adds the following routes:
+ * - GET /health: basic service health with timestamp, uptime, app version, environment, and memory usage.
+ * - GET /ready: readiness status with timestamp and component checks (e.g., database, memory).
+ * - GET /live: liveness status with timestamp.
+ *
+ * The responses are JSON objects describing the current state; readiness checks are intended to be extended
+ * with dynamic checks for external dependencies (databases, caches, etc.).
+ *
+ * @param {import('express').Application} app - Express application instance to attach the endpoints to.
  */
 export function setupHealthCheck(app) {
   app.get('/health', (req, res) => {
@@ -200,7 +234,10 @@ export function setupHealthCheck(app) {
 }
 
 /**
- * Complete middleware setup
+ * Register and configure all server middleware on the given Express application in the required order.
+ *
+ * Ensures security and parsing are applied before logging and API middleware, and that error handling is registered last.
+ * @param {import('express').Application} app - The Express application to attach middleware to.
  */
 export function setupMiddleware(app) {
   // Security must be first

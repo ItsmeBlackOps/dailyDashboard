@@ -21,6 +21,16 @@ interface UpdateLogProps {
 
 const DEFAULT_STORAGE_KEY = "dashboard_update_log_collapsed";
 
+/**
+ * Render a collapsible "Latest Updates" card showing recent update entries sorted by date.
+ *
+ * Displays each entry's title, formatted date (short month day, year), description, and optional tags.
+ * The collapsed/expanded preference is persisted to localStorage when available.
+ *
+ * @param updates - Array of update entries to display; entries are shown newest first.
+ * @param storageKey - Optional localStorage key used to persist the collapsed state.
+ * @returns The rendered UpdateLog card element, or `null` when `updates` is empty.
+ */
 export function UpdateLog({ updates, storageKey = DEFAULT_STORAGE_KEY }: UpdateLogProps) {
   const sortedUpdates = useMemo(
     () => [...updates].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),

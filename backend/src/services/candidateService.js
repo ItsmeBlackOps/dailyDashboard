@@ -14,19 +14,39 @@ const ROLE_MAM = 'mam';
 const ROLE_MLEAD = 'mlead';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * Escape special regular-expression characters in a string so it can be used safely in a RegExp.
+ * @param {string} value - The input string to escape.
+ * @returns {string} The input with all RegExp metacharacters escaped.
+ */
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Normalize an email by trimming surrounding whitespace and converting to lowercase.
+ * @param {string} value - The email value to normalize.
+ * @returns {string} The normalized email string; returns an empty string if `value` is falsy.
+ */
 function normalizeEmail(value) {
   return (value || '').trim().toLowerCase();
 }
 
+/**
+ * Capitalize a string segment so the first character is uppercase and the rest are lowercase.
+ * @param {string} segment - The input text segment to capitalize; may be empty.
+ * @returns {string} The capitalized segment, or an empty string if the input is empty.
+ */
 function capitalize(segment = '') {
   if (!segment) return '';
   return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
 }
 
+/**
+ * Derives a human-readable display name from the local part of an email address.
+ * @param {string} email - The email address to derive a name from.
+ * @returns {string} The display name produced from the email's local part, with segments capitalized and separated by spaces; returns an empty string for falsy or malformed input.
+ */
 function deriveDisplayNameFromEmail(email) {
   const local = (email || '').split('@')[0];
   const parts = local.split(/[._\s-]+/).filter(Boolean);
@@ -34,6 +54,11 @@ function deriveDisplayNameFromEmail(email) {
   return parts.map(capitalize).join(' ');
 }
 
+/**
+ * Normalize a name by converting to a string, trimming whitespace, collapsing consecutive spaces, and lowercasing.
+ * @param {any} value - Value to normalize; non-string inputs are coerced to string.
+ * @returns {string} The normalized name: trimmed, lowercase, with internal whitespace collapsed to single spaces.
+ */
 function normalizeName(value) {
   return (value || '')
     .toString()
@@ -42,6 +67,11 @@ function normalizeName(value) {
     .replace(/\s+/g, ' ');
 }
 
+/**
+ * Convert a string to Title Case across segments separated by spaces, dots, underscores, or hyphens.
+ * @param {string} value - The input to convert; non-string values will be coerced to string.
+ * @returns {string} The input converted to Title Case with segments joined by single spaces (or an empty string for empty input).
+ */
 function toTitleCase(value = '') {
   return value
     .toString()
@@ -52,6 +82,11 @@ function toTitleCase(value = '') {
     .join(' ');
 }
 
+/**
+ * Produce a human-friendly display name from an email or raw name string.
+ * @param {string} value - An email address or a raw name; may be empty or falsy.
+ * @returns {string} The formatted display name derived from the email local-part when `value` contains `@`, or the title-cased name; empty string if `value` is falsy.
+ */
 function formatDisplayName(value = '') {
   if (!value) return '';
   if (value.includes('@')) {
@@ -60,6 +95,12 @@ function formatDisplayName(value = '') {
   return toTitleCase(value);
 }
 
+/**
+ * Normalize a technology label into title case, preserving slash-separated subsegments.
+ * 
+ * @param {string} value - Technology string (tokens separated by whitespace; subsegments may be separated by `/`).
+ * @returns {string} The technology string with each token converted to Title Case and each `/`-separated subsegment title-cased, or an empty string if input is empty.
+ */
 function formatTechnology(value = '') {
   if (!value) return '';
   return value
@@ -70,6 +111,11 @@ function formatTechnology(value = '') {
     .join(' ');
 }
 
+/**
+ * Normalize an email by trimming whitespace and converting to lowercase; return an empty string if the input is missing or not an email.
+ * @param {string} value - Input value to normalize; may be empty or non-string.
+ * @returns {string} The trimmed, lowercased email if it contains an '@', otherwise an empty string.
+ */
 function formatEmail(value = '') {
   const trimmed = (value || '').toString().trim();
   if (!trimmed || !trimmed.includes('@')) {

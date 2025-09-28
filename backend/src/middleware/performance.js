@@ -9,7 +9,15 @@ import { logger, createTimer } from '../utils/logger.js';
 import { config } from '../config/environment.js';
 
 /**
- * Performance monitoring middleware
+ * Create Express middleware that measures per-request duration and memory usage and logs performance metrics.
+ *
+ * The middleware increments and decrements req.app.locals.activeRequests, captures high-resolution timing and memory
+ * snapshots at request start and response end, computes deltas, logs categorized messages based on duration and memory
+ * thresholds, sets the `X-Response-Time` and `X-Memory-Usage` response headers, and returns control to the next
+ * middleware.
+ *
+ * @returns {Function} An Express middleware function (req, res, next) that records timing and memory metrics, sets
+ * response headers, and emits structured performance logs and warnings when thresholds are exceeded.
  */
 export function performanceMiddleware() {
   const performanceLogger = logger.child('performance');
@@ -97,7 +105,13 @@ export function performanceMiddleware() {
 }
 
 /**
- * Resource monitoring middleware
+ * Periodically captures and logs system resource snapshots (CPU, memory, uptime, and active requests)
+ * and emits warnings when predefined thresholds are exceeded.
+ *
+ * Runs checks at ~30 second intervals and logs a structured resource update; logs a warning if
+ * heap usage exceeds 512 MB or if concurrent active requests exceed 100.
+ *
+ * @returns {import('express').RequestHandler} Express middleware that performs periodic resource logging and threshold warnings.
  */
 export function resourceMonitoringMiddleware() {
   const resourceLogger = logger.child('resources');
@@ -150,7 +164,10 @@ export function resourceMonitoringMiddleware() {
 }
 
 /**
- * Response compression optimization
+ * Create Express middleware that annotates JSON responses with size information and compression hints.
+ *
+ * The middleware sets the `X-Response-Size` header for JSON responses, sets `X-Compression-Recommended` when the response size exceeds 1024 bytes and no `Content-Encoding` is present, and logs responses larger than 100 KB.
+ * @returns {Function} An Express middleware function. 
  */
 export function compressionOptimizer() {
   return (req, res, next) => {
@@ -185,7 +202,15 @@ export function compressionOptimizer() {
 }
 
 /**
- * Database query performance tracking
+ * Create Express middleware that records per-request database query timings and emits a summary when the response ends.
+ *
+ * The middleware attaches:
+ * - `req.dbQueries` — an array collecting recorded queries for the request.
+ * - `req.trackDbQuery(operation, collection, query)` — helper that returns `{ end(result) }`; calling `end` records the operation, collection, duration, a simple measurement of the `query` size, and `resultCount`, and logs individual slow queries (duration > 1000 ms).
+ *
+ * When the response finishes, the middleware logs a database queries summary (URL, query count, total DB time, list of queries) and emits warnings when query count exceeds 10 or total DB time exceeds 2000 ms.
+ *
+ * @returns {Function} Express middleware that instruments and summarizes database query performance per request.
  */
 export function databasePerformanceTracker() {
   return (req, res, next) => {
@@ -263,7 +288,14 @@ export function databasePerformanceTracker() {
 }
 
 /**
- * Cache performance middleware
+ * Create Express middleware that tracks per-request cache hits and misses, logs cache metrics when the response completes, and exposes helpers to record cache events.
+ *
+ * When requests include cache activity, the middleware logs a performance event with URL, hit/miss counts, hit rate, and total attempts; sets headers `X-Cache-Hits`, `X-Cache-Misses`, and `X-Cache-Hit-Rate`; and emits a warning when the hit rate is below 50% with more than 5 attempts.
+ *
+ * @returns {import('express').RequestHandler} Express middleware that:
+ *  - initializes `req.cacheHits` and `req.cacheMisses`,
+ *  - provides `req.recordCacheHit()` and `req.recordCacheMiss()` helpers,
+ *  - logs cache performance and sets response headers on response end.
  */
 export function cachePerformanceMiddleware() {
   return (req, res, next) => {
@@ -318,7 +350,13 @@ export function cachePerformanceMiddleware() {
 }
 
 /**
- * Memory leak detection middleware
+ * Create middleware that samples process memory over time and warns on rapid heap growth.
+ *
+ * The returned middleware records periodic memory snapshots (per request) into a rolling window
+ * and emits a warning when the observed heap-used growth rate exceeds 1,000 bytes per millisecond
+ * (approximately 1 MB/s).
+ *
+ * @returns {function} Express middleware (req, res, next) that captures memory samples and logs a warning when a potential memory leak is detected.
  */
 export function memoryLeakDetection() {
   let samples = [];

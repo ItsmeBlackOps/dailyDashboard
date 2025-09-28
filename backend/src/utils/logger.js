@@ -8,7 +8,12 @@
 import moment from 'moment-timezone';
 
 /**
- * Get configuration safely (fallback for early initialization)
+ * Obtain runtime logging configuration with safe fallbacks for early initialization.
+ * @returns {{level: string, format: string, isDevelopment: boolean, isProduction: boolean}} Configuration object:
+ *  - level: selected log level (e.g., "info").
+ *  - format: log output format (e.g., "json" or "pretty").
+ *  - isDevelopment: `true` when NODE_ENV === "development".
+ *  - isProduction: `true` when NODE_ENV === "production".
  */
 function getLogConfig() {
   try {
@@ -260,7 +265,15 @@ class Logger {
 const logger = new Logger();
 
 /**
- * Performance timing helper
+ * Create a simple timer for measuring an operation's duration and emitting a performance log.
+ *
+ * The returned object exposes an `end(meta = {})` method which computes the elapsed time
+ * in milliseconds since creation, logs a performance event via the provided logger, and
+ * returns the duration.
+ *
+ * @param {string} operation - Human-readable name of the operation being measured.
+ * @param {Logger} [loggerInstance] - Logger used to emit the performance event (defaults to module logger).
+ * @returns {number} Duration of the operation in milliseconds.
  */
 export function createTimer(operation, loggerInstance = logger) {
   const startTime = Date.now();
@@ -275,7 +288,14 @@ export function createTimer(operation, loggerInstance = logger) {
 }
 
 /**
- * Request logger middleware
+ * Attach a request-scoped logger to incoming requests and log request start and completion.
+ *
+ * The middleware assigns a requestId (from the `x-request-id` or `request-id` header, or a generated id)
+ * to `req.requestId`, creates `req.logger` (a Logger instance bound to that id), logs a debug-level
+ * "Request started" entry, and overrides `res.end` to log an HTTP completion entry including status,
+ * response time, content length, user agent, and IP.
+ *
+ * @returns {Function} Express-compatible middleware function (req, res, next).
  */
 export function requestLogger() {
   return (req, res, next) => {
@@ -323,7 +343,12 @@ export function requestLogger() {
 }
 
 /**
- * Error logger middleware
+ * Creates an Express error-handling middleware that logs the error along with request context and forwards the error.
+ *
+ * The middleware logs the error message and stack plus request details: HTTP method, URL, status code (from error.statusCode or 500),
+ * User-Agent header, and request IP.
+ *
+ * @returns {Function} An Express error-handling middleware function with signature (err, req, res, next) that logs the error and calls `next(err)`.
  */
 export function errorLogger() {
   return (err, req, res, next) => {
@@ -344,7 +369,10 @@ export function errorLogger() {
 }
 
 /**
- * Graceful shutdown handler
+ * Register process handlers for graceful shutdown and fatal-error logging.
+ *
+ * Registers listeners for SIGTERM and SIGINT to log shutdown initiation.
+ * Logs uncaught exceptions and unhandled promise rejections with details and exits the process with code 1.
  */
 export function setupGracefulShutdown() {
   const shutdownLogger = logger.child('shutdown');

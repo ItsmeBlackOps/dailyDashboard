@@ -1,6 +1,14 @@
 import { endOfDay, startOfDay } from 'date-fns';
 import type { DashboardFilterState } from './DashboardFilters';
 
+/**
+ * Builds a query payload object from dashboard filter state.
+ *
+ * When `filters.range` is `'custom'`, `start` and `end` (if present) are converted to ISO strings at the start and end of their respective days; otherwise `start` and `end` are copied as provided.
+ *
+ * @param filters - Dashboard filter settings; expected to include `range`, `dateField`, and optional `start`/`end` values
+ * @returns A record containing `range` and `dateField`, and optional `start` and `end` string values suitable for use in requests
+ */
 export function buildDashboardPayload(filters: DashboardFilterState) {
   const payload: Record<string, string> = {
     range: filters.range,
