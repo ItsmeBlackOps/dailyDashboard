@@ -9,3 +9,4 @@ yarn-error.log*
 *.tsbuildinfo
 backend/node_modules/
 frontend/dist/
+.env

@@ -104,7 +104,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const normalizedRole = role.trim().toLowerCase();
   const canView = ["admin", "mm", "mam", "mlead", "lead", "user", "am", "recruiter"].includes(normalizedRole);
   const canEdit = ["mm", "mam", "mlead", "recruiter", "lead", "am","admin"].includes(normalizedRole);
-  const canEditBasicFields = ["mm", "mam", "mlead", "recruiter"].includes(normalizedRole);
+  const canEditBasicFields = ["mm", "mam", "mlead", "recruiter","admin"].includes(normalizedRole);
   const canChangeRecruiterField = ['mm', 'mam', 'mlead',"admin"].includes(normalizedRole);
   const canChangeContactField = ['mm', 'mam','mlead', 'recruiter',"admin"].includes(normalizedRole);
   const canChangeExpertField = ['lead', 'am',"admin"].includes(normalizedRole);
