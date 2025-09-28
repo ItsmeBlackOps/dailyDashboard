@@ -107,7 +107,8 @@ export function setupParsingMiddleware(app) {
   }));
 
   // Raw body for webhooks
-  app.use('/api/webhooks/*', express.raw({
+  // Express 5 treats mount paths as prefixes, so `/api/webhooks` also matches nested routes
+  app.use('/api/webhooks', express.raw({
     type: 'application/json',
     limit: '1mb'
   }));
@@ -135,10 +136,10 @@ export function setupLoggingMiddleware(app) {
  */
 export function setupApiMiddleware(app) {
   // Custom performance tracking
-  app.use('/api/*', performanceMiddleware());
+  app.use('/api', performanceMiddleware());
 
   // Custom security middleware
-  app.use('/api/*', securityMiddleware());
+  app.use('/api', securityMiddleware());
 
   // Validation middleware (applied per route)
   // Note: This is exported for use in specific routes
