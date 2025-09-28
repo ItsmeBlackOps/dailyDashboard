@@ -47,6 +47,15 @@ const STATUS_LABELS: Record<QueueStatus, string> = {
   done: "Completed"
 };
 
+/**
+ * Renders the Resume Understanding page and manages the expert's real-time candidate queues.
+ *
+ * Displays tabbed views for pending and completed candidates, synchronizes queue state with a server
+ * over a socket connection, handles token refresh on auth errors, and provides per-candidate actions
+ * to mark items as done or return them to pending. Access to the page is restricted to configured roles.
+ *
+ * @returns The React element for the Resume Understanding page.
+ */
 export default function ResumeUnderstanding() {
   const { toast } = useToast();
   const { refreshAccessToken } = useAuth();

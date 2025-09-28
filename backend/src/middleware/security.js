@@ -9,7 +9,9 @@ import { logger } from '../utils/logger.js';
 import { config } from '../config/environment.js';
 
 /**
- * Security middleware for API routes
+ * Create an Express middleware that hardens requests by setting security headers, removing sensitive headers,
+ * inspecting request content for suspicious patterns, applying a simple per-IP rate limit, and logging security-relevant events.
+ * @returns {import('express').RequestHandler} Express middleware that enforces header hygiene, content checks, rate limiting, and security logging.
  */
 export function securityMiddleware() {
   const securityLogger = logger.child('security');
@@ -135,11 +137,21 @@ export function securityMiddleware() {
 }
 
 /**
- * Input sanitization middleware
+ * Sanitizes incoming request data by removing dangerous characters and protocols.
+ *
+ * Recursively processes strings, arrays, and plain objects found in the request and
+ * removes angle brackets, the `javascript:` and `data:` protocols, and surrounding whitespace
+ * from string values. Applies changes in-place to `req.body`, `req.query`, and `req.params`.
+ *
+ * @returns {function} Express middleware that sanitizes `req.body`, `req.query`, and `req.params`.
  */
 export function sanitizeInput() {
   return (req, res, next) => {
-    // Recursively sanitize object
+    /**
+     * Recursively sanitize input by stripping angle brackets, `javascript:` and `data:` protocols, and trimming strings; applies the same sanitization to arrays and objects.
+     * @param {*} value - Value to sanitize; may be a string, array, object, or other primitive.
+     * @returns {*} The sanitized value with strings cleaned, arrays mapped, and object properties sanitized; other types are returned unchanged.
+     */
     function sanitizeValue(value) {
       if (typeof value === 'string') {
         // Remove potentially dangerous characters
@@ -180,7 +192,14 @@ export function sanitizeInput() {
 }
 
 /**
- * Content Security Policy middleware
+ * Sets a strict Content-Security-Policy header on each response to restrict permitted sources.
+ *
+ * The policy restricts resources as follows: default to same-origin; scripts to same-origin;
+ * styles to same-origin and allow inline styles; images to same-origin, data URIs, and HTTPS;
+ * connections to same-origin and WebSocket (ws/wss); fonts to same-origin; objects and frames disallowed;
+ * media to same-origin.
+ *
+ * @returns {import('express').RequestHandler} Express middleware that sets the Content-Security-Policy header.
  */
 export function contentSecurityPolicy() {
   return (req, res, next) => {
@@ -200,7 +219,12 @@ export function contentSecurityPolicy() {
 }
 
 /**
- * IP whitelist/blacklist middleware
+ * Create Express middleware that blocks or allows requests based on IP whitelist and blacklist.
+ *
+ * @param {Object} [options] - Configuration for IP filtering.
+ * @param {string[]} [options.whitelist] - Array of allowed client IPs; when provided, only these IPs are permitted.
+ * @param {string[]} [options.blacklist] - Array of denied client IPs; these IPs are blocked immediately.
+ * @returns {function} An Express middleware function that responds with HTTP 403 for blocked or non-whitelisted IPs and calls `next()` for allowed requests.
  */
 export function ipFilter(options = {}) {
   const { whitelist = [], blacklist = [] } = options;
@@ -245,7 +269,15 @@ export function ipFilter(options = {}) {
 }
 
 /**
- * DDOS protection middleware
+ * Create middleware that detects and mitigates high-rate requests (DDOS) per client IP.
+ *
+ * The middleware tracks requests per IP over a short time window and, if a single IP
+ * exceeds a threshold (50 requests/second), marks that IP as suspicious and responds
+ * with HTTP 429. Suspicious IPs receive HTTP 429 for subsequent requests until cleared.
+ *
+ * @returns {Function} An Express middleware function that monitors per-IP request rates and
+ *                     responds with HTTP 429 when the rate exceeds 50 requests/second or when
+ *                     the IP is temporarily blocked; otherwise calls `next()`.
  */
 export function ddosProtection() {
   const connections = new Map();

@@ -9,6 +9,12 @@ interface HeaderProps {
   openSettings?: () => void; // keep if you plan to use it later
 }
 
+/**
+ * Top navigation header with a sidebar toggle, application title link, theme switcher, and logout button.
+ *
+ * @param toggleSidebar - Callback invoked when the sidebar toggle button is clicked
+ * @returns A React element representing the top application header containing the sidebar toggle, "Daily Dashboard" link, theme toggle, and logout control
+ */
 export function Header({ toggleSidebar }: HeaderProps) {
   const { logout } = useAuth();
 

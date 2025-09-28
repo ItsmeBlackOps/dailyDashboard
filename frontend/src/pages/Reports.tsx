@@ -145,6 +145,13 @@ const REPORTS_META: { id: ReportKind; name: string; description: string }[] = [
   { id: 'RDT_ALL', name: 'Received Date Time — Upcoming', description: 'Leads received strictly after today' },
 ];
 
+/**
+ * Render the Reports dashboard UI for exporting task data as CSV or a combined 4-sheet Excel file using NY timezone filters.
+ *
+ * The component presents role-gated controls (including an optional Report Assistant), a date-field selector (Date of Interview and, when permitted, Received Date Time), quick stats, per-report CSV download buttons, and a single-button Excel export. It fetches task data via Socket.IO, applies today/upcoming filters based on the selected date field, and surfaces loading and toast feedback during exports.
+ *
+ * @returns A React element containing the reports dashboard and export controls.
+ */
 export default function Reports() {
   const role = useMemo(() => localStorage.getItem('role') || '', []);
   const canUseAssistant = ['MAM', 'MM', 'admin', 'mtl', 'MTL'].includes(role);

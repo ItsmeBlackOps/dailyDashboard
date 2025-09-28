@@ -56,6 +56,15 @@ interface ExpertOption {
   label: string;
 }
 
+/**
+ * Convert an email address or local identifier into a human-friendly display name.
+ *
+ * Splits the local part on common separators (dots, underscores, hyphens, and spaces) and returns
+ * the segments joined as title-cased words. Returns an empty string for falsy input.
+ *
+ * @param value - The email address or local identifier to format
+ * @returns The formatted display name derived from the local part (e.g., "john.doe@example.com" -> "John Doe")
+ */
 function formatEmailDisplay(value: string): string {
   if (!value) return '';
   const local = value.includes('@') ? value.split('@')[0] : value;
@@ -66,6 +75,17 @@ function formatEmailDisplay(value: string): string {
     .join(' ');
 }
 
+/**
+ * Render an admin interface for assigning experts to pending candidates.
+ *
+ * Provides real-time synchronization via Socket.IO, displays pending candidates,
+ * allows selecting an expert from a normalized roster (with per-row augmentation),
+ * validates selections, and emits assignment actions. If the provided `role` is not
+ * `"admin"` (case-insensitive), the component renders nothing.
+ *
+ * @param role - The caller's role; trimmed and lowercased to determine admin access.
+ * @returns A React element containing the admin assignment UI, or `null` when not an admin.
+ */
 export function AdminAwaitingExpert({ role }: AdminAwaitingExpertProps) {
   const normalizedRole = role.trim().toLowerCase();
   const isAdmin = normalizedRole === "admin";

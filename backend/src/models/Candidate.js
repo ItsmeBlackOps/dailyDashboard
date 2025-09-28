@@ -32,6 +32,11 @@ export const RESUME_UNDERSTANDING_STATUS = {
   done: 'done'
 };
 
+/**
+ * Escape all characters in a string that have special meaning in regular expressions.
+ * @param {string} value - The input string to escape for literal use in a regular expression.
+ * @returns {string} The input string with regex-special characters escaped.
+ */
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

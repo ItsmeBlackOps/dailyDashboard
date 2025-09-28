@@ -63,6 +63,15 @@ const roundBadgeClass = (label: string) => {
   return "bg-gray-600 text-white";
 };
 
+/**
+ * Render a dashboard KPI overview showing total interviews, per-round charts and badges, and an admin-only branch breakdown.
+ *
+ * Fetches KPI data over a token-authenticated Socket.IO connection using the provided dashboard filters, handles token refresh on Unauthorized, and displays loading, error, or no-data states as appropriate.
+ *
+ * @param filters - Dashboard filter state used to build the payload for KPI requests (date range, date field, start/end for custom ranges, etc.)
+ * @param role - Current user's role; when `admin`, the component includes a branch breakdown section
+ * @returns A React element that displays KPI cards, charts, and breakdown lists based on the fetched data
+ */
 export function KpiOverview({ filters, role }: KpiOverviewProps) {
   const [kpi, setKpi] = useState<KpiPayload | null>(null);
   const [rangeLabel, setRangeLabel] = useState<string>("");

@@ -2,6 +2,11 @@ import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import moment from 'moment-timezone';
 
+/**
+ * Escape regex-special characters in a string so it can be used literally in a regular expression.
+ * @param {string} value - Input string to escape regex metacharacters.
+ * @returns {string} The input with regex metacharacters escaped.
+ */
 function escapeRegex(value = '') {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

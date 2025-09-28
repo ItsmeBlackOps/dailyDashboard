@@ -29,10 +29,19 @@ const refreshTokens = new Map();
 // --- User store & helpers ---
 const users = new Map();
 
+/**
+ * Retrieve a cached user record by email, performing a case-insensitive lookup.
+ * @param {string} email - The user's email address.
+ * @returns {Object|null} The cached user record for the email, or `null` if not found.
+ */
 function getUserByEmail(email) {
   return users.get(email.toLowerCase()) || null;
 }
 
+/**
+ * Normalize a task document by parsing its interview start/end times and extracting the most recent "Assigned To" from replies.
+ * @param {Object} doc - Original task document; expected to include "Date of Interview", "Start Time Of Interview", "End Time Of Interview", and optionally a `replies` array where each reply has `body` and `receivedDateTime`.
+ * @returns {Object|null} The normalized task object with added fields `assignedExpert` (display name or "Not Assigned"), `assignedEmail` (lowercased email or null), `assignedAt` (ISO timestamp or null), `startTime` (Moment in America/New_York), and `endTime` (Moment in America/New_York); returns `null` if interview start/end times are invalid.
 function formatTask(doc) {
   // 1) Parse the interview window up front:
   const dateStr = doc["Date of Interview"];
@@ -105,6 +114,12 @@ function formatTask(doc) {
   };
 }
 
+/**
+ * Determine whether a user should receive a task based on their role and the task's assigned email.
+ * @param {{email: string, role: string}} user - Authenticated user object with at least `email` and `role`. For users with role `"lead"`, team membership is resolved from the in-memory users cache.
+ * @param {string} assignedEmail - Email address currently assigned to the task.
+ * @returns {boolean} `true` if the user is allowed to receive the task, `false` otherwise.
+ */
 function shouldSendTask(user, assignedEmail) {
   const lowerEmail = user.email.toLowerCase();
   console.log(
@@ -136,6 +151,15 @@ function shouldSendTask(user, assignedEmail) {
   );
 }
 
+/**
+ * Emit a task event to all connected sockets whose authenticated user is allowed to receive that task.
+ *
+ * Skips sockets without an authenticated user and only emits to sockets where the user's role and assignment
+ * permit visibility of the task (the function uses the task's `assignedEmail` to determine eligibility).
+ *
+ * @param {string} event - The Socket.IO event name to emit.
+ * @param {Object} task - The task payload to send; must include an `assignedEmail` property used for visibility checks.
+ */
 function emitToRelevant(event, task) {
   for (const socket of io.of("/").sockets.values()) {
     const user = socket.data.user;
@@ -148,6 +172,11 @@ function emitToRelevant(event, task) {
 let db;
 // --- MongoDB Connection ---
 let taskBodyCollection;
+/**
+ * Establishes a MongoDB connection, initializes collection references, and wires live change streams for users and tasks.
+ *
+ * Connects to the configured MongoDB instance and sets the module-level `db` and `taskBodyCollection` variables, loads the initial in-memory user cache, watches the `users` collection to keep that cache in sync, and watches the `taskBody` collection for insert and update events. When task documents change, the function formats the task and emits `taskCreated` or `taskUpdated` events via the module's emitter.
+ */
 async function connectMongo() {
   console.log("🚀 Connecting to MongoDB...");
   const client = new MongoClient(mongoURI);
@@ -203,6 +232,11 @@ async function connectMongo() {
   });
 }
 
+/**
+ * Refreshes the in-memory users cache by loading all documents from the MongoDB "users" collection.
+ *
+ * Each cached entry is keyed by the user's lowercase email and contains { passwordHash, role, teamLead, manager }.
+ */
 async function loadUsers() {
   const all = await db.collection("users").find().toArray();
   users.clear();

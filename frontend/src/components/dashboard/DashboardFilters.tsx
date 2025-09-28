@@ -52,6 +52,16 @@ const MONTH_ITEMS = Array.from({ length: 12 }, (_, month) => ({
   label: format(new Date(2024, month, 1), "LLLL"),
 }));
 
+/**
+ * Render the dashboard filters UI for selecting a time range and date field, and notify the parent when filters change.
+ *
+ * Renders controls for "day", "week", "month", and "custom" ranges (with appropriate sub-controls), shows labels for the selected range, and invokes `onChange` with an updated DashboardFilterState whenever the user changes filters. When the date field is changed and localStorage is available, the selected field is persisted under the key `'tab'`.
+ *
+ * @param props.filters - Current dashboard filter state used to populate and control the UI
+ * @param props.onChange - Callback invoked with the next DashboardFilterState whenever the user updates filters
+ * @param props.allowReceivedDate - If true, includes "Received Date Time" as an option for the date field; defaults to `false`
+ * @returns A JSX element that renders the dashboard filters UI
+ */
 export function DashboardFilters({ filters, onChange, allowReceivedDate = false }: DashboardFiltersProps) {
   const [customOpen, setCustomOpen] = useState(false);
   const [customRange, setCustomRange] = useState<DateRange | undefined>();

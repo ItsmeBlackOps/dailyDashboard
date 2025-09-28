@@ -63,7 +63,15 @@ class ValidationError extends Error {
 }
 
 /**
- * Validate single field against schema
+ * Validates a single value against a field schema and returns any validation messages.
+ *
+ * The schema may specify requiredness, type, length/size, pattern, enum values,
+ * numeric range, boolean form, date validity, and array item count constraints.
+ *
+ * @param {*} value - The value to validate.
+ * @param {Object} schema - Field schema with possible properties: `required`, `type` ('string'|'number'|'boolean'|'date'|'array'|'object'), `minLength`, `maxLength`, `pattern`, `enum`, `min`, `max`, `minItems`, `maxItems`, `message`, etc.
+ * @param {string} fieldName - Field name used in generated error messages.
+ * @returns {string[]} An array of validation error messages; empty if the value satisfies the schema.
  */
 function validateField(value, schema, fieldName) {
   const errors = [];
@@ -162,8 +170,13 @@ function validateField(value, schema, fieldName) {
 }
 
 /**
- * Sanitize input value
- */
+ * Sanitizes and coerces a value based on a field schema.
+ *
+ * @param {*} value - The input value to sanitize; null and undefined are returned as-is.
+ * @param {Object} schema - Validation schema describing the expected type and sanitization options.
+ * @param {string} schema.type - Expected type: `'string'`, `'number'`, `'boolean'`, `'date'`, or other.
+ * @param {boolean} [schema.removeDangerous=true] - When `true` (default), remove HTML angle brackets, `javascript:` and `data:` protocols, and inline event handlers from strings.
+ * @returns {*} The sanitized and type-coerced value: trimmed/cleaned string for `'string'`, a `Number` for `'number'`, a boolean for `'boolean'` (strings `'true'`/`'1'` become `true`), a `Date` for `'date'`, or the original value for unsupported types.
 function sanitizeValue(value, schema) {
   if (value === undefined || value === null) {
     return value;
@@ -204,7 +217,14 @@ function sanitizeValue(value, schema) {
 }
 
 /**
- * Validate object against schema
+ * Validate an input object against a set of field schemas and produce a sanitized result.
+ *
+ * @param {Object} obj - Source object to validate; may contain fields not defined in the schema.
+ * @param {Object.<string, Object>} schemaFields - Mapping of field names to their validation schemas.
+ * @returns {{isValid: boolean, errors: string[], sanitized: Object}} Validation outcome:
+ *  - `isValid`: `true` when no validation errors were found.
+ *  - `errors`: array of error messages for invalid fields.
+ *  - `sanitized`: object containing sanitized values for all validated fields and any extra string fields from `obj`.
  */
 function validateObject(obj, schemaFields) {
   const errors = [];
@@ -241,7 +261,13 @@ function validateObject(obj, schemaFields) {
 }
 
 /**
- * Create validation middleware
+ * Create an Express middleware that validates and sanitizes req.body against a provided schema.
+ *
+ * @param {Object} schema - Validation schema describing expected fields and constraints.
+ * @returns {function} An Express middleware function that:
+ *  - validates req.body against the schema and, on validation failure, responds 400 with detailed errors;
+ *  - replaces req.body with the sanitized values and sets req.validationPassed = true on success, then calls next();
+ *  - responds 500 with a generic error if an internal validation exception occurs.
  */
 export function validationMiddleware(schema) {
   return (req, res, next) => {
