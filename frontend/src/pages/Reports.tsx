@@ -1,5 +1,5 @@
 // src/pages/Reports.tsx
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import moment, { Moment } from 'moment-timezone';
 import { io, Socket } from 'socket.io-client';
@@ -7,8 +7,16 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth, API_URL } from '@/hooks/useAuth';
+import { useTab } from '@/hooks/useTabs';
 import { BarChart3, FileText, Download, Plus, TrendingUp, Users, DollarSign, Target, FileSpreadsheet } from 'lucide-react';
 
 // If multi-sheet Excel is desired:
@@ -138,12 +146,52 @@ const REPORTS_META: { id: ReportKind; name: string; description: string }[] = [
 ];
 
 export default function Reports() {
+  const role = useMemo(() => localStorage.getItem('role') || '', []);
+  const canUseAssistant = ['MAM', 'MM', 'admin', 'mtl', 'MTL'].includes(role);
   const { toast } = useToast();
   const { refreshAccessToken } = useAuth();
-  const selectedTabRef = useRef<string | null>(localStorage.getItem('tab'));
+  const { selectedTab, setSelectedTab } = useTab();
+
+  const allowReceivedDate = useMemo(() => {
+    return ['admin', 'MM', 'MAM', 'mlead'].includes(role);
+  }, [role]);
+
+  const dateFieldOptions = useMemo(() => {
+    const base = [
+      { value: 'Date of Interview', label: 'Date of Interview' },
+    ];
+    if (allowReceivedDate) {
+      base.push({ value: 'receivedDateTime', label: 'Received Date Time' });
+    }
+    return base;
+  }, [allowReceivedDate]);
 
   const [loadingId, setLoadingId] = useState<ReportKind | 'ALL' | null>(null);
   const [tasksCache, setTasksCache] = useState<Task[] | null>(null);
+
+  const currentDateField = useMemo(() => {
+    if (!allowReceivedDate) {
+      return 'Date of Interview';
+    }
+    return selectedTab === 'receivedDateTime' ? 'receivedDateTime' : 'Date of Interview';
+  }, [allowReceivedDate, selectedTab]);
+
+  useEffect(() => {
+    if (!allowReceivedDate && selectedTab === 'receivedDateTime') {
+      setSelectedTab('Date of Interview');
+    }
+  }, [allowReceivedDate, selectedTab, setSelectedTab]);
+
+  useEffect(() => {
+    setTasksCache(null);
+  }, [currentDateField, setTasksCache]);
+
+  const handleDateFieldChange = useCallback(
+    (value: string) => {
+      setSelectedTab(value);
+    },
+    [setSelectedTab]
+  );
 
   // dashed-border spinner overlay for Excel generation
   const showExcelOverlay = loadingId === 'ALL';
@@ -179,7 +227,7 @@ export default function Reports() {
     return new Promise<Task[]>((resolve) => {
       socket.emit(
         'getTasksToday',
-        { tab: selectedTabRef.current },
+        { tab: currentDateField },
         (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
           if (!resp.success) {
             toast({
@@ -196,7 +244,7 @@ export default function Reports() {
         }
       );
     });
-  }, [socket, toast, tasksCache]);
+  }, [socket, toast, tasksCache, currentDateField]);
 
   const nowNY = moment.tz(TZ);
   const startOfTodayNY = nowNY.clone().startOf('day');
@@ -308,7 +356,12 @@ export default function Reports() {
                 Generate CSVs or a single Excel with 4 sheets (NY timezone filters).
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap justify-end">
+              {canUseAssistant && (
+                <Button asChild variant="secondary">
+                  <Link to="/reports/assistant">Report Assistant</Link>
+                </Button>
+              )}
               <Button onClick={exportAllExcel} disabled={loadingId !== null} aria-disabled={loadingId !== null}>
                 <FileSpreadsheet className="mr-2 h-4 w-4" />
                 Export Excel (4 sheets)
@@ -320,6 +373,22 @@ export default function Reports() {
                 </Link>
               </Button>
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Date Field</p>
+            <Select value={currentDateField} onValueChange={handleDateFieldChange}>
+              <SelectTrigger className="w-full sm:w-60">
+                <SelectValue placeholder="Select date field" />
+              </SelectTrigger>
+              <SelectContent>
+                {dateFieldOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Quick Stats */}

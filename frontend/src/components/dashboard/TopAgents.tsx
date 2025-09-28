@@ -1,77 +1,89 @@
-// src/components/TopAgents.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import { useAuth, API_URL } from "@/hooks/useAuth";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import type { DashboardFilterState } from "./DashboardFilters";
+import { buildDashboardPayload } from "./dashboardUtils";
+import { cn } from "@/lib/utils";
 
-type SummaryRow = {
-  ["Candidate Name"]: string;
-  statusCount: Record<string, number>;
-  ["Last Sender"]?: string;
-  ["Last CC"]?: string;
-  Expert?: string; // assignedTo
-};
-
-interface Agent {
+interface LeaderResponse {
   id: string;
   name: string;
-  image?: string;
-  initials: string;
   counts: Record<string, number>;
+  total: number;
+  highlight?: boolean;
 }
 
-const START_ISO = "2025-08-01T00:00:00Z";
-const END_ISO   = "2025-09-01T00:00:00Z";
+interface LeadersPayload {
+  expert: LeaderResponse[];
+  recruiter: LeaderResponse[];
+  candidate: LeaderResponse[];
+}
+
+interface DashboardSummaryResponse {
+  success: boolean;
+  summary?: unknown[];
+  meta?: {
+    leaders?: LeadersPayload;
+  };
+  error?: string;
+}
 
 type ViewMode = "expert" | "recruiter" | "candidate";
 
-// Helpers
+type TopAgentsProps = {
+  filters: DashboardFilterState;
+  role: string;
+};
+
 function humanizeName(input?: string): string {
   if (!input) return "Unknown";
   let s = String(input).trim();
   if (s.includes("@")) s = s.split("@")[0];
   const parts = s.split(/[._\s-]+/).filter(Boolean);
   if (parts.length === 0) return "Unknown";
-  return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(" ");
+  return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(" ");
 }
+
 function initialsFrom(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "NA";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
-function normalizeKey(k: string): string {
-  return (k || "").trim();
-}
-function badgeClassFor(key: string): string {
-  const s = key.trim().toLowerCase();
-  if (s === "completed")    return "bg-emerald-600 text-white";
-  if (s === "cancelled")    return "bg-red-600 text-white";
-  if (s === "acknowledged") return "bg-amber-600 text-white";
-  if (s === "pending")      return "bg-blue-600 text-white";
-  return "bg-gray-600 text-white";
+
+function roundBadgeClass(round: string) {
+  const key = round.trim().toLowerCase();
+  if (key.startsWith("1")) return "bg-emerald-600 text-white";
+  if (key.startsWith("2")) return "bg-blue-600 text-white";
+  if (key.startsWith("3")) return "bg-purple-600 text-white";
+  if (key.includes("final")) return "bg-amber-600 text-white";
+  return "bg-slate-600 text-white";
 }
 
-export function TopAgents() {
-  const [rows, setRows] = useState<SummaryRow[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
+const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+
+export function TopAgents({ filters, role }: TopAgentsProps) {
+  const [leaders, setLeaders] = useState<LeadersPayload>({
+    expert: [],
+    recruiter: [],
+    candidate: [],
+  });
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState("");
-
+  const [error, setError] = useState("");
   const { refreshAccessToken } = useAuth();
-  const role = useMemo(() => (localStorage.getItem("role") || "").trim(), []);
 
-  // Allowed views by role
   const allowedViews: ViewMode[] = useMemo(() => {
     if (role === "admin") return ["expert", "recruiter", "candidate"];
     if (role === "MM" || role === "MAM" || role === "mlead") return ["recruiter", "candidate"];
@@ -81,14 +93,20 @@ export function TopAgents() {
 
   const [view, setView] = useState<ViewMode>(allowedViews[0]);
 
-  // Re-align selected view if role changes or restrictions apply
   useEffect(() => {
-    if (!allowedViews.includes(view)) setView(allowedViews[0]);
+    if (!allowedViews.includes(view)) {
+      setView(allowedViews[0]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowedViews.join("|")]);
 
-  // Socket
-  const socket: Socket = useMemo(() => {
+  const allowCustomFetch = useMemo(() => {
+    if (filters.range !== "custom") return true;
+    return Boolean(filters.start && filters.end);
+  }, [filters]);
+
+  const socket: Socket | null = useMemo(() => {
+    if (typeof window === 'undefined') return null;
     const token = localStorage.getItem("accessToken") || "";
     return io(API_URL, {
       autoConnect: false,
@@ -97,106 +115,53 @@ export function TopAgents() {
     });
   }, []);
 
-  // Data fetch
-  const fetchSummary = useCallback(() => {
-    setLoading(true);
-    setError("");
-    socket.emit(
-      "getDashboardSummary",
-      { start: START_ISO, end: END_ISO },
-      (resp: { success: boolean; summary?: SummaryRow[]; error?: string }) => {
-        console.log("[TopAgents] getDashboardSummary ->", resp);
-        if (!resp || !resp.success || !resp.summary) {
-          setError(resp?.error || "Failed to load agents");
-          setRows([]);
-          setAgents([]);
-          setLoading(false);
-          return;
-        }
-        setRows(resp.summary);
-        setLoading(false);
-      }
-    );
-  }, [socket]);
-
-  // Transform rows -> agents for the selected view
-  const buildAgents = useCallback((data: SummaryRow[], mode: ViewMode): Agent[] => {
-    const map = new Map<string, Agent>();
-
-    for (const row of data) {
-      let rawName = "Unknown";
-      if (mode === "expert") {
-        rawName = row.Expert ?? "Unknown";
-      } else if (mode === "recruiter") {
-        rawName = row["Last Sender"] ?? "Unknown";
-      } else { // candidate
-        rawName = (row["Candidate Name"] ?? "Unknown").trim();
-      }
-
-      const displayName = mode === "candidate" ? rawName : humanizeName(rawName);
-      const key = displayName.toLowerCase();
-
-      const normalized: Record<string, number> = {};
-      for (const [k, v] of Object.entries(row.statusCount || {})) {
-        const nk = normalizeKey(k);
-        const val = typeof v === "number" ? v : 0;
-        normalized[nk] = (normalized[nk] || 0) + val;
-      }
-
-      if (!map.has(key)) {
-        map.set(key, {
-          id: key,
-          name: displayName,
-          initials: initialsFrom(displayName),
-          image: undefined,
-          counts: normalized,
-        });
-      } else {
-        const prev = map.get(key)!;
-        const merged: Record<string, number> = { ...prev.counts };
-        for (const [k, v] of Object.entries(normalized)) {
-          merged[k] = (merged[k] || 0) + (v || 0);
-        }
-        map.set(key, { ...prev, counts: merged });
-      }
+  const fetchLeaders = useCallback(() => {
+    if (!socket) return;
+    if (!allowCustomFetch) {
+      setError("Select both start and end dates for a custom range");
+      setLeaders({ expert: [], recruiter: [], candidate: [] });
+      setLoading(false);
+      return;
     }
 
-    // Sort by completed desc, then total desc, then name
-    return Array.from(map.values()).sort((a, b) => {
-      const ac = a.counts["completed"] ?? a.counts["Completed"] ?? 0;
-      const bc = b.counts["completed"] ?? b.counts["Completed"] ?? 0;
-      if (bc !== ac) return bc - ac;
-      const at = Object.values(a.counts).reduce((x, y) => x + y, 0);
-      const bt = Object.values(b.counts).reduce((x, y) => x + y, 0);
-      if (bt !== at) return bt - at;
-      return a.name.localeCompare(b.name);
+    setLoading(true);
+    setError("");
+
+    socket.emit("getDashboardSummary", buildDashboardPayload(filters), (resp: DashboardSummaryResponse) => {
+      if (!resp || !resp.success) {
+        setError(resp?.error || "Failed to load leaders");
+        setLeaders({ expert: [], recruiter: [], candidate: [] });
+        setLoading(false);
+        return;
+      }
+
+      const payload = resp.meta?.leaders ?? { expert: [], recruiter: [], candidate: [] };
+      setLeaders({
+        expert: payload.expert || [],
+        recruiter: payload.recruiter || [],
+        candidate: payload.candidate || [],
+      });
+      setLoading(false);
     });
-  }, []);
+  }, [socket, filters, allowCustomFetch]);
 
-  // Rebuild agents whenever rows or view change
   useEffect(() => {
-    setAgents(buildAgents(rows, view));
-  }, [rows, view, buildAgents]);
-
-  // Socket lifecycle
-  useEffect(() => {
+    if (!socket) return;
     const onConnect = () => {
-      console.log("[TopAgents] socket connected:", socket.id);
-      fetchSummary();
+      fetchLeaders();
     };
     const onDisconnect = (reason: string) => {
-      console.log("[TopAgents] socket disconnected:", reason);
+      console.debug("[TopAgents] socket disconnected:", reason);
     };
     const onAuthError = async (err: Error) => {
       if (err.message !== "Unauthorized") return;
-      console.warn("[TopAgents] Unauthorized — trying refreshAccessToken()");
       const ok = await refreshAccessToken();
       if (!ok) {
-        console.error("[TopAgents] Token refresh failed — cannot fetch summary");
+        setError("Session expired. Please sign in again.");
         return;
       }
       socket.auth = { token: localStorage.getItem("accessToken") || "" };
-      socket.once("connect", fetchSummary);
+      socket.once("connect", fetchLeaders);
       socket.connect();
     };
 
@@ -205,7 +170,7 @@ export function TopAgents() {
     socket.on("connect_error", onAuthError);
 
     socket.connect();
-    const interval = setInterval(fetchSummary, 60_000);
+    const interval = setInterval(fetchLeaders, 60_000);
 
     return () => {
       socket.off("connect", onConnect);
@@ -214,38 +179,81 @@ export function TopAgents() {
       socket.disconnect();
       clearInterval(interval);
     };
-  }, [socket, fetchSummary, refreshAccessToken]);
+  }, [socket, fetchLeaders, refreshAccessToken]);
 
-  // Row highlight classes per your rule & new red style
-  const rowHighlightClasses = useCallback((a: Agent) => {
-    const completed = a.counts["completed"] ?? a.counts["Completed"] ?? 0;
-
-    if (role === "MM" || role === "MAM" || role === "mlead") {
-      return completed < 5
-        ? "bg-red-500/10 border-red-500/30"
-        : "border-border";
+  useEffect(() => {
+    if (socket && socket.connected) {
+      fetchLeaders();
     }
-    if (role === "lead" || role === "admin" || role === "user") {
-      return completed >= 5
-        ? "bg-red-500/10 border-red-500/30"
-        : "border-border";
-    }
-    return "border-border";
-  }, [role]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.range, filters.dateField, filters.start, filters.end]);
 
-  // View selector label map
   const viewLabel: Record<ViewMode, string> = {
     expert: "Expert Wise",
     recruiter: "Recruiter Wise",
     candidate: "Candidate Wise",
   };
 
-  return (
-    <Card className="dashboard-card">
-      <CardHeader className="mb-1 p-0 flex items-center justify-between">
-        <CardTitle className="text-lg font-medium">Top Performing Agents</CardTitle>
+  const list = useMemo(() => {
+    return leaders[view] || [];
+  }, [leaders, view]);
 
-        {/* Show selector only if multiple views are allowed */}
+  const rowHighlightClasses = useCallback((leader: LeaderResponse) => {
+    if (leader.highlight) {
+      return "bg-gradient-to-r from-red-500/15 via-transparent to-transparent border-red-500/40 shadow-[0_0_24px_rgba(239,68,68,0.15)]";
+    }
+    return "bg-muted/10 border-border/60";
+  }, []);
+
+  const topLeadersForChart = useMemo(() => list.slice(0, 5), [list]);
+
+  const chartRounds = useMemo(() => {
+    const rounds = new Set<string>();
+    topLeadersForChart.forEach((leader) => {
+      Object.keys(leader.counts || {}).forEach((round) => rounds.add(round));
+    });
+    return Array.from(rounds).sort((a, b) => a.localeCompare(b));
+  }, [topLeadersForChart]);
+
+  const chartData = useMemo(() => {
+    return chartRounds.map((round) => {
+      const entry: Record<string, number | string> = { round };
+      topLeadersForChart.forEach((leader, index) => {
+        const key = `series_${index}`;
+        entry[key] = leader.counts?.[round] ?? 0;
+      });
+      return entry;
+    });
+  }, [chartRounds, topLeadersForChart]);
+
+  const chartConfig = useMemo<ChartConfig>(() => {
+    const palette = [
+      "hsl(var(--primary))",
+      "hsl(var(--secondary))",
+      "hsl(var(--accent))",
+      "#12a8f8",
+      "#f97316",
+    ];
+
+    return topLeadersForChart.reduce((acc, leader, index) => {
+      const key = `series_${index}`;
+      acc[key] = {
+        label: leader.name,
+        color: palette[index % palette.length],
+      };
+      return acc;
+    }, {} as ChartConfig);
+  }, [topLeadersForChart]);
+
+  return (
+    <Card className="dashboard-card h-auto">
+      <CardHeader className="mb-1 p-0 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <CardTitle className="text-lg font-medium">Top Performing Agents</CardTitle>
+          <CardDescription className="text-xs">
+            {viewLabel[view]} · {list.length} {view === 'candidate' ? 'candidates' : 'agents'} · {numberFormatter.format(list.reduce((acc, item) => acc + item.total, 0))} interviews
+          </CardDescription>
+        </div>
         {allowedViews.length > 1 ? (
           <Select value={view} onValueChange={(v: ViewMode) => setView(v)}>
             <SelectTrigger className="w-44 h-8">
@@ -260,64 +268,102 @@ export function TopAgents() {
             </SelectContent>
           </Select>
         ) : (
-          // If only one view, keep layout stable with a subtle label
-          <div className="text-xs text-muted-foreground">{viewLabel[allowedViews[0]]}</div>
+          <Badge variant="outline" className="text-xs">
+            {viewLabel[allowedViews[0]]}
+          </Badge>
         )}
       </CardHeader>
 
-      <CardContent className="px-0 pt-2">
+      <CardContent className="space-y-4 px-0 pt-2">
         {loading ? (
           <p className="text-sm text-muted-foreground px-1">Loading…</p>
         ) : error ? (
           <p className="text-sm text-destructive px-1">{error}</p>
-        ) : agents.length === 0 ? (
-          <p className="text-sm text-muted-foreground px-1">
-            No data for Aug 1–31, 2025.
-          </p>
+        ) : list.length === 0 ? (
+          <p className="text-sm text-muted-foreground px-1">No data for the selected filters.</p>
         ) : (
-          <div className="max-h-96 overflow-y-auto pr-2 space-y-3">
-            {agents.map((agent) => {
-              const entries = Object.entries(agent.counts)
-                .filter(([, v]) => (v ?? 0) > 0)
-                .sort((a, b) => {
-                  const diff = (b[1] ?? 0) - (a[1] ?? 0);
-                  return diff !== 0 ? diff : a[0].localeCompare(b[0]);
-                });
+          <>
+            {chartData.length > 0 && chartRounds.length > 0 && topLeadersForChart.length > 0 && (
+              <div className="px-1">
+                <ChartContainer config={chartConfig} className="h-56 w-full">
+                  <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="4 4" vertical={false} />
+                    <XAxis dataKey="round" height={32} tickLine={false} axisLine={false} dy={12} tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} width={40} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    {topLeadersForChart.map((leader, index) => {
+                      const key = `series_${index}`;
+                      return (
+                        <Line
+                          key={key}
+                          type="monotone"
+                          dataKey={key}
+                          name={leader.name}
+                          stroke={`var(--color-${key})`}
+                          strokeWidth={2}
+                          dot={{ r: 2 }}
+                          activeDot={{ r: 5 }}
+                        />
+                      );
+                    })}
+                  </LineChart>
+                </ChartContainer>
+              </div>
+            )}
 
-              return (
-                <div
-                  key={agent.id}
-                  className={[
-                    "flex items-center gap-4 rounded-xl p-2 border",
-                    rowHighlightClasses(agent),
-                  ].join(" ")}
-                >
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage src={agent.image} alt={agent.name} />
-                    <AvatarFallback>{initialsFrom(agent.name)}</AvatarFallback>
-                  </Avatar>
+            <div className="max-h-[28rem] overflow-y-auto pr-2 space-y-3">
+              {list.map((leader, index) => {
+                const entries = Object.entries(leader.counts)
+                  .filter(([, value]) => (value ?? 0) > 0)
+                  .sort((a, b) => {
+                    const diff = (b[1] ?? 0) - (a[1] ?? 0);
+                    return diff !== 0 ? diff : a[0].localeCompare(b[0]);
+                  });
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-center mb-1">
-                      <p className="text-sm font-medium truncate">{agent.name}</p>
-                    </div>
+                return (
+                  <div
+                    key={leader.id}
+                    className={cn(
+                      "flex items-center gap-4 rounded-xl border border-border/60 bg-muted/5 p-3 transition-all",
+                      rowHighlightClasses(leader)
+                    )}
+                  >
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage alt={leader.name} />
+                      <AvatarFallback>{initialsFrom(leader.name)}</AvatarFallback>
+                    </Avatar>
 
-                    {/* Dynamic round/status chips */}
-                    <div className="flex flex-wrap gap-2">
-                      {entries.map(([label, count]) => (
-                        <Badge
-                          key={label}
-                          className={`${badgeClassFor(label)} text-xs`}
-                        >
-                          {label}: {count}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center gap-2 mb-1">
+                        <div className="flex flex-col">
+                          <p className="text-sm font-medium truncate">{humanizeName(leader.name)}</p>
+                          {leader.highlight && (
+                            <span className="text-[10px] text-primary font-semibold uppercase tracking-wide">
+                              {index === 0 ? 'Top performer' : 'Attention required'}
+                            </span>
+                          )}
+                        </div>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {numberFormatter.format(leader.total)} total
                         </Badge>
-                      ))}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {entries.length === 0 ? (
+                          <span className="text-xs text-muted-foreground">No round data available.</span>
+                        ) : (
+                          entries.map(([label, count]) => (
+                            <Badge key={label} className={`${roundBadgeClass(label)} text-xs`}>
+                              {label}: {numberFormatter.format(count)}
+                            </Badge>
+                          ))
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
