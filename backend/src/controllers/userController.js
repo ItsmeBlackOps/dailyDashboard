@@ -1,6 +1,7 @@
 import { userService } from '../services/userService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
+import { hasManagerPrivileges } from '../utils/roles.js';
 
 export class UserController {
   constructor() {
@@ -130,7 +131,7 @@ export class UserController {
     const requestingUser = req.user;
 
     // Users can only view their own profile unless they have admin/manager role
-    if (email !== requestingUser.email && !['admin', 'manager'].includes(requestingUser.role)) {
+    if (email !== requestingUser.email && !hasManagerPrivileges(requestingUser.role)) {
       return res.status(403).json({
         success: false,
         error: 'Insufficient permissions'

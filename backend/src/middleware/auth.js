@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
 import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
+import { hasAnyRole } from '../utils/roles.js';
 
 export const authenticateSocket = (socket, next) => {
   const token = socket.handshake.auth.token;
@@ -59,7 +60,7 @@ export const requireRole = (roles) => {
 
     const allowedRoles = Array.isArray(roles) ? roles : [roles];
 
-    if (!allowedRoles.includes(user.role)) {
+    if (!hasAnyRole(user.role, allowedRoles)) {
       logger.warn('Socket access denied - insufficient permissions', {
         userEmail: user.email,
         userRole: user.role,
@@ -146,7 +147,7 @@ export const requireHTTPRole = (roles) => {
 
     const allowedRoles = Array.isArray(roles) ? roles : [roles];
 
-    if (!allowedRoles.includes(user.role)) {
+    if (!hasAnyRole(user.role, allowedRoles)) {
       logger.warn('HTTP access denied - insufficient permissions', {
         userEmail: user.email,
         userRole: user.role,

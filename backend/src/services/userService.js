@@ -1,6 +1,7 @@
 import { userModel } from '../models/User.js';
 import { refreshTokenModel } from '../models/RefreshToken.js';
 import { logger } from '../utils/logger.js';
+import { hasManagerPrivileges, isAdminRole, isManagerRole, normalizeRoleName } from '../utils/roles.js';
 
 const ROLE_CANONICAL_MAP = new Map([
   ['admin', 'admin'],
@@ -368,23 +369,29 @@ export class UserService {
   }
 
   canManageUsers(role) {
-    return ['admin', 'manager'].includes(role);
+    return hasManagerPrivileges(role);
   }
 
   canViewUsersByRole(requestingRole, targetRole) {
-    if (requestingRole === 'admin') return true;
-    if (requestingRole === 'manager') return true;
-    if (requestingRole === 'am' && ['lead', 'user', 'expert'].includes(targetRole)) return true;
-    if (requestingRole === 'lead' && ['user', 'expert'].includes(targetRole)) return true;
+    const normalizedRequester = normalizeRoleName(requestingRole);
+    const normalizedTarget = normalizeRoleName(targetRole);
+
+    if (isAdminRole(requestingRole) || isManagerRole(requestingRole)) {
+      return true;
+    }
+    if (normalizedRequester === 'am' && ['lead', 'user', 'expert'].includes(normalizedTarget)) return true;
+    if (normalizedRequester === 'lead' && ['user', 'expert'].includes(normalizedTarget)) return true;
     return false;
   }
 
   canViewStats(role) {
-    return ['admin', 'manager', 'lead'].includes(role);
+    const normalized = normalizeRoleName(role);
+    return isAdminRole(role) || isManagerRole(role) || normalized === 'lead';
   }
 
   canSearchUsers(role) {
-    return ['admin', 'manager', 'lead', 'am'].includes(role);
+    const normalized = normalizeRoleName(role);
+    return isAdminRole(role) || isManagerRole(role) || ['lead', 'am'].includes(normalized);
   }
 
   isValidRole(role) {
@@ -589,15 +596,18 @@ export class UserService {
   }
 
   canInitiateProvisioning(role) {
-    const normalized = (role || '').toLowerCase();
-    return ['admin', 'manager', 'mm', 'mam', 'mlead', 'lead', 'am'].includes(normalized);
+    const normalized = normalizeRoleName(role);
+    if (hasManagerPrivileges(role)) {
+      return true;
+    }
+    return ['mam', 'mlead', 'lead', 'am'].includes(normalized);
   }
 
   canCreateRole(requesterRole, targetRole) {
-    const requester = (requesterRole || '').toLowerCase();
-    const target = (targetRole || '').toLowerCase();
+    const requester = normalizeRoleName(requesterRole);
+    const target = normalizeRoleName(targetRole);
 
-    if (['admin', 'manager'].includes(requester)) return true;
+    if (isAdminRole(requesterRole) || requester === 'manager') return true;
     if (requester === 'mm') return ['mam'].includes(target);
     if (requester === 'mam') return ['mlead', 'recruiter'].includes(target);
     if (requester === 'mlead') return ['recruiter'].includes(target);
@@ -607,10 +617,10 @@ export class UserService {
   }
 
   canManageTargetRole(requesterRole, targetRole) {
-    const requester = (requesterRole || '').toLowerCase();
-    const target = (targetRole || '').toLowerCase();
+    const requester = normalizeRoleName(requesterRole);
+    const target = normalizeRoleName(targetRole);
 
-    if (['admin', 'manager'].includes(requester)) return true;
+    if (isAdminRole(requesterRole) || requester === 'manager') return true;
     if (requester === 'mm') return ['mam', 'mlead', 'recruiter'].includes(target);
     if (requester === 'mam') return ['mlead', 'recruiter'].includes(target);
     if (requester === 'mlead') return ['recruiter'].includes(target);
@@ -625,7 +635,7 @@ export class UserService {
       return formattedProvided;
     }
 
-    const requesterRole = (requestingUser.role || '').toLowerCase();
+    const requesterRole = normalizeRoleName(requestingUser.role);
     const requesterDisplayName = this.deriveDisplayNameFromEmail(requestingUser.email);
     const normalizedTarget = (targetRole || '').toLowerCase();
     const targetDisplayName = this.formatNameValue(this.deriveDisplayNameFromEmail(targetEmail));
@@ -666,17 +676,17 @@ export class UserService {
       }
     }
 
-    const requesterRole = (requestingUser.role || '').toLowerCase();
-    if (requesterRole === 'mm') {
+    const requesterRole = normalizeRoleName(requestingUser.role);
+    if (isManagerRole(requestingUser.role)) {
       return this.deriveDisplayNameFromEmail(requestingUser.email);
     }
 
-     if (requesterRole === 'am') {
-       const requesterManagerDisplay = this.formatNameValue(requesterRecord?.manager ?? '');
-       if (requesterManagerDisplay) {
-         return requesterManagerDisplay;
-       }
-     }
+    if (requesterRole === 'am') {
+      const requesterManagerDisplay = this.formatNameValue(requesterRecord?.manager ?? '');
+      if (requesterManagerDisplay) {
+        return requesterManagerDisplay;
+      }
+    }
 
     const requesterManager = this.formatNameValue(requesterRecord?.manager ?? '');
     if (requesterManager) {
@@ -719,8 +729,6 @@ export class UserService {
     }
 
     const requesterDisplay = this.normalizeNameValue(this.deriveDisplayNameFromEmail(requestingUser.email));
-    const requesterRole = (requestingUser.role || '').toLowerCase();
-
     const queue = [];
     const visited = new Set();
 
@@ -732,7 +740,7 @@ export class UserService {
       }
     };
 
-    if (requesterRole === 'mm') {
+    if (isManagerRole(requestingUser.role)) {
       pushReports(managerMap.get(requesterDisplay) || []);
     }
 

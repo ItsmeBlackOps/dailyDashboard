@@ -1,6 +1,7 @@
 import { candidateModel, WORKFLOW_STATUS, RESUME_UNDERSTANDING_STATUS } from '../models/Candidate.js';
 import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
+import { hasManagerPrivileges, isManagerRole, normalizeRoleName } from '../utils/roles.js';
 
 const MM_BRANCH_MAP = new Map([
   ['tushar.ahuja@silverspaceinc.com', 'GGR'],
@@ -550,8 +551,7 @@ class CandidateService {
       throw error;
     }
 
-    const normalizedRole = user.role.trim().toLowerCase();
-    if (!['admin', 'manager'].includes(normalizedRole)) {
+    if (!hasManagerPrivileges(user.role)) {
       const error = new Error('Access denied');
       error.statusCode = 403;
       throw error;
@@ -589,10 +589,10 @@ class CandidateService {
       throw error;
     }
 
-    const normalizedRole = user.role.trim().toLowerCase();
+    const normalizedRole = normalizeRoleName(user.role);
     const limit = this.sanitizeLimit(options.limit);
 
-    if (normalizedRole === 'admin' || normalizedRole === 'manager') {
+    if (hasManagerPrivileges(user.role)) {
       const candidates = await candidateModel.getCandidatesByWorkflowStatus(
         status === RESUME_UNDERSTANDING_STATUS.done
           ? WORKFLOW_STATUS.completed
@@ -621,12 +621,12 @@ class CandidateService {
       throw error;
     }
 
-    const normalizedRole = user.role.trim().toLowerCase();
+    const normalizedRole = normalizeRoleName(user.role);
     const normalizedStatus = status === RESUME_UNDERSTANDING_STATUS.done
       ? RESUME_UNDERSTANDING_STATUS.done
       : RESUME_UNDERSTANDING_STATUS.pending;
 
-    if (normalizedRole === 'admin' || normalizedRole === 'manager') {
+    if (hasManagerPrivileges(user.role)) {
       const workflowStatus = normalizedStatus === RESUME_UNDERSTANDING_STATUS.done
         ? WORKFLOW_STATUS.completed
         : WORKFLOW_STATUS.needsResumeUnderstanding;
@@ -798,8 +798,7 @@ class CandidateService {
       throw error;
     }
 
-    const normalizedRole = user.role.trim().toLowerCase();
-    if (!['manager', 'admin', 'mm'].includes(normalizedRole)) {
+    if (!hasManagerPrivileges(user.role)) {
       const error = new Error('Access denied');
       error.statusCode = 403;
       throw error;
@@ -848,8 +847,7 @@ class CandidateService {
       throw error;
     }
 
-    const normalizedRole = user.role.trim().toLowerCase();
-    if (!['admin', 'manager'].includes(normalizedRole)) {
+    if (!hasManagerPrivileges(user.role)) {
       const error = new Error('Access denied');
       error.statusCode = 403;
       throw error;
@@ -1056,7 +1054,7 @@ class CandidateService {
       return result;
     }
 
-    if (normalizedRole === 'manager') {
+    if (isManagerRole(user.role)) {
       const limit = this.sanitizeLimit(options.limit);
       return {
         scope: {

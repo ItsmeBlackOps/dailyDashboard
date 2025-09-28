@@ -318,7 +318,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 href="/tasks"
                 isOpen={isOpen}
               />
-              {['admin', 'mm', 'mam', 'mlead', 'lead', 'user', 'am', 'recruiter', 'manager'].includes(normalizedRole) && (
+              {['admin', 'mm', 'mam', 'mlead', 'lead', 'user', 'am', 'recruiter'].includes(normalizedRole) && (
                 <NavItem
                   icon={Database}
                   label="Branch Candidates"
@@ -371,7 +371,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
         {/* Footer */}
         <div className="border-t border-border p-2 flex-shrink-0">
           <nav className="grid gap-1">
-            {['admin', 'manager', 'mm', 'mam', 'mlead', 'lead', 'am'].includes(normalizedRole) && (
+            {['admin', 'mm', 'mam', 'mlead', 'lead', 'am'].includes(normalizedRole) && (
               <NavItem
                 icon={UserPlus}
                 label="User Management"

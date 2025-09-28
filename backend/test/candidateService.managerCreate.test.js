@@ -8,6 +8,7 @@ const originalCount = candidateModel.countResumeUnderstandingTasks;
 const originalGetByWorkflow = candidateModel.getCandidatesByWorkflowStatus;
 const originalGetCandidateById = candidateModel.getCandidateById;
 const originalUpdateResume = candidateModel.updateResumeUnderstandingStatus;
+const originalAssignExpert = candidateModel.assignExpertById;
 const originalGetAllUsers = userModel.getAllUsers;
 
 afterEach(() => {
@@ -16,8 +17,51 @@ afterEach(() => {
   candidateModel.getCandidatesByWorkflowStatus = originalGetByWorkflow;
   candidateModel.getCandidateById = originalGetCandidateById;
   candidateModel.updateResumeUnderstandingStatus = originalUpdateResume;
+  candidateModel.assignExpertById = originalAssignExpert;
   userModel.getAllUsers = originalGetAllUsers;
   jest.restoreAllMocks();
+});
+
+describe('candidateService managerial access guards', () => {
+  it('allows MM roles to fetch pending expert assignments', async () => {
+    candidateModel.getCandidatesByWorkflowStatus = jest.fn().mockResolvedValue([]);
+    userModel.getAllUsers = jest.fn().mockReturnValue([]);
+
+    const result = await candidateService.getPendingExpertAssignments({
+      email: 'mm.lead@example.com',
+      role: 'MM'
+    });
+
+    expect(candidateModel.getCandidatesByWorkflowStatus).toHaveBeenCalled();
+    expect(result.candidates).toEqual([]);
+  });
+
+  it('permits MM roles to assign experts', async () => {
+    candidateModel.assignExpertById = jest.fn().mockResolvedValue({
+      _id: { toString: () => 'cand-123' },
+      expert: 'lead@example.com',
+      email: 'candidate@example.com'
+    });
+
+    userModel.getAllUsers = jest.fn().mockReturnValue([
+      { email: 'lead@example.com', role: 'lead' }
+    ]);
+
+    const result = await candidateService.assignExpert(
+      { email: 'mm.manager@example.com', role: 'MM' },
+      'cand-123',
+      'lead@example.com'
+    );
+
+    expect(candidateModel.assignExpertById).toHaveBeenCalledWith('cand-123', 'lead@example.com');
+    expect(result.expertRaw).toBe('lead@example.com');
+  });
+
+  it('rejects non-manager roles from pending expert view', async () => {
+    await expect(
+      candidateService.getPendingExpertAssignments({ email: 'lead@example.com', role: 'lead' })
+    ).rejects.toThrow('Access denied');
+  });
 });
 
 describe('candidateService manager create flow', () => {

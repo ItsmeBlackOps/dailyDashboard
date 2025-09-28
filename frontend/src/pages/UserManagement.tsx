@@ -58,6 +58,7 @@ function canonicalRole(role: string) {
   const normalized = normalizeRole(role);
   switch (normalized) {
     case 'mm':
+    case 'manager':
       return 'MM';
     case 'mam':
       return 'MAM';
@@ -69,8 +70,6 @@ function canonicalRole(role: string) {
       return 'recruiter';
     case 'admin':
       return 'admin';
-    case 'manager':
-      return 'manager';
     case 'lead':
       return 'lead';
     case 'user':
@@ -85,13 +84,10 @@ function canonicalRole(role: string) {
 function getCreatableRoles(role: string): string[] {
   const normalized = normalizeRole(role);
   if (normalized === 'admin') {
-    return ['admin', 'manager', 'MM', 'MAM', 'AM', 'mlead', 'recruiter', 'lead', 'user', 'expert'];
+    return ['admin', 'MM', 'MAM', 'AM', 'mlead', 'recruiter', 'lead', 'user', 'expert'];
   }
-  if (normalized === 'manager') {
+  if (normalized === 'manager' || normalized === 'mm') {
     return ['MM', 'MAM', 'AM', 'mlead', 'recruiter', 'lead', 'user', 'expert'];
-  }
-  if (normalized === 'mm') {
-    return ['MAM'];
   }
   if (normalized === 'mam') {
     return ['mlead', 'recruiter'];
@@ -135,9 +131,11 @@ const UserManagementPage = () => {
   const [selfDisplayNameOverride, setSelfDisplayNameOverride] = useState('');
 
   const normalizedRole = normalizeRole(role);
+  const isManagerRole = normalizedRole === 'mm' || normalizedRole === 'manager';
+  const isAdminOrManager = normalizedRole === 'admin' || isManagerRole;
   const creatableRoles = useMemo(() => getCreatableRoles(role), [role]);
   const canCreate = creatableRoles.length > 0;
-  const canManage = ['admin', 'manager', 'mm', 'mam', 'mlead', 'lead', 'am'].includes(normalizedRole);
+  const canManage = isAdminOrManager || ['mam', 'mlead', 'lead', 'am'].includes(normalizedRole);
   const selfDisplayName = useMemo(() => {
     const derived = deriveDisplayNameFromEmail(selfEmail);
     return derived || selfDisplayNameOverride;
@@ -282,6 +280,7 @@ const UserManagementPage = () => {
           break;
         case 'mm':
           addName(rosterSets.mm, display);
+          addName(rosterSets.manager, display);
           break;
         case 'mam':
           addName(rosterSets.mam, display);
@@ -307,6 +306,7 @@ const UserManagementPage = () => {
         break;
       case 'mm':
         addName(rosterSets.mm, normalizedSelfDisplay);
+        addName(rosterSets.manager, normalizedSelfDisplay);
         break;
       case 'mam':
         addName(rosterSets.mam, normalizedSelfDisplay);
@@ -784,7 +784,7 @@ const UserManagementPage = () => {
                   const managerOptionsForRow = getManagerOptions(canonical, row.manager, normalizedManagerName);
                   const teamLeadListId = `teamLead-options-${index}`;
                   const managerListId = `manager-options-${index}`;
-                  const showTeamLeadInput = ['admin', 'manager'].includes(normalizedRole);
+                  const showTeamLeadInput = isAdminOrManager;
                   const hasTeamLeadOptions = teamLeadOptionsForRow.length > 0;
                   const canEditTeamLead =
                     showTeamLeadInput ||
@@ -798,7 +798,7 @@ const UserManagementPage = () => {
                   const showRoleSelect = normalizedRole !== 'mlead';
                   const isMamCreatingMlead = normalizedRole === 'mam' && normalizedRowRole === 'mlead';
                   const isRecruiterTarget = normalizedRowRole === 'recruiter';
-                  const showManagerInput = ['admin', 'manager'].includes(normalizedRole);
+                  const showManagerInput = isAdminOrManager;
                   const autoTeamLead = normalizedRole === 'mm'
                     ? 'Not required'
                     : defaultTeamLead || selfDisplayName || 'Auto assigned';
@@ -1051,7 +1051,7 @@ const UserManagementPage = () => {
                   </div>
                 )}
                 {(() => {
-                  if (['admin', 'manager'].includes(normalizedRole)) {
+                  if (isAdminOrManager) {
                     return (
                       <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground">Team Lead</label>
@@ -1230,7 +1230,7 @@ const UserManagementPage = () => {
                     </div>
                   );
                 })()}
-                {['admin', 'manager'].includes(normalizedRole) ? (
+                {isAdminOrManager ? (
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Manager</label>
                     <Input

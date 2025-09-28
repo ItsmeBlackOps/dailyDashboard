@@ -102,7 +102,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [scope, setScope] = useState<{ type: 'branch' | 'hierarchy' | 'expert'; value: string | string[] } | null>(null);
   const [candidates, setCandidates] = useState<CandidateRow[]>([]);
   const normalizedRole = role.trim().toLowerCase();
-  const canView = ["admin", "mm", "mam", "mlead", "lead", "user", "am", "manager", "recruiter"].includes(normalizedRole);
+  const canView = ["admin", "mm", "mam", "mlead", "lead", "user", "am", "recruiter"].includes(normalizedRole);
   const canEdit = ["mm", "mam", "mlead", "recruiter", "lead", "am","admin"].includes(normalizedRole);
   const canEditBasicFields = ["mm", "mam", "mlead", "recruiter"].includes(normalizedRole);
   const canChangeRecruiterField = ['mm', 'mam', 'mlead',"admin"].includes(normalizedRole);
