@@ -78,7 +78,18 @@ Tokens may also be refreshed over WebSocket by emitting a `refresh` event with a
 
 To log what you are currently working on, send a `POST /tasks/today` request with `email`, `role`, `teamLead`, `manager` and `activity` in the body. The endpoint stores the sanitized activity in memory and returns a confirmation message.
 
-API documentation is provided using Swagger.
+API documentation is provided using Swagger. A minimal OpenAPI 3.1 document is served at `GET /api/docs/openapi.json` and includes the shared `Task` schema used by socket responses.
+
+### TasksToday Enhancements
+
+- Suggestions column shows who a task can be assigned to based on the candidate’s Expert from `candidateDetails`.
+- If no suggestion is available, the column shows `Not available` (entries are never filtered out due to missing suggestions).
+- Subject column is hidden by default. Users can toggle visibility via the “Show Subject” switch; the choice is persisted per-browser.
+
+New fields on each task payload:
+
+- `candidateExpertDisplay: string | null` — display name derived from `candidateDetails.Expert`.
+- `suggestions: string[]` — suggested assignees (currently seeded from candidate expert).
 
 ## Frontend
 
@@ -119,6 +130,7 @@ background.
 - `npm run build` – build production assets
 - `npm run lint` – run ESLint
 - `npm run start` – serve the built bundle with the New Relic agent
+- `npm test` – run unit tests (vitest + RTL)
 
 ### Environment Variables
 - `API_URL` – Backend base URL.
@@ -143,3 +155,20 @@ docker compose up --build
 ```
 
 The stack consumes values from `.env` (or `.env.example` as a starting point) and forwards the New Relic environment variables into each container.
+
+## Dashboard Charts
+
+- Overall Interviews uses an interactive bar chart; Top Performing Agents uses a fully stacked, interactive bar chart — both with a glassmorphism style (Recharts latest stable).
+- Top Performing Agents adds:
+  - Display modes: All, Top 10, Top 10 + Others (aggregated)
+  - Hover-only legend: tooltip is sorted by value; a compact color legend overlay appears on chart hover showing the hovered stack’s color mapping.
+- Components changed:
+  - `frontend/src/components/dashboard/KpiOverview.tsx: OverallInterviewsChart`
+  - `frontend/src/components/dashboard/TopAgents.tsx: TopAgentsChart`
+- Tooltips and responsive layout are preserved. Bars use gradient fills and rounded corners.
+- Tests added for both chart components under `frontend/src/components/dashboard/__tests__`.
+
+Security and hygiene:
+- Frontend sanitizes user-provided HTML via `dompurify` where applicable.
+- All Node.js code uses ESM `import` syntax (no `require`).
+- CORS, HTTPS, auth, and OWASP basics are handled in backend middleware and routes.

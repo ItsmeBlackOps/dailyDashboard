@@ -27,10 +27,13 @@ import { playTune, sendNotification } from "@/utils/notify";
 import { Toaster } from "@/components/ui/toaster";
 import { useTab } from "@/hooks/useTabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
 
 interface Task {
   _id: string;
   subject?: string;
+  candidateExpertDisplay?: string | null;
+  suggestions?: string[];
 
   // Preferred keys (if available)
   startTime?: string; // "MM/DD/YYYY HH:mm" or ISO
@@ -74,6 +77,14 @@ export default function TasksToday() {
   const [recruiterFilter, setRecruiterFilter] = useState("");
   const [expertFilter, setExpertFilter] = useState("");
   const [error, setError] = useState("");
+  const [showSubject, setShowSubject] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem("tasksTodayShowSubject");
+      return raw ? JSON.parse(raw) === true : false;
+    } catch {
+      return false;
+    }
+  });
 
   const firstLoad = useRef(true);
 
@@ -130,6 +141,13 @@ export default function TasksToday() {
     },
     [setSelectedTab]
   );
+
+  // persist subject visibility
+  useEffect(() => {
+    try {
+      localStorage.setItem("tasksTodayShowSubject", JSON.stringify(showSubject));
+    } catch {}
+  }, [showSubject]);
 
   // === Storage helpers ===
   const readScheduled = (): Record<string, string> => {
@@ -619,6 +637,14 @@ export default function TasksToday() {
               className="w-40"
             />
           )}
+
+          {/* Toggle: Subject column visibility */}
+          <div className="flex items-center gap-2">
+            <Switch id="toggle-subject" checked={showSubject} onCheckedChange={setShowSubject} />
+            <label htmlFor="toggle-subject" className="text-sm text-muted-foreground select-none">
+              Show Subject
+            </label>
+          </div>
         </div>
 
         {displayed.length === 0 ? (
@@ -627,7 +653,7 @@ export default function TasksToday() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Subject</TableHead>
+                {showSubject && <TableHead>Subject</TableHead>}
                 <TableHead>Candidate</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Start</TableHead>
@@ -635,6 +661,7 @@ export default function TasksToday() {
                 <TableHead>Client</TableHead>
                 <TableHead>Round</TableHead>
                 <TableHead>Expert</TableHead>
+                <TableHead>Suggestions</TableHead>
                 {(user === "MAM" || user === "MM" || user === "mlead") && <TableHead>Recruiter</TableHead>}
                 <TableHead>
                   <Tooltip>
@@ -657,7 +684,9 @@ export default function TasksToday() {
                 const end = parseEnd(task);
                 return (
                   <TableRow key={task._id} className={getRowBg(task.status)}>
-                    <TableCell>{DOMPurify.sanitize(task.subject || "")}</TableCell>
+                    {showSubject && (
+                      <TableCell>{DOMPurify.sanitize(task.subject || "")}</TableCell>
+                    )}
                     <TableCell>{DOMPurify.sanitize(task["Candidate Name"] || "")}</TableCell>
                     <TableCell>{formatDate(start)}</TableCell>
                     <TableCell>{formatTime(start)}</TableCell>
@@ -665,6 +694,13 @@ export default function TasksToday() {
                     <TableCell>{DOMPurify.sanitize(task["End Client"] || "")}</TableCell>
                     <TableCell>{DOMPurify.sanitize(task["Interview Round"] || "")}</TableCell>
                     <TableCell>{DOMPurify.sanitize(task.assignedExpert || "")}</TableCell>
+                    <TableCell>
+                      {DOMPurify.sanitize(
+                        (task.suggestions && task.suggestions.length > 0
+                          ? task.suggestions.join(", ")
+                          : task.candidateExpertDisplay || "Not available")
+                      )}
+                    </TableCell>
                     {(user === "MAM" || user === "MM" || user === "mlead") && (
                       <TableCell>{DOMPurify.sanitize(task.recruiterName || "")}</TableCell>
                     )}

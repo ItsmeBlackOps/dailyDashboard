@@ -5,7 +5,7 @@ import { logger, createTimer } from '../utils/logger.js';
 
 const TIMEZONE = 'America/New_York';
 const RECEIVED_DATE_FIELD_ROLES = new Set(['admin', 'MM', 'MAM', 'mlead']);
-const TOP_PERFORMER_LIMIT = 25;
+// const TOP_PERFORMER_LIMIT = 25;
 
 export class TaskService {
   constructor() {
@@ -729,7 +729,7 @@ export class TaskService {
       return a.name.localeCompare(b.name);
     });
 
-    return leaders.slice(0, TOP_PERFORMER_LIMIT);
+    return leaders;
   }
 
   shouldHighlightLeader(view, userRole, total) {
