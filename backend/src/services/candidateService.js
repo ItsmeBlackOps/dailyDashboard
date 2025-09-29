@@ -691,7 +691,7 @@ class CandidateService {
     }
 
     const normalizedRole = user.role.trim().toLowerCase();
-    if (!['mm', 'mam', 'mlead', 'recruiter', 'lead', 'am'].includes(normalizedRole)) {
+    if (!['mm', 'mam', 'mlead', 'recruiter', 'lead', 'am', 'admin'].includes(normalizedRole)) {
       const error = new Error('Access denied');
       error.statusCode = 403;
       throw error;
