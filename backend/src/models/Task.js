@@ -107,7 +107,25 @@ export class TaskModel {
       logger.debug('Executing task query', { userEmail, query });
 
       const docs = await this.collection
-        .find(query, { projection: { replies: 0, body: 0 } })
+        .aggregate([
+          { $match: query },
+          {
+            $lookup: {
+              from: 'transcripts',
+              localField: 'subject',
+              foreignField: 'title',
+              as: 'transcripts'
+            }
+          },
+          {
+            $addFields: {
+              transcription: {
+                $gt: [{ $size: '$transcripts' }, 0]
+              }
+            }
+          },
+          { $unset: ['replies', 'body', 'transcripts'] }
+        ])
         .toArray();
 
       const tasks = this.filterAndFormatTasks(docs, userEmail, userRole, teamEmails);
