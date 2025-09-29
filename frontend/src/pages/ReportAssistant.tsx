@@ -202,7 +202,7 @@ const ReportAssistant = () => {
 
         <Card className="flex flex-col">
           <CardHeader>
-          </CardHeader>
+/          </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-col h-[480px] w-full rounded-lg border border-border/60 bg-background shadow-sm">
               <div className="flex items-center justify-between p-3 border-b bg-primary text-primary-foreground rounded-t-lg">
