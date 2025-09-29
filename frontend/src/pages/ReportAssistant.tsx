@@ -4,12 +4,15 @@ import * as XLSX from 'xlsx';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth, API_URL } from '@/hooks/useAuth';
-import { Send, Download } from 'lucide-react';
+import { Send, Download, Paperclip, Smile } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const ALLOWED_ROLES = new Set(['admin', 'MM', 'MAM', 'mtl', 'MTL']);
 const PREVIEW_LIMIT = 50;
@@ -199,54 +202,95 @@ const ReportAssistant = () => {
 
         <Card className="flex flex-col">
           <CardHeader>
-            <CardTitle>Conversation</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4 min-h-[360px]">
-            <div className="flex-1 flex flex-col rounded-md border border-border/60 bg-muted/10 p-3">
-              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                {messages.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Try queries such as “Show completed interviews for Anita between Sept 1 and Sept 5” or “Leads received last week for recruiter John”.
-                  </p>
-                ) : (
-                  messages.map((msg, idx) => (
-                    <div
-                      key={`${msg.timestamp}-${idx}`}
-                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div
-                        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm shadow-sm ${
-                          msg.role === 'user'
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-background border border-border/60 text-foreground'
-                        }`}
-                      >
-                        {msg.content}
-                      </div>
-                    </div>
-                  ))
-                )}
+          <CardContent className="space-y-3">
+            <div className="flex flex-col h-[480px] w-full rounded-lg border border-border/60 bg-background shadow-sm">
+              <div className="flex items-center justify-between p-3 border-b bg-primary text-primary-foreground rounded-t-lg">
+                <div className="flex items-center gap-2">
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage src="/placeholder.svg" alt="Report assistant" />
+                    <AvatarFallback>RA</AvatarFallback>
+                  </Avatar>
+                  <div className="leading-tight">
+                    <p className="text-sm font-medium">Report Assistant</p>
+                    <p className="text-xs opacity-90">Ask for interview or lead reports</p>
+                  </div>
+                </div>
+                <Badge variant="secondary" className="bg-primary-foreground/20 text-primary-foreground">
+                  Live support
+                </Badge>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Textarea
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder="Describe the report you need (e.g. “Expert wise summary for final round this month”)."
-                rows={4}
-                disabled={loading}
-              />
-              <div className="flex justify-end gap-2">
+              <ScrollArea className="flex-1 p-3">
+                <div className="space-y-3">
+                  {messages.length === 0 ? (
+                    <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+                      Try queries such as “Show completed interviews for Anita between Sept 1 and Sept 5” or “Leads received last week for recruiter John”.
+                    </div>
+                  ) : (
+                    messages.map((msg, idx) => (
+                      <div
+                        key={`${msg.timestamp}-${idx}`}
+                        className={cn('flex gap-2', msg.role === 'user' ? 'justify-end' : 'justify-start')}
+                      >
+                        {msg.role === 'assistant' && (
+                          <Avatar className="w-6 h-6">
+                            <AvatarImage src="/placeholder.svg" alt="Assistant" />
+                            <AvatarFallback>RA</AvatarFallback>
+                          </Avatar>
+                        )}
+                        <div
+                          className={cn(
+                            'max-w-[70%] rounded-lg px-3 py-2 text-sm shadow-sm',
+                            msg.role === 'user'
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-muted text-foreground'
+                          )}
+                        >
+                          <p>{msg.content}</p>
+                          <p className="mt-1 text-xs opacity-70">
+                            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+
+              <div className="border-t p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
+                    <Paperclip className="h-4 w-4" />
+                    <span className="sr-only">Attach file (coming soon)</span>
+                  </Button>
+                  <Input
+                    value={input}
+                    onChange={(event) => setInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    placeholder="Describe the report you need…"
+                    className="flex-1"
+                    disabled={loading}
+                  />
+                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
+                    <Smile className="h-4 w-4" />
+                    <span className="sr-only">Insert emoji (coming soon)</span>
+                  </Button>
+                  <Button size="icon" className="h-8 w-8" onClick={handleSend} disabled={loading || !socket}>
+                    <Send className="h-4 w-4" />
+                    <span className="sr-only">Send message</span>
+                  </Button>
+                </div>
                 {summary && (
-                  <Badge variant="outline" className="self-center whitespace-nowrap">
+                  <Badge variant="outline" className="whitespace-nowrap">
                     Previewing {rows.length} of {totalCount} rows
                   </Badge>
                 )}
-                <Button onClick={handleSend} disabled={loading || !socket}>
-                  <Send className="h-4 w-4 mr-2" />
-                  {loading ? 'Asking…' : 'Ask'}
-                </Button>
               </div>
             </div>
           </CardContent>
