@@ -697,6 +697,21 @@ export class UserService {
   collectManageableUsers(requestingUser) {
     const allUsers = this.userModel.getAllUsers();
 
+    // Admins can manage everyone. Return all except self.
+    const requesterRole = (requestingUser.role || '').toLowerCase();
+    if (['admin'].includes(requesterRole)) {
+      const selfEmail = this.normalizeEmailValue(requestingUser.email);
+      return allUsers
+        .filter((u) => this.normalizeEmailValue(u.email) !== selfEmail)
+        .map((user) => ({
+          email: user.email,
+          role: user.role,
+          teamLead: user.teamLead,
+          manager: user.manager,
+          active: user.active !== undefined ? Boolean(user.active) : true
+        }));
+    }
+
     const teamLeadMap = new Map();
     const managerMap = new Map();
 
@@ -719,7 +734,7 @@ export class UserService {
     }
 
     const requesterDisplay = this.normalizeNameValue(this.deriveDisplayNameFromEmail(requestingUser.email));
-    const requesterRole = (requestingUser.role || '').toLowerCase();
+    // requesterRole already derived above for early return; keep local reference for remaining roles
 
     const queue = [];
     const visited = new Set();
