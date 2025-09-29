@@ -99,6 +99,9 @@ function getCreatableRoles(role: string): string[] {
   if (normalized === 'am') {
     return ['lead', 'user'];
   }
+  if (normalized === 'lead') {
+    return ['user'];
+  }
   if (normalized === 'mlead') {
     return ['recruiter'];
   }
