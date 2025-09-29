@@ -56,6 +56,26 @@ export class TaskModel {
         }
       }
 
+      // Build candidate expert display (for suggestions)
+      let candidateExpertDisplay = null;
+      const expertRaw = doc.candidateExpertRaw || null;
+      if (expertRaw && typeof expertRaw === 'string' && expertRaw.trim()) {
+        const normalized = expertRaw.trim();
+        if (normalized.includes('@')) {
+          const localPart = normalized.toLowerCase().split('@')[0];
+          const parts = localPart.split(/[._\s-]+/).filter(Boolean);
+          candidateExpertDisplay = parts
+            .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+            .join(' ');
+        } else {
+          candidateExpertDisplay = normalized;
+        }
+      }
+
+      // Suggestions column: for now, driven by candidate expert
+      const suggestions = [];
+      if (candidateExpertDisplay) suggestions.push(candidateExpertDisplay);
+
       return {
         ...doc,
         assignedExpert,
@@ -63,6 +83,8 @@ export class TaskModel {
         assignedAt,
         startTime: startMoment,
         endTime: endMoment,
+        candidateExpertDisplay,
+        suggestions,
       };
     } catch (error) {
       logger.error('Error formatting task', { error: error.message, taskId: doc._id });
@@ -109,6 +131,7 @@ export class TaskModel {
       const docs = await this.collection
         .aggregate([
           { $match: query },
+          // Join transcripts to flag availability
           {
             $lookup: {
               from: 'transcripts',
@@ -117,14 +140,30 @@ export class TaskModel {
               as: 'transcripts'
             }
           },
+          // Join candidate details to extract Expert for suggestions
+          {
+            $lookup: {
+              from: 'candidateDetails',
+              localField: 'Candidate Name',
+              foreignField: 'Candidate Name',
+              as: 'candidateDetails',
+              pipeline: [
+                { $project: { _id: 0, Expert: 1 } }
+              ]
+            }
+          },
           {
             $addFields: {
-              transcription: {
-                $gt: [{ $size: '$transcripts' }, 0]
+              transcription: { $gt: [{ $size: '$transcripts' }, 0] },
+              candidateExpertRaw: {
+                $let: {
+                  vars: { item: { $first: '$candidateDetails' } },
+                  in: { $ifNull: ['$$item.Expert', null] }
+                }
               }
             }
           },
-          { $unset: ['replies', 'body', 'transcripts'] }
+          { $unset: ['replies', 'body', 'transcripts', 'candidateDetails'] }
         ])
         .toArray();
 
@@ -223,8 +262,30 @@ export class TaskModel {
       const isSelf = userEmailLower === assignedEmailLower;
       const isOnTeam = teamEmailSet.has(assignedEmailLower);
 
+      // Base visibility: admin/self/team-assigned
       if (isAdmin || isSelf || isOnTeam) {
         tasks.push(task);
+        continue;
+      }
+
+      // Enhancement for leads/AMs: if unassigned but candidate has an Expert
+      // suggestion that belongs to their team, include it.
+      if ((normalizedRole === 'lead' || normalizedRole === 'am') && !assignedEmailLower) {
+        const suggestedExpertLower = (doc.candidateExpertRaw || '').toLowerCase();
+        if (suggestedExpertLower && teamEmailSet.has(suggestedExpertLower)) {
+          tasks.push(task);
+          continue;
+        }
+      }
+
+      // Enhancement for individual users/experts: if unassigned but candidate has an
+      // Expert suggestion equal to the user's email, include it in their view.
+      if ((normalizedRole === 'user' || normalizedRole === 'expert') && !assignedEmailLower) {
+        const suggestedExpertLower = (doc.candidateExpertRaw || '').toLowerCase();
+        if (suggestedExpertLower && suggestedExpertLower === userEmailLower) {
+          tasks.push(task);
+          continue;
+        }
       }
     }
 

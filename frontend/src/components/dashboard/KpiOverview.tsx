@@ -10,7 +10,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { CartesianGrid, BarChart, Bar, XAxis, YAxis } from "recharts";
 import type { DashboardFilterState } from "./DashboardFilters";
 import { buildDashboardPayload } from "./dashboardUtils";
 
@@ -62,6 +62,35 @@ const roundBadgeClass = (label: string) => {
   if (key.includes("final")) return "bg-amber-500 text-white";
   return "bg-gray-600 text-white";
 };
+
+export function OverallInterviewsChart({
+  data,
+  config,
+}: {
+  data: Array<{ round: string; interviews: number }>;
+  config: ChartConfig;
+}) {
+  return (
+    <ChartContainer
+      config={config}
+      className="h-56 w-full rounded-xl border border-white/10 bg-white/5 backdrop-blur supports-[backdrop-filter]:bg-white/5 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.3)]"
+    >
+      <BarChart data={data} margin={{ top: 8, right: 16, left: 8, bottom: 0 }} barCategoryGap={14}>
+        <defs>
+          <linearGradient id="glassy-interviews" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-interviews)" stopOpacity={0.85} />
+            <stop offset="100%" stopColor="var(--color-interviews)" stopOpacity={0.35} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="4 4" vertical={false} />
+        <XAxis dataKey="round" height={32} tickLine={false} axisLine={false} angle={-12} dy={12} tick={{ fontSize: 11 }} />
+        <YAxis allowDecimals={false} width={40} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+        <ChartTooltip content={<ChartTooltipContent />} />
+        <Bar dataKey="interviews" name="Interviews" fill="url(#glassy-interviews)" radius={[6, 6, 0, 0]} />
+      </BarChart>
+    </ChartContainer>
+  );
+}
 
 export function KpiOverview({ filters, role }: KpiOverviewProps) {
   const [kpi, setKpi] = useState<KpiPayload | null>(null);
@@ -219,6 +248,7 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
     },
   };
 
+
   return (
     <div className="grid gap-4">
       <Card className="bg-gradient-to-br from-primary/15 via-background to-background border-primary/40 shadow-md">
@@ -233,22 +263,7 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
           </div>
 
           {overallChartData.length > 0 ? (
-            <ChartContainer config={overallChartConfig} className="h-56 w-full">
-              <LineChart data={overallChartData} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="4 4" vertical={false} />
-                <XAxis dataKey="round" height={32} tickLine={false} axisLine={false} angle={-12} dy={12} tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} width={40} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Line
-                  type="monotone"
-                  dataKey="interviews"
-                  stroke="var(--color-interviews)"
-                  strokeWidth={2}
-                  dot={{ r: 2.5 }}
-                  activeDot={{ r: 5 }}
-                />
-              </LineChart>
-            </ChartContainer>
+            <OverallInterviewsChart data={overallChartData} config={overallChartConfig} />
           ) : (
             <p className="text-xs text-muted-foreground">No round breakdown available for this range.</p>
           )}

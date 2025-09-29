@@ -6,6 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ChevronsUpDown } from "lucide-react";
 import {
   ChartContainer,
   ChartTooltip,
@@ -47,7 +51,7 @@ type TopAgentsProps = {
   role: string;
 };
 
-type DisplayMode = "all" | "top10" | "top10+others";
+// Removed display mode (All/Top10/Top10+Others). Always show all with agent filter.
 
 function humanizeName(input?: string): string {
   if (!input) return "Unknown";
@@ -168,7 +172,7 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const { refreshAccessToken } = useAuth();
-  const [displayMode, setDisplayMode] = useState<DisplayMode>("all");
+  // const [displayMode, setDisplayMode] = useState<DisplayMode>("all");
 
   const allowedViews: ViewMode[] = useMemo(() => {
     if (role === "admin") return ["expert", "recruiter", "candidate"];
@@ -178,6 +182,7 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
   }, [role]);
 
   const [view, setView] = useState<ViewMode>(allowedViews[0]);
+  const [agentFilter, setAgentFilter] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!allowedViews.includes(view)) {
@@ -281,8 +286,10 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
   };
 
   const list = useMemo(() => {
-    return leaders[view] || [];
-  }, [leaders, view]);
+    const combined = leaders[view] || [];
+    if (agentFilter.size === 0) return combined;
+    return combined.filter((l) => agentFilter.has(l.id));
+  }, [leaders, view, agentFilter]);
 
   const rowHighlightClasses = useCallback((leader: LeaderResponse) => {
     if (leader.highlight) {
@@ -292,26 +299,9 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
   }, []);
 
   const topLeadersForChart = useMemo(() => {
-    const sorted = [...list].sort((a, b) => b.total - a.total);
-    if (displayMode === "all") return sorted;
-    if (displayMode === "top10") return sorted.slice(0, 10);
-    if (displayMode === "top10+others") {
-      const top = sorted.slice(0, 10);
-      const rest = sorted.slice(10);
-      if (rest.length === 0) return top;
-      const counts: Record<string, number> = {};
-      let total = 0;
-      rest.forEach((l) => {
-        total += l.total || 0;
-        Object.entries(l.counts || {}).forEach(([round, value]) => {
-          counts[round] = (counts[round] || 0) + (value || 0);
-        });
-      });
-      top.push({ id: "__others__", name: "Others", counts, total, highlight: false });
-      return top;
-    }
-    return sorted;
-  }, [list, displayMode]);
+    // Always use all leaders (sorted by total desc)
+    return [...list].sort((a, b) => b.total - a.total);
+  }, [list]);
 
   const chartRounds = useMemo(() => {
     const rounds = new Set<string>();
@@ -376,16 +366,43 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
               {viewLabel[allowedViews[0]]}
             </Badge>
           )}
-          <Select value={displayMode} onValueChange={(v: DisplayMode) => setDisplayMode(v)}>
-            <SelectTrigger className="w-44 h-8">
-              <SelectValue placeholder="Display" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="top10">Top 10</SelectItem>
-              <SelectItem value="top10+others">Top 10 + Others</SelectItem>
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="inline-flex h-8 items-center justify-between whitespace-nowrap rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm hover:bg-accent hover:text-accent-foreground">
+                {agentFilter.size > 0 ? `Agents (selected: ${agentFilter.size})` : 'Agents (filter)'}
+                <ChevronsUpDown className="ml-2 h-3 w-3 opacity-50" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-0">
+              <Command>
+                <CommandInput placeholder="Search agents..." />
+                <CommandEmpty>No agents found.</CommandEmpty>
+                <CommandList>
+                  <CommandGroup>
+                    {(leaders[view] || [])
+                      .map((l) => ({ id: l.id, name: humanizeName(l.name) }))
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map(({ id, name }) => {
+                        const checked = agentFilter.has(id);
+                        return (
+                          <CommandItem
+                            key={id}
+                            onSelect={() => {
+                              const next = new Set(agentFilter);
+                              if (checked) next.delete(id); else next.add(id);
+                              setAgentFilter(next);
+                            }}
+                          >
+                            <Checkbox checked={checked} className="mr-2 h-3.5 w-3.5" />
+                            {name}
+                          </CommandItem>
+                        );
+                      })}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
         </div>
       </CardHeader>
 

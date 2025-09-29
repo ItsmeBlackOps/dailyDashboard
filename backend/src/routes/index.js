@@ -2,6 +2,7 @@ import express from 'express';
 import authRoutes from './auth.js';
 import taskRoutes from './tasks.js';
 import userRoutes from './users.js';
+import docsRoutes from './docs.js';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
@@ -11,6 +12,7 @@ const router = express.Router();
 router.use('/auth', authRoutes);
 router.use('/tasks', taskRoutes);
 router.use('/users', userRoutes);
+router.use('/', docsRoutes);
 
 // Health check endpoint
 router.get('/health', async (req, res) => {
@@ -69,7 +71,8 @@ router.get('/info', (req, res) => {
       tasks: '/api/tasks',
       users: '/api/users',
       health: '/api/health',
-      websocket: '/socket.io'
+      websocket: '/socket.io',
+      openapi: '/api/docs/openapi.json'
     }
   });
 });
