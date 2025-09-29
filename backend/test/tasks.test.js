@@ -57,6 +57,7 @@ describe('Socket Task Queries', () => {
     if (response.tasks.length > 0) {
       expect(response.tasks[0]).not.toHaveProperty('body');
       expect(response.tasks[0]).not.toHaveProperty('replies');
+      expect(typeof response.tasks[0].transcription).toBe('boolean');
     }
   });
 

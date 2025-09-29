@@ -26,6 +26,7 @@ import { useAuth, API_URL } from "@/hooks/useAuth";
 import { playTune, sendNotification } from "@/utils/notify";
 import { Toaster } from "@/components/ui/toaster";
 import { useTab } from "@/hooks/useTabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Task {
   _id: string;
@@ -48,6 +49,7 @@ interface Task {
   assignedEmail?: string;
   assignedExpert?: string;
   recruiterName?: string;
+  transcription?: boolean;
 }
 
 const TASK_STATUS_MAP = "tasksTodayStatusMap";
@@ -634,6 +636,18 @@ export default function TasksToday() {
                 <TableHead>Round</TableHead>
                 <TableHead>Expert</TableHead>
                 {(user === "MAM" || user === "MM" || user === "mlead") && <TableHead>Recruiter</TableHead>}
+                <TableHead>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex cursor-help select-none font-semibold text-sm tracking-wide">
+                        TxAv
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Green when a transcript is available; red when missing.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -654,6 +668,28 @@ export default function TasksToday() {
                     {(user === "MAM" || user === "MM" || user === "mlead") && (
                       <TableCell>{DOMPurify.sanitize(task.recruiterName || "")}</TableCell>
                     )}
+                    <TableCell>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className={`inline-flex h-3 w-3 rounded-full border border-border ${
+                              task.transcription ? 'bg-green-500' : 'bg-red-500'
+                            }`}
+                            role="img"
+                            aria-label={
+                              task.transcription
+                                ? 'Transcription available'
+                                : 'Transcription not available'
+                            }
+                          />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>
+                            {task.transcription ? 'Transcription available' : 'Transcription not available'}
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableCell>
                     <TableCell>
                       {task.status && (
                         <Badge className={getStatusBadge(task.status)}>{task.status}</Badge>
