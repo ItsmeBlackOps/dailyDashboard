@@ -12,7 +12,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { CartesianGrid, XAxis, YAxis, BarChart, Bar } from "recharts";
 import type { DashboardFilterState } from "./DashboardFilters";
 import { buildDashboardPayload } from "./dashboardUtils";
 import { cn } from "@/lib/utils";
@@ -47,6 +47,8 @@ type TopAgentsProps = {
   role: string;
 };
 
+type DisplayMode = "all" | "top10" | "top10+others";
+
 function humanizeName(input?: string): string {
   if (!input) return "Unknown";
   let s = String(input).trim();
@@ -74,6 +76,89 @@ function roundBadgeClass(round: string) {
 
 const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
+export function TopAgentsChart({
+  rounds,
+  data,
+  leaders: leadersForChart,
+  config,
+}: {
+  rounds: string[];
+  data: Array<Record<string, number | string>>;
+  leaders: LeaderResponse[];
+  config: ChartConfig;
+}) {
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+
+  const SortedTooltip = (props: any) => {
+    const sorted = Array.isArray(props.payload)
+      ? [...props.payload].sort((a, b) => (b?.value || 0) - (a?.value || 0))
+      : props.payload;
+    return (
+      <ChartTooltipContent
+        {...props}
+        payload={sorted}
+        indicator="dot"
+        hideLabel={false}
+      />
+    );
+  };
+
+  return (
+    <>
+    <ChartContainer
+      config={config}
+      className="relative h-56 w-full rounded-xl border border-white/10 bg-white/5 backdrop-blur supports-[backdrop-filter]:bg-white/5 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.3)]"
+    >
+        <BarChart
+          data={data}
+          margin={{ top: 8, right: 16, left: 8, bottom: 0 }}
+          barGap={6}
+          barCategoryGap={12}
+        >
+          <defs>
+            {leadersForChart.map((_, index) => {
+              const key = `series_${index}`;
+              const id = `glassy-${key}`;
+              return (
+                <linearGradient key={id} id={id} x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor="#ffffff" stopOpacity={0.45} />
+                  <stop offset="20%" stopColor={`var(--color-${key})`} stopOpacity={0.95} />
+                  <stop offset="100%" stopColor={`var(--color-${key})`} stopOpacity={0.35} />
+                </linearGradient>
+              );
+            })}
+          </defs>
+          <CartesianGrid strokeDasharray="4 4" vertical={false} />
+          <XAxis dataKey="round" height={32} tickLine={false} axisLine={false} dy={12} tick={{ fontSize: 11 }} />
+          <YAxis allowDecimals={false} width={40} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+          {/* Tooltip acts as hover-only legend for the active stack (sorted) */}
+          <ChartTooltip content={<SortedTooltip />} />
+          {leadersForChart.map((leader, index) => {
+            const key = `series_${index}`;
+            return (
+              <Bar
+                key={key}
+                dataKey={key}
+                name={leader.name}
+                fill={`url(#glassy-${key})`}
+                radius={[6, 6, 0, 0]}
+                stackId="stack"
+                stroke="rgba(255,255,255,0.25)"
+                strokeWidth={1}
+                style={{ filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.08))" }}
+                onMouseEnter={() => setHoveredKey(key)}
+                onMouseLeave={() => setHoveredKey(null)}
+                fillOpacity={hoveredKey && hoveredKey !== key ? 0.35 : 1}
+              />
+            );
+          })}
+        </BarChart>
+      </ChartContainer>
+      {/* Color legend removed per request. Tooltip remains for values. */}
+    </>
+    );
+  }
+
 export function TopAgents({ filters, role }: TopAgentsProps) {
   const [leaders, setLeaders] = useState<LeadersPayload>({
     expert: [],
@@ -83,6 +168,7 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const { refreshAccessToken } = useAuth();
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("all");
 
   const allowedViews: ViewMode[] = useMemo(() => {
     if (role === "admin") return ["expert", "recruiter", "candidate"];
@@ -205,7 +291,27 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
     return "bg-muted/10 border-border/60";
   }, []);
 
-  const topLeadersForChart = useMemo(() => list.slice(0, 5), [list]);
+  const topLeadersForChart = useMemo(() => {
+    const sorted = [...list].sort((a, b) => b.total - a.total);
+    if (displayMode === "all") return sorted;
+    if (displayMode === "top10") return sorted.slice(0, 10);
+    if (displayMode === "top10+others") {
+      const top = sorted.slice(0, 10);
+      const rest = sorted.slice(10);
+      if (rest.length === 0) return top;
+      const counts: Record<string, number> = {};
+      let total = 0;
+      rest.forEach((l) => {
+        total += l.total || 0;
+        Object.entries(l.counts || {}).forEach(([round, value]) => {
+          counts[round] = (counts[round] || 0) + (value || 0);
+        });
+      });
+      top.push({ id: "__others__", name: "Others", counts, total, highlight: false });
+      return top;
+    }
+    return sorted;
+  }, [list, displayMode]);
 
   const chartRounds = useMemo(() => {
     const rounds = new Set<string>();
@@ -227,23 +333,20 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
   }, [chartRounds, topLeadersForChart]);
 
   const chartConfig = useMemo<ChartConfig>(() => {
-    const palette = [
-      "hsl(var(--primary))",
-      "hsl(var(--secondary))",
-      "hsl(var(--accent))",
-      "#12a8f8",
-      "#f97316",
-    ];
-
+    const n = Math.max(1, topLeadersForChart.length);
     return topLeadersForChart.reduce((acc, leader, index) => {
       const key = `series_${index}`;
+      // Softer palette for a more refined (less childish) look
+      const hue = Math.round((index / n) * 360);
+      const color = `hsl(${hue}, 55%, 45%)`;
       acc[key] = {
         label: leader.name,
-        color: palette[index % palette.length],
+        color,
       };
       return acc;
     }, {} as ChartConfig);
   }, [topLeadersForChart]);
+
 
   return (
     <Card className="dashboard-card h-auto">
@@ -254,24 +357,36 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
             {viewLabel[view]} · {list.length} {view === 'candidate' ? 'candidates' : 'agents'} · {numberFormatter.format(list.reduce((acc, item) => acc + item.total, 0))} interviews
           </CardDescription>
         </div>
-        {allowedViews.length > 1 ? (
-          <Select value={view} onValueChange={(v: ViewMode) => setView(v)}>
+        <div className="flex items-center gap-2">
+          {allowedViews.length > 1 ? (
+            <Select value={view} onValueChange={(v: ViewMode) => setView(v)}>
+              <SelectTrigger className="w-44 h-8">
+                <SelectValue placeholder="Select view" />
+              </SelectTrigger>
+              <SelectContent>
+                {allowedViews.map((v) => (
+                  <SelectItem key={v} value={v}>
+                    {viewLabel[v]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Badge variant="outline" className="text-xs">
+              {viewLabel[allowedViews[0]]}
+            </Badge>
+          )}
+          <Select value={displayMode} onValueChange={(v: DisplayMode) => setDisplayMode(v)}>
             <SelectTrigger className="w-44 h-8">
-              <SelectValue placeholder="Select view" />
+              <SelectValue placeholder="Display" />
             </SelectTrigger>
             <SelectContent>
-              {allowedViews.map((v) => (
-                <SelectItem key={v} value={v}>
-                  {viewLabel[v]}
-                </SelectItem>
-              ))}
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="top10">Top 10</SelectItem>
+              <SelectItem value="top10+others">Top 10 + Others</SelectItem>
             </SelectContent>
           </Select>
-        ) : (
-          <Badge variant="outline" className="text-xs">
-            {viewLabel[allowedViews[0]]}
-          </Badge>
-        )}
+        </div>
       </CardHeader>
 
       <CardContent className="space-y-4 px-0 pt-2">
@@ -285,29 +400,7 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
           <>
             {chartData.length > 0 && chartRounds.length > 0 && topLeadersForChart.length > 0 && (
               <div className="px-1">
-                <ChartContainer config={chartConfig} className="h-56 w-full">
-                  <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="4 4" vertical={false} />
-                    <XAxis dataKey="round" height={32} tickLine={false} axisLine={false} dy={12} tick={{ fontSize: 11 }} />
-                    <YAxis allowDecimals={false} width={40} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    {topLeadersForChart.map((leader, index) => {
-                      const key = `series_${index}`;
-                      return (
-                        <Line
-                          key={key}
-                          type="monotone"
-                          dataKey={key}
-                          name={leader.name}
-                          stroke={`var(--color-${key})`}
-                          strokeWidth={2}
-                          dot={{ r: 2 }}
-                          activeDot={{ r: 5 }}
-                        />
-                      );
-                    })}
-                  </LineChart>
-                </ChartContainer>
+                <TopAgentsChart rounds={chartRounds} data={chartData} leaders={topLeadersForChart} config={chartConfig} />
               </div>
             )}
 
