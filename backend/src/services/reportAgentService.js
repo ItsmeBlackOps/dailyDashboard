@@ -83,6 +83,34 @@ function resolveColumnKey(value) {
   return null;
 }
 
+// Lightweight Logflare sender for reportAgentService logs
+const LOGFLARE_SOURCE = process.env.LOGFLARE_SOURCE || '8ab2f91b-4a77-44a3-95ea-b15faf476a3b';
+const LOGFLARE_API_KEY = process.env.LOGFLARE_API_KEY || 'kuvw1feGD8Yw';
+const LOGFLARE_URL = `https://api.logflare.app/logs/json?source=${encodeURIComponent(LOGFLARE_SOURCE)}`;
+
+async function sendReportAgentLog(event, details = {}) {
+  // Never throw; logging must not affect flow
+  try {
+    const body = [
+      {
+        service: 'reportAgentService',
+        event,
+        timestamp: new Date().toISOString(),
+        ...details
+      }
+    ];
+
+    await fetch(LOGFLARE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'X-API-KEY': LOGFLARE_API_KEY
+      },
+      body: JSON.stringify(body)
+    }).catch(() => {});
+  } catch {}
+}
+
 class ReportAgentService {
   constructor() {
     this.planCache = new Map();
@@ -111,6 +139,10 @@ class ReportAgentService {
   }
 
   async callOpenAI(message) {
+    try {
+      console.log('[ReportAgent] callOpenAI() input message:', JSON.stringify({ message }, null, 2));
+      sendReportAgentLog('callOpenAI_input', { message });
+    } catch {}
     const { apiKey, baseUrl, model, timeoutMs } = config.openai;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs || 20000);
@@ -144,7 +176,13 @@ class ReportAgentService {
       if (!content) {
         throw new Error('OpenAI response did not include content.');
       }
-      return content.trim();
+      const trimmed = content.trim();
+      try {
+        const preview = trimmed.length > 1000 ? trimmed.slice(0, 1000) + '…(truncated)' : trimmed;
+        console.log('[ReportAgent] callOpenAI() raw content:', preview);
+        sendReportAgentLog('callOpenAI_output', { preview });
+      } catch {}
+      return trimmed;
     } finally {
       clearTimeout(timeout);
     }
@@ -153,9 +191,15 @@ class ReportAgentService {
   async buildPlan(message) {
     const raw = await this.callOpenAI(message);
     try {
-      return JSON.parse(raw);
+      const plan = JSON.parse(raw);
+      try {
+        console.log('[ReportAgent] buildPlan() parsed plan:', JSON.stringify(plan, null, 2));
+        sendReportAgentLog('buildPlan_parsed', { plan });
+      } catch {}
+      return plan;
     } catch (error) {
       logger.error('Failed to parse plan JSON', { raw });
+      sendReportAgentLog('buildPlan_parse_error', { raw });
       throw new Error('Unable to interpret assistant response. Please rephrase your request.');
     }
   }
@@ -173,13 +217,18 @@ class ReportAgentService {
       ? Math.min(Math.max(limitCandidate, 1), MAX_QUERY_LIMIT)
       : 100;
 
-    return {
+    const normalized = {
       summary,
       filters,
       columns,
       sort,
       limit
     };
+    try {
+      console.log('[ReportAgent] normalizePlan() result:', JSON.stringify(normalized, null, 2));
+      sendReportAgentLog('normalizePlan_result', { plan: normalized });
+    } catch {}
+    return normalized;
   }
 
   normalizeFilters(filters) {
@@ -406,13 +455,22 @@ class ReportAgentService {
 
     const sort = { [plan.sort.field]: plan.sort.direction };
 
-    console.log('[ReportAgent] Mongo query built:\n', JSON.stringify({
+    console.log('[ReportAgent] buildQuery() Mongo query built:\n', JSON.stringify({
       filter: mongoFilter,
       projection,
       sort,
       limit: plan.limit,
       columns: plan.columns.map((col) => col.key)
     }, null, 2));
+    try {
+      sendReportAgentLog('buildQuery_built', {
+        filter: mongoFilter,
+        projection,
+        sort,
+        limit: plan.limit,
+        columns: plan.columns.map((c) => c.key)
+      });
+    } catch {}
 
     return {
       filter: mongoFilter,
@@ -472,15 +530,41 @@ class ReportAgentService {
   async generateReport(user, message, options = {}) {
     this.ensureFeatureEnabled();
     this.ensureRoleAllowed(user.role);
+    try {
+      console.log('[ReportAgent] generateReport() input:', JSON.stringify({
+        user: { email: user.email, role: user.role },
+        message,
+        options
+      }, null, 2));
+      sendReportAgentLog('generateReport_input', {
+        user: { email: user.email, role: user.role },
+        message,
+        options
+      });
+    } catch {}
 
     const rawPlan = await this.buildPlan(message);
     const plan = this.normalizePlan(rawPlan, options);
     const query = this.buildQuery(user, plan);
-
     const previewLimit = Math.min(plan.limit, PREVIEW_LIMIT);
     const { docs, total } = await this.fetchDocuments(query, previewLimit);
     const rows = this.prepareRows(docs, query.columns);
     const token = this.storePlan(user, plan, query.columns);
+
+    try {
+      console.log('[ReportAgent] generateReport() output summary:', JSON.stringify({
+        token,
+        previewCount: rows.length,
+        total,
+        truncated: total > rows.length
+      }, null, 2));
+      sendReportAgentLog('generateReport_output', {
+        token,
+        previewCount: rows.length,
+        total,
+        truncated: total > rows.length
+      });
+    } catch {}
 
     return {
       success: true,
@@ -506,6 +590,21 @@ class ReportAgentService {
 
     const timestamp = moment().format('YYYYMMDD_HHmm');
     const filename = `report_${timestamp}.json`;
+
+    try {
+      console.log('[ReportAgent] generateDownload() prepared:', JSON.stringify({
+        user: { email: user.email, role: user.role },
+        token,
+        filename,
+        rowCount: rows.length
+      }, null, 2));
+      sendReportAgentLog('generateDownload_prepared', {
+        user: { email: user.email, role: user.role },
+        token,
+        filename,
+        rowCount: rows.length
+      });
+    } catch {}
 
     return {
       success: true,
