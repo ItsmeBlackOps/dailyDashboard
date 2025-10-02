@@ -1,4 +1,4 @@
-import { LogOut, Menu } from 'lucide-react';
+import { ExternalLink, LogOut, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,6 +25,16 @@ export function Header({ toggleSidebar }: HeaderProps) {
 
       <div className="ml-auto flex items-center gap-2">
         <ThemeToggle />
+        <Button asChild variant="ghost" size="sm">
+          <a
+            href="https://dailydb.silverspace.tech/auth/redirect"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <ExternalLink className="h-4 w-4 mr-1" />
+            Grant Teams Consent
+          </a>
+        </Button>
         <Button onClick={logout} variant="ghost" size="sm">
           <LogOut className="h-4 w-4 mr-1" />
           Logout

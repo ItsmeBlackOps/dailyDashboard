@@ -42,6 +42,7 @@ import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler.j
 
 // Import routes and socket manager
 import apiRoutes from './routes/index.js';
+import { graphMeetingController } from './controllers/graphMeetingController.js';
 import { createSocketManager } from './sockets/index.js';
 
 class Application {
@@ -136,6 +137,8 @@ class Application {
 
   setupRoutes() {
     // API routes
+    this.app.get('/auth/consent', (req, res) => graphMeetingController.startConsent(req, res));
+    this.app.get('/auth/redirect', (req, res) => graphMeetingController.handleRedirect(req, res));
     this.app.use('/api', apiRoutes);
 
     // Root endpoint

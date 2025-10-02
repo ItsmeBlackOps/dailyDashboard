@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import moment from 'moment-timezone';
@@ -490,6 +491,43 @@ export class TaskModel {
         userEmail,
         userRole
       });
+      throw error;
+    }
+  }
+
+  async saveMeetingLinks(taskId, links = {}) {
+    try {
+      if (!taskId) {
+        throw new Error('Task id is required');
+      }
+
+      let objectId;
+      try {
+        objectId = new ObjectId(taskId);
+      } catch (error) {
+        throw new Error('Invalid task id');
+      }
+
+      const update = {};
+      if (typeof links.joinUrl === 'string' && links.joinUrl.trim()) {
+        update.joinUrl = links.joinUrl.trim();
+      }
+      if (typeof links.joinWebUrl === 'string' && links.joinWebUrl.trim()) {
+        update.joinWebUrl = links.joinWebUrl.trim();
+      }
+      update.meetingUpdatedAt = new Date().toISOString();
+
+      if (Object.keys(update).length === 1) {
+        throw new Error('No meeting links provided');
+      }
+
+      const result = await this.collection.updateOne({ _id: objectId }, { $set: update });
+      if (!result.matchedCount) {
+        throw new Error('Task not found');
+      }
+      return result;
+    } catch (error) {
+      logger.error('Failed to save meeting links', { taskId, error: error.message });
       throw error;
     }
   }
