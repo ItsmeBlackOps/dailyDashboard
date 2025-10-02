@@ -67,4 +67,40 @@ router.get('/docs/openapi.json', (req, res) => {
   res.status(200).json(openapi);
 });
 
+// Human-friendly Swagger UI for the latest OpenAPI document
+// Served at: /api/docs (router is mounted under /api)
+router.get('/docs', (req, res) => {
+  const specUrl = `${req.baseUrl}/docs/openapi.json`;
+  const html = `<!DOCTYPE html>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Daily Dashboard API Docs</title>
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
+      <style>
+        html, body { margin: 0; height: 100%; background: #0b1020; }
+        .swagger-ui .topbar { display: none; }
+      </style>
+    </head>
+    <body>
+      <div id="swagger-ui"></div>
+      <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+      <script>
+        window.onload = function() {
+          window.ui = SwaggerUIBundle({
+            url: ${JSON.stringify(specUrl)},
+            dom_id: '#swagger-ui',
+            deepLinking: true,
+            persistAuthorization: true,
+            presets: [SwaggerUIBundle.presets.apis],
+            layout: 'BaseLayout'
+          });
+        };
+      </script>
+    </body>
+  </html>`;
+  res.status(200).type('html').send(html);
+});
+
 export default router;
