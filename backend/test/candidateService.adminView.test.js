@@ -46,13 +46,11 @@ describe('candidateService admin visibility', () => {
     );
 
     expect(candidateModel.getAllCandidates).toHaveBeenCalledWith({
-      limit: 150,
       search: 'Jane'
     });
 
     expect(result.scope).toEqual({ type: 'admin', value: 'all' });
     expect(result.meta.count).toBe(1);
-    expect(result.meta.appliedLimit).toBe(150);
     expect(result.meta.hasSearch).toBe(true);
 
     expect(result.candidates[0]).toMatchObject({

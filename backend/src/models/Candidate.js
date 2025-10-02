@@ -2,7 +2,6 @@ import { ObjectId } from 'mongodb';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
-const DEFAULT_LIMIT = 100;
 const DEFAULT_PROJECTION = {
   _id: 1,
   Branch: 1,
@@ -46,55 +45,53 @@ export class CandidateModel {
     logger.info('CandidateModel initialized with candidateDetails collection');
   }
 
-  async getCandidatesByBranch(branch, { limit = DEFAULT_LIMIT, search } = {}) {
+  async getCandidatesByBranch(branch, { limit, search } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
-
-    const appliedLimit = Number.isFinite(limit) && limit > 0
-      ? Math.min(Math.floor(limit), 500)
-      : DEFAULT_LIMIT;
 
     const query = { Branch: branch };
     if (search) {
       query['Candidate Name'] = { $regex: search, $options: 'i' };
     }
 
-    const cursor = this.collection
+    let cursor = this.collection
       .find(query, { projection: DEFAULT_PROJECTION })
-      .sort({ _last_write: -1 })
-      .limit(appliedLimit);
+      .sort({ _last_write: -1 });
+
+    if (Number.isFinite(limit) && limit > 0) {
+      cursor = cursor.limit(Math.floor(limit));
+    }
 
     const documents = await cursor.toArray();
 
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getAllCandidates({ limit = DEFAULT_LIMIT, search } = {}) {
+  async getAllCandidates({ limit, search } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
-
-    const appliedLimit = Number.isFinite(limit) && limit > 0
-      ? Math.min(Math.floor(limit), 500)
-      : DEFAULT_LIMIT;
 
     const query = {};
     if (search) {
       query['Candidate Name'] = { $regex: search, $options: 'i' };
     }
 
-    const cursor = this.collection
+    let cursor = this.collection
       .find(query, { projection: DEFAULT_PROJECTION })
-      .sort({ _last_write: -1 })
-      .limit(appliedLimit);
+      .sort({ _last_write: -1 });
+
+    if (Number.isFinite(limit) && limit > 0) {
+      cursor = cursor.limit(Math.floor(limit));
+    }
 
     const documents = await cursor.toArray();
 
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getCandidatesByRecruiters(recruiterEmails, { limit = DEFAULT_LIMIT, search } = {}) {
+  async getCandidatesByRecruiters(recruiterEmails, { limit, search } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
@@ -102,10 +99,6 @@ export class CandidateModel {
     if (!Array.isArray(recruiterEmails) || recruiterEmails.length === 0) {
       return [];
     }
-
-    const appliedLimit = Number.isFinite(limit) && limit > 0
-      ? Math.min(Math.floor(limit), 500)
-      : DEFAULT_LIMIT;
 
     const orConditions = recruiterEmails.map((email) => ({
       Recruiter: { $regex: `^${escapeRegex(email)}$`, $options: 'i' }
@@ -119,10 +112,13 @@ export class CandidateModel {
       query['Candidate Name'] = { $regex: search, $options: 'i' };
     }
 
-    const cursor = this.collection
+    let cursor = this.collection
       .find(query, { projection: DEFAULT_PROJECTION })
-      .sort({ _last_write: -1 })
-      .limit(appliedLimit);
+      .sort({ _last_write: -1 });
+
+    if (Number.isFinite(limit) && limit > 0) {
+      cursor = cursor.limit(Math.floor(limit));
+    }
 
     const documents = await cursor.toArray();
 
@@ -301,38 +297,33 @@ export class CandidateModel {
     });
   }
 
-  async getCandidatesByWorkflowStatus(status, { limit = DEFAULT_LIMIT } = {}) {
+  async getCandidatesByWorkflowStatus(status, { limit } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
 
-    const appliedLimit = Number.isFinite(limit) && limit > 0
-      ? Math.min(Math.floor(limit), 500)
-      : DEFAULT_LIMIT;
-
     const statuses = Array.isArray(status) ? status : [status];
     const query = { workflowStatus: { $in: statuses } };
 
-    const cursor = this.collection
+    let cursor = this.collection
       .find(query, {
         projection: DEFAULT_PROJECTION
       })
-      .sort({ _last_write: -1 })
-      .limit(appliedLimit);
+      .sort({ _last_write: -1 });
+
+    if (Number.isFinite(limit) && limit > 0) {
+      cursor = cursor.limit(Math.floor(limit));
+    }
 
     const documents = await cursor.toArray();
 
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getCandidatesForExpert(expertEmail, statusFilter = null, { limit = DEFAULT_LIMIT } = {}) {
+  async getCandidatesForExpert(expertEmail, statusFilter = null, { limit } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
-
-    const appliedLimit = Number.isFinite(limit) && limit > 0
-      ? Math.min(Math.floor(limit), 500)
-      : DEFAULT_LIMIT;
 
     const query = {
       Expert: { $regex: `^${escapeRegex(expertEmail)}$`, $options: 'i' }
@@ -342,19 +333,22 @@ export class CandidateModel {
       query.resumeUnderstandingStatus = statusFilter;
     }
 
-    const cursor = this.collection
+    let cursor = this.collection
       .find(query, {
         projection: DEFAULT_PROJECTION
       })
-      .sort({ _last_write: -1 })
-      .limit(appliedLimit);
+      .sort({ _last_write: -1 });
+
+    if (Number.isFinite(limit) && limit > 0) {
+      cursor = cursor.limit(Math.floor(limit));
+    }
 
     const documents = await cursor.toArray();
 
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getCandidatesByExperts(expertEmails, { limit = DEFAULT_LIMIT, search } = {}) {
+  async getCandidatesByExperts(expertEmails, { limit, search } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
@@ -362,10 +356,6 @@ export class CandidateModel {
     if (!Array.isArray(expertEmails) || expertEmails.length === 0) {
       return [];
     }
-
-    const appliedLimit = Number.isFinite(limit) && limit > 0
-      ? Math.min(Math.floor(limit), 500)
-      : DEFAULT_LIMIT;
 
     const orConditions = expertEmails.map((email) => ({
       Expert: { $regex: `^${escapeRegex(email)}$`, $options: 'i' }
@@ -377,10 +367,13 @@ export class CandidateModel {
       query['Candidate Name'] = { $regex: search, $options: 'i' };
     }
 
-    const cursor = this.collection
+    let cursor = this.collection
       .find(query, { projection: DEFAULT_PROJECTION })
-      .sort({ _last_write: -1 })
-      .limit(appliedLimit);
+      .sort({ _last_write: -1 });
+
+    if (Number.isFinite(limit) && limit > 0) {
+      cursor = cursor.limit(Math.floor(limit));
+    }
 
     const documents = await cursor.toArray();
 

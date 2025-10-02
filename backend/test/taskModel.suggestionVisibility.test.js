@@ -43,6 +43,31 @@ describe('TaskModel.filterAndFormatTasks suggestion visibility', () => {
     expect(tasks[0]._id).toBe('user-1');
   });
 
+  it('includes pending tasks for expert when suggestion matches their display name', () => {
+    const docs = [
+      { ...baseDoc, _id: 'expert-name-1', assignedTo: 'other@example.com', candidateExpertRaw: 'Aditya Sharma', status: 'Pending' }
+    ];
+
+    const userEmail = 'aditya.sharma@example.com';
+    const userRole = 'expert';
+
+    const tasks = model.filterAndFormatTasks(docs, userEmail, userRole, []);
+    expect(tasks.length).toBe(1);
+    expect(tasks[0]._id).toBe('expert-name-1');
+  });
+
+  it('excludes suggestion matches once task status is no longer pending', () => {
+    const docs = [
+      { ...baseDoc, _id: 'expert-name-2', assignedTo: 'other@example.com', candidateExpertRaw: 'Aditya Sharma', status: 'Completed' }
+    ];
+
+    const userEmail = 'aditya.sharma@example.com';
+    const userRole = 'expert';
+
+    const tasks = model.filterAndFormatTasks(docs, userEmail, userRole, []);
+    expect(tasks.length).toBe(0);
+  });
+
   it('does not include when no assignment or suggestion match', () => {
     const docs = [
       { ...baseDoc, _id: 'none-1', assignedTo: '', candidateExpertRaw: 'other@example.com' }
@@ -56,4 +81,3 @@ describe('TaskModel.filterAndFormatTasks suggestion visibility', () => {
     expect(tasks.length).toBe(0);
   });
 });
-

@@ -3,6 +3,7 @@ import authRoutes from './auth.js';
 import taskRoutes from './tasks.js';
 import userRoutes from './users.js';
 import docsRoutes from './docs.js';
+import graphMeetingRoutes from './graphMeetings.js';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
@@ -12,6 +13,7 @@ const router = express.Router();
 router.use('/auth', authRoutes);
 router.use('/tasks', taskRoutes);
 router.use('/users', userRoutes);
+router.use('/graph', graphMeetingRoutes);
 router.use('/', docsRoutes);
 
 // Health check endpoint

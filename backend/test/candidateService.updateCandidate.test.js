@@ -283,7 +283,7 @@ describe('candidateService.getCandidatesForUser expert scopes', () => {
 
     expect(candidateModel.getCandidatesByExperts).toHaveBeenCalledWith(
       ['lead.user@company.com', 'direct.user@company.com'],
-      { limit: 25, search: 'React' }
+      { search: 'React' }
     );
 
     expect(result.scope).toEqual({
@@ -293,7 +293,6 @@ describe('candidateService.getCandidatesForUser expert scopes', () => {
 
     expect(result.meta).toMatchObject({
       experts: ['lead.user@company.com', 'direct.user@company.com'],
-      appliedLimit: 25,
       hasSearch: true
     });
 
@@ -344,11 +343,11 @@ describe('candidateService.getCandidatesForUser expert scopes', () => {
 
     expect(candidateModel.getCandidatesByExperts).toHaveBeenCalledWith(
       ['user.two@company.com'],
-      { limit: undefined, search: undefined }
+      { search: undefined }
     );
 
     expect(result.scope).toEqual({ type: 'expert', value: ['user.two@company.com'] });
-    expect(result.meta).toMatchObject({ experts: ['user.two@company.com'], appliedLimit: null, hasSearch: false });
+    expect(result.meta).toMatchObject({ experts: ['user.two@company.com'], hasSearch: false });
     expect(result.candidates[0]).toMatchObject({
       name: 'Alice Smith',
       expert: 'User Two',
@@ -386,8 +385,14 @@ describe('candidateService.getCandidatesForUser expert scopes', () => {
     );
 
     expect(candidateModel.getCandidatesByExperts).toHaveBeenCalledWith(
-      expect.arrayContaining(['am.user@company.com', 'lead.alpha@company.com', 'user.one@company.com', 'lead.beta@company.com', 'user.two@company.com']),
-      { limit: 50, search: undefined }
+      expect.arrayContaining([
+        'am.user@company.com',
+        'lead.alpha@company.com',
+        'user.one@company.com',
+        'lead.beta@company.com',
+        'user.two@company.com'
+      ]),
+      { search: undefined }
     );
 
     expect(result.scope).toEqual({
@@ -434,7 +439,7 @@ describe('candidateService.getCandidatesForUser recruiter scope', () => {
 
     expect(candidateModel.getCandidatesByRecruiters).toHaveBeenCalledWith(
       ['recruiter.one@company.com'],
-      { limit: 10 }
+      { search: undefined }
     );
 
     expect(result.scope).toEqual({

@@ -55,6 +55,14 @@
 - `NEW_RELIC_APP_NAME` / `NEW_RELIC_BACKEND_APP_NAME` – Service name reported to New Relic (default `dailydb-backend`).
 - `NEW_RELIC_LOG_LEVEL` – Log verbosity for the agent (default `info`).
 - `NEW_RELIC_NO_CONFIG_FILE` – Set to `true` to rely on environment configuration only.
+- `LOGFLARE_SOURCE_ID` – Logflare source UUID used for debug telemetry.
+- `LOGFLARE_API_KEY` – API key granting access to the Logflare source.
+- `LOGFLARE_ENDPOINT` – Override for the Logflare ingestion endpoint (default `https://api.logflare.app/logs`).
+- `AZURE_TENANT_ID` – Entra tenant ID used for Microsoft Graph auth (default `common`).
+- `AZURE_CLIENT_ID` – Confidential client (backend app registration) Application (client) ID.
+- `AZURE_CLIENT_SECRET` – Secret generated for the backend app registration.
+- `BACKEND_REDIRECT_URI` – Redirect URI registered for the backend consent flow (default `http://localhost:4000/auth/redirect`).
+- `AZURE_GRAPH_MEETING_SCOPES` – Optional comma-separated Graph scopes (default `https://graph.microsoft.com/OnlineMeetings.ReadWrite`).
 
 ### AI Report Assistant
 - Available over WebSocket events `reportBotQuery` and `reportBotDownload`.
@@ -85,6 +93,16 @@ API documentation is provided using Swagger. A minimal OpenAPI 3.1 document is s
 - Suggestions column shows who a task can be assigned to based on the candidate’s Expert from `candidateDetails`.
 - If no suggestion is available, the column shows `Not available` (entries are never filtered out due to missing suggestions).
 - Subject column is hidden by default. Users can toggle visibility via the “Show Subject” switch; the choice is persisted per-browser.
+- When Azure AD configuration is present, each task row exposes a “Create meeting” button that provisions an online Teams meeting based on the subject and scheduled time. First-time users see a consent banner that launches the Microsoft permissions dialog and polls the backend health check until consent succeeds. Once a meeting is created the join links are saved back onto the task, replacing the action with “Join meeting” and “Copy link” shortcuts.
+
+### Microsoft Teams Meetings (prototype)
+
+- Backend exposes new Microsoft Graph helpers:
+  - `GET /auth/consent` & `GET /auth/redirect` start and complete the delegated consent flow for `OnlineMeetings.ReadWrite`.
+  - `GET /api/graph/health/meetings` performs an On-Behalf-Of token exchange to confirm consent.
+  - `POST /api/graph/meetings` creates an online meeting using the request subject and optional ISO8601 start/end timestamps.
+- Configure the Azure app registration via the environment variables listed above. Missing credentials disable the endpoints gracefully (`503 not_configured`).
+- Consent and meeting helpers rely on Microsoft’s `@azure/msal-node` (backend) and `@azure/msal-browser`/`@azure/msal-react` (frontend) packages pinned to their latest stable releases.
 
 New fields on each task payload:
 
@@ -141,6 +159,13 @@ background.
 - `NEW_RELIC_NO_CONFIG_FILE` – Set to `true` to rely on environment configuration only.
 - `FRONTEND_HOST` – Host binding for the preview server (default `0.0.0.0`).
 - `FRONTEND_OPEN` – Whether to auto-open a browser window (default `false`).
+- `VITE_API_BASE` – REST base URL for consent and meeting endpoints (defaults to `VITE_API_URL`).
+- `VITE_API_SCOPE` – Delegated scope for the backend application (e.g. `api://<backend-app-id>/user_impersonation`).
+- `VITE_LOGIN_SCOPES` – Space-delimited login scopes requested via MSAL (default `User.Read https://graph.microsoft.com/OnlineMeetings.ReadWrite https://graph.microsoft.com/Calendars.ReadWrite`).
+- `VITE_AZURE_CLIENT_ID` – SPA application (client) ID used by MSAL.
+- `VITE_AZURE_TENANT_ID` – Azure tenant ID (default `common`).
+- `VITE_AZURE_AUTHORITY` – Optional authority override; defaults to `https://login.microsoftonline.com/<tenant>`.
+- `VITE_AZURE_REDIRECT_URI` – Frontend redirect URI registered for the SPA (defaults to `window.location.origin`).
 
 ## Continuous Integration
 
