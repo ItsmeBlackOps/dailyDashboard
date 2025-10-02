@@ -130,6 +130,27 @@ describe('graphMeetingController', () => {
     expect(saveMeetingLinksMock).not.toHaveBeenCalled();
   });
 
+  it('passes sanitized recordAutomatically flag to the meeting payload', async () => {
+    const req = {
+      headers: { authorization: 'Bearer user-token' },
+      body: {
+        subject: 'Status Update',
+        recordAutomatically: 'yes',
+        startDateTime: '2024-07-01T14:00:00Z'
+      }
+    };
+    const res = createRes();
+    createMeetingMock.mockResolvedValueOnce({});
+
+    await graphMeetingController.createMeeting(req, res);
+
+    expect(createMeetingMock).toHaveBeenCalledWith('user-token', {
+      subject: 'Status Update',
+      startDateTime: '2024-07-01T14:00:00.000Z',
+      recordAutomatically: true
+    });
+  });
+
   it('returns graph_error when GraphRequestError is thrown', async () => {
     const req = {
       headers: { authorization: 'Bearer token' },

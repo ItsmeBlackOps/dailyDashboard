@@ -153,22 +153,10 @@ class CandidateService {
     return escapeRegex(trimmed);
   }
 
-  sanitizeLimit(limit) {
-    if (!Number.isFinite(limit)) {
-      return undefined;
-    }
-    const normalized = Math.floor(limit);
-    if (normalized < 1) return 1;
-    if (normalized > 500) return 500;
-    return normalized;
-  }
-
   async fetchCandidatesByBranch(user, branch, options) {
-    const limit = this.sanitizeLimit(options.limit);
     const searchPattern = this.buildSearchPattern(options.search);
 
     const candidates = await candidateModel.getCandidatesByBranch(branch, {
-      limit,
       search: searchPattern
     });
 
@@ -189,7 +177,6 @@ class CandidateService {
       meta: {
         count: candidates.length,
         branch,
-        appliedLimit: limit ?? null,
         hasSearch: Boolean(searchPattern)
       }
     };
@@ -202,11 +189,9 @@ class CandidateService {
       throw error;
     }
 
-    const limit = this.sanitizeLimit(options.limit);
     const searchPattern = this.buildSearchPattern(options.search);
 
     const candidates = await candidateModel.getCandidatesByRecruiters(recruiterEmails, {
-      limit,
       search: searchPattern
     });
 
@@ -227,18 +212,15 @@ class CandidateService {
       meta: {
         count: candidates.length,
         recruiters: recruiterEmails,
-        appliedLimit: limit ?? null,
-      hasSearch: Boolean(searchPattern)
+        hasSearch: Boolean(searchPattern)
       }
     };
   }
 
   async fetchAllCandidates(user, options) {
-    const limit = this.sanitizeLimit(options.limit);
     const searchPattern = this.buildSearchPattern(options.search);
 
     const candidates = await candidateModel.getAllCandidates({
-      limit,
       search: searchPattern
     });
 
@@ -247,7 +229,6 @@ class CandidateService {
     logger.info('Admin candidates retrieved', {
       userEmail: user.email,
       returned: candidates.length,
-      appliedLimit: limit ?? null,
       hasSearch: Boolean(searchPattern)
     });
 
@@ -265,7 +246,6 @@ class CandidateService {
       candidates: formattedCandidates,
       meta: {
         count: candidates.length,
-        appliedLimit: limit ?? null,
         hasSearch: Boolean(searchPattern)
       },
       options: {
@@ -276,7 +256,6 @@ class CandidateService {
   }
 
   async fetchCandidatesByExperts(user, expertEmails, options) {
-    const limit = this.sanitizeLimit(options?.limit);
     const searchPattern = this.buildSearchPattern(options?.search);
 
     if (!Array.isArray(expertEmails) || expertEmails.length === 0) {
@@ -293,14 +272,12 @@ class CandidateService {
         meta: {
           count: 0,
           experts: [],
-          appliedLimit: limit ?? null,
           hasSearch: Boolean(searchPattern)
         }
       };
     }
 
     const candidates = await candidateModel.getCandidatesByExperts(expertEmails, {
-      limit,
       search: searchPattern
     });
 
@@ -321,7 +298,6 @@ class CandidateService {
       meta: {
         count: candidates.length,
         experts: expertEmails,
-        appliedLimit: limit ?? null,
         hasSearch: Boolean(searchPattern)
       }
     };
@@ -511,13 +487,11 @@ class CandidateService {
       throw error;
     }
 
-    const limit = this.sanitizeLimit(options.limit);
     const candidates = await candidateModel.getCandidatesByWorkflowStatus(
       [
         WORKFLOW_STATUS.awaitingExpert,
         WORKFLOW_STATUS.needsResumeUnderstanding
-      ],
-      { limit }
+      ]
     );
 
     const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate));
@@ -544,14 +518,11 @@ class CandidateService {
     }
 
     const normalizedRole = user.role.trim().toLowerCase();
-    const limit = this.sanitizeLimit(options.limit);
-
     if (normalizedRole === 'admin' || normalizedRole === 'manager') {
       const candidates = await candidateModel.getCandidatesByWorkflowStatus(
         status === RESUME_UNDERSTANDING_STATUS.done
           ? WORKFLOW_STATUS.completed
-          : WORKFLOW_STATUS.needsResumeUnderstanding,
-        { limit }
+          : WORKFLOW_STATUS.needsResumeUnderstanding
       );
 
       return candidates.map((candidate) => this.formatCandidateRecord(candidate));
@@ -559,7 +530,7 @@ class CandidateService {
 
     if (normalizedRole === 'am' || normalizedRole === 'lead' || normalizedRole === 'expert' || normalizedRole === 'user') {
       const expertEmail = formatEmail(user.email);
-      const candidates = await candidateModel.getCandidatesForExpert(expertEmail, status, { limit });
+      const candidates = await candidateModel.getCandidatesForExpert(expertEmail, status);
       return candidates.map((candidate) => this.formatCandidateRecord(candidate));
     }
 
@@ -584,7 +555,7 @@ class CandidateService {
       const workflowStatus = normalizedStatus === RESUME_UNDERSTANDING_STATUS.done
         ? WORKFLOW_STATUS.completed
         : WORKFLOW_STATUS.needsResumeUnderstanding;
-      const candidates = await candidateModel.getCandidatesByWorkflowStatus(workflowStatus, { limit: 500 });
+      const candidates = await candidateModel.getCandidatesByWorkflowStatus(workflowStatus);
       return candidates.length;
     }
 
@@ -659,18 +630,28 @@ class CandidateService {
 
     if (payload.contact !== undefined) {
       const rawContact = payload.contact.toString().trim();
+
       if (!rawContact) {
         sanitized.contact = '';
       } else {
-        const digitsOnly = rawContact.replace(/[^0-9]/g, '');
-        if (digitsOnly.length !== 10) {
-          const error = new Error('Contact number must be 10 digits');
-          error.statusCode = 400;
-          throw error;
+        // If number starts with +1 and has 10 digits after it
+        if (/^\+1\d{10}$/.test(rawContact)) {
+          sanitized.contact = rawContact;
+        } else {
+          // Strip all non-digits
+          const digitsOnly = rawContact.replace(/[^0-9]/g, '');
+
+          if (digitsOnly.length !== 10) {
+            const error = new Error('Contact number must be 10 digits');
+            error.statusCode = 400;
+            throw error;
+          }
+
+          sanitized.contact = `+1${digitsOnly}`;
         }
-        sanitized.contact = `+1${digitsOnly}`;
       }
     }
+
 
     if (payload.workflowStatus !== undefined) {
       sanitized.workflowStatus = payload.workflowStatus;
@@ -1011,7 +992,6 @@ class CandidateService {
     }
 
     if (normalizedRole === 'manager') {
-      const limit = this.sanitizeLimit(options.limit);
       return {
         scope: {
           type: 'manager',
@@ -1020,7 +1000,6 @@ class CandidateService {
         candidates: [],
         meta: {
           count: 0,
-          appliedLimit: limit ?? null,
           hasSearch: false
         },
         options: {

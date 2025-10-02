@@ -56,11 +56,9 @@ class CandidateSocketHandler {
         });
       }
 
-      const limit = sanitizedData.limit !== undefined ? Number(sanitizedData.limit) : undefined;
       const search = typeof sanitizedData.search === 'string' ? sanitizedData.search : undefined;
 
       const result = await candidateService.getCandidatesForUser(user, {
-        limit,
         search
       });
 

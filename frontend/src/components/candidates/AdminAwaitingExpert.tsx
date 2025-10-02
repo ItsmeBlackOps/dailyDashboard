@@ -49,7 +49,6 @@ interface AssignResponse {
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MAX_LIMIT = 200;
 
 interface ExpertOption {
   value: string;
@@ -210,7 +209,7 @@ export function AdminAwaitingExpert({ role }: AdminAwaitingExpertProps) {
     setLoading(true);
     setError("");
 
-    socket.emit('getPendingExpertAssignments', { limit: MAX_LIMIT }, (response: PendingResponse) => {
+    socket.emit('getPendingExpertAssignments', (response: PendingResponse) => {
       if (!response?.success) {
         setError(response?.error || 'Unable to load pending candidates.');
         setCandidates([]);

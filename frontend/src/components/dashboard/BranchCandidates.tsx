@@ -56,7 +56,6 @@ interface BranchCandidatesResponse {
     branch?: string;
     recruiters?: string[];
     experts?: string[];
-    appliedLimit?: number | null;
     hasSearch?: boolean;
   };
   options?: {
@@ -66,7 +65,6 @@ interface BranchCandidatesResponse {
   error?: string;
 }
 
-const MAX_LIMIT = 200;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function formatEmailDisplay(value: string): string {
@@ -195,7 +193,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
     socket.emit(
       "getBranchCandidates",
-      { limit: MAX_LIMIT },
+      {},
       (resp: BranchCandidatesResponse) => {
         if (!resp?.success) {
           setCandidates([]);

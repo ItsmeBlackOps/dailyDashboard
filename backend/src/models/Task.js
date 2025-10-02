@@ -1,6 +1,7 @@
 import { ObjectId } from 'mongodb';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import { logSuggestionDebug } from '../utils/logflare.js';
 import moment from 'moment-timezone';
 
 function escapeRegex(value = '') {
@@ -219,27 +220,111 @@ export class TaskModel {
   }
 
   filterAndFormatTasks(docs, userEmail, userRole, teamEmails = []) {
+    const toId = (value) => {
+      if (!value) return '';
+      if (typeof value === 'string') return value;
+      if (typeof value === 'object' && 'toHexString' in value) {
+        try {
+          return value.toHexString();
+        } catch {
+          return String(value);
+        }
+      }
+      return String(value);
+    };
+
+    const normalizeForComparison = (value = '') => {
+      if (!value) return '';
+      return value
+        .toString()
+        .trim()
+        .toLowerCase()
+        .split('@')[0]
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+
+    const addTokens = (set, ...values) => {
+      for (const candidate of values) {
+        const normalized = normalizeForComparison(candidate);
+        if (normalized) {
+          set.add(normalized);
+        }
+      }
+    };
+
+    const toArray = (value) => (Array.isArray(value) ? value : []);
+
     const tasks = [];
-    const userEmailLower = userEmail.toLowerCase();
+    const userEmailLower = (userEmail || '').toLowerCase();
+    const userLocal = userEmailLower.split('@')[0];
     const normalizedRole = (userRole || '').toLowerCase();
-    const teamEmailSet = new Set((teamEmails || []).map((email) => email.toLowerCase()));
+
+    const teamEmailSet = new Set();
+    const teamTokenSet = new Set();
+    for (const email of teamEmails || []) {
+      const lower = (email || '').toLowerCase();
+      if (!lower) continue;
+      teamEmailSet.add(lower);
+      const local = lower.split('@')[0];
+      addTokens(teamTokenSet, local, this.deriveDisplayNameFromEmail(lower));
+    }
+
+    const userTokenSet = new Set();
+    addTokens(userTokenSet, userEmailLower, userLocal, this.deriveDisplayNameFromEmail(userEmailLower));
 
     for (const doc of docs) {
       const task = this.formatTask(doc);
       if (!task) continue;
 
+      const assignedEmailLower = task.assignedEmail?.toLowerCase() || '';
+      const statusLower = (task.status || '').toLowerCase();
+
+      const suggestionTokens = new Set();
+      for (const suggestion of toArray(task.suggestions)) {
+        addTokens(suggestionTokens, suggestion);
+      }
+      addTokens(
+        suggestionTokens,
+        doc.candidateExpertRaw,
+        task.candidateExpertDisplay,
+        task.assignedExpert
+      );
+
+      const baseMeta = {
+        taskId: toId(task._id || doc._id),
+        userEmail: userEmailLower,
+        userRole: normalizedRole,
+        status: statusLower,
+        assignedEmail: assignedEmailLower || null,
+        candidateExpertRaw: doc.candidateExpertRaw || null,
+        candidateExpertDisplay: task.candidateExpertDisplay || null,
+        suggestions: toArray(task.suggestions),
+        suggestionTokens: Array.from(suggestionTokens),
+        teamEmails: Array.from(teamEmailSet),
+        teamTokens: Array.from(teamTokenSet),
+        userTokens: Array.from(userTokenSet)
+      };
+
       if (['mam', 'mm', 'mlead'].includes(normalizedRole)) {
-        const localPart = doc.sender.toLowerCase().split("@")[0];
-        const parts = localPart.split(".");
+        const localPart = (doc.sender || '').toLowerCase().split('@')[0] || '';
+        const parts = localPart.split('.');
 
         let recruiterName;
         if (parts.length >= 2) {
           const [first, last] = parts;
           recruiterName = `${first[0].toUpperCase()}${first.slice(1)} ${last[0].toUpperCase()}${last.slice(1)}`;
-        } else {
+        } else if (parts[0]) {
           const only = parts[0];
           recruiterName = `${only[0].toUpperCase()}${only.slice(1)}`;
         }
+
+        logSuggestionDebug('TasksToday manager visibility applied', {
+          ...baseMeta,
+          reason: 'manager_access',
+          recruiterName: recruiterName || null
+        });
 
         tasks.push({ ...task, recruiterName });
         continue;
@@ -248,44 +333,115 @@ export class TaskModel {
       if (normalizedRole === 'recruiter') {
         const senderLower = (doc.sender || '').toLowerCase();
         if (senderLower === userEmailLower) {
+          logSuggestionDebug('TasksToday recruiter visibility via sender match', {
+            ...baseMeta,
+            reason: 'recruiter_sender_match'
+          });
           tasks.push(task);
           continue;
         }
-        const assignedEmailLower = task.assignedEmail?.toLowerCase() || "";
         if (assignedEmailLower === userEmailLower) {
+          logSuggestionDebug('TasksToday recruiter visibility via assignment match', {
+            ...baseMeta,
+            reason: 'recruiter_assignment_match'
+          });
           tasks.push(task);
+        } else {
+          logSuggestionDebug('TasksToday recruiter visibility skipped', {
+            ...baseMeta,
+            reason: 'recruiter_no_match',
+            sender: senderLower
+          });
         }
         continue;
       }
 
-      const assignedEmailLower = task.assignedEmail?.toLowerCase() || "";
       const isAdmin = normalizedRole === 'admin';
       const isSelf = userEmailLower === assignedEmailLower;
       const isOnTeam = teamEmailSet.has(assignedEmailLower);
 
-      // Base visibility: admin/self/team-assigned
       if (isAdmin || isSelf || isOnTeam) {
+        logSuggestionDebug('TasksToday base visibility satisfied', {
+          ...baseMeta,
+          reason: isAdmin ? 'admin_access' : isSelf ? 'self_assignment' : 'team_assignment'
+        });
         tasks.push(task);
         continue;
       }
 
-      // Enhancement for leads/AMs: if unassigned but candidate has an Expert
-      // suggestion that belongs to their team, include it.
       if ((normalizedRole === 'lead' || normalizedRole === 'am') && !assignedEmailLower) {
-        const suggestedExpertLower = (doc.candidateExpertRaw || '').toLowerCase();
-        if (suggestedExpertLower && teamEmailSet.has(suggestedExpertLower)) {
+        const candidateRawLower = (doc.candidateExpertRaw || '').toLowerCase();
+        const candidateMatchesTeamEmail = candidateRawLower && teamEmailSet.has(candidateRawLower);
+        let candidateMatchesTeamTokens = false;
+
+        if (!candidateMatchesTeamEmail) {
+          const candidateToken = normalizeForComparison(doc.candidateExpertRaw || '');
+          if (candidateToken && teamTokenSet.has(candidateToken)) {
+            candidateMatchesTeamTokens = true;
+          } else {
+            for (const token of suggestionTokens) {
+              if (teamTokenSet.has(token)) {
+                candidateMatchesTeamTokens = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (candidateMatchesTeamEmail || candidateMatchesTeamTokens) {
+          logSuggestionDebug('TasksToday team suggestion matched', {
+            ...baseMeta,
+            reason: candidateMatchesTeamEmail ? 'team_email_match' : 'team_token_match'
+          });
           tasks.push(task);
           continue;
         }
+
+        logSuggestionDebug('TasksToday team suggestion did not match', {
+          ...baseMeta,
+          reason: 'team_no_match'
+        });
       }
 
-      // Enhancement for individual users/experts: if unassigned but candidate has an
-      // Expert suggestion equal to the user's email, include it in their view.
-      if ((normalizedRole === 'user' || normalizedRole === 'expert') && !assignedEmailLower) {
-        const suggestedExpertLower = (doc.candidateExpertRaw || '').toLowerCase();
-        if (suggestedExpertLower && suggestedExpertLower === userEmailLower) {
+      if (normalizedRole === 'user' || normalizedRole === 'expert') {
+        const candidateRawLower = (doc.candidateExpertRaw || '').toLowerCase();
+        const candidateMatchesEmail =
+          candidateRawLower && (candidateRawLower === userEmailLower || candidateRawLower === userLocal);
+
+        let candidateMatchesTokens = false;
+        if (!candidateMatchesEmail) {
+          const candidateToken = normalizeForComparison(doc.candidateExpertRaw || '');
+          if (candidateToken && userTokenSet.has(candidateToken)) {
+            candidateMatchesTokens = true;
+          } else {
+            for (const token of suggestionTokens) {
+              if (userTokenSet.has(token)) {
+                candidateMatchesTokens = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if ((candidateMatchesEmail || candidateMatchesTokens) && statusLower === 'pending') {
+          logSuggestionDebug('TasksToday suggestion matched user', {
+            ...baseMeta,
+            reason: candidateMatchesEmail ? 'email_match' : 'token_match'
+          });
           tasks.push(task);
           continue;
+        }
+
+        if (candidateMatchesEmail || candidateMatchesTokens) {
+          logSuggestionDebug('TasksToday suggestion match skipped due to status', {
+            ...baseMeta,
+            reason: 'non_pending_status'
+          });
+        } else if (statusLower === 'pending' && suggestionTokens.size > 0) {
+          logSuggestionDebug('TasksToday suggestion did not match user tokens', {
+            ...baseMeta,
+            reason: 'no_token_match'
+          });
         }
       }
     }
@@ -646,6 +802,29 @@ export class TaskModel {
       }
 
       return { $or: patterns };
+    }
+
+    if (['user', 'expert'].includes(normalizedRole)) {
+      const selfName = this.deriveDisplayNameFromEmail(lowerEmail);
+      const patterns = [
+        { assignedTo: { $regex: `^${escapeRegex(emailLocal)}$`, $options: 'i' } },
+        { assignedTo: { $regex: `^${escapeRegex(lowerEmail)}$`, $options: 'i' } }
+      ];
+      if (selfName) {
+        patterns.push({ assignedTo: { $regex: `^${escapeRegex(selfName)}$`, $options: 'i' } });
+      }
+
+      const unassignedRegex = '^\\s*(?:not\\s+assigned)?\\s*$';
+      const unassignedPatterns = [
+        { assignedTo: { $exists: false } },
+        { assignedTo: { $regex: unassignedRegex, $options: 'i' } },
+        { assignedExpert: { $exists: false } },
+        { assignedExpert: { $regex: unassignedRegex, $options: 'i' } },
+        { AssignedExpert: { $exists: false } },
+        { AssignedExpert: { $regex: unassignedRegex, $options: 'i' } }
+      ];
+
+      return { $or: [...patterns, ...unassignedPatterns] };
     }
 
     const emailParts = emailLocal.split('.');
