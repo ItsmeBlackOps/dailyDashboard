@@ -40,6 +40,7 @@ const Index = () => {
       dayDate: dayRange.dayIso,
       start: dayRange.startIso,
       end: dayRange.endIso,
+      upcoming: false,
     };
   });
 

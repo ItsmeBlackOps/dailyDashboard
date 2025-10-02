@@ -17,6 +17,7 @@ import {
   DEFAULT_TIMEZONE,
   generateWeekOptions,
 } from "@/utils/dateRanges";
+import { Switch } from "@/components/ui/switch";
 
 export type DashboardRange = "day" | "week" | "month" | "custom";
 export type DashboardDateField = "Date of Interview" | "receivedDateTime";
@@ -32,6 +33,7 @@ export interface DashboardFilterState {
   weekIndex?: number;
   monthYear?: number;
   monthMonth?: number;
+  upcoming?: boolean;
 }
 
 interface DashboardFiltersProps {
@@ -199,6 +201,10 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
     }
   };
 
+  const handleUpcomingToggle = (checked: boolean) => {
+    onChange({ ...filters, upcoming: checked });
+  };
+
   const handleDateFieldChange = (value: DashboardDateField) => {
     const resolved = allowReceivedDate ? value : "Date of Interview";
     if (resolved === filters.dateField) return;
@@ -244,7 +250,7 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
         <CardTitle className="text-base font-semibold">Dashboard Filters</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-end">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] md:items-end">
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground uppercase tracking-wide">Time Range</p>
             <Tabs value={filters.range} onValueChange={(value) => handleRangeChange(value as DashboardRange)}>
@@ -272,6 +278,13 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Upcoming Only</p>
+            <div className="flex items-center gap-3">
+              <Switch id="dashboard-upcoming" checked={Boolean(filters.upcoming)} onCheckedChange={handleUpcomingToggle} />
+              <label htmlFor="dashboard-upcoming" className="text-sm text-muted-foreground select-none">Only tasks after today</label>
+            </div>
           </div>
           {/* </div> */}
 

@@ -28,6 +28,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { useTab } from "@/hooks/useTabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Switch } from "@/components/ui/switch";
+import { DashboardFilters, type DashboardFilterState } from "@/components/dashboard/DashboardFilters";
+import { buildDashboardPayload } from "@/components/dashboard/dashboardUtils";
+import { computeDayRange, DEFAULT_TIMEZONE } from "@/utils/dateRanges";
 
 interface Task {
   _id: string;
@@ -97,50 +100,42 @@ export default function TasksToday() {
   const user = roleRaw;
   const { toast } = useToast();
 
+  // Range/date field filters (default: today)
+  const [filters, setFilters] = useState<DashboardFilterState>(() => {
+    const dayRange = computeDayRange(new Date(), DEFAULT_TIMEZONE);
+    return {
+      range: 'day',
+      dateField: 'Date of Interview',
+      dayDate: dayRange.dayIso,
+      start: dayRange.startIso,
+      end: dayRange.endIso,
+      upcoming: false,
+    };
+  });
+
   // Date field preference
   const allowReceivedDate = useMemo(() => {
     return ["admin", "mm", "mam", "mlead", "recruiter"].includes(normalizedRole);
   }, [normalizedRole]);
 
-  const selectedTabRef = useRef<string>(
-    allowReceivedDate && selectedTab === "receivedDateTime"
-      ? "receivedDateTime"
-      : "Date of Interview"
-  );
+  const selectedTabRef = useRef<string>(filters.dateField);
 
+  // Keep filters.dateField in sync with stored tab and role allowance
   useEffect(() => {
-    if (!allowReceivedDate && selectedTab === "receivedDateTime") {
-      setSelectedTab("Date of Interview");
-      selectedTabRef.current = "Date of Interview";
-      return;
+    // Normalize based on role permission
+    const desired = allowReceivedDate && selectedTab === 'receivedDateTime' ? 'receivedDateTime' : 'Date of Interview';
+    if (filters.dateField !== desired) {
+      setFilters((prev) => ({ ...prev, dateField: desired }));
     }
-
-    selectedTabRef.current = allowReceivedDate ? selectedTab : "Date of Interview";
-  }, [allowReceivedDate, selectedTab, setSelectedTab]);
-
-  const dateFieldOptions = useMemo(() => {
-    const base = [
-      { value: "Date of Interview", label: "Date of Interview" },
-    ];
-    if (allowReceivedDate) {
-      base.push({ value: "receivedDateTime", label: "Received Date Time" });
-    }
-    return base;
-  }, [allowReceivedDate]);
-
-  const currentDateField = useMemo(() => {
-    if (!allowReceivedDate) {
-      return "Date of Interview";
-    }
-    return selectedTab === "receivedDateTime" ? "receivedDateTime" : "Date of Interview";
   }, [allowReceivedDate, selectedTab]);
 
-  const handleDateFieldChange = useCallback(
-    (value: string) => {
-      setSelectedTab(value);
-    },
-    [setSelectedTab]
-  );
+  // Mirror current filters.dateField into selectedTab storage and ref
+  useEffect(() => {
+    selectedTabRef.current = filters.dateField;
+    setSelectedTab(filters.dateField);
+  }, [filters.dateField, setSelectedTab]);
+
+  const currentDateField = filters.dateField;
 
   // persist subject visibility
   useEffect(() => {
@@ -248,6 +243,24 @@ export default function TasksToday() {
     if (!start) return false;
     return start.isSame(todayStart, 'day');
   }, [primaryStart, todayStart]);
+
+  const isInCurrentFilters = useCallback((task: Task) => {
+    const start = primaryStart(task);
+    if (!start) return false;
+
+    if (filters.upcoming) {
+      // After today (local TZ)
+      return start.isAfter(todayStart.clone().endOf('day'));
+    }
+
+    const startIso = filters.start ? moment(filters.start) : null;
+    const endIso = filters.end ? moment(filters.end) : null;
+    if (startIso && endIso) {
+      return start.isSameOrAfter(startIso) && start.isBefore(endIso);
+    }
+    // Fallback to today when no explicit range
+    return start.isSame(todayStart, 'day');
+  }, [filters.upcoming, filters.start, filters.end, primaryStart, todayStart]);
 
   const sortByPrimaryStart = useCallback((list: Task[]) => {
     return [...list].sort((a, b) => {
@@ -388,9 +401,10 @@ export default function TasksToday() {
     localStorage.setItem(TASK_STATUS_MAP, JSON.stringify(m));
 
   const fetchTasks = useCallback(() => {
+    const payload = { ...buildDashboardPayload({ ...filters, dateField: selectedTabRef.current as any }) };
     socket.emit(
-      "getTasksToday",
-      { tab: selectedTabRef.current, targetDate: todayIso },
+      "getTasksByRange",
+      payload,
       (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
         if (!resp.success) {
           setError(resp.error || "Failed to load tasks");
@@ -404,14 +418,13 @@ export default function TasksToday() {
 
         const incoming = sortByPrimaryStart(resp.tasks || []);
 
-        const todays = incoming.filter(isTodayForCurrentTab);
-
-        // Notifications for adds/updates
+        // Notifications only when viewing Today (not upcoming)
+        const isTodayView = filters.range === 'day' && !filters.upcoming && moment(filters.dayDate).isSame(moment.tz(TZ), 'day');
         const oldMap = readMap();
         const newMap: Record<string, string> = {};
-        todays.forEach((task) => {
+        incoming.forEach((task) => {
           newMap[task._id] = task.status || "";
-          if (!firstLoad.current) {
+          if (!firstLoad.current && isTodayView) {
             if (!(task._id in oldMap)) {
               const desc = DOMPurify.sanitize(task.subject || "");
               toast({ title: "New Task Added", description: desc });
@@ -432,20 +445,23 @@ export default function TasksToday() {
         writeMap(newMap);
         firstLoad.current = false;
 
-        setTasks(todays);
+        setTasks(incoming);
 
-        // *** CRITICAL: persist & schedule reminders whenever tasks load ***
-        reconcileReminders(todays);
+        // Schedule reminders only for today's interviews view
+        if (isTodayView) {
+          reconcileReminders(incoming);
+        }
       }
     );
-  }, [socket, toast, reconcileReminders, sortByPrimaryStart, isTodayForCurrentTab, todayIso]);
+  }, [socket, toast, reconcileReminders, sortByPrimaryStart, filters]);
 
   useEffect(() => {
     const onNew = (task: Task) => {
       const isInit = firstLoad.current;
       const map = readMap();
+      const isTodayView = filters.range === 'day' && !filters.upcoming && moment(filters.dayDate).isSame(moment.tz(TZ), 'day');
 
-      if (!isTodayForCurrentTab(task)) {
+      if (!isInCurrentFilters(task)) {
         if (map[task._id]) {
           delete map[task._id];
           writeMap(map);
@@ -453,7 +469,7 @@ export default function TasksToday() {
         setTasks((prev) => {
           const filtered = prev.filter((t) => t._id !== task._id);
           const sorted = sortByPrimaryStart(filtered);
-          reconcileReminders(sorted);
+          if (isTodayView) reconcileReminders(sorted);
           return sorted;
         });
         return;
@@ -467,11 +483,11 @@ export default function TasksToday() {
         const exists = prev.some((t) => t._id === task._id);
         const next = exists ? prev.map((t) => (t._id === task._id ? task : t)) : [...prev, task];
         const sorted = sortByPrimaryStart(next);
-        reconcileReminders(sorted);
+        if (isTodayView) reconcileReminders(sorted);
         return sorted;
       });
 
-      if (!isInit && !alreadyTracked) {
+      if (!isInit && !alreadyTracked && isTodayView) {
         const desc = DOMPurify.sanitize(task.subject || "");
         toast({ title: "New Task Added", description: desc });
         sendNotification("New Task Added", desc);
@@ -482,8 +498,9 @@ export default function TasksToday() {
     const onUpdate = (task: Task) => {
       const map = readMap();
       const previousStatus = map[task._id] || "";
+      const isTodayView = filters.range === 'day' && !filters.upcoming && moment(filters.dayDate).isSame(moment.tz(TZ), 'day');
 
-      if (!isTodayForCurrentTab(task)) {
+      if (!isInCurrentFilters(task)) {
         if (map[task._id]) {
           delete map[task._id];
           writeMap(map);
@@ -491,7 +508,7 @@ export default function TasksToday() {
         setTasks((list) => {
           const filtered = list.filter((t) => t._id !== task._id);
           const sorted = sortByPrimaryStart(filtered);
-          reconcileReminders(sorted);
+          if (isTodayView) reconcileReminders(sorted);
           return sorted;
         });
         return;
@@ -503,11 +520,11 @@ export default function TasksToday() {
       setTasks((list) => {
         const next = list.map((t) => (t._id === task._id ? task : t));
         const sorted = sortByPrimaryStart(next);
-        reconcileReminders(sorted);
+        if (isTodayView) reconcileReminders(sorted);
         return sorted;
       });
 
-      if (previousStatus !== (task.status || "")) {
+      if (isTodayView && previousStatus !== (task.status || "")) {
         const desc = DOMPurify.sanitize(task.subject || "");
         const statusDesc = DOMPurify.sanitize(task.status || "");
         toast({
@@ -550,10 +567,10 @@ export default function TasksToday() {
     };
   }, [socket, toast, refreshAccessToken, fetchTasks, reconcileReminders, isTodayForCurrentTab, sortByPrimaryStart]);
 
-  // When tab changes, refetch & reconcile
+  // When filters change, refetch
   useEffect(() => {
     if (socket.connected) fetchTasks();
-  }, [currentDateField, fetchTasks, socket]);
+  }, [filters.range, filters.start, filters.end, filters.dateField, filters.upcoming, fetchTasks, socket]);
 
   // === Filtering / sorting ===
   const statuses = Array.from(new Set(tasks.map((t) => t.status).filter(Boolean)));
@@ -583,26 +600,14 @@ export default function TasksToday() {
     <DashboardLayout>
       <Toaster />
       <div className="p-4 space-y-4">
-        <h2 className="text-xl font-semibold">Today's Tasks</h2>
+        <h2 className="text-xl font-semibold">Tasks</h2>
         {error && <p className="text-red-500">{error}</p>}
 
-        {/* Filters */}
+        {/* Date range and field controls */}
+        <DashboardFilters filters={filters} onChange={setFilters} allowReceivedDate={allowReceivedDate} />
+
+        {/* Additional filters */}
         <div className="flex flex-wrap gap-4 items-center">
-          <div className="space-y-1">
-            {/* <p className="text-xs text-muted-foreground uppercase tracking-wide">Date Field</p> */}
-            <Select value={currentDateField} onValueChange={handleDateFieldChange}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Select date field" />
-              </SelectTrigger>
-              <SelectContent>
-                {dateFieldOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Filter status" />
@@ -648,7 +653,7 @@ export default function TasksToday() {
         </div>
 
         {displayed.length === 0 ? (
-          <p>No tasks scheduled for today.</p>
+          <p>No tasks found for the selected filters.</p>
         ) : (
           <Table>
             <TableHeader>
