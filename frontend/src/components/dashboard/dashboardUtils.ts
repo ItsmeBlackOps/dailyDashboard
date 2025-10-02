@@ -2,7 +2,7 @@ import { endOfDay, startOfDay } from 'date-fns';
 import type { DashboardFilterState } from './DashboardFilters';
 
 export function buildDashboardPayload(filters: DashboardFilterState) {
-  const payload: Record<string, string> = {
+  const payload: Record<string, string | boolean> = {
     range: filters.range,
     dateField: filters.dateField,
   };
@@ -21,6 +21,10 @@ export function buildDashboardPayload(filters: DashboardFilterState) {
     if (filters.end) {
       payload.end = filters.end;
     }
+  }
+
+  if (filters.upcoming) {
+    payload.upcoming = true;
   }
 
   return payload;

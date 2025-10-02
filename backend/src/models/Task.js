@@ -426,6 +426,74 @@ export class TaskModel {
     }
   }
 
+  async getTasksByRange(userEmail, userRole, manager, teamEmails, startDate, endDate, dateField = 'Date of Interview') {
+    try {
+      const roleMatch = this.buildDashboardRoleMatch(userEmail, userRole, manager, teamEmails);
+      const dateMatch = this.buildDateMatch(dateField, startDate, endDate);
+      const baseMatch = {
+        ...roleMatch,
+        ...dateMatch
+      };
+
+      const docs = await this.collection
+        .aggregate([
+          { $match: baseMatch },
+          {
+            $lookup: {
+              from: 'transcripts',
+              localField: 'subject',
+              foreignField: 'title',
+              as: 'transcripts'
+            }
+          },
+          {
+            $lookup: {
+              from: 'candidateDetails',
+              localField: 'Candidate Name',
+              foreignField: 'Candidate Name',
+              as: 'candidateDetails',
+              pipeline: [
+                { $project: { _id: 0, Expert: 1 } }
+              ]
+            }
+          },
+          {
+            $addFields: {
+              transcription: { $gt: [{ $size: '$transcripts' }, 0] },
+              candidateExpertRaw: {
+                $let: {
+                  vars: { item: { $first: '$candidateDetails' } },
+                  in: { $ifNull: ['$$item.Expert', null] }
+                }
+              }
+            }
+          },
+          { $unset: ['replies', 'body', 'transcripts', 'candidateDetails'] }
+        ])
+        .toArray();
+
+      const tasks = this.filterAndFormatTasks(docs, userEmail, userRole, teamEmails);
+
+      tasks.sort((a, b) => {
+        const aS = (a.startTime ? new Date(a.startTime) : new Date(0)).getTime();
+        const bS = (b.startTime ? new Date(b.startTime) : new Date(0)).getTime();
+        if (aS !== bS) return aS - bS;
+        const aE = (a.endTime ? new Date(a.endTime) : new Date(0)).getTime();
+        const bE = (b.endTime ? new Date(b.endTime) : new Date(0)).getTime();
+        return aE - bE;
+      });
+
+      return tasks;
+    } catch (error) {
+      logger.error('Failed to get tasks by range', {
+        error: error.message,
+        userEmail,
+        userRole
+      });
+      throw error;
+    }
+  }
+
   buildDateMatch(dateField, startDate, endDate) {
     if (!startDate && !endDate) {
       return {};

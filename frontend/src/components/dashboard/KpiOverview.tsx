@@ -107,6 +107,7 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
   const { refreshAccessToken } = useAuth();
 
   const allowCustomFetch = useMemo(() => {
+    if (filters.upcoming) return true;
     if (filters.range !== "custom") return true;
     return Boolean(filters.start && filters.end);
   }, [filters]);

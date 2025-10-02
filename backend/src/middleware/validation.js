@@ -431,7 +431,7 @@ export const validateTasksQuery = (data) => {
 };
 
 export const validateDashboardQuery = (data) => {
-  const { start, end, range, dateField } = data;
+  const { start, end, range, dateField, upcoming } = data;
   const errors = [];
 
   if (range !== undefined) {
@@ -443,6 +443,10 @@ export const validateDashboardQuery = (data) => {
 
   if (dateField !== undefined && typeof dateField !== 'string') {
     errors.push('dateField must be a string');
+  }
+
+  if (upcoming !== undefined && typeof upcoming !== 'boolean') {
+    errors.push('upcoming must be a boolean');
   }
 
   if (start !== undefined) {
@@ -469,6 +473,12 @@ export const validateDashboardQuery = (data) => {
 
   if (range === 'custom' && (!start || !end)) {
     errors.push('Custom range requires start and end dates');
+  }
+
+  // If upcoming=true is set, we don't require range/start/end; it overrides any range
+  // Validate that upcoming is not combined with an invalid range value
+  if (upcoming === true && range !== undefined && !['day', 'week', 'month', 'custom'].includes(range)) {
+    errors.push('Invalid range specified');
   }
 
   return {

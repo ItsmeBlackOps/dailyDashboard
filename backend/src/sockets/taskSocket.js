@@ -14,6 +14,7 @@ export class TaskSocketHandler {
 
     socket.on('getTasksToday', socketAsyncHandler(this.handleGetTasksToday.bind(this)));
     socket.on('getDashboardSummary', socketAsyncHandler(this.handleGetDashboardSummary.bind(this)));
+    socket.on('getTasksByRange', socketAsyncHandler(this.handleGetTasksByRange.bind(this)));
     socket.on('getTaskById', socketAsyncHandler(this.handleGetTaskById.bind(this)));
     socket.on('searchTasks', socketAsyncHandler(this.handleSearchTasks.bind(this)));
     socket.on('getTaskStatistics', socketAsyncHandler(this.handleGetTaskStatistics.bind(this)));
@@ -128,7 +129,7 @@ export class TaskSocketHandler {
         });
       }
 
-      const { start, end, range, dateField } = sanitizedData;
+      const { start, end, range, dateField, upcoming } = sanitizedData;
 
       logger.debug('Getting dashboard summary via socket', {
         userEmail: user.email,
@@ -146,14 +147,15 @@ export class TaskSocketHandler {
           start,
           end,
           range,
-          dateField
+          dateField,
+          upcoming
         }
       );
 
       logger.info('Dashboard summary retrieved via socket', {
         userEmail: user.email,
         summaryCount: result.summary.length,
-        payload: { start, end, range, dateField },
+        payload: { start, end, range, dateField, upcoming },
         socketId: socket.id
       });
 
@@ -170,6 +172,63 @@ export class TaskSocketHandler {
         success: false,
         error: error.message
       });
+    }
+  }
+
+  async handleGetTasksByRange(socket, data, callback) {
+    try {
+      if (!callback || typeof callback !== 'function') {
+        logger.warn('getTasksByRange callback not provided', { socketId: socket.id });
+        return;
+      }
+
+      const user = socket.data.user;
+      if (!user) {
+        return callback({ success: false, error: 'Authentication required' });
+      }
+
+      const sanitizedData = sanitizeObject(data || {});
+      const validation = validateDashboardQuery(sanitizedData);
+
+      if (!validation.isValid) {
+        logger.warn('Tasks range query validation failed', {
+          errors: validation.errors,
+          socketId: socket.id,
+          userEmail: user.email
+        });
+        return callback({ success: false, error: 'Validation failed', details: validation.errors });
+      }
+
+      const { start, end, range, dateField, upcoming } = sanitizedData;
+
+      logger.debug('Getting tasks by range via socket', {
+        userEmail: user.email,
+        payload: { start, end, range, dateField, upcoming },
+        socketId: socket.id
+      });
+
+      const result = await this.taskService.getTasksByRange(
+        user.email,
+        user.role,
+        user.teamLead,
+        user.manager,
+        { start, end, range, dateField, upcoming }
+      );
+
+      logger.info('Tasks by range retrieved via socket', {
+        userEmail: user.email,
+        count: result.meta?.count || 0,
+        socketId: socket.id
+      });
+
+      callback(result);
+    } catch (error) {
+      logger.error('Socket getTasksByRange failed', {
+        error: error.message,
+        socketId: socket.id,
+        userEmail: socket.data.user?.email
+      });
+      callback({ success: false, error: error.message });
     }
   }
 

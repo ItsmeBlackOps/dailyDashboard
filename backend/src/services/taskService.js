@@ -59,6 +59,80 @@ export class TaskService {
     }
   }
 
+  async getTasksByRange(userEmail, userRole, teamLead, manager, options = {}) {
+    const timer = createTimer('taskService.getTasksByRange', logger);
+    try {
+      const {
+        range = 'day',
+        start,
+        end,
+        dateField,
+        upcoming = false
+      } = options || {};
+
+      const effectiveDateField = this.resolveDateField(userRole, dateField);
+      let { startIso, endIso, rangeUsed } = this.resolveDateRange(range, start, end);
+
+      if (upcoming) {
+        const now = moment.tz(TIMEZONE);
+        const startOfTomorrow = now.clone().startOf('day').add(1, 'day');
+        startIso = startOfTomorrow.toISOString();
+        endIso = undefined;
+        rangeUsed = 'upcoming';
+      }
+
+      logger.debug('Getting tasks by range', {
+        userEmail,
+        userRole,
+        dateField: effectiveDateField,
+        range: rangeUsed,
+        requested: { start, end, dateField, range, upcoming }
+      });
+
+      const teamEmails = this.userModel
+        .getTeamEmails(userEmail, userRole, teamLead)
+        .map((email) => email.toLowerCase());
+
+      const tasks = await this.taskModel.getTasksByRange(
+        userEmail,
+        userRole,
+        manager,
+        teamEmails,
+        startIso,
+        endIso,
+        effectiveDateField
+      );
+
+      logger.info('Tasks by range retrieved', {
+        userEmail,
+        taskCount: tasks.length,
+        dateRange: { startIso, endIso },
+        dateField: effectiveDateField
+      });
+
+      return {
+        success: true,
+        tasks,
+        meta: {
+          count: tasks.length,
+          dateRange: { startIso, endIso, range: rangeUsed },
+          userRole,
+          teamSize: teamEmails.length,
+          dateField: effectiveDateField
+        }
+      };
+    } catch (error) {
+      logger.error('Failed to get tasks by range', {
+        error: error.message,
+        userEmail,
+        userRole
+      });
+      throw error;
+    } finally {
+      timer.end({ userEmail, userRole, options });
+    }
+  }
+
   async getDashboardSummary(userEmail, userRole, teamLead, manager, options = {}) {
     const timer = createTimer('taskService.getDashboardSummary', logger);
     try {
@@ -66,18 +140,27 @@ export class TaskService {
         range = 'day',
         start,
         end,
-        dateField
+        dateField,
+        upcoming = false
       } = options || {};
 
       const effectiveDateField = this.resolveDateField(userRole, dateField);
-      const { startIso, endIso, rangeUsed } = this.resolveDateRange(range, start, end);
+      let { startIso, endIso, rangeUsed } = this.resolveDateRange(range, start, end);
+
+      if (upcoming) {
+        const now = moment.tz(TIMEZONE);
+        const startOfTomorrow = now.clone().startOf('day').add(1, 'day');
+        startIso = startOfTomorrow.toISOString();
+        endIso = undefined;
+        rangeUsed = 'upcoming';
+      }
 
       logger.debug('Getting dashboard summary', {
         userEmail,
         userRole,
         dateField: effectiveDateField,
         range: rangeUsed,
-        requested: { start, end, dateField, range }
+        requested: { start, end, dateField, range, upcoming }
       });
 
       const teamEmails = this.userModel
