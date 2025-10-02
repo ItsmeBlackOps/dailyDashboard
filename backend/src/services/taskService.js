@@ -480,6 +480,7 @@ export class TaskService {
     };
 
     const branchCounts = {};
+    const roundByBranch = {};
 
     for (const task of tasks) {
       const round = this.normalizeRoundValue(task.actualRound);
@@ -519,11 +520,14 @@ export class TaskService {
       if (userRole === 'admin') {
         const branch = this.determineBranch(task);
         branchCounts[branch] = (branchCounts[branch] || 0) + 1;
+        if (!roundByBranch[branch]) roundByBranch[branch] = {};
+        roundByBranch[branch][round] = (roundByBranch[branch][round] || 0) + 1;
       }
     }
 
     if (userRole === 'admin') {
       kpi.branch = branchCounts;
+      kpi.roundByBranch = roundByBranch;
     }
 
     return kpi;

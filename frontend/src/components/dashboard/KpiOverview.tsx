@@ -4,6 +4,10 @@ import { useAuth, API_URL } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ChevronsUpDown } from "lucide-react";
 import {
   ChartContainer,
   ChartTooltip,
@@ -30,6 +34,7 @@ interface KpiPayload {
     thisMonth: number;
   };
   branch?: Record<string, number>;
+  roundByBranch?: Record<string, Record<string, number>>;
 }
 
 interface DashboardSummaryResponse {
@@ -97,6 +102,8 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
   const [rangeLabel, setRangeLabel] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
+  const [selectedRounds, setSelectedRounds] = useState<Set<string>>(new Set());
+  const [selectedBranches, setSelectedBranches] = useState<Set<string>>(new Set());
   const { refreshAccessToken } = useAuth();
 
   const allowCustomFetch = useMemo(() => {
@@ -195,6 +202,23 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.range, filters.dateField, filters.start, filters.end]);
 
+  // Important: hooks must not be conditional. Compute branch-aware rounds early.
+  const effectiveByRound = useMemo(() => {
+    const payload = kpi;
+    if (!payload) return {} as Record<string, number>;
+    if (role === 'admin' && selectedBranches.size > 0 && payload.roundByBranch) {
+      const acc = new Map<string, number>();
+      for (const [branch, rounds] of Object.entries(payload.roundByBranch)) {
+        if (!selectedBranches.has(branch)) continue;
+        for (const [round, count] of Object.entries(rounds || {})) {
+          acc.set(round, (acc.get(round) || 0) + (count || 0));
+        }
+      }
+      return Object.fromEntries(acc.entries());
+    }
+    return payload.totals.byRound || {};
+  }, [kpi, role, selectedBranches]);
+
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -231,12 +255,16 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
     );
   }
 
-  const roundEntries = Object.entries(kpi.totals.byRound || {}).sort((a, b) => b[1] - a[1]);
+  const roundEntries = Object.entries(effectiveByRound).sort((a, b) => b[1] - a[1]);
   const branchEntries = role === "admin"
     ? Object.entries(kpi.branch || {}).sort((a, b) => b[1] - a[1])
     : [];
 
-  const overallChartData = roundEntries.map(([round, count]) => ({
+  const filteredRoundEntries = roundEntries.filter(([round]) =>
+    selectedRounds.size === 0 ? true : selectedRounds.has(round)
+  );
+
+  const overallChartData = filteredRoundEntries.map(([round, count]) => ({
     round,
     interviews: count,
   }));
@@ -252,14 +280,99 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
   return (
     <div className="grid gap-4">
       <Card className="bg-gradient-to-br from-primary/15 via-background to-background border-primary/40 shadow-md">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold text-primary">Overall Interviews</CardTitle>
-          {rangeLabel && <p className="text-xs text-muted-foreground">{rangeLabel}</p>}
+        <CardHeader className="pb-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle className="text-sm font-semibold text-primary">Overall Interviews</CardTitle>
+            {rangeLabel && <p className="text-xs text-muted-foreground">{rangeLabel}</p>}
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Rounds multi-select */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="inline-flex h-8 items-center justify-between whitespace-nowrap rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm hover:bg-accent hover:text-accent-foreground">
+                  {selectedRounds.size > 0 ? `Rounds (selected: ${selectedRounds.size})` : 'Rounds (filter)'}
+                  <ChevronsUpDown className="ml-2 h-3 w-3 opacity-50" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-0">
+                <Command>
+                  <CommandInput placeholder="Search rounds..." />
+                  <CommandEmpty>No rounds found.</CommandEmpty>
+                  <CommandList>
+                    <CommandGroup>
+                      {roundEntries
+                        .map(([round]) => round)
+                        .sort((a, b) => a.localeCompare(b))
+                        .map((round) => {
+                          const checked = selectedRounds.has(round);
+                          return (
+                            <CommandItem
+                              key={round}
+                              onSelect={() => {
+                                const next = new Set(selectedRounds);
+                                if (checked) next.delete(round); else next.add(round);
+                                setSelectedRounds(next);
+                              }}
+                            >
+                              <Checkbox checked={checked} className="mr-2 h-3.5 w-3.5" />
+                              {round}
+                            </CommandItem>
+                          );
+                        })}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+
+            {/* Branch multi-select (admin only) */}
+            {role === 'admin' && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="inline-flex h-8 items-center justify-between whitespace-nowrap rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm hover:bg-accent hover:text-accent-foreground">
+                    {selectedBranches.size > 0 ? `Branch (selected: ${selectedBranches.size})` : 'Branch (filter)'}
+                    <ChevronsUpDown className="ml-2 h-3 w-3 opacity-50" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-0">
+                  <Command>
+                    <CommandInput placeholder="Search branches..." />
+                    <CommandEmpty>No branches found.</CommandEmpty>
+                    <CommandList>
+                      <CommandGroup>
+                        {branchEntries
+                          .map(([branch]) => branch)
+                          .sort((a, b) => a.localeCompare(b))
+                          .map((branch) => {
+                            const checked = selectedBranches.has(branch);
+                            return (
+                              <CommandItem
+                                key={branch}
+                                onSelect={() => {
+                                  const next = new Set(selectedBranches);
+                                  if (checked) next.delete(branch); else next.add(branch);
+                                  setSelectedBranches(next);
+                                }}
+                              >
+                                <Checkbox checked={checked} className="mr-2 h-3.5 w-3.5" />
+                                {branch}
+                              </CommandItem>
+                            );
+                          })}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-baseline gap-3">
-            <p className="text-3xl font-bold">{numberFormatter.format(kpi.totals.overall)}</p>
-            <span className="text-xs text-muted-foreground">Total interviews across all rounds</span>
+            <p className="text-3xl font-bold">{numberFormatter.format(filteredRoundEntries.reduce((acc, [, c]) => acc + (c ?? 0), 0))}</p>
+            <span className="text-xs text-muted-foreground">
+              {selectedRounds.size === 0 ? 'Total interviews across all rounds' : 'Total interviews across selected rounds'}
+            </span>
           </div>
 
           {overallChartData.length > 0 ? (
@@ -268,9 +381,9 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
             <p className="text-xs text-muted-foreground">No round breakdown available for this range.</p>
           )}
 
-          {roundEntries.length > 0 && (
+          {filteredRoundEntries.length > 0 && (
             <div className="grid gap-2 sm:grid-cols-2 text-xs">
-              {roundEntries.slice(0, 8).map(([round, count]) => (
+              {filteredRoundEntries.slice(0, 8).map(([round, count]) => (
                 <div key={round} className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1">
                   <Badge className={`${roundBadgeClass(round)} text-[10px]`}>{round}</Badge>
                   <span className="font-medium">{numberFormatter.format(count)}</span>
@@ -292,7 +405,8 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
             {branchEntries.length === 0 ? (
               <p className="text-muted-foreground text-sm">No branch data.</p>
             ) : (
-              branchEntries.map(([branch, count]) => (
+              (selectedBranches.size > 0 ? branchEntries.filter(([b]) => selectedBranches.has(b)) : branchEntries)
+                .map(([branch, count]) => (
                 <div key={branch} className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
                   <span className="font-medium">{branch}</span>
                   <span>{shorthand.format(count)}</span>
