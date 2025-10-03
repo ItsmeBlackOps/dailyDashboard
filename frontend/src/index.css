@@ -129,4 +129,13 @@
   .glass-morphism {
     @apply backdrop-blur-md bg-white/5 border border-white/10 shadow-md;
   }
+
+  .scroll-area {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scroll-area::-webkit-scrollbar {
+    display: none;
+  }
 }

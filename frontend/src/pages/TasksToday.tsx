@@ -42,6 +42,7 @@ import { useOnlineMeetingConsent } from "@/hooks/useOnlineMeetingConsent";
 import { OnlineMeetingConsentBanner } from "@/components/OnlineMeetingConsentBanner";
 import { Copy, Filter } from "lucide-react";
 import { deriveDisplayNameFromEmail, formatNameInput } from "@/utils/userNames";
+import { useNavigate } from "react-router-dom";
 
 interface Task {
   _id: string;
@@ -50,6 +51,13 @@ interface Task {
   suggestions?: string[];
   joinUrl?: string | null;
   joinWebUrl?: string | null;
+
+  attachments?: Array<{
+    name: string;
+    url?: string;
+    category?: string;
+    type?: string;
+  }>;
 
   // Preferred keys (if available)
   startTime?: string; // "MM/DD/YYYY HH:mm" or ISO
@@ -63,6 +71,9 @@ interface Task {
   "End Time Of Interview"?: string;
   "End Client"?: string;
   "Interview Round"?: string;
+  "Contact No"?: string;
+  "Technology"?: string;
+  "Job Title"?: string;
 
   status?: string;
   "Email ID"?: string;
@@ -84,6 +95,27 @@ interface TeamLeadEntry {
   role: string;
   recruiters: string[];
   mleadNames: string[];
+}
+
+interface SupportCloneDraftPayload {
+  version: number;
+  sourceTaskId: string;
+  candidateName: string;
+  candidateEmail: string;
+  contactNumber: string;
+  endClient: string;
+  jobTitle: string;
+  interviewRound: string;
+  interviewDateTime?: string;
+  durationMinutes?: number;
+  technology?: string;
+  attachments?: Array<{
+    name: string;
+    url?: string;
+    category?: string;
+    type?: string;
+  }>;
+  storedAt: string;
 }
 
 const TASK_STATUS_MAP = "tasksTodayStatusMap";
@@ -119,6 +151,7 @@ export default function TasksToday() {
   });
 
   const firstLoad = useRef(true);
+  const seenTasksRef = useRef<Set<string>>(new Set());
 
   // timersRef keeps active timeout ids per reminder key
   const timersRef = useRef<Map<string, number>>(new Map());
@@ -127,6 +160,9 @@ export default function TasksToday() {
   const roleRaw = localStorage.getItem("role") || "";
   const normalizedRole = roleRaw.trim().toLowerCase();
   const user = roleRaw;
+  const allowReceivedDate = useMemo(() => {
+    return ["admin", "mm", "mam", "mlead", "recruiter"].includes(normalizedRole);
+  }, [normalizedRole]);
   const { toast } = useToast();
   const meetingsEnabled = AZURE_CLIENT_ID.length > 0;
   const canManageMeetings = useMemo(() => {
@@ -134,6 +170,11 @@ export default function TasksToday() {
     const allowedRoles = ['admin', 'user', 'lead', 'am'];
     return allowedRoles.includes(normalizedRole);
   }, [meetingsEnabled, normalizedRole]);
+
+  const hideGrantConsentBanner = useMemo(() => {
+    const restrictedRoles = ['recruiter', 'mlead', 'mam', 'mm'];
+    return restrictedRoles.includes(normalizedRole);
+  }, [normalizedRole]);
   const { instance, accounts } = useMsal();
   const account = accounts[0];
   const {
@@ -149,6 +190,7 @@ export default function TasksToday() {
   const [teamLeadError, setTeamLeadError] = useState("");
   const [selectedTeamLead, setSelectedTeamLead] = useState<string>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const navigate = useNavigate();
 
   const setMeetingBusyState = useCallback((taskId: string, busy: boolean) => {
     setMeetingBusy((prev) => {
@@ -342,9 +384,13 @@ export default function TasksToday() {
   // Range/date field filters (default: today)
   const [filters, setFilters] = useState<DashboardFilterState>(() => {
     const dayRange = computeDayRange(new Date(), DEFAULT_TIMEZONE);
+    const initialField =
+      allowReceivedDate && selectedTab === 'receivedDateTime'
+        ? 'receivedDateTime'
+        : 'Date of Interview';
     return {
       range: 'day',
-      dateField: 'Date of Interview',
+      dateField: initialField,
       dayDate: dayRange.dayIso,
       start: dayRange.startIso,
       end: dayRange.endIso,
@@ -352,29 +398,33 @@ export default function TasksToday() {
     };
   });
 
-  // Date field preference
-  const allowReceivedDate = useMemo(() => {
-    return ["admin", "mm", "mam", "mlead", "recruiter"].includes(normalizedRole);
-  }, [normalizedRole]);
-
   const selectedTabRef = useRef<string>(filters.dateField);
+  const previousDateFieldRef = useRef<string>(filters.dateField);
 
-  // Keep filters.dateField in sync with stored tab and role allowance
   useEffect(() => {
-    // Normalize based on role permission
-    const desired = allowReceivedDate && selectedTab === 'receivedDateTime' ? 'receivedDateTime' : 'Date of Interview';
-    if (filters.dateField !== desired) {
-      setFilters((prev) => ({ ...prev, dateField: desired }));
+    if (!allowReceivedDate && filters.dateField === 'receivedDateTime') {
+      setFilters((prev) => ({ ...prev, dateField: 'Date of Interview' }));
     }
-  }, [allowReceivedDate, selectedTab]);
+  }, [allowReceivedDate, filters.dateField]);
 
   // Mirror current filters.dateField into selectedTab storage and ref
   useEffect(() => {
     selectedTabRef.current = filters.dateField;
-    setSelectedTab(filters.dateField);
-  }, [filters.dateField, setSelectedTab]);
+    if (selectedTab !== filters.dateField) {
+      setSelectedTab(filters.dateField);
+    }
+  }, [filters.dateField, selectedTab, setSelectedTab]);
 
-  const currentDateField = filters.dateField;
+  useEffect(() => {
+    if (previousDateFieldRef.current !== filters.dateField) {
+      if (import.meta?.env?.DEV) {
+        console.debug(
+          `[TasksToday] dateField changed from ${previousDateFieldRef.current} to ${filters.dateField}`
+        );
+      }
+      previousDateFieldRef.current = filters.dateField;
+    }
+  }, [filters.dateField]);
 
   // persist subject visibility
   useEffect(() => {
@@ -585,6 +635,51 @@ const getRowClasses = (status = "") => {
       return aE.getTime() - bE.getTime();
     });
   }, [primaryStart]);
+
+  const handleCloneSupport = useCallback(
+    (task: Task) => {
+      try {
+        const start = parseStart(task);
+        const end = parseEnd(task);
+        const interviewDateTimeISO = start ? start.toISOString() : '';
+        let durationMinutes: number | undefined;
+        if (start && end && end.isAfter(start)) {
+          durationMinutes = Math.round(moment.duration(end.diff(start)).asMinutes());
+        }
+
+        const contactNumber = task['Contact No'] || '';
+        const technology = task['Technology'] || (task.suggestions && task.suggestions.length > 0 ? task.suggestions.join(', ') : undefined);
+        const jobTitle = task['Job Title'] || task.subject || '';
+
+        const payload: SupportCloneDraftPayload = {
+          version: 1,
+          sourceTaskId: task._id,
+          candidateName: task['Candidate Name'] || '',
+          candidateEmail: task['Email ID'] || '',
+          contactNumber,
+          endClient: task['End Client'] || '',
+          jobTitle,
+          interviewRound: task['Interview Round'] || '',
+          interviewDateTime: interviewDateTimeISO,
+          durationMinutes,
+          technology,
+          attachments: Array.isArray(task.attachments) ? task.attachments : undefined,
+          storedAt: new Date().toISOString()
+        };
+
+        localStorage.setItem('supportCloneDraft', JSON.stringify(payload));
+        navigate('/branch-candidates?clone=1');
+        toast({
+          title: 'Support request ready to clone',
+          description: 'Review the details on Branch Candidates before sending.',
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to prepare clone payload';
+        toast({ title: 'Clone failed', description: message, variant: 'destructive' });
+      }
+    },
+    [navigate, parseStart, parseEnd, toast]
+  );
 
   const createOutlookEvent = useCallback(
     async (
@@ -1114,9 +1209,11 @@ const getRowClasses = (status = "") => {
         const oldMap = readMap();
         const newMap: Record<string, string> = {};
         incoming.forEach((task) => {
+          const seenBefore = seenTasksRef.current.has(task._id) || Object.prototype.hasOwnProperty.call(oldMap, task._id);
           newMap[task._id] = task.status || "";
+          seenTasksRef.current.add(task._id);
           if (!firstLoad.current && isTodayView) {
-            if (!(task._id in oldMap)) {
+            if (!seenBefore) {
               const desc = DOMPurify.sanitize(task.subject || "");
               toast({ title: "New Task Added", description: desc });
               sendNotification("New Task Added", desc);
@@ -1167,7 +1264,9 @@ const getRowClasses = (status = "") => {
       }
 
       const alreadyTracked = map[task._id] !== undefined;
+      const wasSeen = seenTasksRef.current.has(task._id);
       map[task._id] = task.status || "";
+      seenTasksRef.current.add(task._id);
       writeMap(map);
 
       setTasks((prev) => {
@@ -1178,7 +1277,7 @@ const getRowClasses = (status = "") => {
         return sorted;
       });
 
-      if (!isInit && !alreadyTracked && isTodayView) {
+      if (!isInit && !alreadyTracked && !wasSeen && isTodayView) {
         const desc = DOMPurify.sanitize(task.subject || "");
         toast({ title: "New Task Added", description: desc });
         sendNotification("New Task Added", desc);
@@ -1206,6 +1305,7 @@ const getRowClasses = (status = "") => {
       }
 
       map[task._id] = task.status || "";
+      seenTasksRef.current.add(task._id);
       writeMap(map);
 
       setTasks((list) => {
@@ -1342,7 +1442,7 @@ const getRowClasses = (status = "") => {
         {error && <p className="text-red-500">{error}</p>}
 
 
-        {canManageMeetings && account && needsConsent && (
+        {canManageMeetings && account && needsConsent && !hideGrantConsentBanner && (
           <OnlineMeetingConsentBanner
             checking={consentChecking}
             error={consentError}
@@ -1465,6 +1565,7 @@ const getRowClasses = (status = "") => {
                 </TableHead>
                 {meetingsEnabled && <TableHead>Meeting</TableHead>}
                 <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1558,6 +1659,15 @@ const getRowClasses = (status = "") => {
                       {task.status && (
                         <Badge className={getStatusBadge(task.status)}>{task.status}</Badge>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleCloneSupport(task)}
+                      >
+                        Clone
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );

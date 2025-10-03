@@ -249,9 +249,7 @@ class SupportRequestService {
 
     const endClient = toTitleCase(payload.endClient || '');
     const jobTitle = toTitleCase(payload.jobTitle || '');
-    const interviewRound = normalizeWhitespace(payload.interviewRound || '');
-    const interviewDateTime = trimString(payload.interviewDateTime || '');
-    const durationInput = trimString(payload.duration || '');
+    const interviewRoundRaw = normalizeWhitespace(payload.interviewRound || '');
     const customMessage = trimString(payload.customMessage || '');
 
     if (!endClient) {
@@ -266,29 +264,134 @@ class SupportRequestService {
       throw error;
     }
 
-    if (!INTERVIEW_ROUNDS.has(interviewRound)) {
+    if (!INTERVIEW_ROUNDS.has(interviewRoundRaw)) {
       const error = new Error('Interview round is invalid');
       error.statusCode = 400;
       throw error;
     }
 
-    if (!interviewDateTime) {
-      const error = new Error('Interview date and time is required');
-      error.statusCode = 400;
-      throw error;
+    let loopSlotsRaw = [];
+    if (payload.loopSlots) {
+      try {
+        const parsed = typeof payload.loopSlots === 'string'
+          ? JSON.parse(payload.loopSlots)
+          : payload.loopSlots;
+        if (Array.isArray(parsed)) {
+          loopSlotsRaw = parsed;
+        }
+      } catch (error) {
+        const parseError = new Error('Invalid loop slot payload');
+        parseError.statusCode = 400;
+        throw parseError;
+      }
     }
 
-    const durationMinutes = Number.parseInt(durationInput, 10);
-    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
-      const error = new Error('Duration must be a positive number of minutes');
-      error.statusCode = 400;
-      throw error;
-    }
+    const isLoopRound = normalizeName(interviewRoundRaw).includes('loop');
+    const requiresSingleSlot = !isLoopRound || loopSlotsRaw.length === 0;
 
-    if (durationMinutes % 5 !== 0) {
-      const error = new Error('Duration must be in 5-minute increments');
-      error.statusCode = 400;
-      throw error;
+    const interviewDateTimeInput = trimString(payload.interviewDateTime || '');
+    const durationInput = trimString(payload.duration || '');
+
+    const parseSlotMoment = (value) => {
+      if (!value) {
+        return null;
+      }
+      const isoCandidate = moment(value, moment.ISO_8601, true);
+      if (isoCandidate.isValid()) {
+        return isoCandidate.tz(DEFAULT_TIMEZONE);
+      }
+      const legacyCandidate = moment.tz(value, 'YYYY-MM-DDTHH:mm', DEFAULT_TIMEZONE);
+      return legacyCandidate.isValid() ? legacyCandidate : null;
+    };
+
+    const now = moment().tz(DEFAULT_TIMEZONE);
+    const resolvedSlots = [];
+
+    if (requiresSingleSlot) {
+      if (!interviewDateTimeInput) {
+        const error = new Error('Interview date and time is required');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const durationMinutes = Number.parseInt(durationInput, 10);
+      if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+        const error = new Error('Duration must be a positive number of minutes');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      if (durationMinutes % 5 !== 0) {
+        const error = new Error('Duration must be in 5-minute increments');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const slotMoment = parseSlotMoment(interviewDateTimeInput);
+      if (!slotMoment) {
+        const error = new Error('Provide a valid interview date and time in EST');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      if (slotMoment.isBefore(now)) {
+        const error = new Error('Interview date and time must be in the future');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      resolvedSlots.push({
+        interviewDateTime: slotMoment.toISOString(),
+        durationMinutes,
+      });
+    } else {
+      if (loopSlotsRaw.length === 0) {
+        const error = new Error('At least one loop slot is required');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      for (const slotRaw of loopSlotsRaw) {
+        const slotDateTimeRaw = trimString(slotRaw?.interviewDateTime || slotRaw?.interviewDateTimeISO || '');
+        const slotDurationRaw = slotRaw?.durationMinutes ?? slotRaw?.duration;
+        const slotDurationMinutes = Number.parseInt(trimString(String(slotDurationRaw ?? '')), 10);
+
+        if (!slotDateTimeRaw) {
+          const error = new Error('Loop slot is missing an interview date and time');
+          error.statusCode = 400;
+          throw error;
+        }
+
+        if (!Number.isFinite(slotDurationMinutes) || slotDurationMinutes <= 0) {
+          const error = new Error('Loop slot duration must be a positive number of minutes');
+          error.statusCode = 400;
+          throw error;
+        }
+
+        if (slotDurationMinutes % 5 !== 0) {
+          const error = new Error('Loop slot duration must be in 5-minute increments');
+          error.statusCode = 400;
+          throw error;
+        }
+
+        const slotMoment = parseSlotMoment(slotDateTimeRaw);
+        if (!slotMoment) {
+          const error = new Error('Loop slot has an invalid interview date/time');
+          error.statusCode = 400;
+          throw error;
+        }
+
+        if (slotMoment.isBefore(now)) {
+          const error = new Error('Loop slot must be scheduled in the future');
+          error.statusCode = 400;
+          throw error;
+        }
+
+        resolvedSlots.push({
+          interviewDateTime: slotMoment.toISOString(),
+          durationMinutes: slotDurationMinutes,
+        });
+      }
     }
 
     const candidateRecord = await this.loadCandidate(candidateId);
@@ -320,8 +423,6 @@ class SupportRequestService {
       formattedCandidate.email || candidateRecord.email || '',
       'Candidate email'
     );
-
-    const interviewMoment = formatDateTimeForEmail(interviewDateTime);
 
     const requesterDisplay = deriveDisplayNameFromEmail(user.email);
 
@@ -359,89 +460,102 @@ class SupportRequestService {
       ccRecipients.add(managerEmail);
     }
 
-    const attachments = [];
+    const sanitizedAttachments = [];
     if (files.resume?.length) {
-      attachments.push(...sanitizeAttachments(files.resume));
+      sanitizedAttachments.push(...sanitizeAttachments(files.resume));
     }
     if (files.jobDescription?.length) {
-      attachments.push(...sanitizeAttachments(files.jobDescription));
+      sanitizedAttachments.push(...sanitizeAttachments(files.jobDescription));
     }
     if (files.additionalAttachments?.length) {
-      attachments.push(...sanitizeAttachments(files.additionalAttachments));
+      sanitizedAttachments.push(...sanitizeAttachments(files.additionalAttachments));
     }
 
-    const htmlBody = this.buildHtmlBody({
-      candidateName,
-      technology,
-      endClient,
-      jobTitle,
-      interviewRound,
-      interviewDateTimeDisplay: interviewMoment.display,
-      durationDisplay: `${durationMinutes} minutes`,
-      emailId,
-      contactNumber,
-      requestedBy: `${requesterDisplay} (${user.email.toLowerCase()})`,
-    });
+    const sendForSlot = async ({ interviewDateTime, durationMinutes }) => {
+      const interviewMomentDetails = formatDateTimeForEmail(interviewDateTime);
 
-    const sections = [];
-    if (customMessage) {
-      sections.push(`<p style="font-family:Arial, sans-serif;font-size:14px;color:#0f1e3d;">${escapeHtml(customMessage)}</p>`);
-    }
-    sections.push(htmlBody);
-    if (signatureHtml) {
-      sections.push(`<div style="margin-top:24px;">${signatureHtml}</div>`);
-    }
+      const htmlBody = this.buildHtmlBody({
+        candidateName,
+        technology,
+        endClient,
+        jobTitle,
+        interviewRound: interviewRoundRaw,
+        interviewDateTimeDisplay: interviewMomentDetails.display,
+        durationDisplay: `${durationMinutes} minutes`,
+        emailId,
+        contactNumber,
+        requestedBy: `${requesterDisplay} (${user.email.toLowerCase()})`,
+      });
 
-    const html = sections.join('');
+      const sections = [];
+      if (customMessage) {
+        sections.push(`<p style="font-family:Arial, sans-serif;font-size:14px;color:#0f1e3d;">${escapeHtml(customMessage)}</p>`);
+      }
+      sections.push(htmlBody);
+      if (signatureHtml) {
+        sections.push(`<div style="margin-top:24px;">${signatureHtml}</div>`);
+      }
 
-    const subject = this.buildSubject(candidateName, technology, interviewMoment);
+      const html = sections.join('');
+      const subject = this.buildSubject(candidateName, technology, interviewMomentDetails);
 
-    const graphAttachments = attachments.map((attachment) => ({
-      '@odata.type': '#microsoft.graph.fileAttachment',
-      name: attachment.filename,
-      contentType: attachment.contentType,
-      contentBytes: attachment.content.toString('base64')
-    }));
+      const graphAttachments = sanitizedAttachments.map((attachment) => ({
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: attachment.filename,
+        contentType: attachment.contentType,
+        contentBytes: attachment.content.toString('base64')
+      }));
 
-    const message = {
-      subject,
-      body: {
-        contentType: 'HTML',
-        content: html
-      },
-      toRecipients: Array.from(toRecipients).map((address) => ({
-        emailAddress: { address }
-      })),
-      ccRecipients: Array.from(ccRecipients).map((address) => ({
-        emailAddress: { address }
-      }))
+      if (!graphAccessToken) {
+        const error = new Error('Missing graph access token');
+        error.statusCode = 401;
+        throw error;
+      }
+
+      const message = {
+        subject,
+        body: {
+          contentType: 'HTML',
+          content: html
+        },
+        toRecipients: Array.from(toRecipients).map((address) => ({
+          emailAddress: { address }
+        })),
+        ccRecipients: Array.from(ccRecipients).map((address) => ({
+          emailAddress: { address }
+        }))
+      };
+
+      if (graphAttachments.length > 0) {
+        message.attachments = graphAttachments;
+      }
+
+      await graphMailService.sendDelegatedMail(graphAccessToken, {
+        message,
+        saveToSentItems: true
+      });
+
+      logger.info('Interview support request submitted', {
+        candidateId,
+        requestedBy: user.email,
+        interviewDateTime,
+        durationMinutes,
+        to: Array.from(toRecipients),
+        cc: Array.from(ccRecipients)
+      });
     };
 
-    if (graphAttachments.length > 0) {
-      message.attachments = graphAttachments;
+    for (const slot of resolvedSlots) {
+      await sendForSlot(slot);
     }
 
-    if (!graphAccessToken) {
-      const error = new Error('Missing graph access token');
-      error.statusCode = 401;
-      throw error;
-    }
-
-    await graphMailService.sendDelegatedMail(graphAccessToken, {
-      message,
-      saveToSentItems: true
-    });
-
-    logger.info('Interview support request submitted', {
-      candidateId,
-      requestedBy: user.email,
-      to: Array.from(toRecipients),
-      cc: Array.from(ccRecipients)
-    });
+    const message = resolvedSlots.length > 1
+      ? `Support requests sent for ${resolvedSlots.length} slots`
+      : 'Support request sent successfully';
 
     return {
       success: true,
-      message: 'Support request sent successfully'
+      message
     };
   }
 }

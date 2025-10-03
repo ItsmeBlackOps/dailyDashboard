@@ -209,13 +209,6 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
     const resolved = allowReceivedDate ? value : "Date of Interview";
     if (resolved === filters.dateField) return;
     onChange({ ...filters, dateField: resolved });
-    if (typeof window !== 'undefined') {
-      try {
-        window.localStorage.setItem('tab', resolved);
-      } catch {
-        // Ignore storage failures (private mode, quota, etc.)
-      }
-    }
   };
 
   const applyCustomRange = (range: DateRange | undefined) => {

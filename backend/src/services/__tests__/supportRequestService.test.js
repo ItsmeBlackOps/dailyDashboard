@@ -57,6 +57,8 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
   });
 
   it('sends email with formatted payload for recruiter', async () => {
+    const futureIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
     const candidateDoc = {
       id: 'cand-1',
       name: 'john doe',
@@ -100,7 +102,7 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
       endClient: 'acme corp',
       jobTitle: 'software engineer',
       interviewRound: '1st Round',
-      interviewDateTime: '2024-10-05T14:30:00.000Z',
+      interviewDateTime: futureIso,
       duration: '60',
       contactNumber: '+1 555 0000'
     };
@@ -131,7 +133,74 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
     expect(args.saveToSentItems).toBe(true);
   });
 
+  it('sends multiple loop slot emails when loop slots are provided', async () => {
+    const futureIsoOne = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const futureIsoTwo = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+
+    const candidateDoc = {
+      id: 'cand-1',
+      name: 'john doe',
+      technology: 'full stack',
+      email: 'john@example.com',
+      recruiter: 'recruiter@example.com',
+      contact: '+1 555 0000'
+    };
+
+    mockCandidateModel.getCandidateById.mockResolvedValue(candidateDoc);
+    mockCandidateService.formatCandidateRecord.mockReturnValue({
+      ...candidateDoc,
+      name: 'John Doe',
+      technology: 'Full Stack',
+      recruiterRaw: 'recruiter@example.com'
+    });
+
+    mockUserModel.getUserByEmail.mockImplementation((email) => {
+      if (email === 'recruiter@example.com') {
+        return {
+          teamLead: 'Alice Leader',
+          manager: 'Bob Manager'
+        };
+      }
+      if (email === 'alice.leader@example.com') {
+        return { teamLead: '', manager: 'Bob Manager' };
+      }
+      return null;
+    });
+
+    mockUserModel.getAllUsers.mockReturnValue([
+      { email: 'alice.leader@example.com', role: 'mlead', teamLead: '', manager: 'Bob Manager' },
+      { email: 'bob.manager@example.com', role: 'mam', teamLead: '', manager: '' },
+      { email: 'recruiter@example.com', role: 'recruiter', teamLead: 'Alice Leader', manager: 'Bob Manager' }
+    ]);
+
+    mockGraphMailService.sendDelegatedMail.mockResolvedValue({});
+
+    const payload = {
+      candidateId: 'cand-1',
+      endClient: 'acme corp',
+      jobTitle: 'software engineer',
+      interviewRound: 'Loop Round',
+      loopSlots: JSON.stringify([
+        { interviewDateTime: futureIsoOne, durationMinutes: 60 },
+        { interviewDateTime: futureIsoTwo, durationMinutes: 45 }
+      ]),
+      contactNumber: '+1 555 0000'
+    };
+
+    const result = await supportRequestService.sendInterviewSupportRequest(
+      { email: 'recruiter@example.com', role: 'recruiter' },
+      payload,
+      {},
+      'user-token'
+    );
+
+    expect(result).toEqual({ success: true, message: 'Support requests sent for 2 slots' });
+    expect(mockGraphMailService.sendDelegatedMail).toHaveBeenCalledTimes(2);
+  });
+
   it('appends sanitized signature when profile metadata is complete', async () => {
+    const futureIso = new Date(Date.now() + 90 * 60 * 1000).toISOString();
+
     const candidateDoc = {
       id: 'cand-2',
       name: 'sara doe',
@@ -186,7 +255,7 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
         endClient: 'Acme',
         jobTitle: 'DevOps Engineer',
         interviewRound: '1st Round',
-        interviewDateTime: '2024-12-01T15:00:00.000Z',
+        interviewDateTime: futureIso,
         duration: '45',
         contactNumber: '+1 555 1111'
       },
