@@ -437,9 +437,18 @@ describe('candidateService.getCandidatesForUser recruiter scope', () => {
       { limit: 10 }
     );
 
-    expect(candidateModel.getCandidatesByRecruiters).toHaveBeenCalledWith(
-      ['recruiter.one@company.com'],
-      { search: undefined }
+    const [recruiterEmailsArg, recruiterOptionsArg] = candidateModel.getCandidatesByRecruiters.mock.calls[0];
+    expect(recruiterEmailsArg).toEqual(['recruiter.one@company.com']);
+    expect(recruiterOptionsArg.search).toBeUndefined();
+    expect(recruiterOptionsArg.visibility.recruiterAliases).toEqual(
+      expect.arrayContaining([
+        'recruiter.one@company.com',
+        'recruiter.one',
+        'Recruiter One'
+      ])
+    );
+    expect(recruiterOptionsArg.visibility.senderPatterns).toEqual(
+      expect.arrayContaining(['recruiter\\.one'])
     );
 
     expect(result.scope).toEqual({
@@ -494,6 +503,15 @@ describe('candidateService buildAssignablePeople integration', () => {
       {}
     );
 
+    const [mamRecruitersArg, mamOptionsArg] = candidateModel.getCandidatesByRecruiters.mock.calls[0];
+    expect(mamRecruitersArg).toEqual([
+      'recruit.direct@silverspaceinc.com',
+      'mam.user@silverspaceinc.com'
+    ]);
+    expect(mamOptionsArg.visibility.senderPatterns).toEqual(
+      expect.arrayContaining(['mam\\.user'])
+    );
+
     expect(result.options?.recruiterChoices).toEqual([
       { value: 'mam.user@silverspaceinc.com', label: 'Mam User' },
       { value: 'mlead.one@silverspaceinc.com', label: 'Mlead One' },
@@ -514,9 +532,40 @@ describe('candidateService buildAssignablePeople integration', () => {
       {}
     );
 
+    const [mleadRecruitersArg, mleadOptionsArg] = candidateModel.getCandidatesByRecruiters.mock.calls[0];
+    expect(mleadRecruitersArg).toEqual(['recruit.one@silverspaceinc.com']);
+    expect(mleadOptionsArg.visibility.senderPatterns).toEqual(
+      expect.arrayContaining(['mlead\\.one'])
+    );
+
     expect(result.options?.recruiterChoices).toEqual([
       { value: 'mlead.one@silverspaceinc.com', label: 'Mlead One' },
       { value: 'recruit.one@silverspaceinc.com', label: 'Recruit One' }
     ]);
+  });
+});
+
+describe('candidateService.buildRecruiterVisibility', () => {
+  it('creates aliases and patterns for recruiters and requestor', () => {
+    const visibility = candidateService.buildRecruiterVisibility(
+      ['recruit.alpha@example.com'],
+      { email: 'mam.user@silverspaceinc.com' }
+    );
+
+    expect(visibility.recruiterAliases).toEqual(
+      expect.arrayContaining([
+        'recruit.alpha@example.com',
+        'recruit.alpha',
+        'Recruit Alpha'
+      ])
+    );
+
+    expect(visibility.senderPatterns).toEqual(
+      expect.arrayContaining(['mam\\.user', 'mam\\.user@silverspaceinc\\.com'])
+    );
+
+    expect(visibility.ccPatterns).toEqual(
+      expect.arrayContaining(['mam\\.user', 'mam\\.user@silverspaceinc\\.com'])
+    );
   });
 });

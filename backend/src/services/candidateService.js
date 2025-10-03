@@ -153,6 +153,61 @@ class CandidateService {
     return escapeRegex(trimmed);
   }
 
+  buildRecruiterVisibility(recruiterEmails, userForSelfPatterns = null) {
+    const recruiterMatchers = new Set();
+    const senderPatterns = new Set();
+    const ccPatterns = new Set();
+
+    const addRecruiterVariants = (value) => {
+      const email = formatEmail(value || '');
+      if (email) {
+        recruiterMatchers.add(email);
+        const local = email.split('@')[0];
+        if (local) {
+          recruiterMatchers.add(local);
+        }
+      }
+
+      const displayName = formatDisplayName(value || '');
+      if (displayName) {
+        recruiterMatchers.add(displayName);
+      }
+    };
+
+    recruiterEmails.forEach((email) => addRecruiterVariants(email));
+
+    if (userForSelfPatterns?.email) {
+      addRecruiterVariants(userForSelfPatterns.email);
+
+      const normalizedEmail = formatEmail(userForSelfPatterns.email);
+      if (normalizedEmail) {
+        const local = normalizedEmail.split('@')[0];
+        if (local) {
+          const escapedLocal = escapeRegex(local);
+          senderPatterns.add(escapedLocal);
+          ccPatterns.add(escapedLocal);
+        }
+
+        const escapedEmail = escapeRegex(normalizedEmail);
+        senderPatterns.add(escapedEmail);
+        ccPatterns.add(escapedEmail);
+      }
+
+      const displayName = formatDisplayName(userForSelfPatterns.email);
+      if (displayName) {
+        const escapedName = escapeRegex(displayName);
+        senderPatterns.add(escapedName);
+        ccPatterns.add(escapedName);
+      }
+    }
+
+    return {
+      recruiterAliases: Array.from(recruiterMatchers).filter(Boolean),
+      senderPatterns: Array.from(senderPatterns).filter(Boolean),
+      ccPatterns: Array.from(ccPatterns).filter(Boolean)
+    };
+  }
+
   async fetchCandidatesByBranch(user, branch, options) {
     const searchPattern = this.buildSearchPattern(options.search);
 
@@ -182,17 +237,24 @@ class CandidateService {
     };
   }
 
-  async fetchCandidatesByRecruiters(user, recruiterEmails, options) {
+  async fetchCandidatesByRecruiters(user, recruiterEmails, options = {}) {
     if (!recruiterEmails.length) {
       const error = new Error('No recruiters mapped to current user');
       error.statusCode = 403;
       throw error;
     }
 
-    const searchPattern = this.buildSearchPattern(options.search);
+    const { includeSelfPatterns = false, search } = options;
+    const searchPattern = this.buildSearchPattern(search);
+
+    const visibility = this.buildRecruiterVisibility(
+      recruiterEmails,
+      includeSelfPatterns ? user : null
+    );
 
     const candidates = await candidateModel.getCandidatesByRecruiters(recruiterEmails, {
-      search: searchPattern
+      search: searchPattern,
+      visibility
     });
 
     const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate));
@@ -672,7 +734,7 @@ class CandidateService {
     }
 
     const normalizedRole = user.role.trim().toLowerCase();
-    if (!['mm', 'mam', 'mlead', 'recruiter', 'lead', 'am', 'admin'].includes(normalizedRole)) {
+    if (!['mm', 'mam', 'mlead', 'recruiter', 'lead', 'am','admin'].includes(normalizedRole)) {
       const error = new Error('Access denied');
       error.statusCode = 403;
       throw error;
@@ -880,7 +942,11 @@ class CandidateService {
           ...hierarchy.allSubordinateEmails,
           normalizedEmail
         ]);
-        const result = await this.fetchCandidatesByRecruiters(user, Array.from(recruiterEmails), options);
+        const result = await this.fetchCandidatesByRecruiters(
+          user,
+          Array.from(recruiterEmails),
+          { ...options, includeSelfPatterns: true }
+        );
         result.options = {
           recruiterChoices: this.buildAssignablePeople(user)
         };
@@ -891,7 +957,11 @@ class CandidateService {
         const recruiters = hierarchy.recruiterEmails.size
           ? Array.from(hierarchy.recruiterEmails)
           : [normalizedEmail];
-        const result = await this.fetchCandidatesByRecruiters(user, recruiters, options);
+        const result = await this.fetchCandidatesByRecruiters(
+          user,
+          recruiters,
+          { ...options, includeSelfPatterns: true }
+        );
         result.options = {
           recruiterChoices: this.buildAssignablePeople(user)
         };
@@ -984,7 +1054,11 @@ class CandidateService {
         error.statusCode = 400;
         throw error;
       }
-      const result = await this.fetchCandidatesByRecruiters(user, [recruiterEmail], options);
+      const result = await this.fetchCandidatesByRecruiters(
+        user,
+        [recruiterEmail],
+        { ...options, includeSelfPatterns: true }
+      );
       result.options = {
         recruiterChoices: this.buildAssignablePeople(user)
       };
