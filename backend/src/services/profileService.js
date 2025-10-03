@@ -1,4 +1,4 @@
-import { candidateModel } from '../models/Candidate.js';
+import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
 
 const COMPANY_PROFILES = [
@@ -79,11 +79,11 @@ class ProfileService {
 
     const lowerEmail = email.toLowerCase();
     const [record, company] = await Promise.all([
-      candidateModel.getUserProfileMetadata(lowerEmail),
+      userModel.getUserProfileMetadata(lowerEmail),
       Promise.resolve(determineCompany(lowerEmail))
     ]);
 
-    const stored = record?.metadata ?? {};
+    const stored = record?.metadata ?? record?.profile ?? {};
 
     const profile = {
       email: lowerEmail,
@@ -145,7 +145,11 @@ class ProfileService {
       companyUrl: company.url
     };
 
-    await candidateModel.upsertUserProfileMetadata(lowerEmail, metadata);
+    try {
+      await userModel.upsertUserProfileMetadata(lowerEmail, metadata);
+    } catch (error) {
+      throw error;
+    }
 
     logger.info('User profile metadata updated', {
       email: lowerEmail,

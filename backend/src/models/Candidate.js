@@ -93,7 +93,7 @@ export class CandidateModel {
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getCandidatesByRecruiters(recruiterEmails, { limit, search } = {}) {
+  async getCandidatesByRecruiters(recruiterEmails, { limit, search, visibility } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
@@ -102,9 +102,53 @@ export class CandidateModel {
       return [];
     }
 
-    const orConditions = recruiterEmails.map((email) => ({
-      Recruiter: { $regex: `^${escapeRegex(email)}$`, $options: 'i' }
-    }));
+    const recruiterMatchers = new Set(
+      recruiterEmails
+        .map((email) => (typeof email === 'string' ? email : ''))
+        .filter(Boolean)
+    );
+
+    const aliasList = Array.isArray(visibility?.recruiterAliases)
+      ? visibility.recruiterAliases.filter(Boolean)
+      : [];
+
+    for (const alias of aliasList) {
+      recruiterMatchers.add(alias);
+    }
+
+    const senderPatterns = Array.isArray(visibility?.senderPatterns)
+      ? visibility.senderPatterns.filter(Boolean)
+      : [];
+
+    const ccPatterns = Array.isArray(visibility?.ccPatterns)
+      ? visibility.ccPatterns.filter(Boolean)
+      : [];
+
+    const orConditions = [];
+
+    for (const matcher of recruiterMatchers) {
+      orConditions.push({
+        Recruiter: { $regex: `^${escapeRegex(matcher)}$`, $options: 'i' }
+      });
+    }
+
+    const senderFields = ['source.sender', 'source.headers.From'];
+    for (const pattern of senderPatterns) {
+      for (const field of senderFields) {
+        orConditions.push({ [field]: { $regex: pattern, $options: 'i' } });
+      }
+    }
+
+    const ccFields = ['source.cc', 'source.headers.Cc'];
+    for (const pattern of ccPatterns) {
+      for (const field of ccFields) {
+        orConditions.push({ [field]: { $regex: pattern, $options: 'i' } });
+      }
+    }
+
+    if (orConditions.length === 0) {
+      return [];
+    }
 
     const query = {
       $or: orConditions,
@@ -517,6 +561,7 @@ export class CandidateModel {
       lastWriteAt: doc._last_write instanceof Date ? doc._last_write.toISOString() : doc._last_write ?? null,
       workflowStatus: doc.workflowStatus || WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: doc.resumeUnderstandingStatus || RESUME_UNDERSTANDING_STATUS.pending,
+      resumeUnderstanding: Boolean(doc.resumeUnderstanding),
       createdBy: doc.createdBy || null
     };
   }

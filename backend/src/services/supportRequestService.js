@@ -107,6 +107,30 @@ function buildHtmlTable(rows) {
   return `<table style="border-collapse:collapse;border:1px solid #0f1e3d;font-family:Arial, sans-serif;font-size:14px;min-width:420px;">${body}</table>`;
 }
 
+function buildParagraphSection(text = '') {
+  const normalized = trimString(text).replace(/\r\n/g, '\n');
+  if (!normalized) {
+    return '';
+  }
+
+  const paragraphs = normalized
+    .split(/\n{2,}/u)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block, index) => {
+      const html = escapeHtml(block).replace(/\n/g, '<br />');
+      const marginTop = index === 0 ? 0 : 12;
+      return `<p style="margin:${marginTop}px 0 0;font-family:Arial, sans-serif;font-size:14px;line-height:1.5;color:#0f1e3d;">${html}</p>`;
+    })
+    .join('');
+
+  if (!paragraphs) {
+    return '';
+  }
+
+  return `<div style="margin-top:16px;">${paragraphs}</div>`;
+}
+
 function sanitizeAttachments(files = []) {
   const maxBytes = config.support?.attachmentMaxBytes ?? 5 * 1024 * 1024;
   return files.map((file) => {
@@ -166,7 +190,7 @@ class SupportRequestService {
     const normalizedRecruiter = recruiterEmail.toLowerCase();
     const requesterEmail = (user.email || '').toLowerCase();
 
-    if (normalizedRole === 'recruiter') {
+    if (normalizedRole === 'recruiter' || normalizedRole === 'mlead' || normalizedRole === 'mam') {
       if (!normalizedRecruiter || normalizedRecruiter !== requesterEmail) {
         const error = new Error('This candidate is assigned to a different recruiter');
         error.statusCode = 403;
@@ -176,19 +200,31 @@ class SupportRequestService {
     }
 
     if (normalizedRole === 'mlead') {
-      const recruiterRecord = userModel.getUserByEmail(normalizedRecruiter);
+      // ✅ If the mlead is also the assigned recruiter, allow access immediately.
+      if (normalizedRecruiter && normalizedRecruiter === requesterEmail) {
+        return;
+      }
+
+      const recruiterRecord = normalizedRecruiter
+        ? userModel.getUserByEmail(normalizedRecruiter)
+        : null;
+
       if (!recruiterRecord) {
         const error = new Error('Recruiter record not found for candidate');
         error.statusCode = 403;
         throw error;
       }
+
       const leadDisplay = normalizeName(recruiterRecord.teamLead ?? '');
       const requesterDisplay = normalizeName(deriveDisplayNameFromEmail(user.email));
+
       if (!leadDisplay || leadDisplay !== requesterDisplay) {
         const error = new Error('Candidate is not part of your team');
         error.statusCode = 403;
         throw error;
       }
+
+      return;
     }
   }
 
@@ -234,7 +270,10 @@ class SupportRequestService {
       { label: 'Email ID', value: data.emailId },
       { label: 'Contact Number', value: data.contactNumber },
     ];
-    return `<p style="font-family:Arial, sans-serif;font-size:14px;color:#0f1e3d;">Interview support request details:</p>${buildHtmlTable(rows)}`;
+    const intro = '<p style="font-family:Arial, sans-serif;font-size:14px;color:#0f1e3d;">Interview support request details:</p>';
+    const tableHtml = buildHtmlTable(rows);
+    const jobDescriptionSection = buildParagraphSection(data.jobDescriptionText);
+    return `${intro}${tableHtml}${jobDescriptionSection}`;
   }
 
   async sendInterviewSupportRequest(user, payload = {}, files = {}, graphAccessToken) {
@@ -251,6 +290,7 @@ class SupportRequestService {
     const jobTitle = toTitleCase(payload.jobTitle || '');
     const interviewRoundRaw = normalizeWhitespace(payload.interviewRound || '');
     const customMessage = trimString(payload.customMessage || '');
+    const jobDescriptionText = typeof payload.jobDescriptionText === 'string' ? payload.jobDescriptionText : '';
 
     if (!endClient) {
       const error = new Error('End client is required');
@@ -399,10 +439,10 @@ class SupportRequestService {
 
     const contactNumber = trimString(
       formattedCandidate.contact ||
-        candidateRecord.contact ||
-        candidateRecord.Contact ||
-        candidateRecord['Contact No'] ||
-        ''
+      candidateRecord.contact ||
+      candidateRecord.Contact ||
+      candidateRecord['Contact No'] ||
+      ''
     );
 
     if (!contactNumber) {
@@ -485,6 +525,7 @@ class SupportRequestService {
         emailId,
         contactNumber,
         requestedBy: `${requesterDisplay} (${user.email.toLowerCase()})`,
+        jobDescriptionText,
       });
 
       const sections = [];

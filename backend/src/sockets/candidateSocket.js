@@ -296,8 +296,11 @@ class CandidateSocketHandler {
     }
   }
 
-  async handleGetPendingExpertAssignments(socket, data, callback) {
+  async handleGetPendingExpertAssignments(socket, dataOrCallback, maybeCallback) {
     try {
+      const callback = typeof dataOrCallback === 'function' ? dataOrCallback : maybeCallback;
+      const rawData = typeof dataOrCallback === 'function' ? {} : dataOrCallback;
+
       if (!callback || typeof callback !== 'function') {
         logger.warn('getPendingExpertAssignments callback missing', { socketId: socket.id });
         return;
@@ -308,7 +311,7 @@ class CandidateSocketHandler {
         return callback({ success: false, error: 'Authentication required' });
       }
 
-      const sanitizedData = sanitizeObject(data || {});
+      const sanitizedData = sanitizeObject(rawData || {});
       const validation = validateCandidateQuery(sanitizedData);
 
       if (!validation.isValid) {

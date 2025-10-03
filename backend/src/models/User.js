@@ -26,6 +26,7 @@ export class UserModel {
           teamLead: user.teamLead,
           manager: user.manager,
           active: user.active !== undefined ? Boolean(user.active) : true,
+          profile: user.profile || null,
           _id: user._id
         });
       }
@@ -56,6 +57,7 @@ export class UserModel {
                 teamLead: doc.teamLead,
                 manager: doc.manager,
                 active: doc.active !== undefined ? Boolean(doc.active) : true,
+                profile: doc.profile || null,
                 _id: doc._id
               });
               logger.debug('🔄 User cache updated', { email: doc.email });
@@ -157,6 +159,89 @@ export class UserModel {
       logger.error('Failed to delete user', { error: error.message, email });
       throw error;
     }
+  }
+
+  async getUserProfileMetadata(email) {
+    if (!this.collection) {
+      throw new Error('User collection not initialized');
+    }
+
+    if (!email) {
+      throw new Error('Email is required');
+    }
+
+    const lowerEmail = email.toLowerCase();
+
+    const document = await this.collection.findOne(
+      { email: lowerEmail },
+      {
+        projection: {
+          email: 1,
+          profile: 1,
+          createdAt: 1,
+          updatedAt: 1
+        }
+      }
+    );
+
+    if (!document) {
+      return null;
+    }
+
+    return {
+      email: document.email,
+      metadata: document.profile || {},
+      created_at: document.createdAt || null,
+      updated_at: document.updatedAt || null
+    };
+  }
+
+  async upsertUserProfileMetadata(email, metadata = {}) {
+    if (!this.collection) {
+      throw new Error('User collection not initialized');
+    }
+
+    if (!email) {
+      throw new Error('Email is required');
+    }
+
+    const lowerEmail = email.toLowerCase();
+
+    const userRecord = await this.collection.findOne(
+      { email: lowerEmail },
+      {
+        projection: { _id: 0, email: 1 }
+      }
+    );
+
+    if (!userRecord) {
+      const error = new Error('User not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const now = new Date();
+    const storedProfile = {
+      ...metadata,
+      updatedAt: now
+    };
+
+    const updateDoc = {
+      $set: {
+        profile: storedProfile,
+        updatedAt: now
+      }
+    };
+
+    const result = await this.collection.updateOne({ email: lowerEmail }, updateDoc);
+
+    const cached = this.cache.get(lowerEmail) || {};
+    this.cache.set(lowerEmail, {
+      ...cached,
+      profile: storedProfile
+    });
+
+    return result;
   }
 
   getTeamEmails(userEmail, userRole, teamLead) {

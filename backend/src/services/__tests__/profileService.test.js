@@ -1,12 +1,12 @@
 import { jest } from '@jest/globals';
 
-const mockCandidateModel = {
+const mockUserModel = {
   getUserProfileMetadata: jest.fn(),
   upsertUserProfileMetadata: jest.fn()
 };
 
-jest.unstable_mockModule('../../models/Candidate.js', () => ({
-  candidateModel: mockCandidateModel
+jest.unstable_mockModule('../../models/User.js', () => ({
+  userModel: mockUserModel
 }));
 
 const { profileService } = await import('../profileService.js');
@@ -18,7 +18,7 @@ describe('profileService', () => {
 
   describe('getProfile', () => {
     it('returns derived defaults when metadata is missing', async () => {
-      mockCandidateModel.getUserProfileMetadata.mockResolvedValue(null);
+      mockUserModel.getUserProfileMetadata.mockResolvedValue(null);
 
       const result = await profileService.getProfile('user@silverspaceinc.com');
 
@@ -33,7 +33,7 @@ describe('profileService', () => {
 
   describe('updateProfile', () => {
     it('formats payload and persists metadata', async () => {
-      mockCandidateModel.upsertUserProfileMetadata.mockResolvedValue({ acknowledged: true });
+      mockUserModel.upsertUserProfileMetadata.mockResolvedValue({ acknowledged: true });
 
       const result = await profileService.updateProfile('agent@vizvaconsultancyservices.com', {
         displayName: ' <b>Agent</b> One ',
@@ -42,7 +42,7 @@ describe('profileService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockCandidateModel.upsertUserProfileMetadata).toHaveBeenCalledWith(
+      expect(mockUserModel.upsertUserProfileMetadata).toHaveBeenCalledWith(
         'agent@vizvaconsultancyservices.com',
         expect.objectContaining({
           displayName: 'Agent One',
@@ -73,6 +73,28 @@ describe('profileService', () => {
           phoneNumber: '+44 020 1234 5678'
         })
       ).rejects.toMatchObject({ statusCode: 400, message: 'Phone number must follow +1 (123) 456-7890 format' });
+    });
+
+    it('surface errors from persistence layer', async () => {
+      const persistenceError = new Error('write failed');
+      mockUserModel.upsertUserProfileMetadata.mockRejectedValueOnce(persistenceError);
+
+      await expect(
+        profileService.updateProfile('user@silverspaceinc.com', {
+          displayName: 'User Example',
+          jobRole: 'Recruiter',
+          phoneNumber: '5551234567'
+        })
+      ).rejects.toBe(persistenceError);
+
+      expect(mockUserModel.upsertUserProfileMetadata).toHaveBeenCalledWith(
+        'user@silverspaceinc.com',
+        expect.objectContaining({
+          displayName: 'User Example',
+          jobRole: 'Recruiter',
+          phoneNumber: '+1 (555) 123-4567'
+        })
+      );
     });
   });
 });

@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { useMsal } from "@azure/msal-react";
 import { GRAPH_MAIL_SCOPES } from "@/constants";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface BranchCandidatesProps {
   role: string;
@@ -92,6 +93,7 @@ interface SupportCloneDraft {
   technology?: string;
   attachments?: SupportCloneAttachment[];
   loopSlots?: SupportCloneLoopSlot[];
+  jobDescriptionText?: string;
   storedAt: string;
 }
 
@@ -238,6 +240,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [supportTimeWarning, setSupportTimeWarning] = useState<string>('');
   const [customMessageEnabled, setCustomMessageEnabled] = useState(false);
   const [customMessage, setCustomMessage] = useState('');
+  const [jobDescriptionText, setJobDescriptionText] = useState('');
   const supportWindowWarningKey = useRef<string>('');
   const [durationWarning, setDurationWarning] = useState('');
   const [pendingCloneDraft, setPendingCloneDraft] = useState<SupportCloneDraft | null>(null);
@@ -468,6 +471,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       setDurationWarning('');
       setCustomMessage('');
       setCustomMessageEnabled(false);
+      setJobDescriptionText(draft.jobDescriptionText || '');
 
       if (draft.durationMinutes && draft.durationMinutes % 5 !== 0) {
         setDurationWarning('Duration must be in 5-minute increments.');
@@ -727,6 +731,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setSupportTimeWarning('');
     setCustomMessage('');
     setCustomMessageEnabled(false);
+    setJobDescriptionText('');
     supportWindowWarningKey.current = '';
     setDurationWarning('');
     setLoopSlots([]);
@@ -760,6 +765,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setSupportTimeWarning('');
     setCustomMessage('');
     setCustomMessageEnabled(false);
+    setJobDescriptionText('');
     supportWindowWarningKey.current = '';
     setDurationWarning('');
     setLoopSlots([]);
@@ -1102,6 +1108,11 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         formData.append('customMessage', customMessage.trim());
       }
 
+      const jdTextValue = jobDescriptionText.trim();
+      if (jdTextValue) {
+        formData.append('jobDescriptionText', jdTextValue);
+      }
+
       if (resumeFile) {
         formData.append('resume', resumeFile);
       }
@@ -1164,6 +1175,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         technology: supportForm.technology,
         attachments: storedAttachments.length ? storedAttachments : undefined,
         loopSlots: isLoopRound ? resolvedSlots : undefined,
+        jobDescriptionText: jdTextValue || undefined,
         storedAt: new Date().toISOString()
       };
 
@@ -1195,6 +1207,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     supportInterviewTime,
     customMessageEnabled,
     customMessage,
+    jobDescriptionText,
     supportTimeWarning,
     durationWarning,
     isLoopRound,
@@ -1806,6 +1819,21 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                         {(canEdit || canSendSupport) && (
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    type="button"
+                                    aria-label="Resume Understanding"
+                                  >
+                                    RU
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <span>Resume Understanding</span>
+                                </TooltipContent>
+                              </Tooltip>
                               {canSendSupport && (
                                 <Button size="sm" variant="secondary" onClick={() => openSupportDialog(candidate)}>
                                   Support
@@ -2383,11 +2411,11 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               <Collapsible open={customMessageEnabled} onOpenChange={setCustomMessageEnabled}>
                 <CollapsibleTrigger asChild>
                   <Button variant="outline" size="sm" type="button">
-                    {customMessageEnabled ? 'Hide additional message' : 'Add additional message'}
+                    {customMessageEnabled ? 'Hide additional message' : 'Add additional message or JD'}
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-2 space-y-2">
-                  <Label htmlFor="support-custom-message">Message to include before the details table</Label>
+                  <Label htmlFor="support-custom-message">Message to include before the details above the table</Label>
                   <textarea
                     id="support-custom-message"
                     value={customMessage}
@@ -2397,9 +2425,19 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                     placeholder="Optional message"
                     disabled={supportSubmitting}
                   />
+                  <Label htmlFor="support-jd-text">Job description (text)</Label>
+                  <textarea
+                    id="support-jd-text"
+                    value={jobDescriptionText}
+                    onChange={(event) => setJobDescriptionText(event.target.value)}
+                    className="w-full rounded border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    rows={6}
+                    placeholder="Paste or type the job description details"
+                    disabled={supportSubmitting}
+                  />
                 </CollapsibleContent>
               </Collapsible>
-              
+
               {supportError && <p className="text-sm text-destructive">{supportError}</p>}
             </div>
             <DialogFooter>
