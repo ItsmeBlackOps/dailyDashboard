@@ -41,6 +41,7 @@ import { checkMeetingConsent, openConsentAndPoll } from "@/meetings/meetingsCons
 import { useOnlineMeetingConsent } from "@/hooks/useOnlineMeetingConsent";
 import { OnlineMeetingConsentBanner } from "@/components/OnlineMeetingConsentBanner";
 import { Copy } from "lucide-react";
+import { deriveDisplayNameFromEmail, formatNameInput } from "@/utils/userNames";
 
 interface Task {
   _id: string;
@@ -68,6 +69,14 @@ interface Task {
   assignedExpert?: string;
   recruiterName?: string;
   transcription?: boolean;
+}
+
+interface ManageableUser {
+  email: string;
+  role: string;
+  teamLead?: string | null;
+  manager?: string | null;
+  active?: boolean;
 }
 
 const TASK_STATUS_MAP = "tasksTodayStatusMap";
@@ -106,7 +115,7 @@ export default function TasksToday() {
 
   // timersRef keeps active timeout ids per reminder key
   const timersRef = useRef<Map<string, number>>(new Map());
-  const { refreshAccessToken } = useAuth();
+  const { refreshAccessToken, authFetch } = useAuth();
   const { selectedTab, setSelectedTab } = useTab();
   const roleRaw = localStorage.getItem("role") || "";
   const normalizedRole = roleRaw.trim().toLowerCase();
@@ -128,6 +137,10 @@ export default function TasksToday() {
     grant: grantConsent,
   } = useOnlineMeetingConsent(instance, account);
   const [meetingBusy, setMeetingBusy] = useState<Record<string, boolean>>({});
+  const [teamLeadData, setTeamLeadData] = useState<Record<string, { label: string; recruiters: string[] }>>({});
+  const [teamLeadLoading, setTeamLeadLoading] = useState(false);
+  const [teamLeadError, setTeamLeadError] = useState("");
+  const [selectedTeamLead, setSelectedTeamLead] = useState<string>('all');
 
   const setMeetingBusyState = useCallback((taskId: string, busy: boolean) => {
     setMeetingBusy((prev) => {
@@ -151,6 +164,105 @@ export default function TasksToday() {
       return '';
     }
   }, []);
+
+  const buildTeamLeadMapping = useCallback((users: ManageableUser[]) => {
+    type PersonNode = {
+      key: string;
+      label: string;
+      role: string;
+      reports: Set<string>;
+    };
+
+    const nodes = new Map<string, PersonNode>();
+
+    const ensureNode = (rawLabel: string): PersonNode | null => {
+      const formatted = formatNameInput(rawLabel);
+      if (!formatted) return null;
+      const key = formatted.toLowerCase();
+      let existing = nodes.get(key);
+      if (!existing) {
+        existing = { key, label: formatted, role: 'unknown', reports: new Set<string>() };
+        nodes.set(key, existing);
+      }
+      return existing;
+    };
+
+    const ensureNodeFromEmail = (email: string): PersonNode | null => {
+      const label = deriveDisplayNameFromEmail(email);
+      if (!label) return null;
+      return ensureNode(label);
+    };
+
+    for (const userRecord of users) {
+      if (!userRecord || typeof userRecord !== 'object') continue;
+      const personNode = ensureNodeFromEmail(userRecord.email);
+      if (!personNode) continue;
+
+      const roleLower = (userRecord.role || '').toLowerCase();
+      if (roleLower) {
+        personNode.role = roleLower;
+      }
+
+      const leadLabel = formatNameInput(userRecord.teamLead ?? '');
+      if (leadLabel) {
+        const leadNode = ensureNode(leadLabel);
+        if (leadNode) {
+          leadNode.reports.add(personNode.key);
+        }
+      }
+    }
+
+    const selfDisplay = formatNameInput(localStorage.getItem('displayName') || '');
+    if (selfDisplay) {
+      const selfNode = ensureNode(selfDisplay);
+      if (selfNode && (!selfNode.role || selfNode.role === 'unknown')) {
+        selfNode.role = normalizedRole || selfNode.role;
+      }
+    }
+
+    const gatherRecruiters = (startKey: string): Set<string> => {
+      const recruiters = new Set<string>();
+      const visited = new Set<string>();
+      const stack = [startKey];
+
+      while (stack.length > 0) {
+        const currentKey = stack.pop();
+        if (!currentKey || visited.has(currentKey)) continue;
+        visited.add(currentKey);
+        const node = nodes.get(currentKey);
+        if (!node) continue;
+
+        for (const reportKey of node.reports) {
+          const reportNode = nodes.get(reportKey);
+          if (!reportNode) continue;
+
+          const role = reportNode.role;
+          if (role === 'recruiter' || role === 'mlead') {
+            recruiters.add(reportNode.label);
+          }
+
+          if (reportNode.reports.size > 0 && !visited.has(reportKey)) {
+            stack.push(reportKey);
+          }
+        }
+      }
+
+      return recruiters;
+    };
+
+    const mapping: Record<string, { label: string; recruiters: string[] }> = {};
+
+    nodes.forEach((node, key) => {
+      const recruiters = gatherRecruiters(key);
+      if (recruiters.size === 0) return;
+      mapping[key] = {
+        label: node.label,
+        recruiters: Array.from(recruiters).sort((a, b) => a.localeCompare(b)),
+      };
+    });
+
+    return mapping;
+  }, [normalizedRole]);
 
   const handleOpenMeeting = useCallback(
     (url: string) => {
@@ -256,6 +368,59 @@ export default function TasksToday() {
       localStorage.setItem("tasksTodayShowSubject", JSON.stringify(showSubject));
     } catch {}
   }, [showSubject]);
+
+  useEffect(() => {
+    if (!['mm', 'mam'].includes(normalizedRole)) {
+      setTeamLeadData({});
+      setSelectedTeamLead('all');
+      setTeamLeadError('');
+      return;
+    }
+
+    let active = true;
+
+    const loadTeamLeads = async () => {
+      setTeamLeadLoading(true);
+      try {
+        const response = await authFetch(`${API_URL}/api/users/manageable`);
+        if (!response.ok) {
+          throw new Error('Failed to load team leads');
+        }
+
+        const payload = await response.json();
+        if (!active) return;
+
+        const manageableUsers = Array.isArray(payload?.users) ? (payload.users as ManageableUser[]) : [];
+        const mapping = buildTeamLeadMapping(manageableUsers);
+
+        setTeamLeadData(mapping);
+        setTeamLeadError('');
+        setSelectedTeamLead((prev) => (prev !== 'all' && !mapping[prev] ? 'all' : prev));
+      } catch (error) {
+        console.error('Failed to load team lead mapping', error);
+        if (!active) return;
+        const message = error instanceof Error ? error.message : 'Failed to load team leads';
+        setTeamLeadError(message);
+        setTeamLeadData({});
+        setSelectedTeamLead('all');
+        toast({
+          title: 'Unable to load team leads',
+          description: DOMPurify.sanitize(message),
+          variant: 'destructive',
+        });
+      } finally {
+        if (active) {
+          setTeamLeadLoading(false);
+        }
+      }
+    };
+
+    void loadTeamLeads();
+
+    return () => {
+      active = false;
+    };
+  }, [normalizedRole, authFetch, buildTeamLeadMapping, toast]);
 
   // === Storage helpers ===
   const readScheduled = (): Record<string, string> => {
@@ -1064,6 +1229,30 @@ export default function TasksToday() {
   }, [filters.range, filters.start, filters.end, filters.dateField, filters.upcoming, fetchTasks, socket]);
 
   // === Filtering / sorting ===
+  const teamLeadOptions = useMemo(() => {
+    const base = Object.entries(teamLeadData)
+      .map(([value, entry]) => ({ value, label: formatNameInput(entry.label) || entry.label }))
+      .filter((option) => option.label)
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    return [{ value: 'all', label: 'All Team Leads' }, ...base];
+  }, [teamLeadData]);
+
+  const teamLeadRecruiterMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    Object.entries(teamLeadData).forEach(([key, entry]) => {
+      const set = new Set<string>();
+      for (const recruiter of entry.recruiters) {
+        const normalized = formatNameInput(recruiter).toLowerCase();
+        if (normalized) {
+          set.add(normalized);
+        }
+      }
+      map.set(key, set);
+    });
+    return map;
+  }, [teamLeadData]);
+
   const statuses = Array.from(new Set(tasks.map((t) => t.status).filter(Boolean)));
 
   const sortedTasks = useMemo(() => sortByPrimaryStart(tasks), [tasks, sortByPrimaryStart]);
@@ -1080,6 +1269,14 @@ export default function TasksToday() {
     .filter((t) =>
       (t.assignedExpert || "").toLowerCase().includes(expertFilter.toLowerCase())
     )
+    .filter((t) => {
+      if (selectedTeamLead === 'all') return true;
+      const recruiters = teamLeadRecruiterMap.get(selectedTeamLead);
+      if (!recruiters || recruiters.size === 0) return false;
+      const recruiterDisplay = formatNameInput(t.recruiterName || '');
+      if (!recruiterDisplay) return false;
+      return recruiters.has(recruiterDisplay.toLowerCase());
+    })
     .filter((t) =>
       user !== 'user'
         ? (t.recruiterName || "").toLowerCase().includes(recruiterFilter.toLowerCase())
@@ -1135,6 +1332,24 @@ export default function TasksToday() {
             onChange={(e) => setExpertFilter(e.target.value)}
             className="w-40"
           />
+          {(normalizedRole === 'mm' || normalizedRole === 'mam') && (
+            <Select
+              value={selectedTeamLead}
+              onValueChange={setSelectedTeamLead}
+              disabled={teamLeadLoading || teamLeadOptions.length <= 1}
+            >
+              <SelectTrigger className="w-52">
+                <SelectValue placeholder={teamLeadLoading ? "Loading team leads" : "All Team Leads"} />
+              </SelectTrigger>
+              <SelectContent>
+                {teamLeadOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {(user === "MAM" || user === "MM") && (
             <Input
               placeholder="Filter recruiter"
@@ -1152,6 +1367,10 @@ export default function TasksToday() {
             </label>
           </div>
         </div>
+
+        {teamLeadError && (normalizedRole === 'mm' || normalizedRole === 'mam') && (
+          <p className="text-sm text-red-500">{teamLeadError}</p>
+        )}
 
         {displayed.length === 0 ? (
           <p>No tasks found for the selected filters.</p>
