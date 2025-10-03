@@ -4,7 +4,7 @@ import { userModel } from '../models/User.js';
 import { logger, createTimer } from '../utils/logger.js';
 
 const TIMEZONE = 'America/New_York';
-const RECEIVED_DATE_FIELD_ROLES = new Set(['admin', 'MM', 'MAM', 'mlead']);
+const RECEIVED_DATE_FIELD_ROLES = new Set(['admin', 'mm', 'mam', 'mlead', 'recruiter']);
 // const TOP_PERFORMER_LIMIT = 25;
 
 export class TaskService {
@@ -659,7 +659,9 @@ export class TaskService {
   }
 
   resolveDateField(userRole, requestedField) {
-    if (requestedField === 'receivedDateTime' && RECEIVED_DATE_FIELD_ROLES.has(userRole)) {
+    const normalizedRole = (userRole || '').toLowerCase();
+
+    if (requestedField === 'receivedDateTime' && RECEIVED_DATE_FIELD_ROLES.has(normalizedRole)) {
       return 'receivedDateTime';
     }
 
@@ -670,7 +672,7 @@ export class TaskService {
       });
     }
 
-    if (requestedField === 'receivedDateTime' && !RECEIVED_DATE_FIELD_ROLES.has(userRole)) {
+    if (requestedField === 'receivedDateTime' && !RECEIVED_DATE_FIELD_ROLES.has(normalizedRole)) {
       logger.warn('User not allowed to query by receivedDateTime, defaulting to Date of Interview', {
         userRole
       });

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import moment from "moment-timezone";
 import { io, Socket } from "socket.io-client";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -62,6 +63,47 @@ interface SupportFormState {
   interviewDateTime: string;
   duration: string;
   contactNumber: string;
+}
+
+interface SupportCloneAttachment {
+  name: string;
+  url?: string;
+  category?: 'resume' | 'jobDescription' | 'additional';
+  type?: string;
+  data?: string;
+}
+
+interface SupportCloneLoopSlot {
+  interviewDateTime: string;
+  durationMinutes: number;
+}
+
+interface SupportCloneDraft {
+  version: number;
+  sourceTaskId: string;
+  candidateName: string;
+  candidateEmail: string;
+  contactNumber: string;
+  endClient: string;
+  jobTitle: string;
+  interviewRound: string;
+  interviewDateTime?: string;
+  durationMinutes?: number;
+  technology?: string;
+  attachments?: SupportCloneAttachment[];
+  loopSlots?: SupportCloneLoopSlot[];
+  storedAt: string;
+}
+
+interface LoopSlotForm {
+  id: string;
+  date: Date | null;
+  timeInput: string;
+  timeValue: string;
+  timeWarning: string;
+  duration: string;
+  durationWarning: string;
+  isDatePickerOpen: boolean;
 }
 
 const SUPPORT_ROUNDS = [
@@ -141,6 +183,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const { refreshAccessToken, authFetch } = useAuth();
   const { toast } = useToast();
   const { profile } = useUserProfile();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { instance, accounts } = useMsal();
   const account = accounts[0];
   const [recruiterOptions, setRecruiterOptions] = useState<RecruiterOption[]>([]);
@@ -196,28 +240,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [customMessage, setCustomMessage] = useState('');
   const supportWindowWarningKey = useRef<string>('');
   const [durationWarning, setDurationWarning] = useState('');
-
-  const normalizeOptionList = useCallback((options?: RecruiterOption[]) => {
-    if (!Array.isArray(options)) {
-      return [] as RecruiterOption[];
-    }
-
-    const seen = new Set<string>();
-    const normalized: RecruiterOption[] = [];
-
-    for (const option of options) {
-      if (!option?.value) continue;
-      const value = String(option.value).trim().toLowerCase();
-      if (!value || seen.has(value)) continue;
-      seen.add(value);
-      normalized.push({
-        value,
-        label: option.label?.trim() || formatEmailDisplay(value)
-      });
-    }
-
-    return normalized.sort((a, b) => a.label.localeCompare(b.label));
-  }, []);
+  const [pendingCloneDraft, setPendingCloneDraft] = useState<SupportCloneDraft | null>(null);
+  const cloneHydrationRef = useRef(false);
+  const cloneSlotHydrationRef = useRef(false);
+  const loopSlotCounter = useRef(0);
+  const [loopSlots, setLoopSlots] = useState<LoopSlotForm[]>([]);
+  const isLoopRound = useMemo(() => supportForm.interviewRound.toLowerCase().includes('loop'), [supportForm.interviewRound]);
 
   const titleCasePreserveSpacing = useCallback((value: string) => {
     let result = '';
@@ -248,6 +276,431 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     return cased.replace(/\s+/g, ' ').trim();
   }, [titleCasePreserveSpacing]);
 
+  const normalizeOptionList = useCallback((options?: RecruiterOption[]) => {
+    if (!Array.isArray(options)) {
+      return [] as RecruiterOption[];
+    }
+
+    const seen = new Set<string>();
+    const normalized: RecruiterOption[] = [];
+
+    for (const option of options) {
+      if (!option?.value) continue;
+      const value = String(option.value).trim().toLowerCase();
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      normalized.push({
+        value,
+        label: option.label?.trim() || formatEmailDisplay(value)
+      });
+    }
+
+    return normalized.sort((a, b) => a.label.localeCompare(b.label));
+  }, []);
+
+  const createLoopSlot = useCallback((overrides?: Partial<LoopSlotForm>): LoopSlotForm => {
+    const id = `slot-${loopSlotCounter.current++}`;
+    return {
+      id,
+      date: null,
+      timeInput: '',
+      timeValue: '',
+      timeWarning: '',
+      duration: '',
+      durationWarning: '',
+      isDatePickerOpen: false,
+      ...overrides
+    };
+  }, []);
+
+  const restoreAttachmentsFromDraft = useCallback(async (attachments?: SupportCloneAttachment[]) => {
+    setResumeFile(null);
+    setJdFile(null);
+    setAdditionalFiles([]);
+
+    if (!attachments || attachments.length === 0) {
+      return;
+    }
+
+    const additional: File[] = [];
+    let restoredResume: File | null = null;
+    let restoredJd: File | null = null;
+
+    for (const attachment of attachments) {
+      let file: File | null = null;
+      try {
+        if (attachment.data) {
+          const binary = atob(attachment.data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i += 1) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: attachment.type || 'application/pdf' });
+          file = new File([blob], attachment.name, { type: attachment.type || 'application/pdf' });
+        } else if (attachment.url) {
+          const response = await fetch(attachment.url);
+          if (!response.ok) {
+            throw new Error(`Failed to download ${attachment.name}`);
+          }
+          const blob = await response.blob();
+          file = new File([blob], attachment.name, { type: attachment.type || blob.type || 'application/pdf' });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to restore attachment';
+        toast({ title: 'Attachment skipped', description: message, variant: 'destructive' });
+      }
+
+      if (!file) continue;
+
+      switch (attachment.category) {
+        case 'resume':
+          if (!restoredResume) {
+            restoredResume = file;
+          } else {
+            additional.push(file);
+          }
+          break;
+        case 'jobDescription':
+          if (!restoredJd) {
+            restoredJd = file;
+          } else {
+            additional.push(file);
+          }
+          break;
+        default:
+          additional.push(file);
+          break;
+      }
+    }
+
+    if (restoredResume) {
+      setResumeFile(restoredResume);
+    }
+    if (restoredJd) {
+      setJdFile(restoredJd);
+    }
+    if (additional.length > 0) {
+      setAdditionalFiles(additional);
+    }
+  }, [toast]);
+
+  const MAX_CLONE_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+
+  const readFileAsDataUrl = useCallback((file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Invalid reader result'));
+      }
+    };
+    reader.onerror = () => reject(reader.error || new Error('Unable to read attachment'));
+    reader.readAsDataURL(file);
+  }), []);
+
+  const encodeAttachmentForStorage = useCallback(async (file: File, category: SupportCloneAttachment['category']): Promise<SupportCloneAttachment> => {
+    const attachment: SupportCloneAttachment = {
+      name: file.name,
+      type: file.type || 'application/pdf',
+      category
+    };
+
+    if (file.size > MAX_CLONE_ATTACHMENT_BYTES) {
+      return attachment;
+    }
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      if (dataUrl) {
+        const commaIndex = dataUrl.indexOf(',');
+        attachment.data = commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl;
+      }
+    } catch (error) {
+      console.error('Failed to encode attachment for storage', error);
+    }
+
+    return attachment;
+  }, [readFileAsDataUrl]);
+
+  const hydrateCloneDraft = useCallback(
+    async (candidate: CandidateRow, draft: SupportCloneDraft) => {
+      const normalizedCandidateName = normalizeTitleValue(draft.candidateName || candidate.name || '');
+      const normalizedTechnology = draft.technology || normalizeTitleValue(candidate.technology || '');
+      const email = (draft.candidateEmail || candidate.email || '').toLowerCase();
+      const contactNumber = draft.contactNumber || candidate.contact || '';
+      const interviewRoundValue = draft.interviewRound || supportForm.interviewRound;
+
+      let interviewDate: Date | null = null;
+      let interviewTimeValue = '';
+      let interviewTimeInput = '';
+      let interviewDateTimeField = '';
+
+      if (draft.interviewDateTime) {
+        const startMoment = moment(draft.interviewDateTime).tz(EST_TIMEZONE);
+        if (startMoment.isValid()) {
+          interviewDate = startMoment.toDate();
+          interviewTimeValue = startMoment.format('HH:mm');
+          interviewTimeInput = startMoment.format('hh:mm A');
+          interviewDateTimeField = startMoment.format('YYYY-MM-DDTHH:mm');
+        }
+      }
+
+      const baseForm: SupportFormState = {
+        candidateName: normalizedCandidateName,
+        technology: normalizedTechnology,
+        email,
+        endClient: draft.endClient || '',
+        jobTitle: draft.jobTitle || '',
+        interviewRound: interviewRoundValue,
+        interviewDateTime: interviewDateTimeField,
+        duration: draft.durationMinutes ? String(draft.durationMinutes) : '',
+        contactNumber: contactNumber.trim()
+      };
+
+      setSupportCandidate({ ...candidate, name: normalizedCandidateName });
+      setSupportForm(baseForm);
+      setSupportInterviewDate(interviewDate);
+      setSupportInterviewTime(interviewTimeValue);
+      setSupportTimeInput(interviewTimeInput);
+      setSupportError('');
+      setSupportTimeWarning('');
+      setDurationWarning('');
+      setCustomMessage('');
+      setCustomMessageEnabled(false);
+
+      if (draft.durationMinutes && draft.durationMinutes % 5 !== 0) {
+        setDurationWarning('Duration must be in 5-minute increments.');
+      }
+
+      if (draft.loopSlots && draft.loopSlots.length > 0) {
+        loopSlotCounter.current = 0;
+        const hydratedSlots = draft.loopSlots.map((slot) => {
+          const slotMoment = moment(slot.interviewDateTime).tz(EST_TIMEZONE);
+          const date = slotMoment.isValid() ? slotMoment.toDate() : null;
+          const timeValue = slotMoment.isValid() ? slotMoment.format('HH:mm') : '';
+          const timeInput = slotMoment.isValid() ? slotMoment.format('hh:mm A') : '';
+          const slotDuration = String(slot.durationMinutes ?? '');
+          const durationWarning = slot.durationMinutes % 5 === 0 ? '' : 'Duration must be in 5-minute increments.';
+          return createLoopSlot({
+            date,
+            timeValue,
+            timeInput,
+            duration: slotDuration,
+            durationWarning,
+            timeWarning: '',
+            isDatePickerOpen: false
+          });
+        });
+
+        setLoopSlots(hydratedSlots);
+      } else {
+        setLoopSlots([]);
+      }
+
+      await restoreAttachmentsFromDraft(draft.attachments);
+      setSupportOpen(true);
+      setPendingCloneDraft(null);
+    },
+    [createLoopSlot, normalizeTitleValue, restoreAttachmentsFromDraft, supportForm.interviewRound]
+  );
+
+  const updateLoopSlot = useCallback((id: string, updater: (slot: LoopSlotForm) => LoopSlotForm) => {
+    setLoopSlots((prev) => prev.map((slot) => (slot.id === id ? updater(slot) : slot)));
+  }, []);
+
+  const validateTimeInput = useCallback((value: string): string => {
+    const trimmed = value.trim().toUpperCase();
+    const match = /^([0-1]?\d|2[0-3]):([0-5]\d)(\s*(AM|PM))?$/u.exec(trimmed);
+    if (!match) return '';
+
+    let hours = Number.parseInt(match[1], 10);
+    const minuteRaw = Number.parseInt(match[2], 10);
+    const meridiem = match[4];
+
+    if (meridiem) {
+      hours %= 12;
+      if (meridiem === 'PM') {
+        hours += 12;
+      }
+    }
+
+    const alignedMinutes = Math.round(minuteRaw / 5) * 5;
+    const normalizedMinute = alignedMinutes === 60 ? 55 : alignedMinutes;
+    const normalizedHour = alignedMinutes === 60 ? (hours + 1) % 24 : hours;
+
+    return `${String(normalizedHour).padStart(2, '0')}:${String(normalizedMinute).padStart(2, '0')}`;
+  }, []);
+
+  const warnIfOutOfHours = useCallback((date: Date | null, time: string) => {
+    if (!date || !time) {
+      supportWindowWarningKey.current = '';
+      return;
+    }
+
+    const [hours, minutes] = time.split(':').map((segment) => Number.parseInt(segment, 10));
+    const zoned = moment(date).tz(EST_TIMEZONE).set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
+    if (!zoned.isValid()) {
+      supportWindowWarningKey.current = '';
+      return;
+    }
+
+    const hour = zoned.hour();
+    const minute = zoned.minute();
+    const warningKey = zoned.toISOString();
+    const outsideWindow = hour < 9 || hour > 18 || (hour === 18 && minute > 0);
+
+    if (outsideWindow && supportWindowWarningKey.current !== warningKey) {
+      toast({
+        title: 'Outside support hours',
+        description: 'Interview falls outside the standard 9:00 AM – 6:00 PM EST window.',
+        variant: 'destructive'
+      });
+      supportWindowWarningKey.current = warningKey;
+    }
+
+    if (!outsideWindow) {
+      supportWindowWarningKey.current = '';
+    }
+  }, [toast]);
+
+  const handleLoopSlotDatePickerToggle = useCallback((id: string, open: boolean) => {
+    updateLoopSlot(id, (slot) => ({ ...slot, isDatePickerOpen: open }));
+  }, [updateLoopSlot]);
+
+  const handleLoopSlotDateChange = useCallback((id: string, date: Date | undefined) => {
+    if (!date) return;
+    updateLoopSlot(id, (slot) => {
+      if (slot.timeValue) {
+        warnIfOutOfHours(date, slot.timeValue);
+      }
+      return { ...slot, date, isDatePickerOpen: false };
+    });
+  }, [updateLoopSlot, warnIfOutOfHours]);
+
+  const handleLoopSlotTimeChange = useCallback((id: string, value: string) => {
+    updateLoopSlot(id, (slot) => {
+      const normalized = validateTimeInput(value);
+      if (!normalized) {
+        return { ...slot, timeInput: value, timeValue: '', timeWarning: 'Enter a valid time in 5-minute increments (e.g., 03:15 PM).' };
+      }
+      if (slot.date) {
+        warnIfOutOfHours(slot.date, normalized);
+      }
+      return { ...slot, timeInput: value, timeValue: normalized, timeWarning: '' };
+    });
+  }, [updateLoopSlot, validateTimeInput, warnIfOutOfHours]);
+
+  const handleLoopSlotDurationChange = useCallback((id: string, value: string) => {
+    updateLoopSlot(id, (slot) => {
+      const digitsOnly = value.replace(/[^0-9]/g, '').slice(0, 3);
+      const minutes = Number.parseInt(digitsOnly, 10);
+      let warning = '';
+      if (digitsOnly) {
+        if (!Number.isFinite(minutes) || minutes <= 0) {
+          warning = 'Duration must be a positive number of minutes.';
+        } else if (minutes % 5 !== 0) {
+          warning = 'Duration must be in 5-minute increments.';
+        }
+      }
+      return { ...slot, duration: digitsOnly, durationWarning: warning };
+    });
+  }, [updateLoopSlot]);
+
+  const handleAddLoopSlot = useCallback(() => {
+    setLoopSlots((prev) => {
+      const last = prev[prev.length - 1];
+      const newSlot = createLoopSlot({
+        date: last?.date ?? null,
+        duration: last?.duration ?? '',
+      });
+      return [...prev, newSlot];
+    });
+  }, [createLoopSlot]);
+
+  const handleRemoveLoopSlot = useCallback((id: string) => {
+    setLoopSlots((prev) => (prev.length <= 1 ? prev : prev.filter((slot) => slot.id !== id)));
+  }, []);
+
+  useEffect(() => {
+    if (isLoopRound && loopSlots.length === 0) {
+      setLoopSlots([createLoopSlot()]);
+    }
+  }, [isLoopRound, loopSlots.length, createLoopSlot]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const cloneFlag = params.get('clone');
+
+    if (cloneFlag !== '1') {
+      cloneHydrationRef.current = false;
+      return;
+    }
+
+    if (cloneHydrationRef.current) {
+      return;
+    }
+
+    cloneHydrationRef.current = true;
+
+    const stored = localStorage.getItem('supportCloneDraft');
+    if (!stored) {
+      toast({
+        title: 'Nothing to clone',
+        description: 'No stored support request was found. Prepare a new request manually.',
+        variant: 'destructive'
+      });
+      navigate(location.pathname, { replace: true });
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(stored) as SupportCloneDraft;
+      if (parsed && typeof parsed === 'object' && parsed.version === 1) {
+        setPendingCloneDraft(parsed);
+      } else {
+        throw new Error('Unsupported draft format');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid clone payload';
+      toast({ title: 'Unable to load clone data', description: message, variant: 'destructive' });
+      localStorage.removeItem('supportCloneDraft');
+    } finally {
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location, navigate, toast]);
+
+  useEffect(() => {
+    if (!pendingCloneDraft) {
+      return;
+    }
+
+    if (cloneSlotHydrationRef.current) {
+      return;
+    }
+
+    if (candidates.length === 0) {
+      return;
+    }
+
+    const candidateMatch = candidates.find((candidate) =>
+      candidate.email?.toLowerCase() === pendingCloneDraft.candidateEmail.toLowerCase()
+    );
+
+    if (!candidateMatch) {
+      toast({
+        title: 'Candidate not found',
+        description: 'The stored clone does not match a candidate in this branch. Locate the candidate manually to continue.',
+        variant: 'destructive'
+      });
+      cloneSlotHydrationRef.current = true;
+      return;
+    }
+
+    cloneSlotHydrationRef.current = true;
+    void hydrateCloneDraft(candidateMatch, pendingCloneDraft);
+  }, [pendingCloneDraft, candidates, hydrateCloneDraft, toast]);
+
   const resetSupportState = useCallback(() => {
     setSupportOpen(false);
     setSupportCandidate(null);
@@ -276,6 +729,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setCustomMessageEnabled(false);
     supportWindowWarningKey.current = '';
     setDurationWarning('');
+    setLoopSlots([]);
+    loopSlotCounter.current = 0;
   }, []);
 
   const openSupportDialog = useCallback((candidate: CandidateRow) => {
@@ -307,6 +762,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setCustomMessageEnabled(false);
     supportWindowWarningKey.current = '';
     setDurationWarning('');
+    setLoopSlots([]);
+    loopSlotCounter.current = 0;
     setSupportOpen(true);
   }, [normalizeTitleValue]);
 
@@ -315,7 +772,25 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       return;
     }
     setSupportError('');
+
+    if (field === 'interviewRound') {
+      const isLoopValue = value.toLowerCase().includes('loop');
+      if (isLoopValue) {
+        setLoopSlots((prev) => (prev.length > 0 ? prev : [createLoopSlot()]));
+      } else {
+        setLoopSlots([]);
+      }
+    }
+
     setSupportForm((prev) => {
+      if (field === 'interviewRound') {
+        const isLoopValue = value.toLowerCase().includes('loop');
+        return {
+          ...prev,
+          interviewRound: value,
+          duration: isLoopValue ? '' : prev.duration,
+        };
+      }
       if (field === 'duration') {
         const digitsOnly = value.replace(/[^0-9]/g, '').slice(0, 3);
         const minutes = Number.parseInt(digitsOnly, 10);
@@ -353,38 +828,6 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     return zoned.format('YYYY-MM-DDTHH:mm');
   }, []);
 
-  const warnIfOutOfHours = useCallback((date: Date | null, time: string) => {
-    if (!date || !time) {
-      supportWindowWarningKey.current = '';
-      return;
-    }
-
-    const [hours, minutes] = time.split(':').map((segment) => Number.parseInt(segment, 10));
-    const zoned = moment(date).tz(EST_TIMEZONE).set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
-    if (!zoned.isValid()) {
-      supportWindowWarningKey.current = '';
-      return;
-    }
-
-    const hour = zoned.hour();
-    const minute = zoned.minute();
-    const warningKey = zoned.toISOString();
-    const outsideWindow = hour < 9 || hour > 18 || (hour === 18 && minute > 0);
-
-    if (outsideWindow && supportWindowWarningKey.current !== warningKey) {
-      toast({
-        title: 'Outside support hours',
-        description: 'Interview falls outside the standard 9:00 AM – 6:00 PM EST window.',
-        variant: 'destructive'
-      });
-      supportWindowWarningKey.current = warningKey;
-    }
-
-    if (!outsideWindow) {
-      supportWindowWarningKey.current = '';
-    }
-  }, [toast]);
-
   const handleSupportDateSelect = useCallback((date: Date | undefined) => {
     if (!date) return;
     setSupportInterviewDate(date);
@@ -396,29 +839,6 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     }));
     warnIfOutOfHours(date, supportInterviewTime);
   }, [computeInterviewDateTimeValue, supportInterviewTime, warnIfOutOfHours]);
-
-  const validateTimeInput = useCallback((value: string): string => {
-    const trimmed = value.trim().toUpperCase();
-    const match = /^([0-1]?\d|2[0-3]):([0-5]\d)(\s*(AM|PM))?$/u.exec(trimmed);
-    if (!match) return '';
-
-    let hours = Number.parseInt(match[1], 10);
-    const minuteRaw = Number.parseInt(match[2], 10);
-    const meridiem = match[4];
-
-    if (meridiem) {
-      hours %= 12;
-      if (meridiem === 'PM') {
-        hours += 12;
-      }
-    }
-
-    const alignedMinutes = Math.round(minuteRaw / 5) * 5;
-    const normalizedMinute = alignedMinutes === 60 ? 55 : alignedMinutes;
-    const normalizedHour = alignedMinutes === 60 ? (hours + 1) % 24 : hours;
-
-    return `${String(normalizedHour).padStart(2, '0')}:${String(normalizedMinute).padStart(2, '0')}`;
-  }, []);
 
   const handleSupportTimeChange = useCallback((value: string) => {
     setSupportTimeInput(value);
@@ -500,46 +920,124 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       return;
     }
 
-    if (supportTimeWarning) {
+    if (!isLoopRound && supportTimeWarning) {
       setSupportError('Fix the interview time before submitting.');
       return;
     }
 
-    if (!supportInterviewDate || !supportInterviewTime || !supportForm.interviewDateTime.trim()) {
-      setSupportError('Interview date and time is required.');
-      return;
-    }
+    const resolvedSlots: SupportCloneLoopSlot[] = [];
+    let singleInterviewMoment: moment.Moment | null = null;
 
-    if (durationWarning) {
-      setSupportError(durationWarning);
-      return;
-    }
+    if (isLoopRound) {
+      if (loopSlots.length === 0) {
+        setSupportError('Add at least one loop slot.');
+        return;
+      }
 
-    const durationMinutes = Number.parseInt(supportForm.duration.trim(), 10);
-    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
-      setSupportError('Duration must be a positive number of minutes.');
-      return;
-    }
+      const now = moment().tz(EST_TIMEZONE);
 
-    if (durationMinutes % 5 !== 0) {
-      setSupportError('Duration must be in 5-minute increments.');
-      return;
+      for (const slot of loopSlots) {
+        if (!slot.date) {
+          setSupportError('Each loop slot requires a date.');
+          return;
+        }
+
+        if (!slot.timeValue) {
+          setSupportError('Each loop slot requires a start time.');
+          return;
+        }
+
+        if (!slot.duration) {
+          setSupportError('Each loop slot requires a duration.');
+          return;
+        }
+
+        if (slot.timeWarning) {
+          setSupportError(slot.timeWarning);
+          return;
+        }
+
+        if (slot.durationWarning) {
+          setSupportError(slot.durationWarning);
+          return;
+        }
+
+        const isoLocal = computeInterviewDateTimeValue(slot.date, slot.timeValue);
+        if (!isoLocal) {
+          setSupportError('Invalid loop slot date or time.');
+          return;
+        }
+
+        const slotMoment = moment.tz(isoLocal, 'YYYY-MM-DDTHH:mm', EST_TIMEZONE);
+        if (!slotMoment.isValid()) {
+          setSupportError('Invalid loop slot date or time.');
+          return;
+        }
+
+        if (slotMoment.isBefore(now)) {
+          setSupportError('Loop slots must be scheduled in the future.');
+          return;
+        }
+
+        const minutes = Number.parseInt(slot.duration, 10);
+        if (!Number.isFinite(minutes) || minutes <= 0) {
+          setSupportError('Duration must be a positive number of minutes.');
+          return;
+        }
+
+        if (minutes % 5 !== 0) {
+          setSupportError('Duration must be in 5-minute increments.');
+          return;
+        }
+
+        resolvedSlots.push({
+          interviewDateTime: slotMoment.toISOString(),
+          durationMinutes: minutes
+        });
+      }
+    } else {
+      if (!supportInterviewDate || !supportInterviewTime || !supportForm.interviewDateTime.trim()) {
+        setSupportError('Interview date and time is required.');
+        return;
+      }
+
+      if (durationWarning) {
+        setSupportError(durationWarning);
+        return;
+      }
+
+      const durationMinutes = Number.parseInt(supportForm.duration.trim(), 10);
+      if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+        setSupportError('Duration must be a positive number of minutes.');
+        return;
+      }
+
+      if (durationMinutes % 5 !== 0) {
+        setSupportError('Duration must be in 5-minute increments.');
+        return;
+      }
+
+      const interviewMoment = moment.tz(supportForm.interviewDateTime, 'YYYY-MM-DDTHH:mm', EST_TIMEZONE);
+      if (!interviewMoment.isValid()) {
+        setSupportError('Provide a valid interview date and time in EST.');
+        return;
+      }
+
+      const now = moment().tz(EST_TIMEZONE);
+      if (interviewMoment.isBefore(now)) {
+        setSupportError('Interview date and time must be in the future.');
+        return;
+      }
+
+      singleInterviewMoment = interviewMoment;
+      resolvedSlots.push({
+        interviewDateTime: interviewMoment.toISOString(),
+        durationMinutes
+      });
     }
 
     if (!supportForm.contactNumber.trim()) {
       setSupportError('Contact number is required.');
-      return;
-    }
-
-    const interviewMoment = moment.tz(supportForm.interviewDateTime, 'YYYY-MM-DDTHH:mm', EST_TIMEZONE);
-    if (!interviewMoment.isValid()) {
-      setSupportError('Provide a valid interview date and time in EST.');
-      return;
-    }
-
-    const now = moment().tz(EST_TIMEZONE);
-    if (interviewMoment.isBefore(now)) {
-      setSupportError('Interview date and time must be in the future.');
       return;
     }
 
@@ -588,12 +1086,17 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       const normalizedEndClient = normalizeTitleValue(supportForm.endClient);
       const normalizedJobTitle = normalizeTitleValue(supportForm.jobTitle);
 
+      const firstSlot = resolvedSlots[0];
+
       formData.append('candidateId', supportCandidate.id);
       formData.append('endClient', normalizedEndClient);
       formData.append('jobTitle', normalizedJobTitle);
       formData.append('interviewRound', supportForm.interviewRound);
-      formData.append('interviewDateTime', interviewMoment.toISOString());
-      formData.append('duration', String(durationMinutes));
+      if (isLoopRound) {
+        formData.append('loopSlots', JSON.stringify(resolvedSlots));
+      }
+      formData.append('interviewDateTime', firstSlot.interviewDateTime);
+      formData.append('duration', String(firstSlot.durationMinutes));
       formData.append('contactNumber', supportForm.contactNumber.trim());
       if (customMessageEnabled && customMessage.trim()) {
         formData.append('customMessage', customMessage.trim());
@@ -632,6 +1135,44 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           : 'Interview support request emailed successfully.',
       });
 
+      const storedAttachments: SupportCloneAttachment[] = [];
+      try {
+        if (resumeFile) {
+          storedAttachments.push(await encodeAttachmentForStorage(resumeFile, 'resume'));
+        }
+        if (jdFile) {
+          storedAttachments.push(await encodeAttachmentForStorage(jdFile, 'jobDescription'));
+        }
+        for (const file of additionalFiles) {
+          storedAttachments.push(await encodeAttachmentForStorage(file, 'additional'));
+        }
+      } catch (encodeError) {
+        console.error('Failed to prepare attachments for cloning', encodeError);
+      }
+
+      const storedDraft: SupportCloneDraft = {
+        version: 1,
+        sourceTaskId: pendingCloneDraft?.sourceTaskId || supportCandidate.id,
+        candidateName: supportForm.candidateName,
+        candidateEmail: supportForm.email,
+        contactNumber: supportForm.contactNumber.trim(),
+        endClient: normalizedEndClient,
+        jobTitle: normalizedJobTitle,
+        interviewRound: supportForm.interviewRound,
+        interviewDateTime: !isLoopRound ? firstSlot.interviewDateTime : undefined,
+        durationMinutes: !isLoopRound ? firstSlot.durationMinutes : undefined,
+        technology: supportForm.technology,
+        attachments: storedAttachments.length ? storedAttachments : undefined,
+        loopSlots: isLoopRound ? resolvedSlots : undefined,
+        storedAt: new Date().toISOString()
+      };
+
+      try {
+        localStorage.setItem('supportCloneDraft', JSON.stringify(storedDraft));
+      } catch (storageError) {
+        console.error('Failed to persist support clone draft', storageError);
+      }
+
       resetSupportState();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to send support request';
@@ -655,7 +1196,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     customMessageEnabled,
     customMessage,
     supportTimeWarning,
-    durationWarning
+    durationWarning,
+    isLoopRound,
+    loopSlots,
+    computeInterviewDateTimeValue,
+    encodeAttachmentForStorage,
+    pendingCloneDraft
   ]);
 
   const combinedExpertOptions = useMemo(() => {
@@ -1170,6 +1716,21 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           )}
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="rounded-xl border border-primary/40 bg-primary/5 p-4 shadow-[0_0_20px_rgba(59,130,246,0.25)] animate-[pulse_4s_ease-in-out_infinite]">
+            <p className="font-semibold text-sm text-primary">Latest Updates</p>
+            <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+              <li>
+                • <span className="text-primary font-medium">Clone from TasksToday</span>: pick any prior request, click Clone, and we pre-fill the support form automatically.
+              </li>
+              <li>
+                • <span className="text-primary font-medium">Loop Scheduler</span>: add multiple slots for loop rounds—each slot sends its own support email.
+              </li>
+              <li>
+                • Attachments stay with the cloned draft so repeat requests only need edits, not re-uploads.
+              </li>
+            </ul>
+          </div>
+
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <Input
               value={search}
@@ -1268,7 +1829,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         </CardContent>
         {canEdit && (
           <Dialog open={isEditOpen} onOpenChange={(open) => (!open ? resetEditState() : setIsEditOpen(true))}>
-            <DialogContent className="sm:max-w-[480px]">
+          <DialogContent className="w-full max-h-[90vh] sm:max-h-[85vh] overflow-y-auto scroll-area sm:max-w-[560px]">
               <DialogHeader>
                 <DialogTitle>Edit Candidate</DialogTitle>
                 <DialogDescription>
@@ -1400,7 +1961,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       </Card>
       {showCreateButton && (
         <Dialog open={isCreateOpen} onOpenChange={(open) => (!open ? resetCreateState() : setIsCreateOpen(true))}>
-          <DialogContent className="sm:max-w-[460px]">
+          <DialogContent className="w-full max-h-[90vh] sm:max-h-[85vh] overflow-y-auto scroll-area sm:max-w-[560px]">
             <DialogHeader>
               <DialogTitle>Add Candidate</DialogTitle>
               <DialogDescription>
@@ -1492,7 +2053,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       )}
       {canSendSupport && (
         <Dialog open={supportOpen} onOpenChange={(open) => (!open ? resetSupportState() : setSupportOpen(true))}>
-          <DialogContent className="sm:max-w-[520px]">
+          <DialogContent className="w-full max-h-[90vh] sm:max-h-[85vh] overflow-y-auto scroll-area sm:max-w-[680px] xl:max-w-[760px]">
             <DialogHeader>
               <DialogTitle>Request Interview Support</DialogTitle>
               <DialogDescription>
@@ -1583,82 +2144,199 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="support-duration">Duration (minutes)</Label>
-                  <Input
-                    id="support-duration"
-                    value={supportForm.duration}
-                    onChange={(event) => handleSupportFieldChange('duration', event.target.value)}
-                    placeholder="e.g., 60"
-                    type="number"
-                    min={1}
-                    max={480}
-                    inputMode="numeric"
-                    disabled={supportSubmitting}
-                  />
-                  {durationWarning && (
-                    <p className="text-xs text-destructive">{durationWarning}</p>
+                  {!isLoopRound ? (
+                    <>
+                      <Input
+                        id="support-duration"
+                        value={supportForm.duration}
+                        onChange={(event) => handleSupportFieldChange('duration', event.target.value)}
+                        placeholder="e.g., 60"
+                        type="number"
+                        min={1}
+                        max={480}
+                        inputMode="numeric"
+                        disabled={supportSubmitting}
+                      />
+                      {durationWarning && (
+                        <p className="text-xs text-destructive">{durationWarning}</p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Manage duration for each loop slot below.</p>
                   )}
                 </div>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Date (EST)</Label>
-                  <Popover open={supportDatePickerOpen} onOpenChange={setSupportDatePickerOpen}>
-                    <PopoverTrigger asChild>
-                      <div className="relative">
-                        <Input
-                          readOnly
-                          value={supportInterviewDate ? moment(supportInterviewDate).tz(EST_TIMEZONE).format('MMM D, YYYY') : ''}
-                          placeholder="Select date"
-                          disabled={supportSubmitting}
-                          className={cn(!supportInterviewDate && "text-muted-foreground", 'pr-10 cursor-pointer')}
-                        />
-                        <CalendarIcon className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              {isLoopRound ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="font-semibold">Loop slots</Label>
+                    <Button type="button" size="sm" variant="secondary" onClick={handleAddLoopSlot} disabled={supportSubmitting}>
+                      Add slot
+                    </Button>
+                  </div>
+                  <div className="space-y-3">
+                    {loopSlots.map((slot, index) => (
+                      <div
+                        key={slot.id}
+                        className="rounded-md border border-border/50 bg-muted/30 p-4 shadow-sm"
+                      >
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.98fr)_minmax(0,0.9fr)_minmax(0,0.9fr)] lg:items-start">
+                          <div className="space-y-2">
+                            <Label>{`Date ${index + 1} (EST)`}</Label>
+                            <Popover open={slot.isDatePickerOpen} onOpenChange={(open) => handleLoopSlotDatePickerToggle(slot.id, open)}>
+                              <PopoverTrigger asChild>
+                                <div className="relative">
+                                  <Input
+                                    readOnly
+                                    value={slot.date ? moment(slot.date).tz(EST_TIMEZONE).format('MMM D, YYYY') : ''}
+                                    placeholder="Select date"
+                                    disabled={supportSubmitting}
+                                    className={cn(!slot.date && "text-muted-foreground", 'pr-10 cursor-pointer')}
+                                  />
+                                  <CalendarIcon className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                                </div>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                  mode="single"
+                                  selected={slot.date ?? undefined}
+                                  onSelect={(date) => handleLoopSlotDateChange(slot.id, date ?? undefined)}
+                                  initialFocus
+                                />
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Start Time (EST)</Label>
+                            <Input
+                              value={slot.timeInput}
+                              onChange={(event) => handleLoopSlotTimeChange(slot.id, event.target.value)}
+                              placeholder="e.g., 03:15 PM"
+                              disabled={supportSubmitting}
+                            />
+                            {slot.timeWarning && (
+                              <p className="text-xs text-destructive">{slot.timeWarning}</p>
+                            )}
+                          </div>
+                          <div className="space-y-2 lg:pt-[1.75rem]">
+                            <Label className="lg:sr-only">Choose preset</Label>
+                            <Select
+                              value={slot.timeValue}
+                              onValueChange={(value) => handleLoopSlotTimeChange(slot.id, moment(value, 'HH:mm').format('hh:mm A'))}
+                              disabled={supportSubmitting}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Pick from list" />
+                              </SelectTrigger>
+                              <SelectContent className="max-h-60">
+                                {DISPLAY_TIME_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Duration (minutes)</Label>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                              <Input
+                                value={slot.duration}
+                                onChange={(event) => handleLoopSlotDurationChange(slot.id, event.target.value)}
+                                placeholder="e.g., 60"
+                                type="number"
+                                min={5}
+                                step={5}
+                                inputMode="numeric"
+                                disabled={supportSubmitting}
+                                className="sm:max-w-[8rem]"
+                              />
+                              {loopSlots.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleRemoveLoopSlot(slot.id)}
+                                  disabled={supportSubmitting}
+                                  className="sm:self-start"
+                                >
+                                  Remove
+                                </Button>
+                              )}
+                            </div>
+                            {slot.durationWarning && (
+                              <p className="text-xs text-destructive">{slot.durationWarning}</p>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={supportInterviewDate ?? undefined}
-                        onSelect={handleSupportDateSelect}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-2">
-                  <Label>Time (EST)</Label>
-                  <div className="space-y-1">
-                    <Input
-                      value={supportTimeInput}
-                      onChange={(event) => handleSupportTimeChange(event.target.value)}
-                      placeholder="e.g., 03:15 PM"
-                      disabled={supportSubmitting}
-                    />
-                    <Select
-                      value={supportInterviewTime}
-                      onValueChange={(value) => handleSupportTimeChange(moment(value, 'HH:mm').format('hh:mm A'))}
-                      disabled={supportSubmitting}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Pick from list" />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {DISPLAY_TIME_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {supportTimeWarning && (
-                      <p className="text-xs text-destructive">{supportTimeWarning}</p>
-                    )}
+                    ))}
                   </div>
                 </div>
-              </div>
-              <p className="text-xs text-muted-foreground">Use Eastern Time (EST) for the interview slot.</p>
-              {supportWindowWarningKey.current && (
-                <p className="text-xs text-muted-foreground">The selected time is outside the 9:00 AM – 6:00 PM support window.</p>
+              ) : (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Date (EST)</Label>
+                      <Popover open={supportDatePickerOpen} onOpenChange={setSupportDatePickerOpen}>
+                        <PopoverTrigger asChild>
+                          <div className="relative">
+                            <Input
+                              readOnly
+                              value={supportInterviewDate ? moment(supportInterviewDate).tz(EST_TIMEZONE).format('MMM D, YYYY') : ''}
+                              placeholder="Select date"
+                              disabled={supportSubmitting}
+                              className={cn(!supportInterviewDate && "text-muted-foreground", 'pr-10 cursor-pointer')}
+                            />
+                            <CalendarIcon className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                          </div>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={supportInterviewDate ?? undefined}
+                            onSelect={handleSupportDateSelect}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Time (EST)</Label>
+                      <div className="space-y-1">
+                        <Input
+                          value={supportTimeInput}
+                          onChange={(event) => handleSupportTimeChange(event.target.value)}
+                          placeholder="e.g., 03:15 PM"
+                          disabled={supportSubmitting}
+                        />
+                        <Select
+                          value={supportInterviewTime}
+                          onValueChange={(value) => handleSupportTimeChange(moment(value, 'HH:mm').format('hh:mm A'))}
+                          disabled={supportSubmitting}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Pick from list" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-60">
+                            {DISPLAY_TIME_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {supportTimeWarning && (
+                          <p className="text-xs text-destructive">{supportTimeWarning}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Use Eastern Time (EST) for the interview slot.</p>
+                  {supportWindowWarningKey.current && (
+                    <p className="text-xs text-muted-foreground">The selected time is outside the 9:00 AM – 6:00 PM support window.</p>
+                  )}
+                </>
               )}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">

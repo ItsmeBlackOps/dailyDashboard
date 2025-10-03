@@ -74,9 +74,21 @@ export class TaskModel {
         }
       }
 
-      // Suggestions column: for now, driven by candidate expert
-      const suggestions = [];
-      if (candidateExpertDisplay) suggestions.push(candidateExpertDisplay);
+      const suggestions = Array.isArray(doc.suggestions)
+        ? doc.suggestions
+          .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+          .filter(Boolean)
+        : [];
+
+      if (candidateExpertDisplay) {
+        const lowerDisplay = candidateExpertDisplay.toLowerCase();
+        const hasCandidate = suggestions.some(
+          (entry) => entry && entry.toLowerCase() === lowerDisplay
+        );
+        if (!hasCandidate) {
+          suggestions.push(candidateExpertDisplay);
+        }
+      }
 
       return {
         ...doc,
@@ -102,6 +114,33 @@ export class TaskModel {
 
       if (!targetMoment.isValid()) {
         throw new Error('Invalid target date provided');
+      }
+
+      let effectiveTeamEmails = Array.isArray(teamEmails) ? [...teamEmails] : [];
+      const normalizedRole = (userRole || '').toLowerCase();
+
+      if ((normalizedRole === 'lead' || normalizedRole === 'am') && effectiveTeamEmails.length === 0) {
+        try {
+          const usersCol = database.getCollection('users');
+          const selfDisplayName = this.deriveDisplayNameFromEmail(userEmail);
+          const team = await usersCol
+            .find(
+              { teamLead: { $regex: `^${escapeRegex(selfDisplayName)}$`, $options: 'i' } },
+              { projection: { email: 1 } }
+            )
+            .toArray();
+
+          const pulled = team
+            .map((u) => (u?.email || '').toLowerCase())
+            .filter(Boolean);
+          const set = new Set([
+            ...effectiveTeamEmails.map((email) => (email || '').toLowerCase()),
+            ...pulled
+          ]);
+          effectiveTeamEmails = Array.from(set);
+        } catch (e) {
+          logger.error('Failed to expand teamEmails from users collection', { error: e.message, userEmail });
+        }
       }
 
       const startOfDay = targetMoment.clone().startOf('day');
@@ -169,7 +208,7 @@ export class TaskModel {
         ])
         .toArray();
 
-      const tasks = this.filterAndFormatTasks(docs, userEmail, userRole, teamEmails);
+      const tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails);
 
       tasks.sort((a, b) => {
         const diff = a.startTime - b.startTime;
@@ -266,8 +305,14 @@ export class TaskModel {
     const addTokens = (set, ...values) => {
       for (const candidate of values) {
         const normalized = normalizeForComparison(candidate);
-        if (normalized) {
-          set.add(normalized);
+        if (!normalized) continue;
+        set.add(normalized);
+
+        const segments = normalized.split(' ').filter(Boolean);
+        if (segments.length > 1) {
+          for (const segment of segments) {
+            set.add(segment);
+          }
         }
       }
     };
@@ -387,7 +432,7 @@ export class TaskModel {
         continue;
       }
 
-      if ((normalizedRole === 'lead' || normalizedRole === 'am') && !assignedEmailLower) {
+      if ((normalizedRole === 'lead' || normalizedRole === 'am')) {
         const candidateRawLower = (doc.candidateExpertRaw || '').toLowerCase();
         const candidateMatchesTeamEmail = candidateRawLower && teamEmailSet.has(candidateRawLower);
         let candidateMatchesTeamTokens = false;
@@ -562,7 +607,6 @@ export class TaskModel {
   async getTasksForKpi(userEmail, userRole, manager, teamEmails, startDate, endDate, dateField = 'Date of Interview') {
     try {
       const roleMatch = this.buildDashboardRoleMatch(userEmail, userRole, manager, teamEmails);
-
       const dateMatch = this.buildDateMatch(dateField, startDate, endDate);
       const match = {
         ...roleMatch,
@@ -603,7 +647,37 @@ export class TaskModel {
 
   async getTasksByRange(userEmail, userRole, manager, teamEmails, startDate, endDate, dateField = 'Date of Interview') {
     try {
-      const roleMatch = this.buildDashboardRoleMatch(userEmail, userRole, manager, teamEmails);
+      let effectiveTeamEmails = Array.isArray(teamEmails) ? [...teamEmails] : [];
+      const normalizedRole = (userRole || '').toLowerCase();
+
+      if ((normalizedRole === 'lead' || normalizedRole === 'am') && effectiveTeamEmails.length === 0) {
+        try {
+          const usersCol = database.getCollection('users');
+          const selfDisplayName = this.deriveDisplayNameFromEmail(userEmail);
+          const team = await usersCol
+            .find(
+              { teamLead: { $regex: `^${escapeRegex(selfDisplayName)}$`, $options: 'i' } },
+              { projection: { email: 1 } }
+            )
+            .toArray();
+
+          const pulled = team
+            .map((u) => (u?.email || '').toLowerCase())
+            .filter(Boolean);
+          const set = new Set([
+            ...effectiveTeamEmails.map((email) => (email || '').toLowerCase()),
+            ...pulled
+          ]);
+          effectiveTeamEmails = Array.from(set);
+        } catch (e) {
+          logger.error('Failed to expand teamEmails from users collection', { error: e.message, userEmail });
+        }
+      }
+
+      const shouldSkipRoleMatch = normalizedRole === 'lead' || normalizedRole === 'am';
+      const roleMatch = shouldSkipRoleMatch
+        ? {}
+        : this.buildDashboardRoleMatch(userEmail, userRole, manager, effectiveTeamEmails);
       const dateMatch = this.buildDateMatch(dateField, startDate, endDate);
       const baseMatch = {
         ...roleMatch,
@@ -647,7 +721,7 @@ export class TaskModel {
         ])
         .toArray();
 
-      const tasks = this.filterAndFormatTasks(docs, userEmail, userRole, teamEmails);
+      const tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails);
 
       tasks.sort((a, b) => {
         const aS = (a.startTime ? new Date(a.startTime) : new Date(0)).getTime();
@@ -961,8 +1035,58 @@ export class TaskModel {
     if (normalizedRole === 'lead' || normalizedRole === 'am') {
       const teamEmails = userModel
         .getTeamEmails(user.email, user.role, user.teamLead)
-        .map((email) => email.toLowerCase());
-      return teamEmails.includes((assignedEmail || '').toLowerCase());
+        .map((email) => (email || '').toLowerCase());
+
+      if (teamEmails.includes((assignedEmail || '').toLowerCase())) {
+        return true;
+      }
+
+      const norm = (value = '') =>
+        value
+          .toString()
+          .trim()
+          .toLowerCase()
+          .split('@')[0]
+          .replace(/[^a-z0-9]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      const teamTokens = new Set();
+      for (const email of teamEmails) {
+        if (!email) continue;
+        const local = email.split('@')[0];
+        const display = this.deriveDisplayNameFromEmail(email);
+        for (const candidate of [local, display]) {
+          const normalized = norm(candidate);
+          if (!normalized) continue;
+          teamTokens.add(normalized);
+          const pieces = normalized.split(' ').filter(Boolean);
+          for (const piece of pieces) {
+            teamTokens.add(piece);
+          }
+        }
+      }
+
+      const suggestionStrings = [
+        ...(Array.isArray(task.suggestions) ? task.suggestions : []),
+        task.candidateExpertDisplay || ''
+      ].filter(Boolean);
+
+      for (const suggestion of suggestionStrings) {
+        const normalizedSuggestion = norm(suggestion);
+        if (!normalizedSuggestion) continue;
+        if (teamTokens.has(normalizedSuggestion)) {
+          return true;
+        }
+
+        for (const piece of normalizedSuggestion.split(' ')) {
+          if (teamTokens.has(piece)) {
+            return true;
+          }
+        }
+      }
+
+      return false;
     }
 
     if (normalizedRole === 'recruiter') {
