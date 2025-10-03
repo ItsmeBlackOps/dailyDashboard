@@ -417,7 +417,7 @@ export class TaskSocketHandler {
       const user = socket.data.user;
       if (!user) return;
 
-      if (this.taskService.taskModel.shouldSendTaskToUser(user, task.assignedEmail, this.taskService.userModel)) {
+      if (this.taskService.taskModel.shouldSendTaskToUser(user, task, this.taskService.userModel)) {
         socket.emit(event, task);
 
         logger.debug('Task update emitted', {

@@ -61,6 +61,7 @@ export default function SignIn() {
         localStorage.setItem("manager", response.manager);
         localStorage.setItem("email", normalizedEmail);
         localStorage.setItem("displayName", deriveDisplayNameFromEmail(normalizedEmail));
+        localStorage.setItem("supportAnnouncementPending", 'true');
 
         // Reconnect socket with token for future events
         socket.disconnect();

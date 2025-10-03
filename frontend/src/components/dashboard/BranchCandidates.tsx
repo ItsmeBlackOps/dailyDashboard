@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DOMPurify from "dompurify";
+import moment from "moment-timezone";
 import { io, Socket } from "socket.io-client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,8 +12,17 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, API_URL } from "@/hooks/useAuth";
+import { EmailSignature } from "@/components/layout/emailSignature";
+import { useUserProfile } from "@/contexts/UserProfileContext";
+import { cn } from "@/lib/utils";
+import { Calendar as CalendarIcon } from "lucide-react";
+import { useMsal } from "@azure/msal-react";
+import { GRAPH_MAIL_SCOPES } from "@/constants";
 
 interface BranchCandidatesProps {
   role: string;
@@ -41,6 +51,42 @@ interface RecruiterOption {
   value: string;
   label: string;
 }
+
+interface SupportFormState {
+  candidateName: string;
+  technology: string;
+  email: string;
+  endClient: string;
+  jobTitle: string;
+  interviewRound: string;
+  interviewDateTime: string;
+  duration: string;
+  contactNumber: string;
+}
+
+const SUPPORT_ROUNDS = [
+  "1st Round",
+  "2nd Round",
+  "3rd Round",
+  "4th Round",
+  "5th Round",
+  "Technical Round",
+  "Coding Round",
+  "Loop Round",
+  "Final Round"
+] as const;
+
+const EST_TIMEZONE = "America/New_York";
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5 MB default limit mirrored with backend
+
+const DISPLAY_TIME_OPTIONS = Array.from({ length: 288 }, (_, index) => {
+  const minutes = index * 5;
+  const hours = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  const value = `${String(hours).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  const label = moment(value, 'HH:mm').format('hh:mm A');
+  return { value, label };
+});
 
 interface BranchCandidatesResponse {
   success: boolean;
@@ -83,17 +129,20 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const normalizedRole = role.trim().toLowerCase();
   const canView = ["admin", "mm", "mam", "mlead", "lead", "user", "am", "manager", "recruiter"].includes(normalizedRole);
   const canEdit = ["mm", "mam", "mlead", "recruiter", "lead", "am", "admin"].includes(normalizedRole);
-  const canEditBasicFields = ["mm", "mam", "mlead", "recruiter","admin"].includes(normalizedRole);
-  const canChangeRecruiterField = ['mm', 'mam', 'mlead',"admin"].includes(normalizedRole);
-  const canChangeContactField = ['mm', 'mam','mlead', 'recruiter',"admin"].includes(normalizedRole);
-  const canChangeExpertField = ['lead', 'am',"admin"].includes(normalizedRole);
+  const canEditBasicFields = ["mm", "mam", "mlead", "recruiter", "admin"].includes(normalizedRole);
+  const canChangeRecruiterField = ['mm', 'mam', 'mlead', "admin"].includes(normalizedRole);
+  const canChangeContactField = ['mm', 'mam', 'mlead', 'recruiter', "admin"].includes(normalizedRole);
+  const canChangeExpertField = ['lead', 'am', "admin"].includes(normalizedRole);
   const isManager = normalizedRole === 'manager';
   const showCreateButton = isManager || normalizedRole === 'mm';
   const [loading, setLoading] = useState<boolean>(canView);
-  const [error, setError] = useState<string>(""); 
+  const [error, setError] = useState<string>("");
   const [search, setSearch] = useState<string>("");
-  const { refreshAccessToken } = useAuth();
+  const { refreshAccessToken, authFetch } = useAuth();
   const { toast } = useToast();
+  const { profile } = useUserProfile();
+  const { instance, accounts } = useMsal();
+  const account = accounts[0];
   const [recruiterOptions, setRecruiterOptions] = useState<RecruiterOption[]>([]);
   const [expertOptions, setExpertOptions] = useState<RecruiterOption[]>([]);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -119,6 +168,34 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   });
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
+  const canSendSupport = ['recruiter', 'mlead', 'mam', 'mm'].includes(normalizedRole);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportCandidate, setSupportCandidate] = useState<CandidateRow | null>(null);
+  const [supportForm, setSupportForm] = useState<SupportFormState>({
+    candidateName: '',
+    technology: '',
+    email: '',
+    endClient: '',
+    jobTitle: '',
+    interviewRound: SUPPORT_ROUNDS[0],
+    interviewDateTime: '',
+    duration: '',
+    contactNumber: '',
+  });
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [jdFile, setJdFile] = useState<File | null>(null);
+  const [additionalFiles, setAdditionalFiles] = useState<File[]>([]);
+  const [supportError, setSupportError] = useState('');
+  const [supportSubmitting, setSupportSubmitting] = useState(false);
+  const [supportInterviewDate, setSupportInterviewDate] = useState<Date | null>(null);
+  const [supportInterviewTime, setSupportInterviewTime] = useState<string>('');
+  const [supportDatePickerOpen, setSupportDatePickerOpen] = useState(false);
+  const [supportTimeInput, setSupportTimeInput] = useState<string>('');
+  const [supportTimeWarning, setSupportTimeWarning] = useState<string>('');
+  const [customMessageEnabled, setCustomMessageEnabled] = useState(false);
+  const [customMessage, setCustomMessage] = useState('');
+  const supportWindowWarningKey = useRef<string>('');
+  const [durationWarning, setDurationWarning] = useState('');
 
   const normalizeOptionList = useCallback((options?: RecruiterOption[]) => {
     if (!Array.isArray(options)) {
@@ -141,6 +218,445 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
     return normalized.sort((a, b) => a.label.localeCompare(b.label));
   }, []);
+
+  const titleCasePreserveSpacing = useCallback((value: string) => {
+    let result = '';
+    let capitalizeNext = true;
+
+    for (const char of value) {
+      if (/\s/.test(char)) {
+        result += char;
+        capitalizeNext = true;
+        continue;
+      }
+
+      if (!/\p{L}/u.test(char)) {
+        result += char;
+        capitalizeNext = true;
+        continue;
+      }
+
+      result += capitalizeNext ? char.toLocaleUpperCase() : char.toLocaleLowerCase();
+      capitalizeNext = false;
+    }
+
+    return result;
+  }, []);
+
+  const normalizeTitleValue = useCallback((value: string) => {
+    const cased = titleCasePreserveSpacing(value);
+    return cased.replace(/\s+/g, ' ').trim();
+  }, [titleCasePreserveSpacing]);
+
+  const resetSupportState = useCallback(() => {
+    setSupportOpen(false);
+    setSupportCandidate(null);
+    setSupportForm({
+      candidateName: '',
+      technology: '',
+      email: '',
+      endClient: '',
+      jobTitle: '',
+      interviewRound: SUPPORT_ROUNDS[0],
+      interviewDateTime: '',
+      duration: '',
+      contactNumber: '',
+    });
+    setResumeFile(null);
+    setJdFile(null);
+    setAdditionalFiles([]);
+    setSupportError('');
+    setSupportSubmitting(false);
+    setSupportInterviewDate(null);
+    setSupportInterviewTime('');
+    setSupportDatePickerOpen(false);
+    setSupportTimeInput('');
+    setSupportTimeWarning('');
+    setCustomMessage('');
+    setCustomMessageEnabled(false);
+    supportWindowWarningKey.current = '';
+    setDurationWarning('');
+  }, []);
+
+  const openSupportDialog = useCallback((candidate: CandidateRow) => {
+    const formattedName = normalizeTitleValue(candidate.name || '');
+    const formattedTechnology = candidate.technology ? normalizeTitleValue(candidate.technology) : '';
+    setSupportCandidate(candidate);
+    setSupportForm({
+      candidateName: formattedName,
+      technology: formattedTechnology,
+      email: (candidate.email || '').toLowerCase(),
+      endClient: '',
+      jobTitle: '',
+      interviewRound: SUPPORT_ROUNDS[0],
+      interviewDateTime: '',
+      duration: '',
+      contactNumber: (candidate.contact || '').trim(),
+    });
+    setResumeFile(null);
+    setJdFile(null);
+    setAdditionalFiles([]);
+    setSupportError('');
+    setSupportSubmitting(false);
+    setSupportInterviewDate(null);
+    setSupportInterviewTime('');
+    setSupportDatePickerOpen(false);
+    setSupportTimeInput('');
+    setSupportTimeWarning('');
+    setCustomMessage('');
+    setCustomMessageEnabled(false);
+    supportWindowWarningKey.current = '';
+    setDurationWarning('');
+    setSupportOpen(true);
+  }, [normalizeTitleValue]);
+
+  const handleSupportFieldChange = useCallback((field: keyof SupportFormState, value: string) => {
+    if (field === 'contactNumber' || field === 'interviewDateTime') {
+      return;
+    }
+    setSupportError('');
+    setSupportForm((prev) => {
+      if (field === 'duration') {
+        const digitsOnly = value.replace(/[^0-9]/g, '').slice(0, 3);
+        const minutes = Number.parseInt(digitsOnly, 10);
+
+        if (!digitsOnly) {
+          setDurationWarning('');
+        } else if (!Number.isFinite(minutes) || minutes <= 0) {
+          setDurationWarning('Duration must be a positive number of minutes.');
+        } else if (minutes % 5 !== 0) {
+          setDurationWarning('Duration must be in 5-minute increments.');
+        } else {
+          setDurationWarning('');
+        }
+
+        return { ...prev, duration: digitsOnly };
+      }
+
+      let nextValue = value;
+      if (field === 'endClient' || field === 'jobTitle') {
+        nextValue = titleCasePreserveSpacing(value);
+      }
+      if (field === 'email') {
+        nextValue = value.trim().toLowerCase();
+      }
+      return { ...prev, [field]: nextValue };
+    });
+  }, [titleCasePreserveSpacing]);
+
+  const computeInterviewDateTimeValue = useCallback((date: Date | null, time: string): string => {
+    if (!date || !time) {
+      return '';
+    }
+    const [hours, minutes] = time.split(':').map((segment) => Number.parseInt(segment, 10));
+    const zoned = moment(date).tz(EST_TIMEZONE).set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
+    return zoned.format('YYYY-MM-DDTHH:mm');
+  }, []);
+
+  const warnIfOutOfHours = useCallback((date: Date | null, time: string) => {
+    if (!date || !time) {
+      supportWindowWarningKey.current = '';
+      return;
+    }
+
+    const [hours, minutes] = time.split(':').map((segment) => Number.parseInt(segment, 10));
+    const zoned = moment(date).tz(EST_TIMEZONE).set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
+    if (!zoned.isValid()) {
+      supportWindowWarningKey.current = '';
+      return;
+    }
+
+    const hour = zoned.hour();
+    const minute = zoned.minute();
+    const warningKey = zoned.toISOString();
+    const outsideWindow = hour < 9 || hour > 18 || (hour === 18 && minute > 0);
+
+    if (outsideWindow && supportWindowWarningKey.current !== warningKey) {
+      toast({
+        title: 'Outside support hours',
+        description: 'Interview falls outside the standard 9:00 AM – 6:00 PM EST window.',
+        variant: 'destructive'
+      });
+      supportWindowWarningKey.current = warningKey;
+    }
+
+    if (!outsideWindow) {
+      supportWindowWarningKey.current = '';
+    }
+  }, [toast]);
+
+  const handleSupportDateSelect = useCallback((date: Date | undefined) => {
+    if (!date) return;
+    setSupportInterviewDate(date);
+    setSupportError('');
+    setSupportDatePickerOpen(false);
+    setSupportForm((prev) => ({
+      ...prev,
+      interviewDateTime: computeInterviewDateTimeValue(date, supportInterviewTime)
+    }));
+    warnIfOutOfHours(date, supportInterviewTime);
+  }, [computeInterviewDateTimeValue, supportInterviewTime, warnIfOutOfHours]);
+
+  const validateTimeInput = useCallback((value: string): string => {
+    const trimmed = value.trim().toUpperCase();
+    const match = /^([0-1]?\d|2[0-3]):([0-5]\d)(\s*(AM|PM))?$/u.exec(trimmed);
+    if (!match) return '';
+
+    let hours = Number.parseInt(match[1], 10);
+    const minuteRaw = Number.parseInt(match[2], 10);
+    const meridiem = match[4];
+
+    if (meridiem) {
+      hours %= 12;
+      if (meridiem === 'PM') {
+        hours += 12;
+      }
+    }
+
+    const alignedMinutes = Math.round(minuteRaw / 5) * 5;
+    const normalizedMinute = alignedMinutes === 60 ? 55 : alignedMinutes;
+    const normalizedHour = alignedMinutes === 60 ? (hours + 1) % 24 : hours;
+
+    return `${String(normalizedHour).padStart(2, '0')}:${String(normalizedMinute).padStart(2, '0')}`;
+  }, []);
+
+  const handleSupportTimeChange = useCallback((value: string) => {
+    setSupportTimeInput(value);
+    const normalized = validateTimeInput(value);
+    if (!normalized) {
+      setSupportTimeWarning('Enter a valid time in 5-minute increments (e.g., 03:15 PM).');
+      setSupportInterviewTime('');
+      setSupportForm((prev) => ({ ...prev, interviewDateTime: '' }));
+      return;
+    }
+
+    setSupportTimeWarning('');
+    setSupportInterviewTime(normalized);
+    setSupportForm((prev) => ({
+      ...prev,
+      interviewDateTime: computeInterviewDateTimeValue(supportInterviewDate, normalized)
+    }));
+    warnIfOutOfHours(supportInterviewDate, normalized);
+  }, [computeInterviewDateTimeValue, supportInterviewDate, validateTimeInput, warnIfOutOfHours]);
+
+  const handleSupportFileChange = useCallback((field: 'resume' | 'jobDescription' | 'additionalAttachments', files: FileList | null) => {
+    if (!files || files.length === 0) {
+      if (field === 'resume') setResumeFile(null);
+      if (field === 'jobDescription') setJdFile(null);
+      if (field === 'additionalAttachments') setAdditionalFiles([]);
+      return;
+    }
+
+    const validateFile = (file: File) => {
+      if (file.type !== 'application/pdf') {
+        throw new Error('Only PDF files are allowed.');
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        const sizeMb = (MAX_ATTACHMENT_BYTES / (1024 * 1024)).toFixed(1);
+        throw new Error(`Attachments must be under ${sizeMb} MB.`);
+      }
+      return file;
+    };
+
+    try {
+      if (field === 'additionalAttachments') {
+        const validated = Array.from(files).map((file) => validateFile(file));
+        setAdditionalFiles(validated);
+      } else {
+        const file = validateFile(files[0]);
+        if (field === 'resume') {
+          setResumeFile(file);
+        } else {
+          setJdFile(file);
+        }
+      }
+      setSupportError('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid attachment';
+      setSupportError(message);
+      if (field === 'additionalAttachments') {
+        setAdditionalFiles([]);
+      } else if (field === 'resume') {
+        setResumeFile(null);
+      } else {
+        setJdFile(null);
+      }
+    }
+  }, []);
+
+  const handleSupportSubmit = useCallback(async () => {
+    if (!supportCandidate) {
+      setSupportError('No candidate selected.');
+      return;
+    }
+
+    if (!supportForm.endClient.trim()) {
+      setSupportError('End client is required.');
+      return;
+    }
+
+    if (!supportForm.jobTitle.trim()) {
+      setSupportError('Job title is required.');
+      return;
+    }
+
+    if (supportTimeWarning) {
+      setSupportError('Fix the interview time before submitting.');
+      return;
+    }
+
+    if (!supportInterviewDate || !supportInterviewTime || !supportForm.interviewDateTime.trim()) {
+      setSupportError('Interview date and time is required.');
+      return;
+    }
+
+    if (durationWarning) {
+      setSupportError(durationWarning);
+      return;
+    }
+
+    const durationMinutes = Number.parseInt(supportForm.duration.trim(), 10);
+    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+      setSupportError('Duration must be a positive number of minutes.');
+      return;
+    }
+
+    if (durationMinutes % 5 !== 0) {
+      setSupportError('Duration must be in 5-minute increments.');
+      return;
+    }
+
+    if (!supportForm.contactNumber.trim()) {
+      setSupportError('Contact number is required.');
+      return;
+    }
+
+    const interviewMoment = moment.tz(supportForm.interviewDateTime, 'YYYY-MM-DDTHH:mm', EST_TIMEZONE);
+    if (!interviewMoment.isValid()) {
+      setSupportError('Provide a valid interview date and time in EST.');
+      return;
+    }
+
+    const now = moment().tz(EST_TIMEZONE);
+    if (interviewMoment.isBefore(now)) {
+      setSupportError('Interview date and time must be in the future.');
+      return;
+    }
+
+    let activeAccount = account;
+    let graphToken = '';
+    try {
+      if (!activeAccount) {
+        const loginResult = await instance.loginPopup({ scopes: GRAPH_MAIL_SCOPES });
+        activeAccount = loginResult.account ?? loginResult.accounts?.[0] ?? null;
+        graphToken = loginResult.accessToken || '';
+        if (activeAccount) {
+          instance.setActiveAccount(activeAccount);
+        }
+      }
+
+      if (activeAccount && !graphToken) {
+        try {
+          const tokenResponse = await instance.acquireTokenSilent({
+            account: activeAccount,
+            scopes: GRAPH_MAIL_SCOPES
+          });
+          graphToken = tokenResponse.accessToken;
+        } catch (tokenError) {
+          console.warn('Silent Graph token acquisition failed, attempting popup', tokenError);
+          const popupResponse = await instance.acquireTokenPopup({
+            scopes: GRAPH_MAIL_SCOPES
+          });
+          graphToken = popupResponse.accessToken;
+        }
+      }
+
+      if (!graphToken) {
+        throw new Error('Unable to acquire Graph access token');
+      }
+    } catch (tokenError) {
+      console.error('Failed to acquire Graph token', tokenError);
+      setSupportError('Authorize Microsoft access and try again.');
+      return;
+    }
+
+    try {
+      setSupportSubmitting(true);
+      setSupportError('');
+
+      const formData = new FormData();
+      const normalizedEndClient = normalizeTitleValue(supportForm.endClient);
+      const normalizedJobTitle = normalizeTitleValue(supportForm.jobTitle);
+
+      formData.append('candidateId', supportCandidate.id);
+      formData.append('endClient', normalizedEndClient);
+      formData.append('jobTitle', normalizedJobTitle);
+      formData.append('interviewRound', supportForm.interviewRound);
+      formData.append('interviewDateTime', interviewMoment.toISOString());
+      formData.append('duration', String(durationMinutes));
+      formData.append('contactNumber', supportForm.contactNumber.trim());
+      if (customMessageEnabled && customMessage.trim()) {
+        formData.append('customMessage', customMessage.trim());
+      }
+
+      if (resumeFile) {
+        formData.append('resume', resumeFile);
+      }
+      if (jdFile) {
+        formData.append('jobDescription', jdFile);
+      }
+      additionalFiles.forEach((file) => {
+        formData.append('additionalAttachments', file);
+      });
+
+      const response = await authFetch(`${API_URL}/api/support/interview`, {
+        method: 'POST',
+        headers: {
+          'x-graph-access-token': graphToken
+        },
+        body: formData,
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const message = typeof payload?.error === 'string' ? payload.error : 'Unable to send support request';
+        setSupportError(message);
+        return;
+      }
+
+      toast({
+        title: 'Support request sent',
+        description: typeof payload?.message === 'string'
+          ? payload.message
+          : 'Interview support request emailed successfully.',
+      });
+
+      resetSupportState();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to send support request';
+      setSupportError(message);
+    } finally {
+      setSupportSubmitting(false);
+    }
+  }, [
+    supportCandidate,
+    supportForm,
+    resumeFile,
+    jdFile,
+    additionalFiles,
+    authFetch,
+    toast,
+    normalizeTitleValue,
+    resetSupportState,
+    instance,
+    supportInterviewDate,
+    supportInterviewTime,
+    customMessageEnabled,
+    customMessage,
+    supportTimeWarning,
+    durationWarning
+  ]);
 
   const combinedExpertOptions = useMemo(() => {
     if (!canChangeExpertField) {
@@ -667,188 +1183,220 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
             {renderScopeBadge()}
           </div>
 
-        {loading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <Skeleton key={index} className="h-10 w-full" />
-            ))}
-          </div>
-        ) : error ? (
-          <p className="text-sm text-destructive">{DOMPurify.sanitize(error)}</p>
-        ) : filteredCandidates.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {isManager
-              ? 'No candidates submitted yet. Use “Add Candidate” to create a new record.'
-              : 'No candidates found for the selected branch.'}
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Candidate</TableHead>
-                  <TableHead>Technology</TableHead>
-                  <TableHead>Expert</TableHead>
-                  <TableHead>Recruiter</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Contact</TableHead>
-                  {canEdit && <TableHead className="text-right">Actions</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredCandidates.map((candidate) => (
-                  <TableRow key={candidate.id}>
-                    <TableCell>{DOMPurify.sanitize(candidate.name || "")}</TableCell>
-                    <TableCell>{DOMPurify.sanitize(candidate.technology || "")}</TableCell>
-                    <TableCell>{DOMPurify.sanitize(candidate.expert || "")}</TableCell>
-                    <TableCell>{DOMPurify.sanitize(candidate.recruiter || "")}</TableCell>
-                    <TableCell>{DOMPurify.sanitize(candidate.email || "")}</TableCell>
-                    <TableCell>{DOMPurify.sanitize(candidate.contact || "")}</TableCell>
-                    {canEdit && (
-                      <TableCell className="text-right">
-                        <Button size="sm" variant="outline" onClick={() => openEditDialog(candidate)}>
-                          Edit
-                        </Button>
-                      </TableCell>
-                    )}
+          {loading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <Skeleton key={index} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : error ? (
+            <p className="text-sm text-destructive">{DOMPurify.sanitize(error)}</p>
+          ) : filteredCandidates.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {isManager
+                ? 'No candidates submitted yet. Use “Add Candidate” to create a new record.'
+                : 'No candidates found for the selected branch.'}
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Candidate</TableHead>
+                    <TableHead>Technology</TableHead>
+                    <TableHead>Expert</TableHead>
+                    <TableHead>Recruiter</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Contact</TableHead>
+                    {(canEdit || canSendSupport) && <TableHead className="text-right">Actions</TableHead>}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-      {canEdit && (
-        <Dialog open={isEditOpen} onOpenChange={(open) => (!open ? resetEditState() : setIsEditOpen(true))}>
-          <DialogContent className="sm:max-w-[480px]">
-            <DialogHeader>
-              <DialogTitle>Edit Candidate</DialogTitle>
-              <DialogDescription>
-                {canChangeExpertField && !canEditBasicFields
-                  ? 'Select a new expert to reassign this candidate. Other fields remain read-only for leads.'
-                  : 'Update candidate details. Fields you cannot change are shown as read-only.'}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="space-y-2">
-                <Label htmlFor="candidate-name">Name</Label>
-                <Input
-                  id="candidate-name"
-                  value={formState.name}
-                  onChange={(event) => handleFormChange('name', event.target.value)}
-                  placeholder="Candidate name"
-                  disabled={!canEditBasicFields}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="candidate-email">Email</Label>
-                <Input
-                  id="candidate-email"
-                  type="email"
-                  value={formState.email}
-                  onChange={(event) => handleFormChange('email', event.target.value)}
-                  placeholder="candidate@example.com"
-                  disabled={!canEditBasicFields}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="candidate-technology">Technology</Label>
-                <Input
-                  id="candidate-technology"
-                  value={formState.technology}
-                  onChange={(event) => handleFormChange('technology', event.target.value)}
-                  placeholder="Primary technology"
-                  disabled={!canEditBasicFields}
-                />
-              </div>
-              {canChangeExpertField ? (
+                </TableHeader>
+                <TableBody>
+                  {filteredCandidates.map((candidate) => {
+                    const sanitizedName = DOMPurify.sanitize(candidate.name || '');
+                    const sanitizedTechnology = DOMPurify.sanitize(candidate.technology || '');
+                    const sanitizedExpert = DOMPurify.sanitize(candidate.expert || '');
+                    const sanitizedRecruiter = DOMPurify.sanitize(candidate.recruiter || '');
+                    const sanitizedEmail = DOMPurify.sanitize(candidate.email || '');
+                    const sanitizedContact = DOMPurify.sanitize(candidate.contact || '');
+
+                    return (
+                      <TableRow key={candidate.id}>
+                        <TableCell className="align-top">
+                          <div className="flex flex-col gap-2">
+                            <span>{sanitizedName}</span>
+                            {canSendSupport && (
+                              <Button
+                                size="xs"
+                                variant="secondary"
+                                className="md:hidden w-fit"
+                                onClick={() => openSupportDialog(candidate)}
+                              >
+                                Support
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{sanitizedTechnology}</TableCell>
+                        <TableCell>{sanitizedExpert}</TableCell>
+                        <TableCell>{sanitizedRecruiter}</TableCell>
+                        <TableCell>{sanitizedEmail}</TableCell>
+                        <TableCell>{sanitizedContact}</TableCell>
+                        {(canEdit || canSendSupport) && (
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {canSendSupport && (
+                                <Button size="sm" variant="secondary" onClick={() => openSupportDialog(candidate)}>
+                                  Support
+                                </Button>
+                              )}
+                              {canEdit && (
+                                <Button size="sm" variant="outline" onClick={() => openEditDialog(candidate)}>
+                                  Edit
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+        {canEdit && (
+          <Dialog open={isEditOpen} onOpenChange={(open) => (!open ? resetEditState() : setIsEditOpen(true))}>
+            <DialogContent className="sm:max-w-[480px]">
+              <DialogHeader>
+                <DialogTitle>Edit Candidate</DialogTitle>
+                <DialogDescription>
+                  {canChangeExpertField && !canEditBasicFields
+                    ? 'Select a new expert to reassign this candidate. Other fields remain read-only for leads.'
+                    : 'Update candidate details. Fields you cannot change are shown as read-only.'}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
                 <div className="space-y-2">
-                  <Label htmlFor="candidate-expert">Expert</Label>
-                  <Select
-                    value={formState.expert || 'none'}
-                    onValueChange={(value) => handleFormChange('expert', value === 'none' ? '' : value)}
-                    disabled={!combinedExpertOptions.length && !formState.expert}
-                  >
-                    <SelectTrigger id="candidate-expert">
-                      <SelectValue placeholder="Select expert" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Select expert</SelectItem>
-                      {combinedExpertOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {DOMPurify.sanitize(option.label)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {normalizedRole === 'lead' && (
-                    <p className="text-xs text-muted-foreground">Leads must choose an expert email to save changes.</p>
-                  )}
-                  {!combinedExpertOptions.length && (
-                    <p className="text-xs text-muted-foreground">No expert options were provided for this scope.</p>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label>Expert</Label>
-                  <Input value={currentExpertLabel || formState.expert || ''} disabled />
-                </div>
-              )}
-              {canChangeRecruiterField ? (
-                <div className="space-y-2">
-                  <Label htmlFor="candidate-recruiter">Recruiter</Label>
-                  <Select
-                    value={formState.recruiter || 'none'}
-                    onValueChange={(value) => handleFormChange('recruiter', value === 'none' ? '' : value)}
-                  >
-                    <SelectTrigger id="candidate-recruiter">
-                      <SelectValue placeholder="Select recruiter" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No change</SelectItem>
-                      {recruiterOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {DOMPurify.sanitize(option.label)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label>Recruiter</Label>
-                  <Input value={formState.recruiter || ''} disabled />
-                </div>
-              )}
-              {canChangeContactField ? (
-                <div className="space-y-2">
-                  <Label htmlFor="candidate-contact">Contact</Label>
+                  <Label htmlFor="candidate-name">Name</Label>
                   <Input
-                    id="candidate-contact"
-                    value={formState.contact}
-                    onChange={(event) => handleFormChange('contact', event.target.value)}
-                    placeholder="Contact number"
+                    id="candidate-name"
+                    value={formState.name}
+                    onChange={(event) => handleFormChange('name', event.target.value)}
+                    placeholder="Candidate name"
+                    disabled={!canEditBasicFields}
                   />
                 </div>
-              ) : (
                 <div className="space-y-2">
-                  <Label>Contact</Label>
-                  <Input value={formState.contact || ''} disabled />
+                  <Label htmlFor="candidate-email">Email</Label>
+                  <Input
+                    id="candidate-email"
+                    type="email"
+                    value={formState.email}
+                    onChange={(event) => handleFormChange('email', event.target.value)}
+                    placeholder="candidate@example.com"
+                    disabled={!canEditBasicFields}
+                  />
                 </div>
-              )}
-              {updateError && <p className="text-sm text-destructive">{updateError}</p>}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={resetEditState} disabled={updating}>
-                Cancel
-              </Button>
-              <Button onClick={handleUpdateCandidate} disabled={updating}>
-                {updating ? 'Saving…' : 'Save changes'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+                <div className="space-y-2">
+                  <Label htmlFor="candidate-technology">Technology</Label>
+                  <Input
+                    id="candidate-technology"
+                    value={formState.technology}
+                    onChange={(event) => handleFormChange('technology', event.target.value)}
+                    placeholder="Primary technology"
+                    disabled={!canEditBasicFields}
+                  />
+                </div>
+                {canChangeExpertField ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="candidate-expert">Expert</Label>
+                    <Select
+                      value={formState.expert || 'none'}
+                      onValueChange={(value) => handleFormChange('expert', value === 'none' ? '' : value)}
+                      disabled={!combinedExpertOptions.length && !formState.expert}
+                    >
+                      <SelectTrigger id="candidate-expert">
+                        <SelectValue placeholder="Select expert" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Select expert</SelectItem>
+                        {combinedExpertOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {DOMPurify.sanitize(option.label)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {normalizedRole === 'lead' && (
+                      <p className="text-xs text-muted-foreground">Leads must choose an expert email to save changes.</p>
+                    )}
+                    {!combinedExpertOptions.length && (
+                      <p className="text-xs text-muted-foreground">No expert options were provided for this scope.</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label>Expert</Label>
+                    <Input value={currentExpertLabel || formState.expert || ''} disabled />
+                  </div>
+                )}
+                {canChangeRecruiterField ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="candidate-recruiter">Recruiter</Label>
+                    <Select
+                      value={formState.recruiter || 'none'}
+                      onValueChange={(value) => handleFormChange('recruiter', value === 'none' ? '' : value)}
+                    >
+                      <SelectTrigger id="candidate-recruiter">
+                        <SelectValue placeholder="Select recruiter" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No change</SelectItem>
+                        {recruiterOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {DOMPurify.sanitize(option.label)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label>Recruiter</Label>
+                    <Input value={formState.recruiter || ''} disabled />
+                  </div>
+                )}
+                {canChangeContactField ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="candidate-contact">Contact</Label>
+                    <Input
+                      id="candidate-contact"
+                      value={formState.contact}
+                      onChange={(event) => handleFormChange('contact', event.target.value)}
+                      placeholder="Contact number"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label>Contact</Label>
+                    <Input value={formState.contact || ''} disabled />
+                  </div>
+                )}
+                {updateError && <p className="text-sm text-destructive">{updateError}</p>}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={resetEditState} disabled={updating}>
+                  Cancel
+                </Button>
+                <Button onClick={handleUpdateCandidate} disabled={updating}>
+                  {updating ? 'Saving…' : 'Save changes'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </Card>
       {showCreateButton && (
         <Dialog open={isCreateOpen} onOpenChange={(open) => (!open ? resetCreateState() : setIsCreateOpen(true))}>
@@ -937,6 +1485,251 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               </Button>
               <Button onClick={handleCreateCandidate} disabled={creating || recruiterOptions.length === 0}>
                 {creating ? 'Submitting…' : 'Submit Candidate'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+      {canSendSupport && (
+        <Dialog open={supportOpen} onOpenChange={(open) => (!open ? resetSupportState() : setSupportOpen(true))}>
+          <DialogContent className="sm:max-w-[520px]">
+            <DialogHeader>
+              <DialogTitle>Request Interview Support</DialogTitle>
+              <DialogDescription>
+                Provide interview details to notify tech leadership with the required context and attachments.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="support-candidate-name">Candidate Name</Label>
+                  <Input
+                    id="support-candidate-name"
+                    value={supportForm.candidateName}
+                    disabled
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="support-technology">Technology</Label>
+                  <Input
+                    id="support-technology"
+                    value={supportForm.technology}
+                    disabled
+                  />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="support-email">Email ID</Label>
+                  <Input
+                    id="support-email"
+                    type="email"
+                    value={supportForm.email}
+                    disabled
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="support-contact">Contact Number</Label>
+                  <Input
+                    id="support-contact"
+                    value={supportForm.contactNumber}
+                    placeholder="e.g., +1 555 123 4567"
+                    readOnly
+                    className="bg-muted"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="support-client">End Client</Label>
+                  <Input
+                    id="support-client"
+                    value={supportForm.endClient}
+                    onChange={(event) => handleSupportFieldChange('endClient', event.target.value)}
+                    placeholder="Client name"
+                    disabled={supportSubmitting}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="support-job-title">Job Title</Label>
+                  <Input
+                    id="support-job-title"
+                    value={supportForm.jobTitle}
+                    onChange={(event) => handleSupportFieldChange('jobTitle', event.target.value)}
+                    placeholder="Role title"
+                    disabled={supportSubmitting}
+                  />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="support-round">Interview Round</Label>
+                  <Select
+                    value={supportForm.interviewRound}
+                    onValueChange={(value) => handleSupportFieldChange('interviewRound', value)}
+                    disabled={supportSubmitting}
+                  >
+                    <SelectTrigger id="support-round">
+                      <SelectValue placeholder="Select round" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SUPPORT_ROUNDS.map((round) => (
+                        <SelectItem key={round} value={round}>
+                          {round}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="support-duration">Duration (minutes)</Label>
+                  <Input
+                    id="support-duration"
+                    value={supportForm.duration}
+                    onChange={(event) => handleSupportFieldChange('duration', event.target.value)}
+                    placeholder="e.g., 60"
+                    type="number"
+                    min={1}
+                    max={480}
+                    inputMode="numeric"
+                    disabled={supportSubmitting}
+                  />
+                  {durationWarning && (
+                    <p className="text-xs text-destructive">{durationWarning}</p>
+                  )}
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Date (EST)</Label>
+                  <Popover open={supportDatePickerOpen} onOpenChange={setSupportDatePickerOpen}>
+                    <PopoverTrigger asChild>
+                      <div className="relative">
+                        <Input
+                          readOnly
+                          value={supportInterviewDate ? moment(supportInterviewDate).tz(EST_TIMEZONE).format('MMM D, YYYY') : ''}
+                          placeholder="Select date"
+                          disabled={supportSubmitting}
+                          className={cn(!supportInterviewDate && "text-muted-foreground", 'pr-10 cursor-pointer')}
+                        />
+                        <CalendarIcon className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                      </div>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={supportInterviewDate ?? undefined}
+                        onSelect={handleSupportDateSelect}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="space-y-2">
+                  <Label>Time (EST)</Label>
+                  <div className="space-y-1">
+                    <Input
+                      value={supportTimeInput}
+                      onChange={(event) => handleSupportTimeChange(event.target.value)}
+                      placeholder="e.g., 03:15 PM"
+                      disabled={supportSubmitting}
+                    />
+                    <Select
+                      value={supportInterviewTime}
+                      onValueChange={(value) => handleSupportTimeChange(moment(value, 'HH:mm').format('hh:mm A'))}
+                      disabled={supportSubmitting}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pick from list" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {DISPLAY_TIME_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {supportTimeWarning && (
+                      <p className="text-xs text-destructive">{supportTimeWarning}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">Use Eastern Time (EST) for the interview slot.</p>
+              {supportWindowWarningKey.current && (
+                <p className="text-xs text-muted-foreground">The selected time is outside the 9:00 AM – 6:00 PM support window.</p>
+              )}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="support-resume">Attach Resume (PDF)</Label>
+                  <Input
+                    id="support-resume"
+                    type="file"
+                    accept="application/pdf"
+                    onChange={(event) => handleSupportFileChange('resume', event.target.files)}
+                    disabled={supportSubmitting}
+                  />
+                  {resumeFile && <p className="text-xs text-muted-foreground">{resumeFile.name}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="support-jd">Attach JD (PDF)</Label>
+                  <Input
+                    id="support-jd"
+                    type="file"
+                    accept="application/pdf"
+                    onChange={(event) => handleSupportFileChange('jobDescription', event.target.files)}
+                    disabled={supportSubmitting}
+                  />
+                  {jdFile && <p className="text-xs text-muted-foreground">{jdFile.name}</p>}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="support-additional">Additional Attachments (PDF)</Label>
+                <Input
+                  id="support-additional"
+                  type="file"
+                  accept="application/pdf"
+                  multiple
+                  onChange={(event) => handleSupportFileChange('additionalAttachments', event.target.files)}
+                  disabled={supportSubmitting}
+                />
+                {additionalFiles.length > 0 && (
+                  <ul className="text-xs text-muted-foreground list-disc pl-5 space-y-0.5">
+                    {additionalFiles.map((file) => (
+                      <li key={file.name}>{file.name}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <Collapsible open={customMessageEnabled} onOpenChange={setCustomMessageEnabled}>
+                <CollapsibleTrigger asChild>
+                  <Button variant="outline" size="sm" type="button">
+                    {customMessageEnabled ? 'Hide additional message' : 'Add additional message'}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-2 space-y-2">
+                  <Label htmlFor="support-custom-message">Message to include before the details table</Label>
+                  <textarea
+                    id="support-custom-message"
+                    value={customMessage}
+                    onChange={(event) => setCustomMessage(event.target.value)}
+                    className="w-full rounded border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    rows={4}
+                    placeholder="Optional message"
+                    disabled={supportSubmitting}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
+              
+              {supportError && <p className="text-sm text-destructive">{supportError}</p>}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={resetSupportState} disabled={supportSubmitting}>
+                Cancel
+              </Button>
+              <Button onClick={handleSupportSubmit} disabled={supportSubmitting}>
+                {supportSubmitting ? 'Sending…' : 'Send Request'}
               </Button>
             </DialogFooter>
           </DialogContent>

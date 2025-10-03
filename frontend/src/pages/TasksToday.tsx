@@ -1449,7 +1449,7 @@ const getRowClasses = (status = "") => {
                 <TableHead>Client</TableHead>
                 <TableHead>Round</TableHead>
                 <TableHead>Expert</TableHead>
-                <TableHead>Suggestions</TableHead>
+                {(user !== "user") && <TableHead>Suggestions</TableHead>}
                 {(user === "MAM" || user === "MM" || user === "mlead") && <TableHead>Recruiter</TableHead>}
                 <TableHead>
                   <Tooltip>
@@ -1485,13 +1485,13 @@ const getRowClasses = (status = "") => {
                     <TableCell>{DOMPurify.sanitize(task["End Client"] || "")}</TableCell>
                     <TableCell>{DOMPurify.sanitize(task["Interview Round"] || "")}</TableCell>
                     <TableCell>{DOMPurify.sanitize(task.assignedExpert || "")}</TableCell>
-                    <TableCell>
+                    {(user !== "user") && (<TableCell>
                       {DOMPurify.sanitize(
                         (task.suggestions && task.suggestions.length > 0
                           ? task.suggestions.join(", ")
                           : task.candidateExpertDisplay || "Not available")
                       )}
-                    </TableCell>
+                    </TableCell>)}
                     {(user === "MAM" || user === "MM" || user === "mlead") && (
                       <TableCell>{DOMPurify.sanitize(task.recruiterName || "")}</TableCell>
                     )}

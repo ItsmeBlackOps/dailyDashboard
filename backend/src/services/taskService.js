@@ -524,6 +524,26 @@ export class TaskService {
       };
     }
 
+    if (userRole === 'recruiter') {
+      const localPart = lowerEmail.split('@')[0];
+      const emailParts = localPart.split('.');
+      const recruiterDisplay = emailParts.length >= 2
+        ? `${emailParts[0].charAt(0).toUpperCase()}${emailParts[0].slice(1)} ${emailParts[1].charAt(0).toUpperCase()}${emailParts[1].slice(1)}`
+        : `${localPart.charAt(0).toUpperCase()}${localPart.slice(1)}`;
+
+      return {
+        $or: [
+          { sender: { $regex: localPart, $options: 'i' } },
+          { sender: { $regex: lowerEmail, $options: 'i' } },
+          { cc: { $regex: localPart, $options: 'i' } },
+          { to: { $regex: localPart, $options: 'i' } },
+          { assignedTo: { $regex: `^${localPart}$`, $options: 'i' } },
+          { assignedTo: { $regex: `^${lowerEmail}$`, $options: 'i' } },
+          { assignedTo: { $regex: `^${recruiterDisplay}$`, $options: 'i' } }
+        ]
+      };
+    }
+
     // Regular user
     const emailParts = lowerEmail.split('@')[0].split('.');
     const firstLast = emailParts.length >= 2

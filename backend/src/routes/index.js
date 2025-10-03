@@ -4,6 +4,8 @@ import taskRoutes from './tasks.js';
 import userRoutes from './users.js';
 import docsRoutes from './docs.js';
 import graphMeetingRoutes from './graphMeetings.js';
+import supportRoutes from './supportRequests.js';
+import profileRoutes from './profile.js';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
@@ -14,6 +16,8 @@ router.use('/auth', authRoutes);
 router.use('/tasks', taskRoutes);
 router.use('/users', userRoutes);
 router.use('/graph', graphMeetingRoutes);
+router.use('/support', supportRoutes);
+router.use('/profile', profileRoutes);
 router.use('/', docsRoutes);
 
 // Health check endpoint

@@ -103,9 +103,35 @@ const config = {
       return [
         'https://graph.microsoft.com/OnlineMeetings.ReadWrite',
         'https://graph.microsoft.com/Calendars.ReadWrite',
+        'https://graph.microsoft.com/Mail.Send'
       ];
-    })()
-  }
+    })(),
+    mailScopes: (() => {
+      const raw = process.env.AZURE_GRAPH_MAIL_SCOPES;
+      if (raw && raw.trim().length > 0) {
+        return commaSeparated(raw);
+      }
+      return ['https://graph.microsoft.com/Mail.Send'];
+    })(),
+    mailSender: stripQuotes(process.env.AZURE_GRAPH_MAIL_SENDER || '')
+  },
+
+  support: (() => {
+    const supportTo = stripQuotes(process.env.SUPPORT_REQUEST_TO || 'tech.leaders@silverspaceinc.com');
+    const supportCcFallback = commaSeparated(process.env.SUPPORT_REQUEST_CC || '');
+    const maxAttachmentBytesRaw = process.env.SUPPORT_ATTACHMENT_MAX_BYTES;
+    const maxAttachmentBytes = maxAttachmentBytesRaw
+      ? Number.parseInt(maxAttachmentBytesRaw, 10)
+      : 5 * 1024 * 1024;
+
+    return {
+      supportTo,
+      supportCcFallback,
+      attachmentMaxBytes: Number.isFinite(maxAttachmentBytes) && maxAttachmentBytes > 0
+        ? maxAttachmentBytes
+        : 5 * 1024 * 1024
+    };
+  })()
 };
 
 // Validate required configuration

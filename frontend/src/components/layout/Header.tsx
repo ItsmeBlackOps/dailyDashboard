@@ -1,10 +1,24 @@
-import { useCallback } from 'react';
-import { ExternalLink, LogOut, Menu } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Building2, ExternalLink, Globe, Menu, Phone, User, UserCog, LogOut, ChevronDown, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { API_BASE } from '@/constants';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { useUserProfile, formatPhoneDraft, formatPhoneCanonical } from '@/contexts/UserProfileContext';
 
 interface HeaderProps {
   toggleSidebar: () => void;
@@ -13,19 +27,89 @@ interface HeaderProps {
 
 export function Header({ toggleSidebar }: HeaderProps) {
   const { logout } = useAuth();
+  const { profile, loading, saving, updateProfile } = useUserProfile();
+  const [editOpen, setEditOpen] = useState(false);
+  const [formState, setFormState] = useState({ displayName: '', jobRole: '', phoneNumber: '' });
+
   const openConsentPopup = useCallback(() => {
     const width = 600;
     const height = 700;
     const specs = `noopener,noreferrer,width=${width},height=${height}`;
     const consentUrl = `${API_BASE}/auth/consent`;
-    const popup = window.open(consentUrl, 'teams-consent', specs);
-
-
+    window.open(consentUrl, 'teams-consent', specs);
   }, []);
+
+  const getStoredValue = useCallback((key: string) => {
+    if (typeof window === 'undefined') return '';
+    try {
+      return window.localStorage.getItem(key) ?? '';
+    } catch {
+      return '';
+    }
+  }, []);
+
+  const fallbackEmail = useMemo(() => profile?.email || getStoredValue('email'), [profile?.email, getStoredValue]);
+  const fallbackDisplayName = useMemo(
+    () => profile?.displayName || getStoredValue('displayName') || fallbackEmail.split('@')[0],
+    [profile?.displayName, getStoredValue, fallbackEmail]
+  );
+
+  useEffect(() => {
+    setFormState({
+      displayName: profile?.displayName || fallbackDisplayName,
+      jobRole: profile?.jobRole || '',
+      phoneNumber: profile?.phoneNumber || ''
+    });
+  }, [profile?.displayName, profile?.jobRole, profile?.phoneNumber, fallbackDisplayName]);
+
+  const initials = useMemo(() => {
+    const source = fallbackDisplayName || fallbackEmail;
+    if (!source) return 'U';
+    const parts = source.split(/\s+/).filter(Boolean);
+    if (parts.length === 0) {
+      return source.slice(0, 2).toUpperCase();
+    }
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  }, [fallbackDisplayName, fallbackEmail]);
+
+  const handleFieldChange = (field: 'displayName' | 'jobRole' | 'phoneNumber') => (
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
+    if (field === 'phoneNumber') {
+      const draft = formatPhoneDraft(event.target.value);
+      setFormState((prev) => ({ ...prev, phoneNumber: draft }));
+      return;
+    }
+    setFormState((prev) => ({ ...prev, [field]: event.target.value }));
+  };
+
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    try {
+      await updateProfile(formState);
+      setEditOpen(false);
+    } catch {
+      // toast handled in context
+    }
+  };
+
+  const handleDialogChange = (open: boolean) => {
+    if (saving) return;
+    setEditOpen(open);
+  };
+
+  const handlePhoneBlur = () => {
+    const canonical = formatPhoneCanonical(formState.phoneNumber);
+    if (canonical) {
+      setFormState((prev) => ({ ...prev, phoneNumber: canonical }));
+    }
+  };
 
   return (
     <header className="sticky top-0 z-30 bg-background border-b border-border h-16 flex items-center px-3 md:px-4 shadow-sm gap-2">
-      {/* Sidebar toggle */}
       <Button onClick={toggleSidebar} variant="ghost" size="icon" aria-label="Toggle sidebar">
         <Menu className="h-5 w-5" />
       </Button>
@@ -40,11 +124,148 @@ export function Header({ toggleSidebar }: HeaderProps) {
           <ExternalLink className="h-4 w-4 mr-1" />
           Grant Teams Consent
         </Button>
-        <Button onClick={logout} variant="ghost" size="sm">
-          <LogOut className="h-4 w-4 mr-1" />
-          Logout
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="pl-2 pr-3">
+              <Avatar className="h-7 w-7 mr-2">
+                <AvatarFallback className="text-xs font-medium bg-primary/10 text-primary">
+                  {loading ? '…' : initials}
+                </AvatarFallback>
+              </Avatar>
+              <span className="hidden md:inline text-sm font-medium max-w-[140px] truncate">
+                {fallbackDisplayName || 'Profile'}
+              </span>
+              <ChevronDown className="ml-1.5 h-4 w-4 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-72">
+            <DropdownMenuLabel className="flex items-center justify-between">
+              <span>Profile</span>
+              <Badge variant={profile?.isComplete ? 'default' : 'secondary'} className="gap-1">
+                {profile?.isComplete ? (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Signature ready
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Details needed
+                  </>
+                )}
+              </Badge>
+            </DropdownMenuLabel>
+            <div className="px-3 pb-2 text-sm space-y-1">
+              <p className="font-semibold leading-tight truncate">{fallbackDisplayName || '—'}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {profile?.jobRole || 'Add your job role'}
+              </p>
+            </div>
+            {!profile?.isComplete && (
+              <div className="px-3 pb-2 text-xs text-muted-foreground">
+                Add missing details to include your email signature in support requests.
+              </div>
+            )}
+            <DropdownMenuSeparator />
+            <div className="px-3 py-1 space-y-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4" />
+                <span className="truncate">{fallbackEmail || '—'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                <span className="truncate">{profile?.companyName || 'Assigned automatically'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Phone className="h-4 w-4" />
+                <span className="truncate">{profile?.phoneNumber || 'Add phone number'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4" />
+                {profile?.companyUrl ? (
+                  <a
+                    href={profile.companyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="truncate underline-offset-4 hover:underline"
+                  >
+                    {profile.companyUrl.replace(/^https?:\/\//i, '')}
+                  </a>
+                ) : (
+                  <span className="truncate">Company site pending</span>
+                )}
+              </div>
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setEditOpen(true)}>
+              <UserCog className="mr-2 h-4 w-4" />
+              <span>Edit contact details</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => logout()}>
+              <LogOut className="mr-2 h-4 w-4" />
+              <span>Sign out</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+
+      <Dialog open={editOpen} onOpenChange={handleDialogChange}>
+        <DialogContent>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>Update contact details</DialogTitle>
+              <DialogDescription>
+                These details populate your email signature for support requests.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="profile-name">Full name</Label>
+                <Input
+                  id="profile-name"
+                  value={formState.displayName}
+                  onChange={handleFieldChange('displayName')}
+                  placeholder="Jane Recruiter"
+                  disabled={saving}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="profile-role">Job role</Label>
+                <Input
+                  id="profile-role"
+                  value={formState.jobRole}
+                  onChange={handleFieldChange('jobRole')}
+                  placeholder="Senior Recruiter"
+                  disabled={saving}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="profile-phone">US phone number</Label>
+                <Input
+                  id="profile-phone"
+                  value={formState.phoneNumber}
+                  onChange={handleFieldChange('phoneNumber')}
+                  onBlur={handlePhoneBlur}
+                  placeholder="+1 (555) 123-4567"
+                  type="tel"
+                  inputMode="numeric"
+                  pattern="^\+1 \(\d{3}\) \d{3}-\d{4}$"
+                  disabled={saving}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">Company and website are derived from your email domain.</p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }
