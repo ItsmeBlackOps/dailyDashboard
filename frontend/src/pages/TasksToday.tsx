@@ -40,7 +40,7 @@ import { acquireBackendToken } from "@/tokens";
 import { checkMeetingConsent, openConsentAndPoll } from "@/meetings/meetingsConsent";
 import { useOnlineMeetingConsent } from "@/hooks/useOnlineMeetingConsent";
 import { OnlineMeetingConsentBanner } from "@/components/OnlineMeetingConsentBanner";
-import { Copy } from "lucide-react";
+import { Copy, Filter } from "lucide-react";
 import { deriveDisplayNameFromEmail, formatNameInput } from "@/utils/userNames";
 
 interface Task {
@@ -77,6 +77,13 @@ interface ManageableUser {
   teamLead?: string | null;
   manager?: string | null;
   active?: boolean;
+}
+
+interface TeamLeadEntry {
+  label: string;
+  role: string;
+  recruiters: string[];
+  mleadNames: string[];
 }
 
 const TASK_STATUS_MAP = "tasksTodayStatusMap";
@@ -137,10 +144,11 @@ export default function TasksToday() {
     grant: grantConsent,
   } = useOnlineMeetingConsent(instance, account);
   const [meetingBusy, setMeetingBusy] = useState<Record<string, boolean>>({});
-  const [teamLeadData, setTeamLeadData] = useState<Record<string, { label: string; recruiters: string[] }>>({});
+  const [teamLeadData, setTeamLeadData] = useState<Record<string, TeamLeadEntry>>({});
   const [teamLeadLoading, setTeamLeadLoading] = useState(false);
   const [teamLeadError, setTeamLeadError] = useState("");
   const [selectedTeamLead, setSelectedTeamLead] = useState<string>('all');
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const setMeetingBusyState = useCallback((taskId: string, busy: boolean) => {
     setMeetingBusy((prev) => {
@@ -220,8 +228,9 @@ export default function TasksToday() {
       }
     }
 
-    const gatherRecruiters = (startKey: string): Set<string> => {
+    const gatherRecruiters = (startKey: string) => {
       const recruiters = new Set<string>();
+      const mleadNames = new Set<string>();
       const visited = new Set<string>();
       const stack = [startKey];
 
@@ -241,23 +250,28 @@ export default function TasksToday() {
             recruiters.add(reportNode.label);
           }
 
+          if (role === 'mlead') {
+            mleadNames.add(reportNode.label);
+          }
+
           if (reportNode.reports.size > 0 && !visited.has(reportKey)) {
             stack.push(reportKey);
           }
         }
       }
 
-      return recruiters;
+      return { recruiters, mleadNames };
     };
 
-    const mapping: Record<string, { label: string; recruiters: string[] }> = {};
+    const mapping: Record<string, TeamLeadEntry> = {};
 
     nodes.forEach((node, key) => {
-      const recruiters = gatherRecruiters(key);
-      if (recruiters.size === 0) return;
+      const { recruiters, mleadNames } = gatherRecruiters(key);
       mapping[key] = {
         label: node.label,
+        role: node.role,
         recruiters: Array.from(recruiters).sort((a, b) => a.localeCompare(b)),
+        mleadNames: Array.from(mleadNames).sort((a, b) => a.localeCompare(b)),
       };
     });
 
@@ -472,13 +486,34 @@ export default function TasksToday() {
       pending: "bg-blue-500 text-white",
     }[status.toLowerCase()] || "bg-gray-500 text-white");
 
-  const getRowBg = (status = "") =>
-    ({
-      completed: "bg-emerald-500/10 border-emerald-500/30",
-      cancelled: "bg-red-500/10 border-red-500/30",
-      acknowledged: "bg-amber-500/10 border-amber-500/30",
-      pending: "bg-blue-500/10 border-blue-500/30",
-    }[status.toLowerCase()] || "bg-gray-500/10 border-gray-500/30");
+const getRowClasses = (status = "") => {
+  const base = status.toLowerCase();
+
+  const gradients: Record<string, string> = {
+    // Green (Completed)
+    completed:
+      "bg-gradient-to-r from-[#43cea2]/85 to-[#185a9d]/35 border-l-4 border-[#43cea2]/70",
+
+    // Red (Cancelled)
+    cancelled:
+      "bg-gradient-to-r from-[#ff6a6a]/85 to-[#c31432]/35 border-l-4 border-[#ff6a6a]/70",
+
+    // Yellow (Acknowledged)
+    acknowledged:
+      "bg-gradient-to-r from-[#f7971e]/90 to-[#ffd200]/40 border-l-4 border-[#f7971e]/70",
+
+    // Blue (Pending)
+    pending:
+      "bg-gradient-to-r from-[#36d1dc]/85 to-[#5b86e5]/35 border-l-4 border-[#36d1dc]/70",
+  };
+
+  // Grey (default/fallback)
+  return (
+    gradients[base] ||
+    "bg-gradient-to-r from-[#bdc3c7]/70 to-[#2c3e50]/30 border-l-4 border-[#bdc3c7]/70"
+  );
+};
+
 
   // === Parsing helpers (strict) ===
   const parsePreferredStrict = (val?: string): Moment | null => {
@@ -1240,16 +1275,32 @@ export default function TasksToday() {
 
   const teamLeadRecruiterMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
+
+    const addNormalized = (target: Set<string>, name: string | null | undefined) => {
+      if (!name) return;
+      const normalized = formatNameInput(name).toLowerCase();
+      if (normalized) {
+        target.add(normalized);
+      }
+    };
+
     Object.entries(teamLeadData).forEach(([key, entry]) => {
       const set = new Set<string>();
-      for (const recruiter of entry.recruiters) {
-        const normalized = formatNameInput(recruiter).toLowerCase();
-        if (normalized) {
-          set.add(normalized);
-        }
+
+      addNormalized(set, entry.label);
+      set.add(key);
+
+      entry.recruiters.forEach((recruiter) => addNormalized(set, recruiter));
+      entry.mleadNames.forEach((lead) => addNormalized(set, lead));
+
+      if (entry.role === 'mam') {
+        // Ensure the MAM's own name is always present even if formatting differs
+        addNormalized(set, entry.label);
       }
+
       map.set(key, set);
     });
+
     return map;
   }, [teamLeadData]);
 
@@ -1288,11 +1339,8 @@ export default function TasksToday() {
     <DashboardLayout>
       <Toaster />
       <div className="p-4 space-y-4">
-        <h2 className="text-xl font-semibold">Tasks</h2>
         {error && <p className="text-red-500">{error}</p>}
 
-        {/* Date range and field controls */}
-        <DashboardFilters filters={filters} onChange={setFilters} allowReceivedDate={allowReceivedDate} />
 
         {canManageMeetings && account && needsConsent && (
           <OnlineMeetingConsentBanner
@@ -1360,13 +1408,28 @@ export default function TasksToday() {
           )}
 
           {/* Toggle: Subject column visibility */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto">
             <Switch id="toggle-subject" checked={showSubject} onCheckedChange={setShowSubject} />
             <label htmlFor="toggle-subject" className="text-sm text-muted-foreground select-none">
               Show Subject
             </label>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              onClick={() => setFiltersOpen((prev) => !prev)}
+              aria-label={filtersOpen ? 'Hide dashboard filters' : 'Show dashboard filters'}
+              aria-expanded={filtersOpen}
+            >
+              <Filter className="h-5 w-5" />
+              <span className="sr-only">Toggle filters</span>
+            </Button>
           </div>
         </div>
+
+        {filtersOpen && (
+          <DashboardFilters filters={filters} onChange={setFilters} allowReceivedDate={allowReceivedDate} />
+        )}
 
         {teamLeadError && (normalizedRole === 'mm' || normalizedRole === 'mam') && (
           <p className="text-sm text-red-500">{teamLeadError}</p>
@@ -1411,7 +1474,7 @@ export default function TasksToday() {
                 const isMeetingBusy = Boolean(meetingBusy[task._id]);
                 const joinLink = extractJoinLink(task);
                 return (
-                  <TableRow key={task._id} className={getRowBg(task.status)}>
+                  <TableRow key={task._id} className={getRowClasses(task.status)}>
                     {showSubject && (
                       <TableCell>{DOMPurify.sanitize(task.subject || "")}</TableCell>
                     )}
