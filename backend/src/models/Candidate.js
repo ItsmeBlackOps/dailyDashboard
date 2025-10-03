@@ -445,13 +445,18 @@ export class CandidateModel {
       throw new Error('Email is required');
     }
 
+    const lowerEmail = email.toLowerCase();
+
     return this.collection.findOne(
-      { docType: 'userProfile', email: email.toLowerCase() },
-      { projection: { _id: 1, email: 1, metadata: 1, docType: 1, created_at: 1, updated_at: 1 } }
+      { docType: 'userProfile', email: lowerEmail },
+      {
+        projection: { _id: 1, email: 1, metadata: 1, docType: 1, created_at: 1, updated_at: 1 },
+        collation: { locale: 'en', strength: 2 }
+      }
     );
   }
 
-  async upsertUserProfileMetadata(email, metadata = {}) {
+  async upsertUserProfileMetadata(email, metadata = {}, { upsert = true } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
@@ -460,21 +465,40 @@ export class CandidateModel {
       throw new Error('Email is required');
     }
 
+    const lowerEmail = email.toLowerCase();
     const now = new Date();
-    const filter = { docType: 'userProfile', email: email.toLowerCase() };
+    const filter = { docType: 'userProfile', email: lowerEmail };
     const updateDoc = {
       $set: {
         metadata,
+        email: lowerEmail,
+        docType: 'userProfile',
         updated_at: now
       },
-      $setOnInsert: {
-        docType: 'userProfile',
-        email: email.toLowerCase(),
-        created_at: now
-      }
+      ...(upsert
+        ? {
+            $setOnInsert: {
+              docType: 'userProfile',
+              email: lowerEmail,
+              created_at: now
+            }
+          }
+        : {})
     };
 
-    const result = await this.collection.updateOne(filter, updateDoc, { upsert: true });
+    const options = {
+      upsert,
+      collation: { locale: 'en', strength: 2 }
+    };
+
+    const result = await this.collection.updateOne(filter, updateDoc, options);
+
+    if (!upsert && result.matchedCount === 0) {
+      const error = new Error('User profile metadata not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
     return result;
   }
 
