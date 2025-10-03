@@ -214,6 +214,24 @@ export class TaskModel {
           { sender: { $regex: lowerEmail, $options: "i" } },
         ],
       };
+    } else if (userRole === "recruiter") {
+      const local = lowerEmail.split('@')[0];
+      const parts = local.split('.');
+      const recruiterDisplay = parts.length >= 2
+        ? `${parts[0].charAt(0).toUpperCase()}${parts[0].slice(1)} ${parts[1].charAt(0).toUpperCase()}${parts[1].slice(1)}`
+        : `${local.charAt(0).toUpperCase()}${local.slice(1)}`;
+
+      return {
+        $or: [
+          { sender: { $regex: local, $options: 'i' } },
+          { sender: { $regex: lowerEmail, $options: 'i' } },
+          { cc: { $regex: local, $options: 'i' } },
+          { to: { $regex: local, $options: 'i' } },
+          { assignedTo: { $regex: `^${local}$`, $options: 'i' } },
+          { assignedTo: { $regex: `^${lowerEmail}$`, $options: 'i' } },
+          { assignedTo: { $regex: `^${recruiterDisplay}$`, $options: 'i' } }
+        ]
+      };
     } else {
       return {};
     }
@@ -769,7 +787,7 @@ export class TaskModel {
       };
     }
 
-    if (['lead', 'am', 'recruiter'].includes(normalizedRole)) {
+    if (['lead', 'am'].includes(normalizedRole)) {
       const patterns = [];
 
       if (normalizedTeamEmails.length > 0) {
@@ -804,7 +822,27 @@ export class TaskModel {
       return { $or: patterns };
     }
 
-    if (['user', 'expert'].includes(normalizedRole)) {
+    if (normalizedRole === 'recruiter') {
+      const selfName = this.deriveDisplayNameFromEmail(lowerEmail);
+      const basePatterns = [
+        { sender: { $regex: escapeRegex(emailLocal), $options: 'i' } },
+        { sender: { $regex: escapeRegex(lowerEmail), $options: 'i' } },
+        { cc: { $regex: escapeRegex(emailLocal), $options: 'i' } },
+        { cc: { $regex: escapeRegex(lowerEmail), $options: 'i' } },
+        { to: { $regex: escapeRegex(emailLocal), $options: 'i' } },
+        { to: { $regex: escapeRegex(lowerEmail), $options: 'i' } }
+      ];
+      if (selfName) {
+        const escapedName = escapeRegex(selfName);
+        basePatterns.push({ assignedTo: { $regex: `^${escapedName}$`, $options: 'i' } });
+        basePatterns.push({ sender: { $regex: escapedName, $options: 'i' } });
+        basePatterns.push({ cc: { $regex: escapedName, $options: 'i' } });
+        basePatterns.push({ to: { $regex: escapedName, $options: 'i' } });
+      }
+      return { $or: basePatterns };
+    }
+
+    if (['user'].includes(normalizedRole)) {
       const selfName = this.deriveDisplayNameFromEmail(lowerEmail);
       const patterns = [
         { assignedTo: { $regex: `^${escapeRegex(emailLocal)}$`, $options: 'i' } },
@@ -895,7 +933,7 @@ export class TaskModel {
       const user = socket.data.user;
       if (!user) continue;
 
-      if (this.shouldSendTaskToUser(user, task.assignedEmail, userModel)) {
+      if (this.shouldSendTaskToUser(user, task, userModel)) {
         socket.emit(event, task);
         logger.debug('Task emitted to user', {
           event,
@@ -906,14 +944,15 @@ export class TaskModel {
     }
   }
 
-  shouldSendTaskToUser(user, assignedEmail, userModel) {
+  shouldSendTaskToUser(user, task, userModel) {
     const lowerEmail = user.email.toLowerCase();
+    const assignedEmail = (task.assignedEmail || task.assignedToEmail || task.assignedTo || '').toLowerCase();
 
     if (user.role === "admin") {
       return true;
     }
 
-    if (lowerEmail === assignedEmail?.toLowerCase()) {
+    if (assignedEmail && lowerEmail === assignedEmail) {
       return true;
     }
 
@@ -924,6 +963,25 @@ export class TaskModel {
         .getTeamEmails(user.email, user.role, user.teamLead)
         .map((email) => email.toLowerCase());
       return teamEmails.includes((assignedEmail || '').toLowerCase());
+    }
+
+    if (normalizedRole === 'recruiter') {
+      const localPart = lowerEmail.split('@')[0];
+      const displayName = this.deriveDisplayNameFromEmail(lowerEmail).toLowerCase();
+      const haystack = [task.sender, task.cc, task.to, task.assignedTo, task.assignedExpert]
+        .filter(Boolean)
+        .map((value) => value.toString().toLowerCase())
+        .join(' ');
+
+      if (haystack.includes(lowerEmail) || haystack.includes(localPart)) {
+        return true;
+      }
+
+      if (displayName && haystack.includes(displayName)) {
+        return true;
+      }
+
+      return false;
     }
 
     return false;

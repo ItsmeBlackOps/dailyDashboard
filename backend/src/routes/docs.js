@@ -30,6 +30,74 @@ const openapi = {
           '503': { description: 'Unhealthy status' }
         }
       }
+    },
+    '/support/interview': {
+      post: {
+        summary: 'Send interview support request email',
+        description: 'Available to recruiter, mlead, mam, and mm roles. Sends an email with candidate details and optional resume/JD attachments to tech leadership.',
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                $ref: '#/components/schemas/InterviewSupportPayload'
+              }
+            }
+          }
+        },
+        responses: {
+          '201': {
+            description: 'Support request queued',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    message: { type: 'string' }
+                  }
+                }
+              }
+            }
+          },
+          '400': { description: 'Validation failed' },
+          '403': { description: 'Insufficient permissions' }
+        }
+      }
+    },
+    '/graph/mail/send': {
+      post: {
+        summary: 'Send email via Microsoft Graph',
+        description: 'Delegated endpoint that forwards the provided payload to Microsoft Graph `me/sendMail`. Requires a Bearer token minted with `Mail.Send` scope.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/GraphMailRequest'
+              }
+            }
+          }
+        },
+        responses: {
+          '202': {
+            description: 'Message accepted by Microsoft Graph',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    message: { type: 'string' }
+                  }
+                }
+              }
+            }
+          },
+          '401': { description: 'Missing or invalid bearer token' },
+          '503': { description: 'Mail integration not configured' }
+        }
+      }
     }
   },
   components: {
@@ -56,6 +124,68 @@ const openapi = {
             type: 'array',
             description: 'Suggested assignees based on candidate expert and hierarchy',
             items: { type: 'string' }
+          }
+        }
+      },
+      InterviewSupportPayload: {
+        type: 'object',
+        required: [
+          'candidateId',
+          'endClient',
+          'jobTitle',
+          'interviewRound',
+          'interviewDateTime',
+          'duration',
+          'contactNumber'
+        ],
+        properties: {
+          candidateId: { type: 'string', description: 'Candidate identifier from branch candidates list' },
+          endClient: { type: 'string', description: 'Client name, title-cased automatically' },
+          jobTitle: { type: 'string', description: 'Target job title, title-cased automatically' },
+          interviewRound: {
+            type: 'string',
+            enum: [
+              '1st Round',
+              '2nd Round',
+              '3rd Round',
+              '4th Round',
+              '5th Round',
+              'Technical Round',
+              'Coding Round',
+              'Loop Round',
+              'Final Round'
+            ]
+          },
+          interviewDateTime: {
+            type: 'string',
+            format: 'date-time',
+            description: 'Interview start time expressed in America/New_York timezone'
+          },
+          duration: { type: 'string', description: 'Interview duration (e.g., 60 minutes)' },
+          contactNumber: { type: 'string', description: 'Recruiter-provided contact number forwarded verbatim' },
+          resume: {
+            type: 'string',
+            format: 'binary',
+            description: 'Optional resume attachment (PDF)'
+          },
+          jobDescription: {
+            type: 'string',
+            format: 'binary',
+            description: 'Optional job description attachment (PDF)'
+          }
+        }
+      },
+      GraphMailRequest: {
+        type: 'object',
+        required: ['message'],
+        properties: {
+          message: {
+            type: 'object',
+            description: 'Microsoft Graph message resource shape (subject, body, recipients, attachments, etc.)'
+          },
+          saveToSentItems: {
+            type: 'boolean',
+            description: 'Whether Microsoft Graph should store the sent message in Sent Items (default true)'
           }
         }
       }

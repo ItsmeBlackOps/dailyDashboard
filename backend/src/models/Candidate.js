@@ -17,7 +17,9 @@ const DEFAULT_PROJECTION = {
   source: 1,
   workflowStatus: 1,
   resumeUnderstandingStatus: 1,
-  createdBy: 1
+  createdBy: 1,
+  metadata: 1,
+  docType: 1
 };
 
 export const WORKFLOW_STATUS = {
@@ -50,7 +52,7 @@ export class CandidateModel {
       throw new Error('Candidate collection not initialized');
     }
 
-    const query = { Branch: branch };
+    const query = { Branch: branch, docType: { $in: [null, 'candidate'] } };
     if (search) {
       query['Candidate Name'] = { $regex: search, $options: 'i' };
     }
@@ -73,7 +75,7 @@ export class CandidateModel {
       throw new Error('Candidate collection not initialized');
     }
 
-    const query = {};
+    const query = { docType: { $in: [null, 'candidate'] } };
     if (search) {
       query['Candidate Name'] = { $regex: search, $options: 'i' };
     }
@@ -105,7 +107,8 @@ export class CandidateModel {
     }));
 
     const query = {
-      $or: orConditions
+      $or: orConditions,
+      docType: { $in: [null, 'candidate'] }
     };
 
     if (search) {
@@ -143,7 +146,10 @@ export class CandidateModel {
       throw invalidIdError;
     }
 
-    const filter = { _id: objectId };
+    const filter = {
+      _id: objectId,
+      docType: { $in: [null, 'candidate'] }
+    };
 
     const updateDoc = {
       $set: {
@@ -195,7 +201,8 @@ export class CandidateModel {
       createdBy: payload.createdBy || null,
       updated_at: now,
       _last_write: now,
-      created_at: now
+      created_at: now,
+      docType: 'candidate'
     };
 
     const result = await this.collection.insertOne(document);
@@ -361,7 +368,7 @@ export class CandidateModel {
       Expert: { $regex: `^${escapeRegex(email)}$`, $options: 'i' }
     }));
 
-    const query = { $or: orConditions };
+    const query = { $or: orConditions, docType: { $in: [null, 'candidate'] } };
 
     if (search) {
       query['Candidate Name'] = { $regex: search, $options: 'i' };
@@ -398,7 +405,10 @@ export class CandidateModel {
       throw invalidIdError;
     }
 
-    const document = await this.collection.findOne({ _id: objectId }, {
+    const document = await this.collection.findOne({
+      _id: objectId,
+      docType: { $in: [null, 'candidate'] }
+    }, {
       projection: DEFAULT_PROJECTION
     });
 
@@ -424,6 +434,48 @@ export class CandidateModel {
     };
 
     return this.collection.countDocuments(query);
+  }
+
+  async getUserProfileMetadata(email) {
+    if (!this.collection) {
+      throw new Error('Candidate collection not initialized');
+    }
+
+    if (!email) {
+      throw new Error('Email is required');
+    }
+
+    return this.collection.findOne(
+      { docType: 'userProfile', email: email.toLowerCase() },
+      { projection: { _id: 1, email: 1, metadata: 1, docType: 1, created_at: 1, updated_at: 1 } }
+    );
+  }
+
+  async upsertUserProfileMetadata(email, metadata = {}) {
+    if (!this.collection) {
+      throw new Error('Candidate collection not initialized');
+    }
+
+    if (!email) {
+      throw new Error('Email is required');
+    }
+
+    const now = new Date();
+    const filter = { docType: 'userProfile', email: email.toLowerCase() };
+    const updateDoc = {
+      $set: {
+        metadata,
+        updated_at: now
+      },
+      $setOnInsert: {
+        docType: 'userProfile',
+        email: email.toLowerCase(),
+        created_at: now
+      }
+    };
+
+    const result = await this.collection.updateOne(filter, updateDoc, { upsert: true });
+    return result;
   }
 
   mapDocumentToCandidate(doc) {

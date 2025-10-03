@@ -18,6 +18,20 @@ export const globalErrorHandler = (err, req, res, next) => {
   let message = 'Internal server error';
   let details = null;
 
+  if (typeof err.statusCode === 'number') {
+    statusCode = err.statusCode;
+    if (err.message) {
+      message = err.message;
+    }
+  }
+
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    statusCode = 400;
+    const maxBytes = config.support?.attachmentMaxBytes ?? 5 * 1024 * 1024;
+    const sizeMb = (maxBytes / (1024 * 1024)).toFixed(1);
+    message = `File exceeds the maximum allowed size of ${sizeMb} MB`;
+  }
+
   // Handle specific error types
   if (err.name === 'ValidationError') {
     statusCode = 400;

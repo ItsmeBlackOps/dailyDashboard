@@ -63,6 +63,11 @@
 - `AZURE_CLIENT_SECRET` – Secret generated for the backend app registration.
 - `BACKEND_REDIRECT_URI` – Redirect URI registered for the backend consent flow (default `http://localhost:4000/auth/redirect`).
 - `AZURE_GRAPH_MEETING_SCOPES` – Optional comma-separated Graph scopes (default `https://graph.microsoft.com/OnlineMeetings.ReadWrite`).
+- `AZURE_GRAPH_MAIL_SCOPES` – Optional comma-separated scopes for mail sending (default `https://graph.microsoft.com/Mail.Send`).
+- `AZURE_GRAPH_MAIL_SENDER` – User principal name or ID the application will impersonate when application-level Graph mail is required (optional).
+- `SUPPORT_REQUEST_TO` – Primary recipient for interview support notifications (defaults to `tech.leaders@silverspaceinc.com`).
+- `SUPPORT_REQUEST_CC` – Optional comma-separated CC recipients automatically added to every support email.
+- `SUPPORT_ATTACHMENT_MAX_BYTES` – Maximum allowed PDF attachment size in bytes (defaults to `5242880`, i.e. 5 MB).
 
 ### AI Report Assistant
 - Available over WebSocket events `reportBotQuery` and `reportBotDownload`.
@@ -73,6 +78,36 @@
 ### Dev Scripts
 - `npm start` – runs the server
 - `npm test` – runs Jest unit tests
+
+### Interview Support Requests
+- Roles `recruiter`, `mlead`, `mam`, and `mm` can open the **Support** dialog from Branch Candidates to email tech leadership.
+- The backend exposes `POST /api/support/interview` (multipart form) to validate the payload, enforce role-based access, and deliver the formatted email via Microsoft Graph with optional resume and job description PDFs.
+- Configure the Graph mail environment variables (`AZURE_GRAPH_MAIL_SCOPES`, `SUPPORT_REQUEST_*`, and optionally `AZURE_GRAPH_MAIL_SENDER`) so the backend can deliver the formatted email through Microsoft Graph. Attachments are limited to PDFs under the configured size cap.
+- A success response returns `{ success: true, message: 'Support request sent successfully' }`; validation errors surface 400 responses that the frontend surfaces inline.
+
+### Microsoft Graph Mail
+- `POST /api/graph/mail/send` forwards a Graph-compatible payload (see sample below) to `me/sendMail` using the caller’s delegated token.
+- Interview support requests also flow through Microsoft Graph using the logged-in user's delegated token (the frontend includes `x-graph-access-token` with a `Mail.Send` access token), ensuring recipients see the actual requester.
+- The frontend helper `sendGraphMail` in `frontend/src/utils/graphMail.ts` acquires a token via MSAL and posts the payload to the backend. Ensure MSAL login scopes include `https://graph.microsoft.com/Mail.Send` and `https://graph.microsoft.com/Mail.Read` (both are part of the default build).
+- Example payload:
+  ```json
+  {
+    "message": {
+      "subject": "Hello from Graph",
+      "body": { "contentType": "HTML", "content": "<p>Hi there 👋</p>" },
+      "toRecipients": [{ "emailAddress": { "address": "someone@example.com" } }],
+      "ccRecipients": [{ "emailAddress": { "address": "cc@example.com" } }],
+      "attachments": [
+        {
+          "@odata.type": "#microsoft.graph.fileAttachment",
+          "name": "notes.txt",
+          "contentBytes": "SGVsbG8gZ3JhcGgh"
+        }
+      ]
+    },
+    "saveToSentItems": true
+  }
+  ```
 
 ### Testing
 - Ensure a MongoDB instance is available and export `MONGODB_URI`, `DB_NAME`, `JWT_SECRET`, `TEST_USER_EMAIL`, and `TEST_USER_PASSWORD` before executing `npm test`.
