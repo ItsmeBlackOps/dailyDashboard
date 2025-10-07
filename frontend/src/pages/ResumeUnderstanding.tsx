@@ -27,6 +27,7 @@ interface CandidateRecord {
   workflowStatus?: string;
   updatedAt?: string;
   resumeUnderstanding?: boolean;
+  resumeLink?: string;
 }
 
 interface QueueResponse {
@@ -300,6 +301,7 @@ export default function ResumeUnderstanding() {
                           <TableHead>Recruiter</TableHead>
                           <TableHead>Branch</TableHead>
                           <TableHead>Email</TableHead>
+                          <TableHead>Resume</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -307,6 +309,16 @@ export default function ResumeUnderstanding() {
                         {currentQueue.map((candidate) => {
                           const candidateActionLoading = actionLoading[candidate.id];
                           const candidateError = actionErrors[candidate.id];
+                          const resumeLinkRaw = (candidate.resumeLink || '').trim();
+                          const sanitizedResumeLink = resumeLinkRaw ? DOMPurify.sanitize(resumeLinkRaw) : '';
+                          let resumeHref: string | null = null;
+                          if (sanitizedResumeLink) {
+                            try {
+                              resumeHref = new URL(sanitizedResumeLink).toString();
+                            } catch (error) {
+                              resumeHref = null;
+                            }
+                          }
 
                           return (
                             <TableRow key={candidate.id}>
@@ -315,6 +327,32 @@ export default function ResumeUnderstanding() {
                               <TableCell>{DOMPurify.sanitize(candidate.recruiter || '')}</TableCell>
                               <TableCell>{DOMPurify.sanitize(candidate.branch || '')}</TableCell>
                               <TableCell>{DOMPurify.sanitize(candidate.email || '')}</TableCell>
+                              <TableCell className="max-w-[280px]">
+                                {sanitizedResumeLink ? (
+                                  resumeHref ? (
+                                    <div className="flex flex-col gap-1">
+                                      <a
+                                        href={resumeHref}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-primary hover:underline"
+                                        title={sanitizedResumeLink}
+                                      >
+                                        View resume
+                                      </a>
+                                      <span className="text-xs text-muted-foreground break-all">
+                                        {sanitizedResumeLink}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-sm break-all text-muted-foreground">
+                                      {sanitizedResumeLink}
+                                    </span>
+                                  )
+                                ) : (
+                                  <span className="text-muted-foreground">No resume</span>
+                                )}
+                              </TableCell>
                               <TableCell className="text-right space-y-2">
                                 <div className="flex justify-end gap-2">
                                   {activeStatus === 'pending' ? (

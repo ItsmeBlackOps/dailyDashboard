@@ -538,7 +538,7 @@ export const validateCandidateUpdate = (data = {}) => {
     return { isValid: false, errors, payload };
   }
 
-  const { candidateId, name, email, technology, recruiter, contact, expert, branch } = data;
+  const { candidateId, name, email, technology, recruiter, contact, expert, branch, resumeLink } = data;
 
   if (!candidateId || typeof candidateId !== 'string' || candidateId.trim().length === 0) {
     errors.push('candidateId is required');
@@ -616,6 +616,16 @@ export const validateCandidateUpdate = (data = {}) => {
     }
   }
 
+  if (resumeLink !== undefined) {
+    if (typeof resumeLink !== 'string' || resumeLink.trim().length === 0) {
+      errors.push('resumeLink must be a non-empty string');
+    } else if (!/^https:\/\/[^\s]+$/i.test(resumeLink.trim())) {
+      errors.push('resumeLink must be a valid HTTPS URL');
+    } else {
+      payload.resumeLink = resumeLink.trim();
+    }
+  }
+
   return {
     isValid: errors.length === 0,
     errors,
@@ -632,7 +642,7 @@ export const validateCandidateCreate = (data = {}) => {
     return { isValid: false, errors, payload };
   }
 
-  const { name, email, technology, recruiter, contact, branch } = data;
+  const { name, email, technology, recruiter, contact, branch, resumeLink } = data;
 
   if (!name || typeof name !== 'string' || name.trim().length === 0) {
     errors.push('name is required');
@@ -676,6 +686,14 @@ export const validateCandidateCreate = (data = {}) => {
 
   if (contact !== undefined) {
     payload.contact = contact.toString().trim();
+  }
+
+  if (!resumeLink || typeof resumeLink !== 'string' || resumeLink.trim().length === 0) {
+    errors.push('resumeLink is required');
+  } else if (!/^https:\/\/[^\s]+$/i.test(resumeLink.trim())) {
+    errors.push('resumeLink must be a valid HTTPS URL');
+  } else {
+    payload.resumeLink = resumeLink.trim();
   }
 
   return {

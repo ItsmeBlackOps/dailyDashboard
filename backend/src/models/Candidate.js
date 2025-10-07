@@ -19,6 +19,7 @@ const DEFAULT_PROJECTION = {
   resumeUnderstandingStatus: 1,
   createdBy: 1,
   metadata: 1,
+  resumeLink: 1,
   docType: 1
 };
 
@@ -205,6 +206,7 @@ export class CandidateModel {
         ...(updates.contact !== undefined ? { 'Contact No': updates.contact } : {}),
         ...(updates.workflowStatus !== undefined ? { workflowStatus: updates.workflowStatus } : {}),
         ...(updates.resumeUnderstandingStatus !== undefined ? { resumeUnderstandingStatus: updates.resumeUnderstandingStatus } : {}),
+        ...(updates.resumeLink !== undefined ? { resumeLink: updates.resumeLink } : {}),
         ...(updates.createdBy !== undefined ? { createdBy: updates.createdBy } : {}),
         updated_at: new Date()
       }
@@ -239,6 +241,7 @@ export class CandidateModel {
       'Candidate Name': payload.name || '',
       'Email ID': payload.email || '',
       'Contact No': payload.contact || '',
+      resumeLink: payload.resumeLink || '',
       source: payload.source || {},
       workflowStatus: payload.workflowStatus || WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: payload.resumeUnderstandingStatus || RESUME_UNDERSTANDING_STATUS.pending,
@@ -562,7 +565,8 @@ export class CandidateModel {
       workflowStatus: doc.workflowStatus || WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: doc.resumeUnderstandingStatus || RESUME_UNDERSTANDING_STATUS.pending,
       resumeUnderstanding: Boolean(doc.resumeUnderstanding),
-      createdBy: doc.createdBy || null
+      createdBy: doc.createdBy || null,
+      resumeLink: doc.resumeLink || ''
     };
   }
 }

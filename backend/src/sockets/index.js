@@ -6,6 +6,7 @@ import { taskSocketHandler } from './taskSocket.js';
 import { candidateSocketHandler } from './candidateSocket.js';
 import { socketErrorHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
+import { notificationCenter } from '../notifications/index.js';
 
 export class SocketManager {
   constructor(server) {
@@ -43,6 +44,7 @@ export class SocketManager {
 
       // Register all socket handlers
       this.registerHandlers(socket);
+      notificationCenter.registerSocket(socket);
     });
 
     logger.info('Socket connection handler configured');
