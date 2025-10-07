@@ -1,6 +1,10 @@
+import crypto from 'node:crypto';
 import { candidateModel, WORKFLOW_STATUS, RESUME_UNDERSTANDING_STATUS } from '../models/Candidate.js';
 import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
+import { domainEventBus } from '../events/eventBus.js';
+import { DomainEvents } from '../events/eventTypes.js';
+import { config } from '../config/index.js';
 
 const MM_BRANCH_MAP = new Map([
   ['tushar.ahuja@silverspaceinc.com', 'GGR'],
@@ -392,6 +396,7 @@ class CandidateService {
     const recruiterDisplay = recruiterEmail ? formatDisplayName(recruiterEmail) : formatDisplayName(candidate.recruiter ?? '');
     const expertValue = candidate.expert ?? '';
     const expertDisplay = formatDisplayName(expertValue);
+    const resumeLink = (candidate.resumeLink || '').toString().trim();
 
     return {
       ...candidate,
@@ -407,7 +412,8 @@ class CandidateService {
       workflowStatus: candidate.workflowStatus || WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: candidate.resumeUnderstandingStatus || RESUME_UNDERSTANDING_STATUS.pending,
       resumeUnderstanding: (candidate.resumeUnderstandingStatus || RESUME_UNDERSTANDING_STATUS.pending) === RESUME_UNDERSTANDING_STATUS.done,
-      createdBy: candidate.createdBy || null
+      createdBy: candidate.createdBy || null,
+      resumeLink
     };
   }
 
@@ -714,6 +720,42 @@ class CandidateService {
       }
     }
 
+    if (payload.resumeLink !== undefined) {
+      const linkValue = payload.resumeLink?.toString?.().trim() || '';
+
+      if (!linkValue) {
+        sanitized.resumeLink = '';
+      } else {
+        let parsed;
+        try {
+          parsed = new URL(linkValue);
+        } catch (error) {
+          const invalidError = new Error('Resume link must be a valid URL');
+          invalidError.statusCode = 400;
+          throw invalidError;
+        }
+
+        if (parsed.protocol !== 'https:') {
+          const protocolError = new Error('Resume link must use HTTPS');
+          protocolError.statusCode = 400;
+          throw protocolError;
+        }
+
+        const storageConfig = config.storage || {};
+        const expectedPrefix = storageConfig.publicUrl && storageConfig.bucket
+          ? `${storageConfig.publicUrl}/${storageConfig.bucket}/`
+          : null;
+
+        if (expectedPrefix && !linkValue.startsWith(expectedPrefix)) {
+          const domainError = new Error('Resume link must use the configured storage domain');
+          domainError.statusCode = 400;
+          throw domainError;
+        }
+
+        sanitized.resumeLink = parsed.toString();
+      }
+    }
+
 
     if (payload.workflowStatus !== undefined) {
       sanitized.workflowStatus = payload.workflowStatus;
@@ -771,7 +813,9 @@ class CandidateService {
       delete sanitizedPayload.expert;
     }
 
-    if (Object.keys(sanitizedPayload).length === 0) {
+    const changedFields = Object.keys(sanitizedPayload);
+
+    if (changedFields.length === 0) {
       const error = new Error('No changes provided');
       error.statusCode = 400;
       throw error;
@@ -782,10 +826,23 @@ class CandidateService {
     logger.info('Candidate updated', {
       candidateId,
       updatedBy: user.email,
-      fields: Object.keys(sanitizedPayload)
+      fields: changedFields
     });
 
-    return this.formatCandidateRecord(updated);
+    const formatted = this.formatCandidateRecord(updated);
+
+    domainEventBus.publish(DomainEvents.CandidateUpdated, {
+      eventId: crypto.randomUUID(),
+      candidate: formatted,
+      actor: {
+        email: user.email,
+        role: user.role
+      },
+      changes: changedFields,
+      occurredAt: new Date().toISOString()
+    });
+
+    return formatted;
   }
 
   async createCandidateFromManager(user, payload = {}) {
@@ -808,6 +865,12 @@ class CandidateService {
     delete sanitized.expert;
     delete sanitized.workflowStatus;
     delete sanitized.resumeUnderstandingStatus;
+
+    if (!sanitized.resumeLink) {
+      const error = new Error('Resume link is required');
+      error.statusCode = 400;
+      throw error;
+    }
 
     if (!sanitized.branch) {
       const error = new Error('Branch is required');
@@ -835,7 +898,19 @@ class CandidateService {
       createdBy: user.email
     });
 
-    return this.formatCandidateRecord(document);
+    const formatted = this.formatCandidateRecord(document);
+
+    domainEventBus.publish(DomainEvents.CandidateCreated, {
+      eventId: crypto.randomUUID(),
+      candidate: formatted,
+      actor: {
+        email: user.email,
+        role: user.role
+      },
+      occurredAt: new Date().toISOString()
+    });
+
+    return formatted;
   }
 
   async assignExpert(user, candidateId, expertEmail) {
@@ -874,7 +949,19 @@ class CandidateService {
     }
 
     const updated = await candidateModel.assignExpertById(candidateId, email);
-    return this.formatCandidateRecord(updated);
+    const formatted = this.formatCandidateRecord(updated);
+
+    domainEventBus.publish(DomainEvents.CandidateExpertAssigned, {
+      eventId: crypto.randomUUID(),
+      candidate: formatted,
+      actor: {
+        email: user.email,
+        role: user.role
+      },
+      occurredAt: new Date().toISOString()
+    });
+
+    return formatted;
   }
 
   async updateResumeUnderstanding(user, candidateId, status) {
@@ -902,7 +989,20 @@ class CandidateService {
     }
 
     const updated = await candidateModel.updateResumeUnderstandingStatus(candidateId, status);
-    return this.formatCandidateRecord(updated);
+    const formatted = this.formatCandidateRecord(updated);
+
+    domainEventBus.publish(DomainEvents.CandidateResumeStatusChanged, {
+      eventId: crypto.randomUUID(),
+      candidate: formatted,
+      actor: {
+        email: user.email,
+        role: user.role
+      },
+      status,
+      occurredAt: new Date().toISOString()
+    });
+
+    return formatted;
   }
 
   async getCandidatesForUser(user, options = {}) {

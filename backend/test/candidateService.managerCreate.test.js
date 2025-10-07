@@ -3,6 +3,8 @@ import { candidateService } from '../src/services/candidateService.js';
 import { candidateModel, WORKFLOW_STATUS, RESUME_UNDERSTANDING_STATUS } from '../src/models/Candidate.js';
 import { userModel } from '../src/models/User.js';
 
+const SAMPLE_RESUME_LINK = 'https://egvjgtfjstxgszpzvvbx.supabase.co/storage/v1/object/public/resumes/sample.pdf';
+
 const originalCreateCandidate = candidateModel.createCandidate;
 const originalCount = candidateModel.countResumeUnderstandingTasks;
 const originalGetByWorkflow = candidateModel.getCandidatesByWorkflowStatus;
@@ -32,6 +34,7 @@ describe('candidateService manager create flow', () => {
       'Candidate Name': 'Jane Doe',
       'Email ID': 'jane.doe@example.com',
       'Contact No': '12345',
+      resumeLink: SAMPLE_RESUME_LINK,
       workflowStatus: WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: RESUME_UNDERSTANDING_STATUS.pending,
       createdBy: 'manager@example.com',
@@ -51,7 +54,8 @@ describe('candidateService manager create flow', () => {
         technology: 'react',
         branch: 'ggr',
         recruiter: 'recruiter@example.com',
-        expert: 'should@not.persist'
+        expert: 'should@not.persist',
+        resumeLink: SAMPLE_RESUME_LINK
       }
     );
 
@@ -61,6 +65,7 @@ describe('candidateService manager create flow', () => {
       technology: 'React',
       branch: 'GGR',
       recruiter: 'recruiter@example.com',
+      resumeLink: SAMPLE_RESUME_LINK,
       expert: '',
       workflowStatus: WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: RESUME_UNDERSTANDING_STATUS.pending,
@@ -83,6 +88,7 @@ describe('candidateService manager create flow', () => {
       'Candidate Name': 'Jane Doe',
       'Email ID': 'jane.doe@example.com',
       'Contact No': '+11234567890',
+      resumeLink: SAMPLE_RESUME_LINK,
       workflowStatus: WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: RESUME_UNDERSTANDING_STATUS.pending,
       createdBy: 'mm.user@company.com',
@@ -102,7 +108,8 @@ describe('candidateService manager create flow', () => {
         technology: 'react',
         branch: 'ggr',
         recruiter: 'recruiter@example.com',
-        contact: '(123) 456-7890'
+        contact: '(123) 456-7890',
+        resumeLink: SAMPLE_RESUME_LINK
       }
     );
 
@@ -113,6 +120,7 @@ describe('candidateService manager create flow', () => {
       branch: 'GGR',
       recruiter: 'recruiter@example.com',
       contact: '+11234567890',
+      resumeLink: SAMPLE_RESUME_LINK,
       expert: '',
       workflowStatus: WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: RESUME_UNDERSTANDING_STATUS.pending,
@@ -120,6 +128,21 @@ describe('candidateService manager create flow', () => {
     });
 
     expect(result.createdBy).toBe('mm.user@company.com');
+  });
+
+  it('rejects candidate creation when resume link is missing', async () => {
+    await expect(
+      candidateService.createCandidateFromManager(
+        { email: 'manager@example.com', role: 'manager' },
+        {
+          name: 'Jane Doe',
+          email: 'jane.doe@example.com',
+          technology: 'react',
+          branch: 'ggr',
+          recruiter: 'recruiter@example.com'
+        }
+      )
+    ).rejects.toThrow('Resume link is required');
   });
 });
 

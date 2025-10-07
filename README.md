@@ -79,6 +79,13 @@
 - `npm start` – runs the server
 - `npm test` – runs Jest unit tests
 
+### Realtime Notifications
+- Candidate lifecycle actions (`create`, `update`, `assign expert`, `resume status`) publish domain events onto an in-process bus. The notification orchestrator fans those events into the `notification_outbox` MongoDB collection with audience tags (`branch:XYZ`, `recruiter:user@example.com`, etc.) and a checksum for deduplication.
+- A background delivery worker polls the outbox, claims pending rows, and emits `notifications:new` payloads to any sockets that subscribed to the matching scope via `candidateNotifications:subscribe`. Subscriptions are tracked server-side per socket—no browser storage is required—and they are cleaned up automatically on disconnect.
+- Delivery receipts (including skip reasons) live alongside the outbox document and are purged via a TTL index on `expiresAt`, keeping the collection lean without manual cron jobs.
+- Frontend consumers can react to `notifications:new` to refresh data or raise in-app toasts. The Branch Candidates screen now auto-subscribes to the active scope, shows a live notification panel, and throttles refresh requests to avoid spam.
+- To exercise the end-to-end flow locally, run `npm test` inside `backend/` to execute the new notification unit tests and then trigger a candidate update—every connected client on the same branch (or hierarchy/expert scope) receives a single, deduped alert.
+
 ### Interview Support Requests
 - Roles `recruiter`, `mlead`, `mam`, and `mm` can open the **Support** dialog from Branch Candidates to email tech leadership.
 - The backend exposes `POST /api/support/interview` (multipart form) to validate the payload, enforce role-based access, and deliver the formatted email via Microsoft Graph with optional resume and job description PDFs.

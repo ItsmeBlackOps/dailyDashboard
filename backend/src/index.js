@@ -44,12 +44,14 @@ import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler.j
 import apiRoutes from './routes/index.js';
 import { graphMeetingController } from './controllers/graphMeetingController.js';
 import { createSocketManager } from './sockets/index.js';
+import { notificationCenter } from './notifications/index.js';
 
 class Application {
   constructor() {
     this.app = express();
     this.server = null;
     this.socketManager = null;
+    this.notificationCenter = notificationCenter;
   }
 
   async initialize() {
@@ -73,7 +75,7 @@ class Application {
       this.setupServer();
 
       // Setup Socket.IO
-      this.setupSocket();
+      await this.setupSocket();
 
       // Setup routes
       this.setupRoutes();
@@ -126,11 +128,13 @@ class Application {
     logger.info('✅ HTTP server created');
   }
 
-  setupSocket() {
+  async setupSocket() {
     this.socketManager = createSocketManager(this.server);
 
     // Setup real-time task updates
     taskService.setupRealtimeUpdates(this.socketManager.getIO());
+
+    await this.notificationCenter.initialize(this.socketManager.getIO());
 
     logger.info('✅ Socket.IO configured');
   }
@@ -197,6 +201,9 @@ class Application {
         if (this.socketManager) {
           await this.socketManager.gracefulShutdown();
         }
+
+        // Shutdown notification center
+        this.notificationCenter?.shutdown();
 
         // Close database connection
         await database.disconnect();

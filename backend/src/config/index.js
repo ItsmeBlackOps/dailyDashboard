@@ -131,6 +131,36 @@ const config = {
         ? maxAttachmentBytes
         : 5 * 1024 * 1024
     };
+  })(),
+
+  storage: (() => {
+    const projectRef = stripQuotes(process.env.SUPABASE_PROJECT_REF || '');
+    const bucket = stripQuotes(process.env.SUPABASE_S3_BUCKET || '');
+    const region = stripQuotes(process.env.SUPABASE_PROJECT_REGION || 'us-east-1');
+    const endpoint = stripQuotes(process.env.SUPABASE_S3_ENDPOINT || '');
+    const accessKeyId = stripQuotes(process.env.SUPABASE_S3_ACCESS_KEY_ID || '');
+    const secretAccessKey = stripQuotes(process.env.SUPABASE_S3_SECRET_ACCESS_KEY || '');
+    const maxResumeBytesRaw = process.env.CANDIDATE_RESUME_MAX_BYTES;
+    const maxResumeBytes = maxResumeBytesRaw
+      ? Number.parseInt(maxResumeBytesRaw, 10)
+      : 5 * 1024 * 1024;
+
+    const publicUrl = projectRef
+      ? `https://${projectRef}.supabase.co/storage/v1/object/public`
+      : '';
+
+    return {
+      projectRef,
+      bucket,
+      region: region || 'us-east-1',
+      endpoint,
+      accessKeyId,
+      secretAccessKey,
+      publicUrl,
+      maxResumeBytes: Number.isFinite(maxResumeBytes) && maxResumeBytes > 0
+        ? maxResumeBytes
+        : 5 * 1024 * 1024
+    };
   })()
 };
 

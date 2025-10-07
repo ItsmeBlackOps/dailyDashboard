@@ -48,6 +48,22 @@ interface CandidateRow {
   workflowStatus?: string;
   resumeUnderstandingStatus?: string;
   resumeUnderstanding?: boolean;
+  resumeLink?: string;
+}
+
+interface CandidateNotificationPayload {
+  notificationId: string;
+  candidateId: string;
+  candidateName: string;
+  message: string;
+  branch?: string;
+  category?: string;
+  occurredAt?: string;
+  triggeredBy?: string | null;
+  triggeredByRole?: string | null;
+  scope?: string;
+  recruiter?: string;
+  expert?: string;
 }
 
 interface RecruiterOption {
@@ -108,6 +124,10 @@ interface LoopSlotForm {
   durationWarning: string;
   isDatePickerOpen: boolean;
 }
+
+type NormalizedScope =
+  | { type: 'branch'; value: string }
+  | { type: 'hierarchy' | 'expert'; value: string[] };
 
 const SUPPORT_ROUNDS = [
   "1st Round",
@@ -172,6 +192,7 @@ function formatEmailDisplay(value: string): string {
 export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [scope, setScope] = useState<{ type: 'branch' | 'hierarchy' | 'expert'; value: string | string[] } | null>(null);
   const [candidates, setCandidates] = useState<CandidateRow[]>([]);
+  const [recentNotifications, setRecentNotifications] = useState<CandidateNotificationPayload[]>([]);
   const normalizedRole = role.trim().toLowerCase();
   const canView = ["admin", "mm", "mam", "mlead", "lead", "user", "am", "manager", "recruiter"].includes(normalizedRole);
   const canEdit = ["mm", "mam", "mlead", "recruiter", "lead", "am", "admin"].includes(normalizedRole);
@@ -182,6 +203,40 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const isManager = normalizedRole === 'manager';
   const showCreateButton = isManager || normalizedRole === 'mm';
   const tourEligible = TOUR_ROLES.some((roleKey) => roleKey === normalizedRole);
+  const normalizedScope = useMemo<NormalizedScope | null>(() => {
+    if (!scope) {
+      return null;
+    }
+
+    const type = scope.type;
+    if (type === 'branch') {
+      const value = typeof scope.value === 'string' ? scope.value.trim().toUpperCase() : '';
+      return value ? { type, value } : null;
+    }
+
+    if (type === 'hierarchy' || type === 'expert') {
+      const values = Array.isArray(scope.value) ? scope.value : [];
+      const next = values
+        .map((entry) => String(entry || '').trim().toLowerCase())
+        .filter(Boolean)
+        .sort();
+      return next.length > 0 ? { type, value: next } : null;
+    }
+
+    return null;
+  }, [scope]);
+
+  const scopeSignature = useMemo(() => {
+    if (!normalizedScope) {
+      return 'none';
+    }
+    if (normalizedScope.type === 'branch') {
+      return `branch:${normalizedScope.value}`;
+    }
+    return `${normalizedScope.type}:${normalizedScope.value.join('|')}`;
+  }, [normalizedScope]);
+
+  const CREATE_RESUME_MAX_BYTES = 5 * 1024 * 1024;
   const canCloneFromTasks = useMemo(() => !['user', 'lead', 'mam'].includes(normalizedRole), [normalizedRole]);
   const [loading, setLoading] = useState<boolean>(canView);
   const [error, setError] = useState<string>("");
@@ -205,6 +260,10 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     contact: '',
     expert: ''
   });
+  const notificationSubscriptionRef = useRef<string | null>(null);
+  const processedNotificationsRef = useRef<Set<string>>(new Set());
+  const notificationRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastScopeSignatureRef = useRef<string>('none');
   const [updateError, setUpdateError] = useState('');
   const [updating, setUpdating] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -216,6 +275,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     branch: '',
     contact: ''
   });
+  const [createResumeFile, setCreateResumeFile] = useState<File | null>(null);
+  const [createResumeError, setCreateResumeError] = useState('');
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
   const canSendSupport = ['recruiter', 'mlead', 'mam', 'mm'].includes(normalizedRole);
@@ -1480,6 +1541,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           recruiterRaw: candidate.recruiterRaw || '',
           expert: candidate.expert || '',
           expertRaw: candidate.expertRaw || '',
+          resumeLink: candidate.resumeLink || '',
           resumeUnderstanding: Boolean(candidate.resumeUnderstanding),
           resumeUnderstandingStatus: candidate.resumeUnderstandingStatus,
           workflowStatus: candidate.workflowStatus
@@ -1552,6 +1614,154 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     };
   }, [socket, fetchCandidates, refreshAccessToken]);
 
+  useEffect(() => {
+    if (!socket) {
+      return;
+    }
+
+    if (!normalizedScope) {
+      if (notificationSubscriptionRef.current) {
+        socket.emit('candidateNotifications:unsubscribe', {
+          subscriptionId: notificationSubscriptionRef.current
+        });
+        notificationSubscriptionRef.current = null;
+      }
+      lastScopeSignatureRef.current = 'none';
+      return;
+    }
+
+    if (
+      scopeSignature === lastScopeSignatureRef.current &&
+      notificationSubscriptionRef.current
+    ) {
+      return;
+    }
+
+    if (notificationSubscriptionRef.current) {
+      socket.emit('candidateNotifications:unsubscribe', {
+        subscriptionId: notificationSubscriptionRef.current
+      });
+      notificationSubscriptionRef.current = null;
+    }
+
+    let cancelled = false;
+
+    socket.emit('candidateNotifications:subscribe', { scope: normalizedScope }, (response: any) => {
+      if (cancelled) {
+        return;
+      }
+
+      if (response?.success && response.subscriptionId) {
+        notificationSubscriptionRef.current = response.subscriptionId;
+        lastScopeSignatureRef.current = scopeSignature;
+      } else if (response?.error) {
+        toast({
+          title: 'Realtime updates unavailable',
+          description: response.error,
+          variant: 'destructive'
+        });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [socket, normalizedScope, scopeSignature, toast]);
+
+  useEffect(() => {
+    if (!socket) {
+      return;
+    }
+    return () => {
+      if (notificationSubscriptionRef.current) {
+        socket.emit('candidateNotifications:unsubscribe', {
+          subscriptionId: notificationSubscriptionRef.current
+        });
+        notificationSubscriptionRef.current = null;
+        lastScopeSignatureRef.current = 'none';
+      }
+    };
+  }, [socket]);
+
+  useEffect(() => {
+    if (!socket) {
+      return;
+    }
+
+    const handleNotification = (payload: CandidateNotificationPayload) => {
+      if (!payload) {
+        return;
+      }
+
+      const fallbackIdParts = [
+        payload.candidateId,
+        payload.category,
+        payload.occurredAt
+      ].filter(Boolean);
+      const fallbackId = fallbackIdParts.join(':');
+      const identifier = payload.notificationId || fallbackId;
+
+      if (!identifier || processedNotificationsRef.current.has(identifier)) {
+        return;
+      }
+
+      processedNotificationsRef.current.add(identifier);
+
+      const occurredAt = payload.occurredAt || new Date().toISOString();
+      const enriched: CandidateNotificationPayload = {
+        ...payload,
+        notificationId: identifier,
+        occurredAt
+      };
+
+      setRecentNotifications((prev) => {
+        const filtered = prev.filter((item) => item.notificationId !== enriched.notificationId);
+        const next = [enriched, ...filtered];
+        const limited = next.slice(0, 5);
+
+        if (processedNotificationsRef.current.size > 100) {
+          processedNotificationsRef.current = new Set(limited.map((item) => item.notificationId));
+        }
+
+        return limited;
+      });
+
+      const descriptionParts: string[] = [];
+      if (enriched.candidateName) {
+        descriptionParts.push(enriched.candidateName);
+      }
+      if (enriched.branch) {
+        descriptionParts.push(enriched.branch);
+      }
+      if (enriched.triggeredBy) {
+        descriptionParts.push(`by ${enriched.triggeredBy}`);
+      }
+
+      toast({
+        title: enriched.message || 'Candidate update',
+        description: descriptionParts.length ? descriptionParts.join(' • ') : undefined,
+        duration: 4000
+      });
+
+      if (!notificationRefreshTimerRef.current) {
+        notificationRefreshTimerRef.current = setTimeout(() => {
+          notificationRefreshTimerRef.current = null;
+          fetchCandidates();
+        }, 700);
+      }
+    };
+
+    socket.on('notifications:new', handleNotification);
+
+    return () => {
+      socket.off('notifications:new', handleNotification);
+      if (notificationRefreshTimerRef.current) {
+        clearTimeout(notificationRefreshTimerRef.current);
+        notificationRefreshTimerRef.current = null;
+      }
+    };
+  }, [socket, fetchCandidates, toast]);
+
   const filteredCandidates = useMemo(() => {
     if (!search.trim()) return candidates;
     const query = search.trim().toLowerCase();
@@ -1617,6 +1827,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setCreateForm({ name: '', email: '', technology: '', recruiter: '', branch: '', contact: '' });
     setCreateError('');
     setCreating(false);
+    setCreateResumeFile(null);
+    setCreateResumeError('');
   };
 
   const handleCreateFieldChange = (field: keyof typeof createForm, value: string) => {
@@ -1651,11 +1863,37 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     });
   };
 
-  const handleCreateCandidate = () => {
+  const handleCreateResumeChange = (files: FileList | null) => {
+    const file = files?.[0] ?? null;
+
+    if (!file) {
+      setCreateResumeFile(null);
+      setCreateResumeError('Resume PDF is required');
+      return;
+    }
+
+    if (file.type !== 'application/pdf') {
+      setCreateResumeFile(null);
+      setCreateResumeError('Resume must be a PDF file');
+      return;
+    }
+
+    if (file.size > CREATE_RESUME_MAX_BYTES) {
+      setCreateResumeFile(null);
+      setCreateResumeError('Resume must be 5MB or smaller');
+      return;
+    }
+
+    setCreateResumeFile(file);
+    setCreateResumeError('');
+  };
+
+  const handleCreateCandidate = async () => {
     if (!socket) return;
 
     setCreating(true);
     setCreateError('');
+    setCreateResumeError('');
 
     const trimmedName = titleCasePreserveSpacing(createForm.name).replace(/\s+/g, ' ').trim();
     const trimmedEmail = createForm.email.trim().toLowerCase();
@@ -1694,12 +1932,44 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       return;
     }
 
+    if (!createResumeFile) {
+      setCreateResumeError('Resume PDF is required');
+      setCreating(false);
+      return;
+    }
+
+    let resumeLink = '';
+
+    try {
+      const formData = new FormData();
+      formData.append('resume', createResumeFile);
+      const response = await authFetch(`${API_URL}/api/candidates/resume`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result?.success || !result?.resumeLink) {
+        const message = result?.error || 'Unable to upload resume';
+        throw new Error(message);
+      }
+
+      resumeLink = String(result.resumeLink);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to upload resume';
+      setCreateError(message);
+      setCreating(false);
+      return;
+    }
+
     const payload: Record<string, string> = {
       name: trimmedName,
       email: trimmedEmail,
       technology: trimmedTechnology,
       branch: trimmedBranch,
-      recruiter: trimmedRecruiter
+      recruiter: trimmedRecruiter,
+      resumeLink
     };
 
     if (trimmedContact) {
@@ -2022,6 +2292,39 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
             {renderScopeBadge()}
           </div>
 
+          {recentNotifications.length > 0 && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-primary">Live notifications</p>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => {
+                    setRecentNotifications([]);
+                    processedNotificationsRef.current = new Set();
+                  }}
+                >
+                  Clear
+                </Button>
+              </div>
+              <ul className="mt-3 space-y-3">
+                {recentNotifications.map((notification) => (
+                  <li key={notification.notificationId} className="text-sm leading-snug">
+                    <p className="font-semibold text-primary">
+                      {DOMPurify.sanitize(notification.candidateName || 'Candidate')}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {DOMPurify.sanitize(notification.message || '')}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {notification.occurredAt ? moment(notification.occurredAt).fromNow() : 'just now'}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {loading ? (
             <div className="space-y-2">
               {Array.from({ length: 5 }).map((_, index) => (
@@ -2046,6 +2349,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                     <TableHead>Expert</TableHead>
                     <TableHead>Recruiter</TableHead>
                     <TableHead>Email</TableHead>
+                    <TableHead>Resume</TableHead>
                     <TableHead>Contact</TableHead>
                     {(canEdit || canSendSupport) && <TableHead className="text-right">Actions</TableHead>}
                   </TableRow>
@@ -2058,6 +2362,15 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                     const sanitizedRecruiter = DOMPurify.sanitize(candidate.recruiter || '');
                     const sanitizedEmail = DOMPurify.sanitize(candidate.email || '');
                     const sanitizedContact = DOMPurify.sanitize(candidate.contact || '');
+                    const resumeLinkRaw = typeof candidate.resumeLink === 'string' ? candidate.resumeLink.trim() : '';
+                    let resumeHref: string | null = null;
+                    if (resumeLinkRaw) {
+                      try {
+                        resumeHref = new URL(resumeLinkRaw).toString();
+                      } catch (error) {
+                        resumeHref = null;
+                      }
+                    }
 
                     return (
                       <TableRow key={candidate.id}>
@@ -2081,6 +2394,20 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                         <TableCell>{sanitizedExpert}</TableCell>
                         <TableCell>{sanitizedRecruiter}</TableCell>
                         <TableCell>{sanitizedEmail}</TableCell>
+                        <TableCell>
+                          {resumeHref ? (
+                            <a
+                              href={resumeHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline"
+                            >
+                              View
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">No resume</span>
+                          )}
+                        </TableCell>
                         <TableCell>{sanitizedContact}</TableCell>
                         {(canEdit || canSendSupport) && (
                           <TableCell className="text-right">
@@ -2346,13 +2673,26 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   placeholder="Contact number"
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-resume">Resume (PDF)</Label>
+                <Input
+                  id="create-resume"
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(event) => handleCreateResumeChange(event.target.files)}
+                />
+                {createResumeFile && (
+                  <p className="text-xs text-muted-foreground">{createResumeFile.name}</p>
+                )}
+                {createResumeError && <p className="text-xs text-destructive">{createResumeError}</p>}
+              </div>
               {createError && <p className="text-sm text-destructive">{createError}</p>}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={resetCreateState} disabled={creating}>
                 Cancel
               </Button>
-              <Button onClick={handleCreateCandidate} disabled={creating || recruiterOptions.length === 0}>
+              <Button onClick={handleCreateCandidate} disabled={creating || recruiterOptions.length === 0 || !createResumeFile}>
                 {creating ? 'Submitting…' : 'Submit Candidate'}
               </Button>
             </DialogFooter>
