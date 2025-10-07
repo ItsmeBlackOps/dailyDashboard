@@ -70,7 +70,7 @@ const Index = () => {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight mb-2">Dashboard Overview</h1>
-          <p className="text-muted-foreground">Welcome back! Here's what's happening with your sales today.</p>
+          <p className="text-muted-foreground">Welcome back! Here's what's happening today.</p>
         </div>
         <div className="space-y-4">
           <DashboardFilters filters={filters} onChange={setFilters} allowReceivedDate={allowReceivedDate} />

@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { MsalProvider } from '@azure/msal-react';
 import App from './App.tsx';
+import 'driver.js/dist/driver.css';
 import './index.css';
 import { msalInstance } from './authConfig';
 

@@ -758,12 +758,12 @@ class CandidateService {
     }
 
     if (normalizedRole === 'recruiter') {
-      const allowedKeys = ['name', 'email', 'contact'];
-      for (const key of Object.keys(sanitizedPayload)) {
-        if (!allowedKeys.includes(key)) {
-          delete sanitizedPayload[key];
-        }
-      }
+      const allowedKeys = ['name', 'email', 'contact', 'technology'];
+     for (const key of Object.keys(sanitizedPayload)) {
+       if (!allowedKeys.includes(key)) {
+         delete sanitizedPayload[key];
+       }
+     }
       delete sanitizedPayload.expert;
     }
 

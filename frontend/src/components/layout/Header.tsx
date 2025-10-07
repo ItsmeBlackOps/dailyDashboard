@@ -126,7 +126,12 @@ export function Header({ toggleSidebar }: HeaderProps) {
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="pl-2 pr-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="pl-2 pr-3"
+              data-tour-id="profile-menu-trigger"
+            >
               <Avatar className="h-7 w-7 mr-2">
                 <AvatarFallback className="text-xs font-medium bg-primary/10 text-primary">
                   {loading ? '…' : initials}

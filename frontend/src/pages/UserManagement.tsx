@@ -366,7 +366,7 @@ const UserManagementPage = () => {
           base = [];
           break;
         case 'recruiter':
-          base = roleRosters.mlead;
+          base = [...roleRosters.mlead, ...roleRosters.mam];
           break;
         case 'mlead':
           base = roleRosters.mam;
