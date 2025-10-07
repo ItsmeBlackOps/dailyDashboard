@@ -163,6 +163,9 @@ export default function TasksToday() {
   const allowReceivedDate = useMemo(() => {
     return ["admin", "mm", "mam", "mlead", "recruiter"].includes(normalizedRole);
   }, [normalizedRole]);
+  const canCloneSupport = useMemo(() => {
+    return !['user', 'lead', 'mam'].includes(normalizedRole);
+  }, [normalizedRole]);
   const { toast } = useToast();
   const meetingsEnabled = AZURE_CLIENT_ID.length > 0;
   const canManageMeetings = useMemo(() => {
@@ -638,6 +641,14 @@ const getRowClasses = (status = "") => {
 
   const handleCloneSupport = useCallback(
     (task: Task) => {
+      if (!canCloneSupport) {
+        toast({
+          title: 'Clone unavailable',
+          description: 'Ask an MM or recruiter to duplicate this request for you.',
+          variant: 'destructive'
+        });
+        return;
+      }
       try {
         const start = parseStart(task);
         const end = parseEnd(task);
@@ -678,7 +689,7 @@ const getRowClasses = (status = "") => {
         toast({ title: 'Clone failed', description: message, variant: 'destructive' });
       }
     },
-    [navigate, parseStart, parseEnd, toast]
+    [canCloneSupport, navigate, parseStart, parseEnd, toast]
   );
 
   const createOutlookEvent = useCallback(
@@ -1661,13 +1672,17 @@ const getRowClasses = (status = "") => {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleCloneSupport(task)}
-                      >
-                        Clone
-                      </Button>
+                      {canCloneSupport ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleCloneSupport(task)}
+                        >
+                          Clone
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No access</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 );

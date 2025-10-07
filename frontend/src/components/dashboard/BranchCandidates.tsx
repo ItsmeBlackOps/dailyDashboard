@@ -3,6 +3,7 @@ import DOMPurify from "dompurify";
 import moment from "moment-timezone";
 import { io, Socket } from "socket.io-client";
 import { useLocation, useNavigate } from "react-router-dom";
+import { driver, type DriveStep } from "driver.js";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -122,6 +123,7 @@ const SUPPORT_ROUNDS = [
 
 const EST_TIMEZONE = "America/New_York";
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5 MB default limit mirrored with backend
+const TOUR_ROLES = ["recruiter", "mlead", "mam", "mm"] as const;
 
 const DISPLAY_TIME_OPTIONS = Array.from({ length: 288 }, (_, index) => {
   const minutes = index * 5;
@@ -179,6 +181,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const canChangeExpertField = ['lead', 'am', "admin"].includes(normalizedRole);
   const isManager = normalizedRole === 'manager';
   const showCreateButton = isManager || normalizedRole === 'mm';
+  const tourEligible = TOUR_ROLES.some((roleKey) => roleKey === normalizedRole);
+  const canCloneFromTasks = useMemo(() => !['user', 'lead', 'mam'].includes(normalizedRole), [normalizedRole]);
   const [loading, setLoading] = useState<boolean>(canView);
   const [error, setError] = useState<string>("");
   const [search, setSearch] = useState<string>("");
@@ -273,11 +277,6 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
     return result;
   }, []);
-
-  const normalizeTitleValue = useCallback((value: string) => {
-    const cased = titleCasePreserveSpacing(value);
-    return cased.replace(/\s+/g, ' ').trim();
-  }, [titleCasePreserveSpacing]);
 
   const normalizeOptionList = useCallback((options?: RecruiterOption[]) => {
     if (!Array.isArray(options)) {
@@ -428,8 +427,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
   const hydrateCloneDraft = useCallback(
     async (candidate: CandidateRow, draft: SupportCloneDraft) => {
-      const normalizedCandidateName = normalizeTitleValue(draft.candidateName || candidate.name || '');
-      const normalizedTechnology = draft.technology || normalizeTitleValue(candidate.technology || '');
+      const normalizedCandidateName = titleCasePreserveSpacing(draft.candidateName || candidate.name || '').replace(/\s+/g, ' ').trim();
+      const normalizedTechnology = draft.technology || titleCasePreserveSpacing(candidate.technology || '').replace(/\s+/g, ' ').trim();
       const email = (draft.candidateEmail || candidate.email || '').toLowerCase();
       const contactNumber = draft.contactNumber || candidate.contact || '';
       const interviewRoundValue = draft.interviewRound || supportForm.interviewRound;
@@ -506,7 +505,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       setSupportOpen(true);
       setPendingCloneDraft(null);
     },
-    [createLoopSlot, normalizeTitleValue, restoreAttachmentsFromDraft, supportForm.interviewRound]
+    [createLoopSlot, titleCasePreserveSpacing, restoreAttachmentsFromDraft, supportForm.interviewRound]
   );
 
   const updateLoopSlot = useCallback((id: string, updater: (slot: LoopSlotForm) => LoopSlotForm) => {
@@ -659,6 +658,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     }
 
     try {
+      if (!/^\s*[{[]/.test(stored)) {
+        throw new Error('Invalid clone payload');
+      }
       const parsed = JSON.parse(stored) as SupportCloneDraft;
       if (parsed && typeof parsed === 'object' && parsed.version === 1) {
         setPendingCloneDraft(parsed);
@@ -739,8 +741,10 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   }, []);
 
   const openSupportDialog = useCallback((candidate: CandidateRow) => {
-    const formattedName = normalizeTitleValue(candidate.name || '');
-    const formattedTechnology = candidate.technology ? normalizeTitleValue(candidate.technology) : '';
+    const formattedName = titleCasePreserveSpacing(candidate.name || '').replace(/\s+/g, ' ').trim();
+    const formattedTechnology = candidate.technology
+      ? titleCasePreserveSpacing(candidate.technology).replace(/\s+/g, ' ').trim()
+      : '';
     setSupportCandidate(candidate);
     setSupportForm({
       candidateName: formattedName,
@@ -771,7 +775,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setLoopSlots([]);
     loopSlotCounter.current = 0;
     setSupportOpen(true);
-  }, [normalizeTitleValue]);
+  }, [titleCasePreserveSpacing]);
 
   const handleSupportFieldChange = useCallback((field: keyof SupportFormState, value: string) => {
     if (field === 'contactNumber' || field === 'interviewDateTime') {
@@ -1047,6 +1051,11 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       return;
     }
 
+    if (!resumeFile) {
+      setSupportError('Attach the candidate resume (PDF) before sending support.');
+      return;
+    }
+
     let activeAccount = account;
     let graphToken = '';
     try {
@@ -1089,8 +1098,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       setSupportError('');
 
       const formData = new FormData();
-      const normalizedEndClient = normalizeTitleValue(supportForm.endClient);
-      const normalizedJobTitle = normalizeTitleValue(supportForm.jobTitle);
+      const normalizedEndClient = titleCasePreserveSpacing(supportForm.endClient).replace(/\s+/g, ' ').trim();
+      const normalizedJobTitle = titleCasePreserveSpacing(supportForm.jobTitle).replace(/\s+/g, ' ').trim();
 
       const firstSlot = resolvedSlots[0];
 
@@ -1200,7 +1209,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     additionalFiles,
     authFetch,
     toast,
-    normalizeTitleValue,
+    titleCasePreserveSpacing,
     resetSupportState,
     instance,
     supportInterviewDate,
@@ -1260,6 +1269,193 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       auth: { token }
     });
   }, [canView]);
+
+  const driverRef = useRef<ReturnType<typeof driver> | null>(null);
+  const introRef = useRef<HTMLDivElement | null>(null);
+  const updatesRef = useRef<HTMLDivElement | null>(null);
+  const includesRef = useRef<HTMLDivElement | null>(null);
+  const resumeFieldRef = useRef<HTMLDivElement | null>(null);
+  const hasAutoStarted = useRef(false);
+
+  const startTour = useCallback(() => {
+    if (!tourEligible || typeof document === 'undefined') {
+      return false;
+    }
+
+    let driverInstance = driverRef.current;
+    if (!driverInstance) {
+      driverInstance = driver({
+        allowClose: true,
+        showProgress: true,
+        overlayOpacity: 0.55,
+        smoothScroll: true,
+        stagePadding: 8,
+        nextBtnText: 'Next',
+        prevBtnText: 'Back',
+        doneBtnText: 'Finish',
+        popoverClass: 'max-w-xs md:max-w-sm'
+      });
+      driverRef.current = driverInstance;
+    }
+
+    const doc = document;
+    const steps: DriveStep[] = [];
+
+    const introElement = introRef.current;
+    if (introElement) {
+      steps.push({
+        element: introElement,
+        popover: {
+          title: 'Hey Branch Buddy!',
+          description: 'Hi! I am your friendly guide. In five tiny steps we will learn how to care for every candidate.',
+          side: 'bottom'
+        }
+      });
+    }
+
+    const supportElement = doc.querySelector('[data-tour-id="branch-support-button"]')
+      || doc.querySelector('[data-tour-id="branch-support-highlight"]')
+      || updatesRef.current;
+    if (supportElement) {
+      steps.push({
+        element: supportElement,
+        popover: {
+          title: 'Support Button = Ask for Help',
+          description: 'Click Support like raising your hand. Fill the form and our system emails the interview details automatically—no extra sending needed.',
+          side: 'right'
+        }
+      });
+    }
+
+    const autoEmailElement = doc.querySelector('[data-tour-id="branch-auto-email"]');
+    if (autoEmailElement) {
+      steps.push({
+        element: autoEmailElement,
+        popover: {
+          title: 'Emails Fire Automatically',
+          description: 'After you press Send, the system emails every detail to the recipient—so triple-check the info before submitting.',
+          side: 'right'
+        }
+      });
+    }
+
+    const cloneNavElement = doc.querySelector('[data-tour-id="tasks-link"]');
+    const cloneInfoElement = doc.querySelector('[data-tour-id="branch-clone-highlight"]');
+    if (canCloneFromTasks && (cloneNavElement || cloneInfoElement)) {
+      steps.push({
+        element: cloneNavElement ?? cloneInfoElement,
+        popover: {
+          title: 'Clone Button = Copy-Paste Magic',
+          description: 'Open Tasks and press Clone on an older support ticket. We copy every field—candidate, times, attachments—so you only tweak the new bits.',
+          side: 'right'
+        }
+      });
+    } else if (!canCloneFromTasks && cloneInfoElement) {
+      steps.push({
+        element: cloneInfoElement,
+        popover: {
+          title: 'Clones Handled By Recruiters',
+          description: 'Only recruiters or MM teammates can duplicate tasks. Ping them when you need an older request copied into Branch Candidates.',
+          side: 'right'
+        }
+      });
+    }
+
+    const includesElement = doc.querySelector('[data-tour-id="branch-table-area"]')
+      || includesRef.current
+      || doc.querySelector('[data-tour-id="branch-includes"]');
+    if (includesElement) {
+      steps.push({
+        element: includesElement,
+        popover: {
+          title: 'What Branch Candidates Shows',
+          description: 'Each row shows the person (Name), their skill (Technology), their helper (Expert), their owner (Recruiter), how to reach them (Email & Contact), and the action buttons.',
+          side: 'top'
+        }
+      });
+    }
+
+    const resumeElement = resumeFieldRef.current;
+    if (resumeElement) {
+      steps.push({
+        element: resumeElement,
+        popover: {
+          title: 'Resume Is A Must',
+          description: 'Always attach the newest resume PDF before sending. No resume means no support email goes out.',
+          side: 'top'
+        }
+      });
+    }
+
+    const userManagementElement = doc.querySelector('[data-tour-id="user-management-link"]') || introRef.current;
+    if (userManagementElement) {
+      steps.push({
+        element: userManagementElement,
+        popover: {
+          title: 'User Management Playbook',
+          description: 'Managers invite new teammates and reset passwords. MAM keeps recruiter lists tidy. MLead updates team leads or managers. Recruiters peek at their assignments without editing.',
+          side: 'right'
+        }
+      });
+    }
+
+    const profileElement = doc.querySelector('[data-tour-id="profile-menu-trigger"]') || introRef.current;
+    if (profileElement) {
+      steps.push({
+        element: profileElement,
+        popover: {
+          title: 'Optional: Polish Your Profile',
+          description: 'Click your name, choose Edit Profile, and add display name, job role, phone, and website so support emails show a friendly signature.',
+          side: 'left'
+        }
+      });
+    }
+
+    if (!steps.length) {
+      return false;
+    }
+
+    driverInstance.setSteps(steps);
+    driverInstance.drive(0);
+
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem('branchCandidatesTourSeen', 'true');
+      } catch {
+        // Ignore storage failures
+      }
+    }
+
+    return true;
+  }, [tourEligible, canCloneFromTasks]);
+
+  useEffect(() => {
+    if (!tourEligible || hasAutoStarted.current || typeof window === 'undefined') {
+      return;
+    }
+
+    let seen = false;
+    try {
+      seen = window.localStorage.getItem('branchCandidatesTourSeen') === 'true';
+    } catch {
+      seen = false;
+    }
+
+    if (seen) {
+      hasAutoStarted.current = true;
+      return;
+    }
+
+    hasAutoStarted.current = true;
+    const timer = window.setTimeout(() => {
+      const started = startTour();
+      if (!started) {
+        hasAutoStarted.current = false;
+      }
+    }, 600);
+
+    return () => window.clearTimeout(timer);
+  }, [tourEligible, startTour]);
 
   const fetchCandidates = useCallback(() => {
     if (!socket) return;
@@ -1380,12 +1576,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const openEditDialog = (candidate: CandidateRow) => {
     setEditCandidateId(candidate.id);
     setFormState({
-      name: candidate.name || '',
-      email: candidate.email || '',
-      technology: candidate.technology || '',
-      recruiter: (candidate.recruiterRaw || '').toLowerCase(),
+      name: titleCasePreserveSpacing(candidate.name || '').replace(/\s+/g, ' ').trim(),
+      email: String(candidate.email || '').trim().toLowerCase(),
+      technology: titleCasePreserveSpacing(candidate.technology || '').replace(/\s+/g, ' ').trim(),
+      recruiter: String(candidate.recruiterRaw || '').trim().toLowerCase(),
       contact: candidate.contact || '',
-      expert: (candidate.expertRaw || '').toLowerCase()
+      expert: String(candidate.expertRaw || '').trim().toLowerCase()
     });
     const normalizedRecruiter = (candidate.recruiterRaw || '').toLowerCase();
     if (normalizedRecruiter && !recruiterOptions.some((option) => option.value === normalizedRecruiter)) {
@@ -1425,6 +1621,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
   const handleCreateFieldChange = (field: keyof typeof createForm, value: string) => {
     let nextValue = value;
+    if (field === 'name' || field === 'technology') {
+      nextValue = titleCasePreserveSpacing(value);
+    }
     if (['email', 'recruiter'].includes(field)) {
       nextValue = value.trim().toLowerCase();
     }
@@ -1434,15 +1633,33 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setCreateForm((prev) => ({ ...prev, [field]: nextValue }));
   };
 
+  const handleCreateFieldBlur = (field: keyof typeof createForm) => {
+    setCreateForm((prev) => {
+      if (field === 'name' || field === 'technology') {
+        return { ...prev, [field]: titleCasePreserveSpacing(prev[field]).replace(/\s+/g, ' ').trim() };
+      }
+      if (field === 'email' || field === 'recruiter') {
+        return { ...prev, [field]: prev[field].trim().toLowerCase() };
+      }
+      if (field === 'contact') {
+        return { ...prev, contact: prev.contact.trim() };
+      }
+      if (field === 'branch') {
+        return { ...prev, branch: prev.branch.trim().toUpperCase() };
+      }
+      return prev;
+    });
+  };
+
   const handleCreateCandidate = () => {
     if (!socket) return;
 
     setCreating(true);
     setCreateError('');
 
-    const trimmedName = createForm.name.trim();
+    const trimmedName = titleCasePreserveSpacing(createForm.name).replace(/\s+/g, ' ').trim();
     const trimmedEmail = createForm.email.trim().toLowerCase();
-    const trimmedTechnology = createForm.technology.trim();
+    const trimmedTechnology = titleCasePreserveSpacing(createForm.technology).replace(/\s+/g, ' ').trim();
     const trimmedBranch = createForm.branch.trim().toUpperCase();
     const trimmedRecruiter = createForm.recruiter.trim().toLowerCase();
     const trimmedContact = createForm.contact.trim();
@@ -1509,10 +1726,28 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
   const handleFormChange = (field: keyof typeof formState, value: string) => {
     let nextValue = value;
+    if (field === 'name' || field === 'technology') {
+      nextValue = titleCasePreserveSpacing(value);
+    }
     if (field === 'recruiter' || field === 'expert' || field === 'email') {
       nextValue = value.trim().toLowerCase();
     }
     setFormState((prev) => ({ ...prev, [field]: nextValue }));
+  };
+
+  const handleFormBlur = (field: keyof typeof formState) => {
+    setFormState((prev) => {
+      if (field === 'name' || field === 'technology') {
+        return { ...prev, [field]: titleCasePreserveSpacing(prev[field]).replace(/\s+/g, ' ').trim() };
+      }
+      if (field === 'email' || field === 'recruiter' || field === 'expert') {
+        return { ...prev, [field]: prev[field].trim().toLowerCase() };
+      }
+      if (field === 'contact') {
+        return { ...prev, contact: prev.contact.trim() };
+      }
+      return prev;
+    });
   };
 
   const handleUpdateCandidate = () => {
@@ -1526,9 +1761,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     };
 
     if (canEditBasicFields) {
-      const trimmedName = formState.name.trim();
+      const trimmedName = titleCasePreserveSpacing(formState.name).replace(/\s+/g, ' ').trim();
       const trimmedEmail = formState.email.trim().toLowerCase();
-      const trimmedTechnology = formState.technology.trim();
+      const trimmedTechnology = titleCasePreserveSpacing(formState.technology).replace(/\s+/g, ' ').trim();
 
       if (!trimmedName) {
         setUpdateError('Name is required');
@@ -1696,7 +1931,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     <>
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+          <div ref={introRef} data-tour-id="branch-tour-intro">
             <CardTitle>Branch Candidates</CardTitle>
             <CardDescription>
               {isManager
@@ -1710,31 +1945,61 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                       : 'Latest branch candidates'}
             </CardDescription>
           </div>
-          {showCreateButton && (
-            <Button
-              size="sm"
-              onClick={() => {
-                setCreateError('');
-                setCreateForm((prev) => ({
-                  ...prev,
-                  branch: prev.branch || (scope?.type === 'branch' && scope.value
-                    ? String(scope.value).toUpperCase()
-                    : prev.branch)
-                }));
-                setIsCreateOpen(true);
-              }}
-            >
-              Add Candidate
-            </Button>
-          )}
+          <div className="flex items-center gap-2 self-stretch sm:self-auto">
+            {tourEligible && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  startTour();
+                }}
+                data-tour-id="branch-tour-trigger"
+              >
+                Guided Tour
+              </Button>
+            )}
+            {showCreateButton && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setCreateError('');
+                  setCreateForm((prev) => ({
+                    ...prev,
+                    branch: prev.branch || (scope?.type === 'branch' && scope.value
+                      ? String(scope.value).toUpperCase()
+                      : prev.branch)
+                  }));
+                  setIsCreateOpen(true);
+                }}
+              >
+                Add Candidate
+              </Button>
+            )}
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-xl border border-primary/40 bg-primary/5 p-4 shadow-[0_0_20px_rgba(59,130,246,0.25)] animate-[pulse_4s_ease-in-out_infinite]">
+        <CardContent ref={includesRef} data-tour-id="branch-includes" className="space-y-4">
+          <div
+            ref={updatesRef}
+            data-tour-id="branch-latest-updates"
+            className="rounded-xl border border-primary/40 bg-primary/5 p-4 shadow-[0_0_20px_rgba(59,130,246,0.25)] animate-[pulse_4s_ease-in-out_infinite]"
+          >
             <p className="font-semibold text-sm text-primary">Latest Updates</p>
             <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-              <li>
-                • <span className="text-primary font-medium">Clone from TasksToday</span>: pick any prior request, click Clone, and we pre-fill the support form automatically.
+              <li data-tour-id="branch-support-highlight">
+                • <span className="text-primary font-medium">Support button</span>: press it when you want our ops team to set up an interview email for this candidate.
               </li>
+              <li data-tour-id="branch-auto-email">
+                • <span className="text-primary font-medium">Emails send themselves</span>: once you hit Send, the system emails the interview details automatically—no manual follow-up.
+              </li>
+              {canCloneFromTasks ? (
+                <li data-tour-id="branch-clone-highlight">
+                  • <span className="text-primary font-medium">Clone magic</span>: on the Tasks page, tap Clone on an old request and we copy the details into the support form for you.
+                </li>
+              ) : (
+                <li data-tour-id="branch-clone-highlight">
+                  • <span className="text-primary font-medium">Clone magic</span>: only recruiters or MM teammates can duplicate tasks. Ask them when you need the same support details again.
+                </li>
+              )}
               <li>
                 • <span className="text-primary font-medium">Loop Scheduler</span>: add multiple slots for loop rounds—each slot sends its own support email.
               </li>
@@ -1772,7 +2037,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 : 'No candidates found for the selected branch.'}
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" data-tour-id="branch-table-area">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1805,6 +2070,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                                 variant="secondary"
                                 className="md:hidden w-fit"
                                 onClick={() => openSupportDialog(candidate)}
+                                data-tour-id="branch-support-button"
                               >
                                 Support
                               </Button>
@@ -1835,7 +2101,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                                 </TooltipContent>
                               </Tooltip>
                               {canSendSupport && (
-                                <Button size="sm" variant="secondary" onClick={() => openSupportDialog(candidate)}>
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => openSupportDialog(candidate)}
+                                  data-tour-id="branch-support-button"
+                                >
                                   Support
                                 </Button>
                               )}
@@ -1869,34 +2140,37 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               <div className="space-y-4 py-2">
                 <div className="space-y-2">
                   <Label htmlFor="candidate-name">Name</Label>
-                  <Input
-                    id="candidate-name"
-                    value={formState.name}
-                    onChange={(event) => handleFormChange('name', event.target.value)}
-                    placeholder="Candidate name"
-                    disabled={!canEditBasicFields}
-                  />
+          <Input
+            id="candidate-name"
+            value={formState.name}
+            onChange={(event) => handleFormChange('name', event.target.value)}
+            onBlur={() => handleFormBlur('name')}
+            placeholder="Candidate name"
+            disabled={!canEditBasicFields}
+          />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="candidate-email">Email</Label>
-                  <Input
-                    id="candidate-email"
-                    type="email"
-                    value={formState.email}
-                    onChange={(event) => handleFormChange('email', event.target.value)}
-                    placeholder="candidate@example.com"
-                    disabled={!canEditBasicFields}
-                  />
+          <Input
+            id="candidate-email"
+            type="email"
+            value={formState.email}
+            onChange={(event) => handleFormChange('email', event.target.value)}
+            onBlur={() => handleFormBlur('email')}
+            placeholder="candidate@example.com"
+            disabled={!canEditBasicFields}
+          />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="candidate-technology">Technology</Label>
-                  <Input
-                    id="candidate-technology"
-                    value={formState.technology}
-                    onChange={(event) => handleFormChange('technology', event.target.value)}
-                    placeholder="Primary technology"
-                    disabled={!canEditBasicFields}
-                  />
+          <Input
+            id="candidate-technology"
+            value={formState.technology}
+            onChange={(event) => handleFormChange('technology', event.target.value)}
+            onBlur={() => handleFormBlur('technology')}
+            placeholder="Primary technology"
+            disabled={!canEditBasicFields}
+          />
                 </div>
                 {canChangeExpertField ? (
                   <div className="space-y-2">
@@ -1960,12 +2234,13 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 {canChangeContactField ? (
                   <div className="space-y-2">
                     <Label htmlFor="candidate-contact">Contact</Label>
-                    <Input
-                      id="candidate-contact"
-                      value={formState.contact}
-                      onChange={(event) => handleFormChange('contact', event.target.value)}
-                      placeholder="Contact number"
-                    />
+        <Input
+          id="candidate-contact"
+          value={formState.contact}
+          onChange={(event) => handleFormChange('contact', event.target.value)}
+          onBlur={() => handleFormBlur('contact')}
+          placeholder="Contact number"
+        />
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1999,40 +2274,44 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
             <div className="space-y-4 py-2">
               <div className="space-y-2">
                 <Label htmlFor="create-name">Name</Label>
-                <Input
-                  id="create-name"
-                  value={createForm.name}
-                  onChange={(event) => handleCreateFieldChange('name', event.target.value)}
-                  placeholder="Candidate name"
-                />
+        <Input
+          id="create-name"
+          value={createForm.name}
+          onChange={(event) => handleCreateFieldChange('name', event.target.value)}
+          onBlur={() => handleCreateFieldBlur('name')}
+          placeholder="Candidate name"
+        />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-email">Email</Label>
-                <Input
-                  id="create-email"
-                  type="email"
-                  value={createForm.email}
-                  onChange={(event) => handleCreateFieldChange('email', event.target.value)}
-                  placeholder="candidate@example.com"
-                />
+        <Input
+          id="create-email"
+          type="email"
+          value={createForm.email}
+          onChange={(event) => handleCreateFieldChange('email', event.target.value)}
+          onBlur={() => handleCreateFieldBlur('email')}
+          placeholder="candidate@example.com"
+        />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-technology">Technology</Label>
-                <Input
-                  id="create-technology"
-                  value={createForm.technology}
-                  onChange={(event) => handleCreateFieldChange('technology', event.target.value)}
-                  placeholder="Primary technology"
-                />
+        <Input
+          id="create-technology"
+          value={createForm.technology}
+          onChange={(event) => handleCreateFieldChange('technology', event.target.value)}
+          onBlur={() => handleCreateFieldBlur('technology')}
+          placeholder="Primary technology"
+        />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-branch">Branch</Label>
-                <Input
-                  id="create-branch"
-                  value={createForm.branch}
-                  onChange={(event) => handleCreateFieldChange('branch', event.target.value)}
-                  placeholder="e.g., GGR"
-                />
+        <Input
+          id="create-branch"
+          value={createForm.branch}
+          onChange={(event) => handleCreateFieldChange('branch', event.target.value)}
+          onBlur={() => handleCreateFieldBlur('branch')}
+          placeholder="e.g., GGR"
+        />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-recruiter">Recruiter</Label>
@@ -2059,10 +2338,11 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-contact">Contact (optional)</Label>
-                <Input
-                  id="create-contact"
-                  value={createForm.contact}
-                  onChange={(event) => handleCreateFieldChange('contact', event.target.value)}
+        <Input
+          id="create-contact"
+          value={createForm.contact}
+          onChange={(event) => handleCreateFieldChange('contact', event.target.value)}
+          onBlur={() => handleCreateFieldBlur('contact')}
                   placeholder="Contact number"
                 />
               </div>
@@ -2367,8 +2647,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 </>
               )}
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="support-resume">Attach Resume (PDF)</Label>
+                <div
+                  className="space-y-2"
+                  ref={resumeFieldRef}
+                  data-tour-id="branch-resume-field"
+                >
+                  <Label htmlFor="support-resume">Attach Resume (PDF) — required</Label>
                   <Input
                     id="support-resume"
                     type="file"
@@ -2376,7 +2660,11 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                     onChange={(event) => handleSupportFileChange('resume', event.target.files)}
                     disabled={supportSubmitting}
                   />
-                  {resumeFile && <p className="text-xs text-muted-foreground">{resumeFile.name}</p>}
+                  {resumeFile ? (
+                    <p className="text-xs text-muted-foreground">{resumeFile.name}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Upload the latest resume before you press Send.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="support-jd">Attach JD (PDF)</Label>

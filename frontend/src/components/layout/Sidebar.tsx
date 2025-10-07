@@ -42,9 +42,10 @@ interface NavItemProps {
   href: string;
   badge?: string;
   isOpen: boolean;
+  tourId?: string;
 }
 
-function NavItem({ icon: Icon, label, href, badge, isOpen }: NavItemProps) {
+function NavItem({ icon: Icon, label, href, badge, isOpen, tourId }: NavItemProps) {
   const location = useLocation();
 
   return (
@@ -60,6 +61,7 @@ function NavItem({ icon: Icon, label, href, badge, isOpen }: NavItemProps) {
         )
       }
       data-nav-item={href}
+      data-tour-id={tourId}
       aria-current={location.pathname === href ? "page" : undefined}
     >
       <Icon className="h-5 w-5 flex-shrink-0" />
@@ -304,6 +306,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 label="Tasks"
                 href="/tasks"
                 isOpen={isOpen}
+                tourId="tasks-link"
               />
               {['admin', 'mm', 'mam', 'mlead', 'lead', 'user', 'am', 'recruiter', 'manager'].includes(normalizedRole) && (
                 <NavItem
@@ -364,6 +367,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 label="User Management"
                 href="/user-management"
                 isOpen={isOpen}
+                tourId="user-management-link"
               />
             )}
             <Button
