@@ -80,4 +80,22 @@ describe('TaskModel.filterAndFormatTasks suggestion visibility', () => {
     const tasks = model.filterAndFormatTasks(docs, userEmail, userRole, teamEmails);
     expect(tasks.length).toBe(0);
   });
+
+  it('does not include suggestion when only last name overlaps', () => {
+    const docs = [
+      {
+        ...baseDoc,
+        _id: 'lastname-overlap',
+        assignedTo: '',
+        candidateExpertRaw: 'Darshan Singh',
+        suggestions: ['Darshan Singh']
+      }
+    ];
+
+    const userEmail = 'astha.singh@example.com';
+    const userRole = 'expert';
+
+    const tasks = model.filterAndFormatTasks(docs, userEmail, userRole, []);
+    expect(tasks.length).toBe(0);
+  });
 });

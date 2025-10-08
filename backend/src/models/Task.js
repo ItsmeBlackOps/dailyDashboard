@@ -319,6 +319,38 @@ export class TaskModel {
 
     const toArray = (value) => (Array.isArray(value) ? value : []);
 
+    const extractNameTokens = (value) => {
+      const normalized = normalizeForComparison(value);
+      if (!normalized) return [];
+      return normalized.split(' ').filter(Boolean);
+    };
+
+    const hasAllTokens = (sourceSet, value) => {
+      if (!value) return false;
+      const tokens = extractNameTokens(value);
+      if (tokens.length === 0) return false;
+      return tokens.every((token) => sourceSet.has(token));
+    };
+
+    const matchAnyName = (sourceSet, ...values) => {
+      for (const value of values) {
+        if (!value) continue;
+        if (hasAllTokens(sourceSet, value)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const matchSuggestions = (sourceSet, suggestionsList) => {
+      for (const suggestion of toArray(suggestionsList)) {
+        if (hasAllTokens(sourceSet, suggestion)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     const tasks = [];
     const userEmailLower = (userEmail || '').toLowerCase();
     const userLocal = userEmailLower.split('@')[0];
@@ -436,25 +468,29 @@ export class TaskModel {
         const candidateRawLower = (doc.candidateExpertRaw || '').toLowerCase();
         const candidateMatchesTeamEmail = candidateRawLower && teamEmailSet.has(candidateRawLower);
         let candidateMatchesTeamTokens = false;
+        let teamTokenMatchSource = null;
 
         if (!candidateMatchesTeamEmail) {
-          const candidateToken = normalizeForComparison(doc.candidateExpertRaw || '');
-          if (candidateToken && teamTokenSet.has(candidateToken)) {
+          if (matchAnyName(teamTokenSet, doc.candidateExpertRaw)) {
             candidateMatchesTeamTokens = true;
-          } else {
-            for (const token of suggestionTokens) {
-              if (teamTokenSet.has(token)) {
-                candidateMatchesTeamTokens = true;
-                break;
-              }
-            }
+            teamTokenMatchSource = 'candidate_raw';
+          } else if (matchAnyName(teamTokenSet, task.candidateExpertDisplay)) {
+            candidateMatchesTeamTokens = true;
+            teamTokenMatchSource = 'candidate_display';
+          } else if (matchAnyName(teamTokenSet, task.assignedExpert)) {
+            candidateMatchesTeamTokens = true;
+            teamTokenMatchSource = 'assigned_expert';
+          } else if (matchSuggestions(teamTokenSet, task.suggestions)) {
+            candidateMatchesTeamTokens = true;
+            teamTokenMatchSource = 'suggestion';
           }
         }
 
         if (candidateMatchesTeamEmail || candidateMatchesTeamTokens) {
           logSuggestionDebug('TasksToday team suggestion matched', {
             ...baseMeta,
-            reason: candidateMatchesTeamEmail ? 'team_email_match' : 'team_token_match'
+            reason: candidateMatchesTeamEmail ? 'team_email_match' : 'team_token_match',
+            tokenMatchSource: candidateMatchesTeamEmail ? 'email' : teamTokenMatchSource
           });
           tasks.push(task);
           continue;
@@ -472,24 +508,28 @@ export class TaskModel {
           candidateRawLower && (candidateRawLower === userEmailLower || candidateRawLower === userLocal);
 
         let candidateMatchesTokens = false;
+        let userTokenMatchSource = null;
         if (!candidateMatchesEmail) {
-          const candidateToken = normalizeForComparison(doc.candidateExpertRaw || '');
-          if (candidateToken && userTokenSet.has(candidateToken)) {
+          if (matchAnyName(userTokenSet, doc.candidateExpertRaw)) {
             candidateMatchesTokens = true;
-          } else {
-            for (const token of suggestionTokens) {
-              if (userTokenSet.has(token)) {
-                candidateMatchesTokens = true;
-                break;
-              }
-            }
+            userTokenMatchSource = 'candidate_raw';
+          } else if (matchAnyName(userTokenSet, task.candidateExpertDisplay)) {
+            candidateMatchesTokens = true;
+            userTokenMatchSource = 'candidate_display';
+          } else if (matchAnyName(userTokenSet, task.assignedExpert)) {
+            candidateMatchesTokens = true;
+            userTokenMatchSource = 'assigned_expert';
+          } else if (matchSuggestions(userTokenSet, task.suggestions)) {
+            candidateMatchesTokens = true;
+            userTokenMatchSource = 'suggestion';
           }
         }
 
         if ((candidateMatchesEmail || candidateMatchesTokens) && statusLower === 'pending') {
           logSuggestionDebug('TasksToday suggestion matched user', {
             ...baseMeta,
-            reason: candidateMatchesEmail ? 'email_match' : 'token_match'
+            reason: candidateMatchesEmail ? 'email_match' : 'token_match',
+            tokenMatchSource: candidateMatchesEmail ? 'email' : userTokenMatchSource
           });
           tasks.push(task);
           continue;
@@ -498,7 +538,8 @@ export class TaskModel {
         if (candidateMatchesEmail || candidateMatchesTokens) {
           logSuggestionDebug('TasksToday suggestion match skipped due to status', {
             ...baseMeta,
-            reason: 'non_pending_status'
+            reason: 'non_pending_status',
+            tokenMatchSource: candidateMatchesEmail ? 'email' : userTokenMatchSource
           });
         } else if (statusLower === 'pending' && suggestionTokens.size > 0) {
           logSuggestionDebug('TasksToday suggestion did not match user tokens', {
