@@ -26,6 +26,7 @@ import { Calendar as CalendarIcon } from "lucide-react";
 import { useMsal } from "@azure/msal-react";
 import { GRAPH_MAIL_SCOPES } from "@/constants";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ToastAction } from "@/components/ui/toast";
 
 interface BranchCandidatesProps {
   role: string;
@@ -128,6 +129,56 @@ interface LoopSlotForm {
 type NormalizedScope =
   | { type: 'branch'; value: string }
   | { type: 'hierarchy' | 'expert'; value: string[] };
+
+const JD_KEYWORD_PATTERNS = [
+  /\bjob\s+description\b/i,
+  /\bresponsibilit(?:y|ies)\b/i,
+  /\brequirements?\b/i,
+  /\bmust\s+have\b/i,
+  /\bshould\s+have\b/i,
+  /\bnice\s+to\s+have\b/i,
+  /\bexperience\b/i,
+  /\bskills?\b/i,
+  /\broles?\s+and\s+responsibilit(?:y|ies)\b/i,
+  /\bjd\b/i
+] as const;
+
+const MIN_JD_CHAR_COUNT = 180;
+
+const looksLikeJobDescription = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+
+  const condensedLength = trimmed.replace(/\s+/g, '').length;
+  const bulletMatches = (trimmed.match(/(?:^|\n)\s*[-•*]/g) ?? []).length;
+  const numberedMatches = (trimmed.match(/(?:^|\n)\s*\d+\./g) ?? []).length;
+  const sentenceMatches = (trimmed.match(/[.!?](?:\s|\n)/g) ?? []).length;
+
+  let keywordHits = 0;
+  for (const pattern of JD_KEYWORD_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      keywordHits += 1;
+    }
+  }
+
+  if (keywordHits === 0) {
+    return false;
+  }
+
+  if (condensedLength >= MIN_JD_CHAR_COUNT && keywordHits >= 1) {
+    return true;
+  }
+
+  if (keywordHits >= 2 && (bulletMatches + numberedMatches >= 2)) {
+    return true;
+  }
+
+  if (keywordHits >= 2 && sentenceMatches >= 3) {
+    return true;
+  }
+
+  return false;
+};
 
 const SUPPORT_ROUNDS = [
   "1st Round",
@@ -307,6 +358,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [customMessage, setCustomMessage] = useState('');
   const [jobDescriptionText, setJobDescriptionText] = useState('');
   const supportWindowWarningKey = useRef<string>('');
+  const customMessageWarningActiveRef = useRef(false);
+  const pendingCustomMessageForJdRef = useRef<string>('');
+  const customMessageWarningToastRef = useRef<ReturnType<typeof toast> | null>(null);
   const [durationWarning, setDurationWarning] = useState('');
   const [pendingCloneDraft, setPendingCloneDraft] = useState<SupportCloneDraft | null>(null);
   const cloneHydrationRef = useRef(false);
@@ -623,10 +677,69 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       supportWindowWarningKey.current = warningKey;
     }
 
-    if (!outsideWindow) {
-      supportWindowWarningKey.current = '';
+  if (!outsideWindow) {
+    supportWindowWarningKey.current = '';
+  }
+}, [toast]);
+
+  const movePendingMessageToJd = useCallback(() => {
+    const pending = pendingCustomMessageForJdRef.current.trim();
+    if (!pending) {
+      return;
     }
-  }, [toast]);
+
+    setJobDescriptionText((prev) => {
+      const hasExisting = prev.trim().length > 0;
+      return hasExisting ? `${prev.trimEnd()}\n\n${pending}` : pending;
+    });
+    setCustomMessage('');
+    setSupportError('');
+    pendingCustomMessageForJdRef.current = '';
+    customMessageWarningActiveRef.current = false;
+    if (customMessageWarningToastRef.current) {
+      customMessageWarningToastRef.current.dismiss();
+      customMessageWarningToastRef.current = null;
+    }
+  }, [setCustomMessage, setJobDescriptionText, setSupportError]);
+
+  const ensureCustomMessageWarning = useCallback((value: string) => {
+    const trimmed = value.trim();
+    const hasDedicatedJd = Boolean(jdFile || jobDescriptionText.trim().length > 0);
+    const shouldWarn = Boolean(trimmed) && looksLikeJobDescription(trimmed) && !hasDedicatedJd;
+
+    if (shouldWarn) {
+      pendingCustomMessageForJdRef.current = trimmed;
+      if (!customMessageWarningActiveRef.current) {
+        customMessageWarningActiveRef.current = true;
+        customMessageWarningToastRef.current = toast({
+          title: 'Job description detected',
+          description: 'Move job description content into the JD field so it is formatted correctly in the support email.',
+          action: (
+            <ToastAction altText="Move text to JD" onClick={movePendingMessageToJd}>
+              Move to JD
+            </ToastAction>
+          )
+        });
+      }
+    } else {
+      pendingCustomMessageForJdRef.current = '';
+      if (customMessageWarningActiveRef.current) {
+        customMessageWarningActiveRef.current = false;
+      }
+      if (customMessageWarningToastRef.current) {
+        customMessageWarningToastRef.current.dismiss();
+        customMessageWarningToastRef.current = null;
+      }
+    }
+  }, [jdFile, jobDescriptionText, movePendingMessageToJd, toast]);
+
+  const handleCustomMessageChange = useCallback((value: string) => {
+    setCustomMessage(value);
+  }, []);
+
+  useEffect(() => {
+    ensureCustomMessageWarning(customMessage);
+  }, [customMessage, ensureCustomMessageWarning]);
 
   const handleLoopSlotDatePickerToggle = useCallback((id: string, open: boolean) => {
     updateLoopSlot(id, (slot) => ({ ...slot, isDatePickerOpen: open }));
@@ -991,6 +1104,14 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       return;
     }
 
+    const trimmedCustomMessage = customMessage.trim();
+    const jobDescriptionProvided = Boolean(jdFile || jobDescriptionText.trim().length > 0);
+    if (trimmedCustomMessage && looksLikeJobDescription(trimmedCustomMessage) && !jobDescriptionProvided) {
+      ensureCustomMessageWarning(trimmedCustomMessage);
+      setSupportError('Move the job description into the JD field or attach the JD PDF before sending.');
+      return;
+    }
+
     if (!isLoopRound && supportTimeWarning) {
       setSupportError('Fix the interview time before submitting.');
       return;
@@ -1284,6 +1405,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     loopSlots,
     computeInterviewDateTimeValue,
     encodeAttachmentForStorage,
+    ensureCustomMessageWarning,
     pendingCloneDraft
   ]);
 
@@ -3047,7 +3169,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   <textarea
                     id="support-custom-message"
                     value={customMessage}
-                    onChange={(event) => setCustomMessage(event.target.value)}
+                    onChange={(event) => handleCustomMessageChange(event.target.value)}
                     className="w-full rounded border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     rows={4}
                     placeholder="Optional message"
