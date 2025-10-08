@@ -44,6 +44,16 @@ import { Copy, Filter } from "lucide-react";
 import { deriveDisplayNameFromEmail, formatNameInput } from "@/utils/userNames";
 import { useNavigate } from "react-router-dom";
 
+type CloneAttachmentCategory = "resume" | "jobDescription" | "additional";
+
+interface TaskAttachment {
+  name: string;
+  url?: string;
+  category?: string;
+  type?: string;
+  data?: string;
+}
+
 interface Task {
   _id: string;
   subject?: string;
@@ -52,12 +62,8 @@ interface Task {
   joinUrl?: string | null;
   joinWebUrl?: string | null;
 
-  attachments?: Array<{
-    name: string;
-    url?: string;
-    category?: string;
-    type?: string;
-  }>;
+  attachments?: TaskAttachment[];
+  jobDescriptionText?: string;
 
   // Preferred keys (if available)
   startTime?: string; // "MM/DD/YYYY HH:mm" or ISO
@@ -109,11 +115,13 @@ interface SupportCloneDraftPayload {
   interviewDateTime?: string;
   durationMinutes?: number;
   technology?: string;
+  jobDescriptionText?: string;
   attachments?: Array<{
     name: string;
     url?: string;
-    category?: string;
+    category?: CloneAttachmentCategory;
     type?: string;
+    data?: string;
   }>;
   storedAt: string;
 }
@@ -639,6 +647,83 @@ const getRowClasses = (status = "") => {
     });
   }, [primaryStart]);
 
+  const prepareCloneAttachments = useCallback(
+    (source: Task): SupportCloneDraftPayload['attachments'] => {
+      if (!Array.isArray(source.attachments) || source.attachments.length === 0) {
+        return undefined;
+      }
+
+      const sanitized: NonNullable<SupportCloneDraftPayload['attachments']> = [];
+
+      for (const rawAttachment of source.attachments) {
+        if (!rawAttachment || typeof rawAttachment !== 'object') continue;
+        const rawName = typeof rawAttachment.name === 'string' ? rawAttachment.name : '';
+        const safeName = DOMPurify.sanitize(rawName, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }).trim();
+        if (!safeName) continue;
+
+        const rawUrl = typeof rawAttachment.url === 'string' ? rawAttachment.url : '';
+        const safeUrl = rawUrl
+          ? DOMPurify.sanitize(rawUrl, {
+              ALLOWED_TAGS: [],
+              ALLOWED_ATTR: [],
+              ALLOWED_URI_REGEXP: /^(https?|blob|data):/i,
+            }).trim()
+          : '';
+
+        const rawType = typeof rawAttachment.type === 'string' ? rawAttachment.type : '';
+        const safeType = rawType
+          ? DOMPurify.sanitize(rawType, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }).trim()
+          : '';
+
+        const rawData = typeof rawAttachment.data === 'string' ? rawAttachment.data : '';
+        const safeData = rawData ? rawData.trim() : '';
+
+        const categoryInput = typeof rawAttachment.category === 'string' ? rawAttachment.category : '';
+        const normalizedCategory = categoryInput.replace(/[\s_-]+/g, '').toLowerCase();
+
+        let category: CloneAttachmentCategory;
+        if (normalizedCategory === 'resume') {
+          category = 'resume';
+        } else if (normalizedCategory === 'jobdescription' || normalizedCategory === 'jd') {
+          category = 'jobDescription';
+        } else {
+          const lowerName = safeName.toLowerCase();
+          if (lowerName.includes('resume')) {
+            category = 'resume';
+          } else if (
+            lowerName.includes('jobdescription') ||
+            lowerName.includes('job description') ||
+            /\bjd\b/.test(lowerName)
+          ) {
+            category = 'jobDescription';
+          } else {
+            category = 'additional';
+          }
+        }
+
+        const record: NonNullable<SupportCloneDraftPayload['attachments']>[number] = {
+          name: safeName,
+          category,
+        };
+
+        if (safeUrl) {
+          record.url = safeUrl;
+        }
+        if (safeType) {
+          record.type = safeType;
+        }
+        if (safeData) {
+          record.data = safeData;
+        }
+
+        sanitized.push(record);
+      }
+
+      return sanitized.length > 0 ? sanitized : undefined;
+    },
+    []
+  );
+
   const handleCloneSupport = useCallback(
     (task: Task) => {
       if (!canCloneSupport) {
@@ -659,8 +744,18 @@ const getRowClasses = (status = "") => {
         }
 
         const contactNumber = task['Contact No'] || '';
-        const technology = task['Technology'] || (task.suggestions && task.suggestions.length > 0 ? task.suggestions.join(', ') : undefined);
+        const technology =
+          task['Technology'] ||
+          (task.suggestions && task.suggestions.length > 0
+            ? task.suggestions.join(', ')
+            : undefined);
         const jobTitle = task['Job Title'] || task.subject || '';
+        const attachments = prepareCloneAttachments(task);
+        const jobDescriptionTextRaw =
+          typeof task.jobDescriptionText === 'string' ? task.jobDescriptionText : '';
+        const jobDescriptionText = jobDescriptionTextRaw
+          ? DOMPurify.sanitize(jobDescriptionTextRaw, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }).trim()
+          : undefined;
 
         const payload: SupportCloneDraftPayload = {
           version: 1,
@@ -674,7 +769,8 @@ const getRowClasses = (status = "") => {
           interviewDateTime: interviewDateTimeISO,
           durationMinutes,
           technology,
-          attachments: Array.isArray(task.attachments) ? task.attachments : undefined,
+          jobDescriptionText,
+          attachments,
           storedAt: new Date().toISOString()
         };
 
@@ -689,7 +785,7 @@ const getRowClasses = (status = "") => {
         toast({ title: 'Clone failed', description: message, variant: 'destructive' });
       }
     },
-    [canCloneSupport, navigate, parseStart, parseEnd, toast]
+    [canCloneSupport, navigate, parseStart, parseEnd, toast, prepareCloneAttachments]
   );
 
   const createOutlookEvent = useCallback(
@@ -1024,7 +1120,7 @@ const getRowClasses = (status = "") => {
                 },
                 body: JSON.stringify({
                   to: recipientEmail,
-                  subject: `Join Meeting at ${edtTime}`,
+                  subject: `Join Meeting at ${edtTime} EST`,
                   body: resolvedLink,
                   start: start ? start.toDate().toISOString() : undefined
                 }),
