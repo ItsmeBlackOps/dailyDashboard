@@ -37,4 +37,9 @@ router.post(
   supportRequestController.createInterviewSupport
 );
 
+router.post(
+  '/mock',
+  supportRequestController.createMockSupport
+);
+
 export default router;

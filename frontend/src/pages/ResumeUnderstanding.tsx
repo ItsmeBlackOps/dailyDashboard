@@ -53,6 +53,7 @@ export default function ResumeUnderstanding() {
   const { refreshAccessToken } = useAuth();
   const role = useMemo(() => (localStorage.getItem("role") || "").trim().toLowerCase(), []);
   const allowed = useMemo(() => ["expert", "user", "lead", "am"].includes(role), [role]);
+  const showCompletedTab = role !== 'user';
   const [activeStatus, setActiveStatus] = useState<QueueStatus>("pending");
   const [queues, setQueues] = useState<Record<QueueStatus, CandidateRecord[]>>({
     pending: [],
@@ -86,6 +87,7 @@ export default function ResumeUnderstanding() {
   }, [allowed]);
 
   const userEmail = useMemo(() => (localStorage.getItem("email") || "").trim().toLowerCase(), []);
+  const shouldFilterByExpert = useMemo(() => !["lead", "am"].includes(role), [role]);
 
   const fetchQueue = useCallback((status: QueueStatus) => {
     if (!socket) return;
@@ -130,7 +132,7 @@ export default function ResumeUnderstanding() {
       if (!candidate?.id) return;
 
       const candidateExpert = (candidate.expertRaw || '').trim().toLowerCase();
-      if (candidateExpert && candidateExpert !== userEmail) {
+      if (shouldFilterByExpert && candidateExpert && candidateExpert !== userEmail) {
         return;
       }
 
@@ -145,7 +147,7 @@ export default function ResumeUnderstanding() {
       if (!candidate?.id) return;
 
       const candidateExpert = (candidate.expertRaw || '').trim().toLowerCase();
-      if (candidateExpert && candidateExpert !== userEmail) {
+      if (shouldFilterByExpert && candidateExpert && candidateExpert !== userEmail) {
         return;
       }
 
@@ -179,7 +181,7 @@ export default function ResumeUnderstanding() {
       socket.off('resumeUnderstandingUpdated', handleUpdate);
       socket.disconnect();
     };
-  }, [socket, fetchQueue, refreshAccessToken, userEmail]);
+  }, [socket, fetchQueue, refreshAccessToken, userEmail, shouldFilterByExpert]);
 
   useEffect(() => {
     if (activeStatus === 'done' && !fetched.done) {
@@ -188,9 +190,18 @@ export default function ResumeUnderstanding() {
   }, [activeStatus, fetched.done, fetchQueue]);
 
   const handleStatusChange = (value: string) => {
+    if (!showCompletedTab && value === 'done') {
+      return;
+    }
     const next = value === 'done' ? 'done' : 'pending';
     setActiveStatus(next);
   };
+
+  useEffect(() => {
+    if (!showCompletedTab && activeStatus === 'done') {
+      setActiveStatus('pending');
+    }
+  }, [showCompletedTab, activeStatus]);
 
   const updateResumeStatus = (candidateId: string, status: QueueStatus) => {
     if (!socket) return;
@@ -267,14 +278,16 @@ export default function ResumeUnderstanding() {
           <CardHeader>
             <CardTitle>Assigned Candidates</CardTitle>
             <CardDescription>
-              Switch between pending and completed candidates. Status changes update the sidebar badge automatically.
+              {showCompletedTab
+                ? 'Switch between pending and completed candidates. Status changes update the sidebar badge automatically.'
+                : 'Review the pending resume understanding tasks assigned to you.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Tabs value={activeStatus} onValueChange={handleStatusChange}>
-              <TabsList className="grid grid-cols-2 max-w-xs">
+              <TabsList className={`grid ${showCompletedTab ? 'grid-cols-2' : 'grid-cols-1'} max-w-xs`}>
                 <TabsTrigger value="pending">Pending</TabsTrigger>
-                <TabsTrigger value="done">Completed</TabsTrigger>
+                {showCompletedTab && <TabsTrigger value="done">Completed</TabsTrigger>}
               </TabsList>
               <TabsContent value={activeStatus} className="mt-4">
                 {currentLoading ? (

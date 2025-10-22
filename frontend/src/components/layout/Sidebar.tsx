@@ -88,10 +88,16 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
   const navigate = useNavigate();
   const { authFetch, refreshAccessToken } = useAuth();
   const [resumeCount, setResumeCount] = useState<number>(0);
+  const [adminAlertCount, setAdminAlertCount] = useState<number>(0);
   const resumeSocketRef = useRef<Socket | null>(null);
+  const adminAlertSocketRef = useRef<Socket | null>(null);
   const currentUserEmail = useMemo(() => (localStorage.getItem("email") || "").trim().toLowerCase(), []);
   const showResumeNav = useMemo(
     () => ["expert", "user", "lead", "am"].includes(normalizedRole),
+    [normalizedRole]
+  );
+  const shouldFilterResumeEvents = useMemo(
+    () => !["lead", "am"].includes(normalizedRole),
     [normalizedRole]
   );
   const [isUpdateLogOpen, setIsUpdateLogOpen] = useState(false);
@@ -188,17 +194,21 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
     };
 
     const handleAssignment = (payload: { candidate?: { expertRaw?: string } }) => {
-      const expert = (payload?.candidate?.expertRaw || '').trim().toLowerCase();
-      if (expert && expert !== currentUserEmail) {
-        return;
+      if (shouldFilterResumeEvents) {
+        const expert = (payload?.candidate?.expertRaw || '').trim().toLowerCase();
+        if (expert && expert !== currentUserEmail) {
+          return;
+        }
       }
       requestCount();
     };
 
     const handleUpdate = (payload: { candidate?: { expertRaw?: string } }) => {
-      const expert = (payload?.candidate?.expertRaw || '').trim().toLowerCase();
-      if (expert && expert !== currentUserEmail) {
-        return;
+      if (shouldFilterResumeEvents) {
+        const expert = (payload?.candidate?.expertRaw || '').trim().toLowerCase();
+        if (expert && expert !== currentUserEmail) {
+          return;
+        }
       }
       requestCount();
     };
@@ -231,7 +241,67 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
       socket.disconnect();
       resumeSocketRef.current = null;
     };
-  }, [showResumeNav, refreshAccessToken, currentUserEmail]);
+  }, [showResumeNav, refreshAccessToken, currentUserEmail, shouldFilterResumeEvents]);
+
+  useEffect(() => {
+    if (normalizedRole !== 'admin') {
+      setAdminAlertCount(0);
+      if (adminAlertSocketRef.current) {
+        adminAlertSocketRef.current.disconnect();
+        adminAlertSocketRef.current = null;
+      }
+      return;
+    }
+
+    const token = localStorage.getItem('accessToken') || '';
+    const socket = io(API_URL, {
+      autoConnect: false,
+      transports: ['websocket'],
+      auth: { token }
+    });
+
+    adminAlertSocketRef.current = socket;
+
+    const requestCount = () => {
+      socket.emit('getPendingExpertAssignmentsCount', (response: { success: boolean; count?: number }) => {
+        if (!response?.success) {
+          return;
+        }
+        setAdminAlertCount(typeof response.count === 'number' ? response.count : 0);
+      });
+    };
+
+    const handleConnect = () => requestCount();
+
+    const handleAuthError = async (err: Error) => {
+      if (err.message !== 'Unauthorized') return;
+      const ok = await refreshAccessToken();
+      if (!ok) {
+        return;
+      }
+      socket.auth = { token: localStorage.getItem('accessToken') || '' };
+      socket.once('connect', requestCount);
+      socket.connect();
+    };
+
+    const handleAssignmentsChange = () => requestCount();
+
+    socket.on('connect', handleConnect);
+    socket.on('connect_error', handleAuthError);
+    socket.on('candidateExpertAssigned', handleAssignmentsChange);
+    socket.on('candidateResumeStatusChanged', handleAssignmentsChange);
+
+    socket.connect();
+
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('connect_error', handleAuthError);
+      socket.off('candidateExpertAssigned', handleAssignmentsChange);
+      socket.off('candidateResumeStatusChanged', handleAssignmentsChange);
+      socket.disconnect();
+      adminAlertSocketRef.current = null;
+    };
+  }, [normalizedRole, refreshAccessToken]);
 
   return (
     <>
@@ -322,6 +392,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   label="Admin Alerts"
                   href="/admin-alerts"
                   isOpen={isOpen}
+                  badge={adminAlertCount > 0 ? String(adminAlertCount) : undefined}
                 />
               )}
               {showResumeNav && (

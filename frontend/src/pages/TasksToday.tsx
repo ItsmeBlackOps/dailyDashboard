@@ -14,6 +14,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -21,6 +28,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, API_URL } from "@/hooks/useAuth";
@@ -43,6 +54,7 @@ import { OnlineMeetingConsentBanner } from "@/components/OnlineMeetingConsentBan
 import { Copy, Filter } from "lucide-react";
 import { deriveDisplayNameFromEmail, formatNameInput } from "@/utils/userNames";
 import { useNavigate } from "react-router-dom";
+import { GRAPH_MAIL_SCOPES } from "@/constants";
 
 type CloneAttachmentCategory = "resume" | "jobDescription" | "additional";
 
@@ -124,6 +136,50 @@ interface SupportCloneDraftPayload {
     data?: string;
   }>;
   storedAt: string;
+  storedBy?: string;
+}
+
+interface SupportMockAttachment {
+  name: string;
+  type?: string;
+  category?: string;
+  data?: string;
+}
+
+interface SupportMockStoredEntry {
+  candidateName: string;
+  candidateEmail: string;
+  contactNumber?: string;
+  technology?: string;
+  endClient?: string;
+  interviewRound?: string;
+  interviewDateTime?: string;
+  attachments?: SupportMockAttachment[];
+  jobDescriptionText?: string;
+  sourceTaskId?: string;
+  storedAt: string;
+  storedBy?: string;
+}
+
+interface MockPreviewState {
+  candidateName: string;
+  candidateEmail: string;
+  technology: string;
+  contactNumber: string;
+  endClient: string;
+  interviewRound: string;
+  interviewDateTimeIso: string;
+  interviewDisplay: string;
+  storedAttachments: SupportMockAttachment[];
+  jobDescriptionText: string;
+  sourceTaskId?: string;
+  storedBy?: string;
+}
+
+interface ThanksMailEntry {
+  content: string;
+  html?: string;
+  generatedAt: string;
 }
 
 const TASK_STATUS_MAP = "tasksTodayStatusMap";
@@ -133,6 +189,14 @@ const PARSE_FMT = "MM/DD/YYYY HH:mm"; // 24h parsing for preferred keys
 const LEGACY_FMT = "MM/DD/YYYY hh:mm A"; // legacy input format
 const DATE_FMT = "MM/DD/YYYY";
 const TIME_FMT = "hh:mm A";
+const SUPPORT_CLONE_STORAGE_KEY = "supportCloneDraft";
+const SUPPORT_MOCK_STORAGE_KEY = "supportMockMaterials";
+const MAX_INLINE_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+const MAX_STORED_MOCK_ENTRIES = 5;
+const THANKS_MAIL_CACHE_KEY = "thanksMailDrafts";
+const MAX_STORED_THANKS_ENTRIES = 20;
+const THANKS_MAIL_LIMIT = 3;
+const THANKS_MAIL_WINDOW_HOURS = 6;
 
 // Reminder persistence keys
 const REM_SCHEDULE_KEY = "interviewRemindersScheduled"; // JSON: { [key]: triggerAtISO }
@@ -174,6 +238,12 @@ export default function TasksToday() {
   const canCloneSupport = useMemo(() => {
     return !['user', 'lead', 'mam'].includes(normalizedRole);
   }, [normalizedRole]);
+  const canRequestMock = useMemo(() => {
+    return ['recruiter', 'mlead', 'mam', 'mm'].includes(normalizedRole);
+  }, [normalizedRole]);
+  const canGenerateThanksMail = useMemo(() => {
+    return ['recruiter', 'mlead', 'mam', 'mm'].includes(normalizedRole);
+  }, [normalizedRole]);
   const { toast } = useToast();
   const meetingsEnabled = AZURE_CLIENT_ID.length > 0;
   const canManageMeetings = useMemo(() => {
@@ -202,6 +272,123 @@ export default function TasksToday() {
   const [selectedTeamLead, setSelectedTeamLead] = useState<string>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const navigate = useNavigate();
+  const currentUserEmail = useMemo(() => {
+    const raw = localStorage.getItem("email") || "";
+    const trimmed = raw.trim().toLowerCase();
+    return trimmed.length > 0 ? trimmed : null;
+  }, []);
+  const [mockDialogTask, setMockDialogTask] = useState<Task | null>(null);
+  const [mockPreview, setMockPreview] = useState<MockPreviewState | null>(null);
+  const [mockResumeUpload, setMockResumeUpload] = useState<File | null>(null);
+  const [mockJdUpload, setMockJdUpload] = useState<File | null>(null);
+  const [mockJobDescription, setMockJobDescription] = useState('');
+  const [mockError, setMockError] = useState('');
+  const [mockSending, setMockSending] = useState(false);
+  const [thanksDialogTask, setThanksDialogTask] = useState<Task | null>(null);
+  const [thanksMailContent, setThanksMailContent] = useState('');
+  const [thanksMailHtml, setThanksMailHtml] = useState('');
+  const [thanksMailGeneratedAt, setThanksMailGeneratedAt] = useState<string | null>(null);
+  const [thanksMailError, setThanksMailError] = useState('');
+  const [thanksMailLoading, setThanksMailLoading] = useState(false);
+  const [thanksMailRateInfo, setThanksMailRateInfo] = useState<{ remaining: number; resetAt: string } | null>(null);
+  const storedResumeAvailable = useMemo(() => {
+    if (!mockPreview) return false;
+    return mockPreview.storedAttachments.some((attachment) => {
+      const category = (attachment?.category || '').toString().toLowerCase();
+      return Boolean(attachment?.data && attachment.data.trim()) && category === 'resume';
+    });
+  }, [mockPreview]);
+  const storedJdAvailable = useMemo(() => {
+    if (!mockPreview) return false;
+    return mockPreview.storedAttachments.some((attachment) => {
+      const category = (attachment?.category || '').toString().toLowerCase();
+      return Boolean(attachment?.data && attachment.data.trim()) && category === 'jobdescription';
+    });
+  }, [mockPreview]);
+  const sanitizedThanksMailHtml = useMemo(() => {
+    if (!thanksMailHtml) {
+      return '';
+    }
+    return DOMPurify.sanitize(thanksMailHtml, { USE_PROFILES: { html: true } });
+  }, [thanksMailHtml]);
+  const mockSubject = useMemo(() => {
+    if (!mockPreview) return '';
+    const subjectTechnology = mockPreview.technology || 'General';
+    return `Mock Interview - ${mockPreview.candidateName || 'Candidate'} - ${subjectTechnology} - Training - ${mockPreview.interviewDisplay}`;
+  }, [mockPreview]);
+
+  const loadThanksMailFromStorage = useCallback((taskId: string): ThanksMailEntry | null => {
+    if (!currentUserEmail) {
+      return null;
+    }
+    try {
+      const raw = localStorage.getItem(THANKS_MAIL_CACHE_KEY);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') {
+        return null;
+      }
+      const userCache = parsed[currentUserEmail];
+      if (!userCache || typeof userCache !== 'object') {
+        return null;
+      }
+      const entry = userCache[taskId];
+      if (!entry || typeof entry.content !== 'string') {
+        return null;
+      }
+      const html = typeof entry.html === 'string' ? entry.html : '';
+      return {
+        content: entry.content,
+        html: html ? DOMPurify.sanitize(html, { USE_PROFILES: { html: true } }) : '',
+        generatedAt: entry.generatedAt
+      };
+    } catch (error) {
+      console.error('Failed to read stored thanks mail draft', error);
+      return null;
+    }
+  }, [currentUserEmail]);
+
+  const persistThanksMailToStorage = useCallback((taskId: string, entry: ThanksMailEntry) => {
+    if (!currentUserEmail) {
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(THANKS_MAIL_CACHE_KEY);
+      let parsed: Record<string, Record<string, ThanksMailEntry>> = {};
+      if (raw) {
+        const candidate = JSON.parse(raw);
+        if (candidate && typeof candidate === 'object') {
+          parsed = candidate;
+        }
+      }
+
+      const userCache = parsed[currentUserEmail] && typeof parsed[currentUserEmail] === 'object'
+        ? parsed[currentUserEmail]
+        : {};
+
+      userCache[taskId] = {
+        content: entry.content,
+        html: typeof entry.html === 'string' ? entry.html : '',
+        generatedAt: entry.generatedAt
+      };
+
+      const ordered = Object.entries(userCache)
+        .filter(([, value]) => value
+          && typeof value.content === 'string'
+          && typeof value.generatedAt === 'string'
+          && (typeof value.html === 'undefined' || typeof value.html === 'string'))
+        .sort(([, a], [, b]) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
+        .slice(0, MAX_STORED_THANKS_ENTRIES);
+
+      parsed[currentUserEmail] = Object.fromEntries(ordered);
+
+      localStorage.setItem(THANKS_MAIL_CACHE_KEY, JSON.stringify(parsed));
+    } catch (error) {
+      console.error('Failed to persist thanks mail draft', error);
+    }
+  }, [currentUserEmail]);
 
   const setMeetingBusyState = useCallback((taskId: string, busy: boolean) => {
     setMeetingBusy((prev) => {
@@ -724,6 +911,157 @@ const getRowClasses = (status = "") => {
     []
   );
 
+  const readMockFileAsDataUrl = useCallback(
+    (file: File) =>
+      new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            resolve(reader.result);
+          } else {
+            reject(new Error('Invalid reader result'));
+          }
+        };
+        reader.onerror = () => reject(reader.error || new Error('Unable to read attachment'));
+        reader.readAsDataURL(file);
+      }),
+    []
+  );
+
+  const encodeMockAttachment = useCallback(
+    async (file: File, category: string): Promise<SupportMockAttachment> => {
+      const attachment: SupportMockAttachment = {
+        name: file.name,
+        type: file.type || 'application/pdf',
+        category
+      };
+
+      if (file.size > MAX_INLINE_ATTACHMENT_BYTES) {
+        return attachment;
+      }
+
+      try {
+        const dataUrl = await readMockFileAsDataUrl(file);
+        if (dataUrl) {
+          const commaIndex = dataUrl.indexOf(',');
+          attachment.data = commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl;
+        }
+      } catch (error) {
+        console.error('Failed to encode mock attachment', error);
+      }
+
+      return attachment;
+    },
+    [readMockFileAsDataUrl]
+  );
+
+  const persistMockMaterials = useCallback((entry: SupportMockStoredEntry) => {
+    if (!entry) return;
+
+    const keyCandidates: string[] = [];
+    if (entry.candidateEmail) {
+      keyCandidates.push(entry.candidateEmail.trim().toLowerCase());
+    }
+    if (entry.sourceTaskId) {
+      keyCandidates.push(entry.sourceTaskId);
+    }
+
+    if (keyCandidates.length === 0) {
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(SUPPORT_MOCK_STORAGE_KEY);
+      let parsed: Record<string, SupportMockStoredEntry[]> = {};
+      if (raw && /^\s*[{[]/.test(raw)) {
+        const candidate = JSON.parse(raw);
+        if (candidate && typeof candidate === 'object') {
+          parsed = candidate;
+        }
+      }
+
+      const storedBy = (localStorage.getItem('email') || '').trim().toLowerCase();
+      const normalizedEntry: SupportMockStoredEntry = {
+        ...entry,
+        storedBy: entry.storedBy || (storedBy || undefined)
+      };
+
+      for (const key of keyCandidates) {
+        if (!key) continue;
+        const existing = Array.isArray(parsed[key]) ? parsed[key] : [];
+        const deduped = [normalizedEntry, ...existing.filter((item) => item?.storedAt !== normalizedEntry.storedAt)];
+        parsed[key] = deduped.slice(0, MAX_STORED_MOCK_ENTRIES);
+      }
+
+      localStorage.setItem(SUPPORT_MOCK_STORAGE_KEY, JSON.stringify(parsed));
+    } catch (error) {
+      console.error('Failed to persist mock materials', error);
+    }
+  }, []);
+
+  const loadStoredMockEntry = useCallback((task: Task): SupportMockStoredEntry | null => {
+    const keyCandidates: string[] = [];
+    const candidateEmail = (task['Email ID'] || '').trim().toLowerCase();
+    if (candidateEmail) {
+      keyCandidates.push(candidateEmail);
+    }
+    if (task._id) {
+      keyCandidates.push(task._id);
+    }
+
+    try {
+      const raw = localStorage.getItem(SUPPORT_MOCK_STORAGE_KEY);
+      if (raw && /^\s*[{[]/.test(raw)) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          for (const key of keyCandidates) {
+            const entries = parsed?.[key];
+            if (Array.isArray(entries) && entries.length > 0) {
+              const sorted = [...entries].sort((a, b) => {
+                const aTime = new Date(a?.storedAt ?? 0).getTime();
+                const bTime = new Date(b?.storedAt ?? 0).getTime();
+                return bTime - aTime;
+              });
+              const match = sorted[0];
+              if (match) {
+                return match;
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load stored mock materials', error);
+    }
+
+    try {
+      const legacyRaw = localStorage.getItem(SUPPORT_CLONE_STORAGE_KEY);
+      if (legacyRaw && /^\s*{/.test(legacyRaw)) {
+        const legacy = JSON.parse(legacyRaw);
+        if (legacy && typeof legacy === 'object' && keyCandidates.includes((legacy.candidateEmail || '').toLowerCase())) {
+          return {
+            candidateName: legacy.candidateName || '',
+            candidateEmail: legacy.candidateEmail || '',
+            contactNumber: legacy.contactNumber,
+            technology: legacy.technology,
+            endClient: legacy.endClient,
+            interviewRound: legacy.interviewRound,
+            interviewDateTime: legacy.interviewDateTime,
+            attachments: legacy.attachments,
+            jobDescriptionText: legacy.jobDescriptionText,
+            sourceTaskId: legacy.sourceTaskId,
+            storedAt: legacy.storedAt || new Date().toISOString(),
+            storedBy: legacy.storedBy
+          };
+        }
+      }
+    } catch (legacyError) {
+      console.error('Failed to parse legacy clone draft for mock materials', legacyError);
+    }
+
+    return null;
+  }, []);
+
   const handleCloneSupport = useCallback(
     (task: Task) => {
       if (!canCloneSupport) {
@@ -771,10 +1109,28 @@ const getRowClasses = (status = "") => {
           technology,
           jobDescriptionText,
           attachments,
-          storedAt: new Date().toISOString()
+          storedAt: new Date().toISOString(),
+          storedBy: (localStorage.getItem('email') || '').trim().toLowerCase() || undefined
         };
 
-        localStorage.setItem('supportCloneDraft', JSON.stringify(payload));
+        localStorage.setItem(SUPPORT_CLONE_STORAGE_KEY, JSON.stringify(payload));
+        persistMockMaterials({
+          candidateName: payload.candidateName,
+          candidateEmail: payload.candidateEmail,
+          contactNumber: payload.contactNumber,
+          technology: payload.technology,
+          endClient: payload.endClient,
+          interviewRound: payload.interviewRound,
+          interviewDateTime: payload.interviewDateTime,
+          attachments: payload.attachments?.filter((attachment) => {
+            const category = (attachment?.category || '').toString().toLowerCase();
+            return category === 'resume' || category === 'jobdescription';
+          }),
+          jobDescriptionText: payload.jobDescriptionText,
+          sourceTaskId: payload.sourceTaskId,
+          storedAt: payload.storedAt,
+          storedBy: payload.storedBy
+        });
         navigate('/branch-candidates?clone=1');
         toast({
           title: 'Support request ready to clone',
@@ -785,8 +1141,397 @@ const getRowClasses = (status = "") => {
         toast({ title: 'Clone failed', description: message, variant: 'destructive' });
       }
     },
-    [canCloneSupport, navigate, parseStart, parseEnd, toast, prepareCloneAttachments]
+    [canCloneSupport, navigate, parseStart, parseEnd, toast, prepareCloneAttachments, persistMockMaterials]
   );
+
+  const closeMockDialog = useCallback(() => {
+    setMockDialogTask(null);
+    setMockPreview(null);
+    setMockResumeUpload(null);
+    setMockJdUpload(null);
+    setMockJobDescription('');
+    setMockError('');
+    setMockSending(false);
+  }, []);
+
+  const handleOpenMockDialog = useCallback(
+    (task: Task) => {
+      if (!canRequestMock) {
+        toast({
+          title: 'Mock request unavailable',
+          description: 'Your role is not permitted to request mock interviews.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      const sanitizePlain = (value: string | undefined) =>
+        DOMPurify.sanitize(value ?? '', { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }).trim();
+
+      const start = parseStart(task);
+      const interviewIso = start ? start.toISOString() : '';
+      const storedEntry = loadStoredMockEntry(task);
+      const fallbackMoment = !interviewIso && storedEntry?.interviewDateTime
+        ? moment(storedEntry.interviewDateTime).tz(TZ)
+        : null;
+
+      const candidateName = sanitizePlain(task['Candidate Name'] || storedEntry?.candidateName || '');
+      const candidateEmail = sanitizePlain(task['Email ID'] || storedEntry?.candidateEmail || '');
+      const technology = sanitizePlain(task['Technology'] || storedEntry?.technology || '');
+      const contactNumber = sanitizePlain(task['Contact No'] || storedEntry?.contactNumber || '');
+      const endClient = sanitizePlain(task['End Client'] || storedEntry?.endClient || '');
+      const interviewRound = sanitizePlain(task['Interview Round'] || storedEntry?.interviewRound || '');
+
+      const interviewDateTimeIso = interviewIso || storedEntry?.interviewDateTime || '';
+      const interviewDisplay = start
+        ? start.tz(TZ).format('MMM D, YYYY [at] hh:mm A [EST]')
+        : fallbackMoment && fallbackMoment.isValid()
+          ? fallbackMoment.format('MMM D, YYYY [at] hh:mm A [EST]')
+          : 'Not available';
+
+      const storedAttachments = Array.isArray(storedEntry?.attachments)
+        ? storedEntry.attachments.filter((attachment: SupportMockAttachment | null) => Boolean(attachment)) as SupportMockAttachment[]
+        : [];
+
+      const jobDescriptionRaw = storedEntry?.jobDescriptionText || '';
+      const jobDescription = DOMPurify.sanitize(jobDescriptionRaw, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }).trim();
+
+      setMockPreview({
+        candidateName,
+        candidateEmail,
+        technology,
+        contactNumber,
+        endClient,
+        interviewRound,
+        interviewDateTimeIso,
+        interviewDisplay,
+        storedAttachments,
+        jobDescriptionText: jobDescription,
+        sourceTaskId: storedEntry?.sourceTaskId || task._id,
+        storedBy: storedEntry?.storedBy
+      });
+      setMockJobDescription(jobDescription);
+      setMockResumeUpload(null);
+      setMockJdUpload(null);
+      setMockError(candidateEmail ? '' : 'Candidate email is required to request a mock.');
+      setMockSending(false);
+      setMockDialogTask(task);
+    },
+    [canRequestMock, loadStoredMockEntry, parseStart, toast]
+  );
+
+  const ensureGraphMailToken = useCallback(async () => {
+    let activeAccount = account || instance.getActiveAccount() || null;
+    let graphToken = '';
+
+    try {
+      if (!activeAccount) {
+        const loginResult = await instance.loginPopup({ scopes: GRAPH_MAIL_SCOPES });
+        activeAccount = loginResult.account ?? loginResult.accounts?.[0] ?? null;
+        graphToken = loginResult.accessToken || '';
+        if (activeAccount) {
+          instance.setActiveAccount(activeAccount);
+        }
+      }
+
+      if (activeAccount && !graphToken) {
+        try {
+          const tokenResponse = await instance.acquireTokenSilent({
+            account: activeAccount,
+            scopes: GRAPH_MAIL_SCOPES
+          });
+          graphToken = tokenResponse.accessToken;
+        } catch (error) {
+          console.warn('Silent Graph token acquisition failed, attempting popup', error);
+          const popupResponse = await instance.acquireTokenPopup({
+            scopes: GRAPH_MAIL_SCOPES
+          });
+          graphToken = popupResponse.accessToken;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to acquire Graph token', error);
+      toast({
+        title: 'Authorization failed',
+        description: 'Authorize Microsoft access and try again.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    if (!graphToken) {
+      toast({
+        title: 'Authorization required',
+        description: 'Sign in to Microsoft before sending mock requests.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    return graphToken;
+  }, [account, instance, toast]);
+
+  const handleMockSend = useCallback(async () => {
+    if (!mockDialogTask || !mockPreview) {
+      return;
+    }
+
+    const sanitizedJobDescription = DOMPurify.sanitize(mockJobDescription, {
+      ALLOWED_TAGS: [],
+      ALLOWED_ATTR: []
+    }).trim();
+
+    if (!mockPreview.candidateName || !mockPreview.candidateEmail) {
+      setMockError('Candidate name and email are required.');
+      return;
+    }
+
+    if (!mockPreview.interviewDateTimeIso) {
+      setMockError('Interview date and time are required.');
+      return;
+    }
+
+    if (!mockPreview.contactNumber) {
+      setMockError('Provide the candidate contact number before requesting a mock.');
+      return;
+    }
+
+    setMockError('');
+    setMockSending(true);
+
+    try {
+      let resumeAttachment: SupportMockAttachment | null = null;
+      let jdAttachment: SupportMockAttachment | null = null;
+
+      const findStored = (category: string) =>
+        mockPreview.storedAttachments.find((attachment) => {
+          const normalized = (attachment?.category || '').toString().toLowerCase();
+          return normalized === category && typeof attachment?.data === 'string' && attachment.data.trim();
+        }) || null;
+
+      if (mockResumeUpload) {
+        resumeAttachment = await encodeMockAttachment(mockResumeUpload, 'resume');
+      } else {
+        resumeAttachment = findStored('resume');
+      }
+
+      if (mockJdUpload) {
+        jdAttachment = await encodeMockAttachment(mockJdUpload, 'jobDescription');
+      } else {
+        jdAttachment = findStored('jobdescription');
+      }
+
+      if (!resumeAttachment || !resumeAttachment.data) {
+        setMockError('Attach the candidate resume (PDF, up to 2 MB).');
+        setMockSending(false);
+        return;
+      }
+
+      if (!jdAttachment || !jdAttachment.data) {
+        setMockError('Attach the job description (PDF, up to 2 MB).');
+        setMockSending(false);
+        return;
+      }
+
+      const graphToken = await ensureGraphMailToken();
+      if (!graphToken) {
+        setMockSending(false);
+        return;
+      }
+
+      const payload = {
+        candidateName: mockPreview.candidateName,
+        candidateEmail: mockPreview.candidateEmail,
+        contactNumber: mockPreview.contactNumber,
+        technology: mockPreview.technology,
+        endClient: mockPreview.endClient,
+        interviewRound: mockPreview.interviewRound,
+        interviewDateTime: mockPreview.interviewDateTimeIso,
+        jobDescriptionText: sanitizedJobDescription,
+        attachments: [
+          { ...resumeAttachment, category: 'resume' },
+          { ...jdAttachment, category: 'jobDescription' }
+        ],
+        sourceTaskId: mockPreview.sourceTaskId || mockDialogTask._id
+      };
+
+      const response = await authFetch(`${API_URL}/api/support/mock`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-graph-access-token': graphToken
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const message = typeof result?.error === 'string' ? result.error : 'Unable to send mock request';
+        setMockError(message);
+        setMockSending(false);
+        return;
+      }
+
+      const storedEntry: SupportMockStoredEntry = {
+        candidateName: payload.candidateName,
+        candidateEmail: payload.candidateEmail,
+        contactNumber: payload.contactNumber,
+        technology: payload.technology,
+        endClient: payload.endClient,
+        interviewRound: payload.interviewRound,
+        interviewDateTime: payload.interviewDateTime,
+        attachments: payload.attachments,
+        jobDescriptionText: payload.jobDescriptionText,
+        sourceTaskId: payload.sourceTaskId,
+        storedAt: new Date().toISOString(),
+        storedBy: (localStorage.getItem('email') || '').trim().toLowerCase() || undefined
+      };
+
+      persistMockMaterials(storedEntry);
+
+      toast({
+        title: 'Mock request sent',
+        description: 'Mock interview details emailed successfully.'
+      });
+      closeMockDialog();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to send mock request';
+      setMockError(message);
+    } finally {
+      setMockSending(false);
+    }
+  }, [
+    API_URL,
+    authFetch,
+    closeMockDialog,
+    encodeMockAttachment,
+    ensureGraphMailToken,
+    mockDialogTask,
+    mockJobDescription,
+    mockJdUpload,
+    mockPreview,
+    mockResumeUpload,
+    persistMockMaterials,
+    toast
+  ]);
+
+  const closeThanksDialog = useCallback(() => {
+    setThanksDialogTask(null);
+    setThanksMailContent('');
+    setThanksMailHtml('');
+    setThanksMailGeneratedAt(null);
+    setThanksMailError('');
+    setThanksMailRateInfo(null);
+    setThanksMailLoading(false);
+  }, []);
+
+  const handleOpenThanksMailDialog = useCallback(
+    (task: Task, existingDraft?: ThanksMailEntry | null) => {
+      const storedDraft = existingDraft ?? loadThanksMailFromStorage(task._id);
+      if (!task.transcription && !storedDraft) {
+        toast({
+          title: 'Transcript unavailable',
+          description: 'TxAv is missing for this task. Ask the transcription team to upload the interview transcript before generating a thank-you email.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      setThanksMailContent(storedDraft?.content || '');
+      setThanksMailHtml(typeof storedDraft?.html === 'string' ? storedDraft.html : '');
+      setThanksMailGeneratedAt(storedDraft?.generatedAt || null);
+      setThanksMailError('');
+      setThanksMailRateInfo(null);
+      setThanksMailLoading(false);
+      setThanksDialogTask(task);
+    },
+    [loadThanksMailFromStorage, toast]
+  );
+
+  const handleGenerateThanksMail = useCallback(async () => {
+    if (!thanksDialogTask) {
+      return;
+    }
+
+    if (!thanksDialogTask.transcription) {
+      setThanksMailError('Transcript not available for this task.');
+      return;
+    }
+
+    setThanksMailLoading(true);
+    setThanksMailError('');
+    const pendingToast = toast({
+      title: 'Generating thank-you email…',
+      description: 'This may take up to a minute. You can keep working—we\'ll notify you once it\'s ready.',
+      duration: 60000
+    });
+    try {
+      const response = await authFetch(`${API_URL}/api/tasks/${thanksDialogTask._id}/thanks-mail`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message = payload?.error || 'Unable to generate thank-you email.';
+        setThanksMailError(message);
+        if (payload?.rateLimit) {
+          setThanksMailRateInfo(payload.rateLimit);
+        }
+        pendingToast.dismiss();
+        return;
+      }
+
+      const markdown = typeof payload.markdown === 'string' ? payload.markdown : '';
+      const rawHtml = typeof payload.html === 'string' ? payload.html : '';
+      const safeHtml = rawHtml ? DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } }) : '';
+      const generatedAt = typeof payload.generatedAt === 'string' ? payload.generatedAt : new Date().toISOString();
+      setThanksMailContent(markdown);
+      setThanksMailHtml(safeHtml);
+      setThanksMailGeneratedAt(generatedAt);
+      setThanksMailRateInfo(payload.rateLimit || null);
+      persistThanksMailToStorage(thanksDialogTask._id, { content: markdown, html: safeHtml, generatedAt });
+      pendingToast.dismiss();
+      toast({
+        title: 'Thank-you email ready',
+        description: 'A draft is now available below and saved for quick reuse.',
+        className: 'bg-gradient-to-r from-emerald-500 via-teal-500 to-lime-500 text-white shadow-lg',
+        duration: 6000
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to generate thank-you email.';
+      setThanksMailError(message);
+      pendingToast.dismiss();
+    } finally {
+      pendingToast.dismiss();
+      setThanksMailLoading(false);
+    }
+  }, [API_URL, authFetch, persistThanksMailToStorage, thanksDialogTask, toast]);
+
+  const handleCopyThanksMail = useCallback(async () => {
+    if (!thanksMailContent) {
+      return;
+    }
+    try {
+      if (!navigator?.clipboard?.writeText) {
+        setThanksMailError('Clipboard access is unavailable in this environment. Copy the draft manually.');
+        return;
+      }
+      await navigator.clipboard.writeText(thanksMailContent);
+      toast({
+        title: 'Copied to clipboard',
+        description: 'The thank-you email draft is ready to paste.'
+      });
+    } catch (error) {
+      setThanksMailError('Unable to copy the draft. Copy it manually instead.');
+      console.error('Failed to copy thanks mail content', error);
+    }
+  }, [thanksMailContent, toast]);
 
   const createOutlookEvent = useCallback(
     async (
@@ -1681,6 +2426,8 @@ const getRowClasses = (status = "") => {
                 const end = parseEnd(task);
                 const isMeetingBusy = Boolean(meetingBusy[task._id]);
                 const joinLink = extractJoinLink(task);
+                const storedThanksDraft = loadThanksMailFromStorage(task._id);
+                const canOpenThanksMail = Boolean(task.transcription || storedThanksDraft);
                 return (
                   <TableRow key={task._id} className={getRowClasses(task.status)}>
                     {showSubject && (
@@ -1768,14 +2515,37 @@ const getRowClasses = (status = "") => {
                       )}
                     </TableCell>
                     <TableCell>
-                      {canCloneSupport ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => handleCloneSupport(task)}
-                        >
-                          Clone
-                        </Button>
+                      {canCloneSupport || canRequestMock || canGenerateThanksMail ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="outline">
+                              Actions
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {canGenerateThanksMail && (
+                              <DropdownMenuItem
+                                onClick={() => handleOpenThanksMailDialog(task, storedThanksDraft)}
+                                disabled={!canOpenThanksMail}
+                              >
+                                Generate Thanks Mail
+                              </DropdownMenuItem>
+                            )}
+                            {canGenerateThanksMail && (canRequestMock || canCloneSupport) && (
+                              <DropdownMenuSeparator />
+                            )}
+                            {canRequestMock && (
+                              <DropdownMenuItem onClick={() => handleOpenMockDialog(task)}>
+                                Request Mock
+                              </DropdownMenuItem>
+                            )}
+                            {canCloneSupport && (
+                              <DropdownMenuItem onClick={() => handleCloneSupport(task)}>
+                                Clone Support Request
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       ) : (
                         <span className="text-xs text-muted-foreground">No access</span>
                       )}
@@ -1787,6 +2557,228 @@ const getRowClasses = (status = "") => {
           </Table>
         )}
       </div>
+      <Dialog open={Boolean(mockDialogTask)} onOpenChange={(open) => !open && closeMockDialog()}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Request Mock Interview</DialogTitle>
+          </DialogHeader>
+          {mockPreview ? (
+            <div className="space-y-4">
+              <p className="text-sm font-semibold text-red-600">
+                Complete the mock before the day of interview.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Interview Round{" "}
+                <span className="font-medium text-foreground">
+                  {mockPreview.interviewRound || "Not specified"}
+                </span>{" "}
+                is scheduled at{" "}
+                <span className="font-medium text-foreground">
+                  {mockPreview.interviewDisplay}
+                </span>
+                .
+              </p>
+              <div className="rounded-md border bg-card">
+                <div className="border-b px-4 py-2">
+                  <p className="text-sm font-medium text-foreground">Email Subject</p>
+                  <p className="text-sm text-muted-foreground break-words">{mockSubject}</p>
+                </div>
+                <table className="w-full text-sm">
+                  <tbody>
+                    {[
+                      { label: "Candidate Name", value: mockPreview.candidateName },
+                      { label: "Email", value: mockPreview.candidateEmail },
+                      { label: "Technology", value: mockPreview.technology || "Not specified" },
+                      { label: "Phone Number", value: mockPreview.contactNumber || "Not specified" },
+                      { label: "End Client", value: mockPreview.endClient || "Not specified" }
+                    ].map(({ label, value }) => (
+                      <tr key={label} className="border-b last:border-b-0">
+                        <th className="w-48 bg-muted px-4 py-2 text-left font-semibold text-muted-foreground">
+                          {label}
+                        </th>
+                        <td className="px-4 py-2 text-foreground">{value || "Not available"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">Cached Attachments</p>
+                {mockPreview.storedAttachments.length > 0 ? (
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                    {mockPreview.storedAttachments.map((attachment, index) => {
+                      const category = (attachment?.category || '').toString();
+                      const hasData = Boolean(attachment?.data && attachment.data.trim());
+                      return (
+                        <li key={`${attachment?.name || 'attachment'}-${index}`}>
+                          {attachment?.name || 'Attachment'}
+                          {category ? ` (${category})` : ''}
+                          {hasData ? ' — ready to attach' : ' — data unavailable'}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No cached resume or job description found for this task.
+                  </p>
+                )}
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="mock-resume">Resume (PDF)</Label>
+                  <Input
+                    id="mock-resume"
+                    type="file"
+                    accept="application/pdf"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      setMockResumeUpload(file);
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {mockResumeUpload
+                      ? `Selected: ${mockResumeUpload.name}`
+                      : storedResumeAvailable
+                        ? 'Using cached resume.'
+                        : 'Upload a resume PDF (max 2 MB).'}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mock-jd">Job Description (PDF)</Label>
+                  <Input
+                    id="mock-jd"
+                    type="file"
+                    accept="application/pdf"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      setMockJdUpload(file);
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {mockJdUpload
+                      ? `Selected: ${mockJdUpload.name}`
+                      : storedJdAvailable
+                        ? 'Using cached job description.'
+                        : 'Upload the job description PDF (max 2 MB).'}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="mock-jd-text">Job Description Notes (optional)</Label>
+                <Textarea
+                  id="mock-jd-text"
+                  rows={4}
+                  value={mockJobDescription}
+                  onChange={(event) => setMockJobDescription(event.target.value)}
+                  placeholder="Paste any relevant JD text to include in the email."
+                />
+              </div>
+              {mockError && <p className="text-sm text-red-600">{mockError}</p>}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Select a task to prepare the mock request.</p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={closeMockDialog} disabled={mockSending}>
+              Cancel
+            </Button>
+            <Button onClick={handleMockSend} disabled={mockSending || !mockPreview}>
+              {mockSending ? 'Sending…' : 'Send Mock Email'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(thanksDialogTask)} onOpenChange={(open) => !open && closeThanksDialog()}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Generate Thank-You Email</DialogTitle>
+          </DialogHeader>
+          {thanksDialogTask ? (
+            <div className="space-y-4">
+              <Alert>
+                <AlertTitle>GPT-5 usage is limited</AlertTitle>
+                <AlertDescription className="text-sm text-muted-foreground">
+                  You can generate up to {THANKS_MAIL_LIMIT} drafts every {THANKS_MAIL_WINDOW_HOURS} hours. The draft is stored locally for {thanksDialogTask["Candidate Name"] || 'this candidate'} so you can reuse or tweak it without another API call.
+                </AlertDescription>
+              </Alert>
+              {!thanksDialogTask.transcription && (
+                <Alert variant="destructive">
+                  <AlertTitle>Transcript missing</AlertTitle>
+                  <AlertDescription>
+                    TxAv is unavailable. You can review saved drafts below, but generating a new email requires the recorded transcript.
+                  </AlertDescription>
+                </Alert>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Generating a draft can take up to a minute. Feel free to keep working—the app will notify you when the email is ready.
+              </p>
+              {thanksMailGeneratedAt && (
+                <p className="text-xs text-muted-foreground">
+                  Last generated on {new Date(thanksMailGeneratedAt).toLocaleString()}
+                </p>
+              )}
+              <div className="rounded-md border bg-card/30 p-4">
+                {sanitizedThanksMailHtml ? (
+                  <div
+                    className="space-y-2 text-sm leading-6 text-foreground"
+                    dangerouslySetInnerHTML={{ __html: sanitizedThanksMailHtml }}
+                  />
+                ) : thanksMailContent ? (
+                  <pre className="whitespace-pre-wrap text-sm text-foreground">
+                    {thanksMailContent}
+                  </pre>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No draft yet. Generate a thank-you email to see it here.
+                  </p>
+                )}
+              </div>
+              {thanksMailRateInfo && (
+                <p className="text-xs text-muted-foreground">
+                  {thanksMailRateInfo.remaining} of {THANKS_MAIL_LIMIT} requests remaining. Resets around{' '}
+                  {thanksMailRateInfo.resetAt
+                    ? new Date(thanksMailRateInfo.resetAt).toLocaleTimeString()
+                    : 'the next window'}.
+                </p>
+              )}
+              {thanksMailError && <p className="text-sm text-red-600">{thanksMailError}</p>}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Select a task with TxAv to generate a thank-you email.</p>
+          )}
+          <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex w-full flex-col gap-1 sm:flex-row sm:items-center">
+              <Button
+                type="button"
+                variant="outline"
+                className="sm:w-auto"
+                onClick={closeThanksDialog}
+                disabled={thanksMailLoading}
+              >
+                Close
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="sm:w-auto"
+                onClick={handleCopyThanksMail}
+                disabled={!thanksMailContent}
+              >
+                Copy email
+              </Button>
+            </div>
+            <Button
+              type="button"
+              onClick={handleGenerateThanksMail}
+              disabled={thanksMailLoading || !thanksDialogTask?.transcription}
+              className="sm:w-auto"
+            >
+              {thanksMailLoading ? 'Generating… (takes up to a minute)' : 'Generate with GPT-5'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

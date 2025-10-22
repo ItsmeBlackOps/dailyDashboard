@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import moment from 'moment-timezone';
 
 const mockCandidateModel = {
   getCandidateById: jest.fn()
@@ -57,7 +58,7 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
   });
 
   it('sends email with formatted payload for recruiter', async () => {
-    const futureIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const futureIso = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
 
     const candidateDoc = {
       id: 'cand-1',
@@ -104,7 +105,8 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
       interviewRound: '1st Round',
       interviewDateTime: futureIso,
       duration: '60',
-      contactNumber: '+1 555 0000'
+      contactNumber: '+1 555 0000',
+      customMessage: 'Need interview support'
     };
 
     const result = await supportRequestService.sendInterviewSupportRequest(
@@ -134,8 +136,8 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
   });
 
   it('sends multiple loop slot emails when loop slots are provided', async () => {
-    const futureIsoOne = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    const futureIsoTwo = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const futureIsoOne = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
+    const futureIsoTwo = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
 
     const candidateDoc = {
       id: 'cand-1',
@@ -184,7 +186,8 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
         { interviewDateTime: futureIsoOne, durationMinutes: 60 },
         { interviewDateTime: futureIsoTwo, durationMinutes: 45 }
       ]),
-      contactNumber: '+1 555 0000'
+      contactNumber: '+1 555 0000',
+      customMessage: 'Loop round support request'
     };
 
     const result = await supportRequestService.sendInterviewSupportRequest(
@@ -199,7 +202,7 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
   });
 
   it('appends sanitized signature when profile metadata is complete', async () => {
-    const futureIso = new Date(Date.now() + 90 * 60 * 1000).toISOString();
+    const futureIso = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
 
     const candidateDoc = {
       id: 'cand-2',
@@ -257,7 +260,8 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
         interviewRound: '1st Round',
         interviewDateTime: futureIso,
         duration: '45',
-        contactNumber: '+1 555 1111'
+        contactNumber: '+1 555 1111',
+        customMessage: 'Need interview support'
       },
       {},
       'graph-token'
@@ -281,7 +285,8 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
           interviewRound: '1st Round',
           interviewDateTime: '2024-10-05T14:30:00.000Z',
           duration: '60',
-          contactNumber: '1234567890'
+          contactNumber: '1234567890',
+          customMessage: 'Need interview support'
         },
         {},
         'user-token'
@@ -324,11 +329,117 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
           interviewRound: '1st Round',
           interviewDateTime: '2024-10-05T14:30:00.000Z',
           duration: '60',
-          contactNumber: '123'
+          contactNumber: '123',
+          customMessage: 'Need interview support'
         },
         {},
         'user-token'
       )
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('rejects same-day interviews scheduled within four hours', async () => {
+    jest.useFakeTimers();
+    const base = moment.tz('America/New_York').startOf('day').add(9, 'hours');
+    jest.setSystemTime(base.toDate());
+
+    try {
+      const soonIso = base.clone().add(2, 'hours').toISOString();
+
+      mockCandidateModel.getCandidateById.mockResolvedValue({
+        id: 'cand-4',
+        name: 'lee doe',
+        technology: 'python',
+        email: 'lee@example.com',
+        recruiter: 'recruiter@example.com',
+        contact: '+1 555 4444'
+      });
+
+      mockCandidateService.formatCandidateRecord.mockReturnValue({
+        id: 'cand-4',
+        name: 'Lee Doe',
+        technology: 'Python',
+        email: 'lee@example.com',
+        recruiterRaw: 'recruiter@example.com',
+        contact: '+1 555 4444'
+      });
+
+      mockUserModel.getUserByEmail.mockReturnValue({ teamLead: 'Alice Leader', manager: 'Bob Manager' });
+      mockUserModel.getAllUsers.mockReturnValue([
+        { email: 'alice.leader@example.com', role: 'mlead', teamLead: '', manager: 'Bob Manager' },
+        { email: 'bob.manager@example.com', role: 'mam', teamLead: '', manager: '' },
+        { email: 'recruiter@example.com', role: 'recruiter', teamLead: 'Alice Leader', manager: 'Bob Manager' }
+      ]);
+
+      await expect(
+        supportRequestService.sendInterviewSupportRequest(
+          { email: 'recruiter@example.com', role: 'recruiter' },
+          {
+            candidateId: 'cand-4',
+            endClient: 'Acme Corp',
+            jobTitle: 'Python Engineer',
+            interviewRound: '1st Round',
+            interviewDateTime: soonIso,
+            duration: '60',
+            contactNumber: '+1 555 4444',
+            customMessage: 'Need same-day support'
+          },
+          {},
+          'user-token'
+        )
+      ).rejects.toThrow('Same-day interviews must be scheduled at least 4 hours in advance');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe('supportRequestService.sendMockInterviewRequest', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    config.support.supportTo = 'tech.leaders@silverspaceinc.com';
+    config.support.supportCcFallback = [];
+    mockUserModel.getAllUsers.mockReturnValue([]);
+    mockGraphMailService.sendDelegatedMail.mockResolvedValue({});
+  });
+
+  it('sends mock email with stored attachments', async () => {
+    const futureIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const resumeData = Buffer.from('resume-data').toString('base64');
+    const jdData = Buffer.from('jd-data').toString('base64');
+
+    const result = await supportRequestService.sendMockInterviewRequest(
+      { email: 'recruiter@example.com', role: 'recruiter' },
+      {
+        candidateName: 'john doe',
+        candidateEmail: 'john@example.com',
+        contactNumber: '+1 555 0000',
+        technology: 'react js',
+        endClient: 'acme corp',
+        interviewRound: 'technical round',
+        interviewDateTime: futureIso,
+        jobDescriptionText: 'Build APIs and web apps.',
+        attachments: [
+          { name: 'resume.pdf', type: 'application/pdf', category: 'resume', data: resumeData },
+          { name: 'jd.pdf', type: 'application/pdf', category: 'jobDescription', data: jdData }
+        ]
+      },
+      'graph-token'
+    );
+
+    expect(result).toEqual({ success: true, message: 'Mock interview request sent' });
+    expect(mockGraphMailService.sendDelegatedMail).toHaveBeenCalledTimes(1);
+
+    const [tokenArg, payload] = mockGraphMailService.sendDelegatedMail.mock.calls[0];
+    expect(tokenArg).toBe('graph-token');
+    expect(payload.message.subject).toContain('Mock Interview - John Doe - React Js - Training');
+    expect(payload.message.body.content).toContain('Complete the mock before the day of interview.');
+    expect(payload.message.attachments).toHaveLength(2);
+    expect(payload.message.ccRecipients).toEqual(
+      expect.arrayContaining([
+        { emailAddress: { address: 'recruiter@example.com' } }
+      ])
+    );
+    expect(payload.saveToSentItems).toBe(true);
   });
 });
