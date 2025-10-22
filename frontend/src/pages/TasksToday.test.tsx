@@ -88,6 +88,7 @@ describe('TasksToday', () => {
 beforeAll(() => {
   localStorage.setItem('accessToken', 'test');
   localStorage.setItem('role', 'user');
+  localStorage.setItem('email', 'tester@example.com');
 });
 
 afterEach(() => {
@@ -108,6 +109,8 @@ afterEach(() => {
 
     // Subject column should be hidden by default
     expect(screen.queryByText('Subject')).toBeNull();
+
+    await screen.findByText(/Test Candidate/);
 
     // The suggestion value from candidateExpertDisplay should render
     expect(Boolean(await screen.findByText(/Ayush K/))).toBe(true);

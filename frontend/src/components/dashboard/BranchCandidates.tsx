@@ -16,7 +16,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, API_URL } from "@/hooks/useAuth";
 import { EmailSignature } from "@/components/layout/emailSignature";
@@ -113,7 +112,12 @@ interface SupportCloneDraft {
   loopSlots?: SupportCloneLoopSlot[];
   jobDescriptionText?: string;
   storedAt: string;
+  storedBy?: string;
 }
+
+const SUPPORT_CLONE_STORAGE_KEY = 'supportCloneDraft';
+const SUPPORT_MOCK_STORAGE_KEY = 'supportMockMaterials';
+const MAX_STORED_MOCK_ENTRIES = 5;
 
 interface LoopSlotForm {
   id: string;
@@ -354,7 +358,6 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [supportDatePickerOpen, setSupportDatePickerOpen] = useState(false);
   const [supportTimeInput, setSupportTimeInput] = useState<string>('');
   const [supportTimeWarning, setSupportTimeWarning] = useState<string>('');
-  const [customMessageEnabled, setCustomMessageEnabled] = useState(false);
   const [customMessage, setCustomMessage] = useState('');
   const [jobDescriptionText, setJobDescriptionText] = useState('');
   const supportWindowWarningKey = useRef<string>('');
@@ -540,6 +543,48 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     return attachment;
   }, [readFileAsDataUrl]);
 
+  const persistSupportMockMaterials = useCallback((draft: SupportCloneDraft) => {
+    const keyCandidates: string[] = [];
+    if (draft.candidateEmail) {
+      keyCandidates.push(draft.candidateEmail.trim().toLowerCase());
+    }
+    if (draft.sourceTaskId) {
+      keyCandidates.push(draft.sourceTaskId);
+    }
+
+    if (keyCandidates.length === 0) {
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(SUPPORT_MOCK_STORAGE_KEY);
+      let parsed: Record<string, SupportCloneDraft[]> = {};
+      if (raw && /^\s*[{[]/.test(raw)) {
+        const candidate = JSON.parse(raw);
+        if (candidate && typeof candidate === 'object') {
+          parsed = candidate;
+        }
+      }
+
+      const storedBy = (localStorage.getItem('email') || '').trim().toLowerCase();
+      const entry: SupportCloneDraft = {
+        ...draft,
+        storedBy,
+      };
+
+      for (const key of keyCandidates) {
+        if (!key) continue;
+        const existing = Array.isArray(parsed[key]) ? parsed[key] : [];
+        const deduped = [entry, ...existing.filter((item) => item?.storedAt !== entry.storedAt)];
+        parsed[key] = deduped.slice(0, MAX_STORED_MOCK_ENTRIES);
+      }
+
+      localStorage.setItem(SUPPORT_MOCK_STORAGE_KEY, JSON.stringify(parsed));
+    } catch (error) {
+      console.error('Failed to persist mock materials', error);
+    }
+  }, []);
+
   const hydrateCloneDraft = useCallback(
     async (candidate: CandidateRow, draft: SupportCloneDraft) => {
       const normalizedCandidateName = titleCasePreserveSpacing(draft.candidateName || candidate.name || '').replace(/\s+/g, ' ').trim();
@@ -583,8 +628,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       setSupportError('');
       setSupportTimeWarning('');
       setDurationWarning('');
-      setCustomMessage('');
-      setCustomMessageEnabled(false);
+    setCustomMessage('');
       setJobDescriptionText(draft.jobDescriptionText || '');
 
       if (draft.durationMinutes && draft.durationMinutes % 5 !== 0) {
@@ -820,7 +864,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
     cloneHydrationRef.current = true;
 
-    const stored = localStorage.getItem('supportCloneDraft');
+    const stored = localStorage.getItem(SUPPORT_CLONE_STORAGE_KEY);
     if (!stored) {
       toast({
         title: 'Nothing to clone',
@@ -844,7 +888,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Invalid clone payload';
       toast({ title: 'Unable to load clone data', description: message, variant: 'destructive' });
-      localStorage.removeItem('supportCloneDraft');
+      localStorage.removeItem(SUPPORT_CLONE_STORAGE_KEY);
     } finally {
       navigate(location.pathname, { replace: true });
     }
@@ -906,7 +950,6 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setSupportTimeInput('');
     setSupportTimeWarning('');
     setCustomMessage('');
-    setCustomMessageEnabled(false);
     setJobDescriptionText('');
     supportWindowWarningKey.current = '';
     setDurationWarning('');
@@ -942,7 +985,6 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setSupportTimeInput('');
     setSupportTimeWarning('');
     setCustomMessage('');
-    setCustomMessageEnabled(false);
     setJobDescriptionText('');
     supportWindowWarningKey.current = '';
     setDurationWarning('');
@@ -1171,6 +1213,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           return;
         }
 
+
+
         const minutes = Number.parseInt(slot.duration, 10);
         if (!Number.isFinite(minutes) || minutes <= 0) {
           setSupportError('Duration must be a positive number of minutes.');
@@ -1220,6 +1264,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         setSupportError('Interview date and time must be in the future.');
         return;
       }
+
+
 
       singleInterviewMoment = interviewMoment;
       resolvedSlots.push({
@@ -1295,8 +1341,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       formData.append('interviewDateTime', firstSlot.interviewDateTime);
       formData.append('duration', String(firstSlot.durationMinutes));
       formData.append('contactNumber', supportForm.contactNumber.trim());
-      if (customMessageEnabled && customMessage.trim()) {
-        formData.append('customMessage', customMessage.trim());
+      if (trimmedCustomMessage) {
+        formData.append('customMessage', trimmedCustomMessage);
       }
 
       const jdTextValue = jobDescriptionText.trim();
@@ -1367,11 +1413,13 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         attachments: storedAttachments.length ? storedAttachments : undefined,
         loopSlots: isLoopRound ? resolvedSlots : undefined,
         jobDescriptionText: jdTextValue || undefined,
-        storedAt: new Date().toISOString()
+        storedAt: new Date().toISOString(),
+        storedBy: (localStorage.getItem('email') || '').trim().toLowerCase() || undefined
       };
 
       try {
-        localStorage.setItem('supportCloneDraft', JSON.stringify(storedDraft));
+        localStorage.setItem(SUPPORT_CLONE_STORAGE_KEY, JSON.stringify(storedDraft));
+        persistSupportMockMaterials(storedDraft);
       } catch (storageError) {
         console.error('Failed to persist support clone draft', storageError);
       }
@@ -1396,7 +1444,6 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     instance,
     supportInterviewDate,
     supportInterviewTime,
-    customMessageEnabled,
     customMessage,
     jobDescriptionText,
     supportTimeWarning,
@@ -1406,7 +1453,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     computeInterviewDateTimeValue,
     encodeAttachmentForStorage,
     ensureCustomMessageWarning,
-    pendingCloneDraft
+    pendingCloneDraft,
+    persistSupportMockMaterials
   ]);
 
   const combinedExpertOptions = useMemo(() => {
@@ -3158,35 +3206,30 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   </ul>
                 )}
               </div>
-              <Collapsible open={customMessageEnabled} onOpenChange={setCustomMessageEnabled}>
-                <CollapsibleTrigger asChild>
-                  <Button variant="outline" size="sm" type="button">
-                    {customMessageEnabled ? 'Hide additional message' : 'Add additional message or JD'}
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-2 space-y-2">
-                  <Label htmlFor="support-custom-message">Message to include before the details above the table</Label>
-                  <textarea
-                    id="support-custom-message"
-                    value={customMessage}
-                    onChange={(event) => handleCustomMessageChange(event.target.value)}
-                    className="w-full rounded border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    rows={4}
-                    placeholder="Optional message"
-                    disabled={supportSubmitting}
-                  />
-                  <Label htmlFor="support-jd-text">Job description (text)</Label>
-                  <textarea
-                    id="support-jd-text"
-                    value={jobDescriptionText}
-                    onChange={(event) => setJobDescriptionText(event.target.value)}
-                    className="w-full rounded border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    rows={6}
-                    placeholder="Paste or type the job description details"
-                    disabled={supportSubmitting}
-                  />
-                </CollapsibleContent>
-              </Collapsible>
+              <div className="space-y-2">
+                <Label htmlFor="support-custom-message">Reason for support (optional)</Label>
+                <textarea
+                  id="support-custom-message"
+                  value={customMessage}
+                  onChange={(event) => handleCustomMessageChange(event.target.value)}
+                  className="w-full rounded border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  rows={4}
+                  placeholder="Share any context or notes for the support team"
+                  disabled={supportSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="support-jd-text">Job description (text)</Label>
+                <textarea
+                  id="support-jd-text"
+                  value={jobDescriptionText}
+                  onChange={(event) => setJobDescriptionText(event.target.value)}
+                  className="w-full rounded border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  rows={6}
+                  placeholder="Paste or type the job description details"
+                  disabled={supportSubmitting}
+                />
+              </div>
 
               {supportError && <p className="text-sm text-destructive">{supportError}</p>}
             </div>

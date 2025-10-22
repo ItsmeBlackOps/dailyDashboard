@@ -1,4 +1,5 @@
 import moment from 'moment-timezone';
+import { ObjectId } from 'mongodb';
 import { taskModel } from '../models/Task.js';
 import { userModel } from '../models/User.js';
 import { logger, createTimer } from '../utils/logger.js';
@@ -227,10 +228,21 @@ export class TaskService {
     try {
       logger.debug('Getting task by ID', { taskId, userEmail });
 
-      const task = await this.taskModel.collection.findOne(
-        { _id: taskId },
-        { projection: { replies: 0, body: 0 } }
-      );
+      let filter = { _id: taskId };
+      if (ObjectId.isValid(taskId)) {
+        try {
+          filter = { _id: new ObjectId(taskId) };
+        } catch (error) {
+          logger.warn('Failed to convert taskId to ObjectId, falling back to string match', {
+            taskId,
+            error: error.message
+          });
+        }
+      }
+
+      const task = await this.taskModel.collection.findOne(filter, {
+        projection: { replies: 0, body: 0 }
+      });
 
       if (!task) {
         throw new Error('Task not found');

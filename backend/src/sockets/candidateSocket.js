@@ -20,6 +20,7 @@ class CandidateSocketHandler {
     socket.on('assignCandidateExpert', socketAsyncHandler(this.handleAssignExpert.bind(this)));
     socket.on('updateResumeUnderstanding', socketAsyncHandler(this.handleResumeUnderstanding.bind(this)));
     socket.on('getPendingExpertAssignments', socketAsyncHandler(this.handleGetPendingExpertAssignments.bind(this)));
+    socket.on('getPendingExpertAssignmentsCount', socketAsyncHandler(this.handleGetPendingExpertAssignmentsCount.bind(this)));
     socket.on('getResumeUnderstandingQueue', socketAsyncHandler(this.handleGetResumeUnderstandingQueue.bind(this)));
     socket.on('getResumeUnderstandingCount', socketAsyncHandler(this.handleGetResumeUnderstandingCount.bind(this)));
   }
@@ -223,9 +224,13 @@ class CandidateSocketHandler {
       const updated = await candidateService.assignExpert(user, candidateId, expert);
 
       this.emitToRoles(socket, ['admin'], 'candidateExpertAssigned', { candidate: updated });
-      this.emitToUser(socket, updated.expertRaw || expert, 'resumeUnderstandingAssigned', {
-        candidate: updated
-      });
+
+      const assignmentWatchers = candidateService.resolveResumeUnderstandingWatchers(updated.expertRaw || expert);
+      for (const watcher of assignmentWatchers) {
+        this.emitToUser(socket, watcher, 'resumeUnderstandingAssigned', {
+          candidate: updated
+        });
+      }
 
       return callback({ success: true, candidate: updated });
     } catch (error) {
@@ -238,6 +243,38 @@ class CandidateSocketHandler {
       return callback({
         success: false,
         error: error.statusCode === 403 || error.statusCode === 400 ? error.message : 'Unable to assign expert'
+      });
+    }
+  }
+
+  async handleGetPendingExpertAssignmentsCount(socket, callback) {
+    try {
+      if (!callback || typeof callback !== 'function') {
+        logger.warn('getPendingExpertAssignmentsCount callback missing', { socketId: socket.id });
+        return;
+      }
+
+      const user = socket.data.user;
+      if (!user) {
+        return callback({ success: false, error: 'Authentication required' });
+      }
+
+      const count = await candidateService.getPendingExpertAssignmentCount(user);
+
+      return callback({
+        success: true,
+        count
+      });
+    } catch (error) {
+      logger.error('Socket getPendingExpertAssignmentsCount failed', {
+        error: error.message,
+        socketId: socket.id,
+        userEmail: socket.data.user?.email
+      });
+
+      return callback({
+        success: false,
+        error: error.statusCode === 403 ? error.message : 'Unable to load pending expert assignments'
       });
     }
   }
@@ -274,9 +311,12 @@ class CandidateSocketHandler {
       const { candidateId, status } = validation.payload;
       const updated = await candidateService.updateResumeUnderstanding(user, candidateId, status);
 
-      this.emitToUser(socket, updated.expertRaw || user.email, 'resumeUnderstandingUpdated', {
-        candidate: updated
-      });
+      const updateWatchers = candidateService.resolveResumeUnderstandingWatchers(updated.expertRaw || user.email);
+      for (const watcher of updateWatchers) {
+        this.emitToUser(socket, watcher, 'resumeUnderstandingUpdated', {
+          candidate: updated
+        });
+      }
       this.emitToRoles(socket, ['admin'], 'candidateResumeStatusChanged', {
         candidate: updated
       });

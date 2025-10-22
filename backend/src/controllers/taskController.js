@@ -1,4 +1,5 @@
 import { taskService } from '../services/taskService.js';
+import { thanksMailService } from '../services/thanksMailService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 
@@ -85,6 +86,30 @@ export class TaskController {
     );
 
     res.status(200).json(result);
+  });
+
+  generateThanksMail = asyncHandler(async (req, res) => {
+    const { taskId } = req.params;
+
+    if (!taskId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Task id is required'
+      });
+    }
+
+    const result = await thanksMailService.generateThanksMail({
+      taskId,
+      user: req.user
+    });
+
+    res.status(200).json({
+      success: true,
+      markdown: result.markdown,
+      html: result.html,
+      generatedAt: result.generatedAt,
+      rateLimit: result.rateLimit
+    });
   });
 
   healthCheck = asyncHandler(async (req, res) => {

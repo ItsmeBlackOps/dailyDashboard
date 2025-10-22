@@ -107,6 +107,21 @@ function buildHtmlTable(rows) {
   return `<table style="border-collapse:collapse;border:1px solid #0f1e3d;font-family:Arial, sans-serif;font-size:14px;min-width:420px;">${body}</table>`;
 }
 
+function buildMockHtmlBody(details) {
+  const caution = `<p style="font-family:Arial, sans-serif;font-size:14px;font-weight:600;color:#b91c1c;margin:0 0 12px;">Complete the mock before the day of interview.</p>`;
+  const schedule = `<p style="font-family:Arial, sans-serif;font-size:14px;color:#0f1e3d;margin:0 0 12px;">Interview Round <strong>${escapeHtml(details.interviewRound)}</strong> is scheduled at <strong>${escapeHtml(details.interviewDateTimeDisplay)}</strong>.</p>`;
+  const rows = [
+    { label: 'Candidate Name', value: details.candidateName },
+    { label: 'Email', value: details.candidateEmail },
+    { label: 'Technology', value: details.technology },
+    { label: 'Phone Number', value: details.contactNumber },
+    { label: 'End Client', value: details.endClient }
+  ];
+  const tableHtml = buildHtmlTable(rows);
+  const jobDescriptionSection = buildParagraphSection(details.jobDescriptionText);
+  return `${caution}${schedule}${tableHtml}${jobDescriptionSection}`;
+}
+
 function buildParagraphSection(text = '') {
   const normalized = trimString(text).replace(/\r\n/g, '\n');
   if (!normalized) {
@@ -158,6 +173,54 @@ function sanitizeAttachments(files = []) {
       contentType: 'application/pdf',
     };
   });
+}
+
+function sanitizeStoredMockAttachments(attachments = []) {
+  if (!Array.isArray(attachments) || attachments.length === 0) {
+    return [];
+  }
+
+  const maxBytes = config.support?.attachmentMaxBytes ?? 5 * 1024 * 1024;
+  const allowedCategories = new Set(['resume', 'jobdescription']);
+  const sanitized = [];
+
+  for (const item of attachments) {
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+    const category = normalizeWhitespace(item.category || '').toLowerCase();
+    if (category && !allowedCategories.has(category)) {
+      continue;
+    }
+
+    const name = trimString(item.name || '');
+    const rawData = typeof item.data === 'string' ? item.data.trim() : '';
+    if (!name || !rawData) {
+      continue;
+    }
+
+    let buffer;
+    try {
+      buffer = Buffer.from(rawData, 'base64');
+    } catch (error) {
+      continue;
+    }
+
+    if (buffer.length === 0 || buffer.length > maxBytes) {
+      continue;
+    }
+
+    const contentTypeCandidate = trimString(item.type || '');
+    const contentType = contentTypeCandidate || 'application/pdf';
+
+    sanitized.push({
+      name,
+      contentType,
+      contentBytes: buffer.toString('base64')
+    });
+  }
+
+  return sanitized;
 }
 
 class SupportRequestService {
@@ -380,6 +443,8 @@ class SupportRequestService {
         throw error;
       }
 
+
+
       resolvedSlots.push({
         interviewDateTime: slotMoment.toISOString(),
         durationMinutes,
@@ -426,6 +491,8 @@ class SupportRequestService {
           error.statusCode = 400;
           throw error;
         }
+
+
 
         resolvedSlots.push({
           interviewDateTime: slotMoment.toISOString(),
@@ -597,6 +664,165 @@ class SupportRequestService {
     return {
       success: true,
       message
+    };
+  }
+
+  async sendMockInterviewRequest(user, payload = {}, graphAccessToken) {
+    this.ensureRoleAllowed(user);
+
+    if (!graphAccessToken) {
+      const error = new Error('Missing graph access token');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    const candidateName = toTitleCase(payload.candidateName || '');
+    if (!candidateName) {
+      const error = new Error('Candidate name is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const candidateEmail = ensureEmail(payload.candidateEmail || '', 'Candidate email');
+
+    const contactNumber = trimString(payload.contactNumber || '');
+    if (!contactNumber) {
+      const error = new Error('Contact number is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const technology = formatTechnology(payload.technology || '');
+    if (!technology) {
+      const error = new Error('Technology is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const endClient = toTitleCase(payload.endClient || '');
+    if (!endClient) {
+      const error = new Error('End client is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const interviewRound = toTitleCase(payload.interviewRound || '');
+    if (!interviewRound) {
+      const error = new Error('Interview round is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const interviewDateTime = trimString(payload.interviewDateTime || '');
+    if (!interviewDateTime) {
+      const error = new Error('Interview date and time is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const interviewMomentDetails = formatDateTimeForEmail(interviewDateTime);
+
+    const jobDescriptionText = typeof payload.jobDescriptionText === 'string'
+      ? payload.jobDescriptionText
+      : '';
+
+    const storedAttachments = sanitizeStoredMockAttachments(payload.attachments);
+
+    const supportConfig = config.support || {};
+    const toRecipients = new Set([
+      supportConfig.supportTo || 'tech.leaders@silverspaceinc.com'
+    ]);
+    const ccRecipients = new Set(supportConfig.supportCcFallback || []);
+
+    const requesterEmail = ensureEmail(user.email || '', 'Requester email');
+    ccRecipients.add(requesterEmail);
+
+    const hierarchy = this.gatherHierarchyEmails(requesterEmail);
+    if (hierarchy.teamLeadEmail) {
+      ccRecipients.add(hierarchy.teamLeadEmail);
+    }
+    if (hierarchy.managerEmail) {
+      ccRecipients.add(hierarchy.managerEmail);
+    }
+
+    let signatureHtml = '';
+    try {
+      const profileResult = await profileService.getProfile(requesterEmail);
+      const profile = profileResult?.profile;
+      if (profile?.isComplete) {
+        signatureHtml = buildEmailSignatureHtml({
+          email: requesterEmail,
+          displayName: profile.displayName,
+          jobRole: profile.jobRole,
+          phoneNumber: profile.phoneNumber,
+          companyName: profile.companyName,
+          companyUrl: profile.companyUrl
+        });
+      }
+    } catch (profileError) {
+      logger.warn('Failed to build signature for mock request email', {
+        error: profileError instanceof Error ? profileError.message : profileError,
+        email: requesterEmail
+      });
+    }
+
+    const htmlBody = buildMockHtmlBody({
+      candidateName,
+      candidateEmail,
+      technology,
+      contactNumber,
+      endClient,
+      interviewRound,
+      interviewDateTimeDisplay: interviewMomentDetails.display,
+      jobDescriptionText
+    });
+
+    const sections = [htmlBody];
+    if (signatureHtml) {
+      sections.push(`<div style="margin-top:24px;">${signatureHtml}</div>`);
+    }
+
+    const subjectTechnology = technology || 'General';
+    const message = {
+      subject: `Mock Interview - ${candidateName} - ${subjectTechnology} - Training - ${interviewMomentDetails.subjectFragment}`,
+      body: {
+        contentType: 'HTML',
+        content: sections.join('')
+      },
+      toRecipients: Array.from(toRecipients).map((address) => ({
+        emailAddress: { address }
+      })),
+      ccRecipients: Array.from(ccRecipients).map((address) => ({
+        emailAddress: { address }
+      }))
+    };
+
+    if (storedAttachments.length > 0) {
+      message.attachments = storedAttachments.map((attachment) => ({
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: attachment.name,
+        contentType: attachment.contentType,
+        contentBytes: attachment.contentBytes
+      }));
+    }
+
+    await graphMailService.sendDelegatedMail(graphAccessToken, {
+      message,
+      saveToSentItems: true
+    });
+
+    logger.info('Mock interview request sent', {
+      candidateEmail,
+      requestedBy: requesterEmail,
+      interviewDateTime,
+      to: Array.from(toRecipients),
+      cc: Array.from(ccRecipients),
+      attachments: storedAttachments.length
+    });
+
+    return {
+      success: true,
+      message: 'Mock interview request sent'
     };
   }
 }

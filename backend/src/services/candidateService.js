@@ -146,6 +146,68 @@ class CandidateService {
     };
   }
 
+  resolveResumeQueueExpertEmails(user) {
+    if (!user?.email || !user?.role) {
+      return [];
+    }
+
+    const teamEmails = userModel.getTeamEmails(
+      user.email,
+      user.role,
+      user.teamLead
+    );
+
+    const fallbackEmail = formatEmail(user.email);
+    const result = new Set();
+
+    if (Array.isArray(teamEmails)) {
+      for (const email of teamEmails) {
+        const normalized = formatEmail(email);
+        if (normalized) {
+          result.add(normalized);
+        }
+      }
+    }
+
+    if (fallbackEmail) {
+      result.add(fallbackEmail);
+    }
+
+    return Array.from(result);
+  }
+
+  resolveResumeUnderstandingWatchers(expertEmail) {
+    const normalizedExpertEmail = formatEmail(expertEmail);
+    if (!normalizedExpertEmail) {
+      return [];
+    }
+
+    const watchers = new Set([normalizedExpertEmail]);
+    const expertRecord = userModel.getUserByEmail(normalizedExpertEmail);
+
+    const leadName = normalizeName(expertRecord?.teamLead || '');
+    if (!leadName) {
+      return Array.from(watchers);
+    }
+
+    const allUsers = userModel.getAllUsers();
+    for (const person of allUsers) {
+      if ((person.role || '').toLowerCase() !== 'lead') {
+        continue;
+      }
+
+      const personName = normalizeName(formatDisplayName(person.email));
+      if (personName === leadName) {
+        const leadEmail = formatEmail(person.email);
+        if (leadEmail) {
+          watchers.add(leadEmail);
+        }
+      }
+    }
+
+    return Array.from(watchers);
+  }
+
   buildSearchPattern(search) {
     if (typeof search !== 'string') {
       return undefined;
@@ -578,6 +640,26 @@ class CandidateService {
     };
   }
 
+  async getPendingExpertAssignmentCount(user) {
+    if (!user?.email || !user?.role) {
+      const error = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    const normalizedRole = user.role.trim().toLowerCase();
+    if (!['admin', 'manager'].includes(normalizedRole)) {
+      const error = new Error('Access denied');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    return candidateModel.countCandidatesByWorkflowStatuses([
+      WORKFLOW_STATUS.awaitingExpert,
+      WORKFLOW_STATUS.needsResumeUnderstanding
+    ]);
+  }
+
   async getResumeUnderstandingQueue(user, status = RESUME_UNDERSTANDING_STATUS.pending, options = {}) {
     if (!user?.email || !user?.role) {
       const error = new Error('Authentication required');
@@ -586,9 +668,13 @@ class CandidateService {
     }
 
     const normalizedRole = user.role.trim().toLowerCase();
+    const normalizedStatus = status === RESUME_UNDERSTANDING_STATUS.done
+      ? RESUME_UNDERSTANDING_STATUS.done
+      : RESUME_UNDERSTANDING_STATUS.pending;
+
     if (normalizedRole === 'admin' || normalizedRole === 'manager') {
       const candidates = await candidateModel.getCandidatesByWorkflowStatus(
-        status === RESUME_UNDERSTANDING_STATUS.done
+        normalizedStatus === RESUME_UNDERSTANDING_STATUS.done
           ? WORKFLOW_STATUS.completed
           : WORKFLOW_STATUS.needsResumeUnderstanding
       );
@@ -597,8 +683,33 @@ class CandidateService {
     }
 
     if (normalizedRole === 'am' || normalizedRole === 'lead' || normalizedRole === 'expert' || normalizedRole === 'user') {
-      const expertEmail = formatEmail(user.email);
-      const candidates = await candidateModel.getCandidatesForExpert(expertEmail, status);
+      const expertEmails = this.resolveResumeQueueExpertEmails(user);
+
+      if (expertEmails.length === 0) {
+        return [];
+      }
+
+      const limitOption = Number.isFinite(options?.limit) && options.limit > 0
+        ? Math.floor(options.limit)
+        : undefined;
+
+      let candidates;
+      if (expertEmails.length === 1) {
+        candidates = await candidateModel.getCandidatesForExpert(
+          expertEmails[0],
+          normalizedStatus,
+          { limit: limitOption }
+        );
+      } else {
+        candidates = await candidateModel.getCandidatesByExperts(
+          expertEmails,
+          {
+            status: normalizedStatus,
+            limit: limitOption
+          }
+        );
+      }
+
       return candidates.map((candidate) => this.formatCandidateRecord(candidate));
     }
 
@@ -628,8 +739,14 @@ class CandidateService {
     }
 
     if (normalizedRole === 'am' || normalizedRole === 'lead' || normalizedRole === 'expert' || normalizedRole === 'user') {
-      const expertEmail = formatEmail(user.email);
-      return candidateModel.countResumeUnderstandingTasks(expertEmail, normalizedStatus);
+      const expertEmails = this.resolveResumeQueueExpertEmails(user);
+      if (expertEmails.length === 0) {
+        return 0;
+      }
+      if (expertEmails.length === 1) {
+        return candidateModel.countResumeUnderstandingTasks(expertEmails[0], normalizedStatus);
+      }
+      return candidateModel.countResumeUnderstandingTasksForExperts(expertEmails, normalizedStatus);
     }
 
     const error = new Error('Access denied');

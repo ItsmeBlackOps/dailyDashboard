@@ -402,7 +402,7 @@ export class CandidateModel {
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getCandidatesByExperts(expertEmails, { limit, search } = {}) {
+  async getCandidatesByExperts(expertEmails, { limit, search, status } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
@@ -416,6 +416,10 @@ export class CandidateModel {
     }));
 
     const query = { $or: orConditions, docType: { $in: [null, 'candidate'] } };
+
+    if (status) {
+      query.resumeUnderstandingStatus = status;
+    }
 
     if (search) {
       query['Candidate Name'] = { $regex: search, $options: 'i' };
@@ -478,6 +482,59 @@ export class CandidateModel {
     const query = {
       Expert: { $regex: `^${escapeRegex(expertEmail)}$`, $options: 'i' },
       resumeUnderstandingStatus: normalizedStatus
+    };
+
+    return this.collection.countDocuments(query);
+  }
+
+  async countResumeUnderstandingTasksForExperts(expertEmails, status = RESUME_UNDERSTANDING_STATUS.pending) {
+    if (!this.collection) {
+      throw new Error('Candidate collection not initialized');
+    }
+
+    if (!Array.isArray(expertEmails) || expertEmails.length === 0) {
+      return 0;
+    }
+
+    const normalizedStatus = status === RESUME_UNDERSTANDING_STATUS.done
+      ? RESUME_UNDERSTANDING_STATUS.done
+      : RESUME_UNDERSTANDING_STATUS.pending;
+
+    const matchers = expertEmails
+      .map((email) => (typeof email === 'string' ? email.trim().toLowerCase() : ''))
+      .filter(Boolean)
+      .map((email) => ({
+        Expert: { $regex: `^${escapeRegex(email)}$`, $options: 'i' }
+      }));
+
+    if (matchers.length === 0) {
+      return 0;
+    }
+
+    const query = {
+      resumeUnderstandingStatus: normalizedStatus,
+      ...(matchers.length === 1 ? matchers[0] : { $or: matchers })
+    };
+
+    return this.collection.countDocuments(query);
+  }
+
+  async countCandidatesByWorkflowStatuses(statuses = []) {
+    if (!this.collection) {
+      throw new Error('Candidate collection not initialized');
+    }
+
+    const normalizedStatuses = Array.isArray(statuses)
+      ? statuses.filter(Boolean)
+      : [];
+
+    if (normalizedStatuses.length === 0) {
+      return 0;
+    }
+
+    const query = {
+      workflowStatus: { $in: normalizedStatuses },
+      docType: { $in: [null, 'candidate'] }
     };
 
     return this.collection.countDocuments(query);

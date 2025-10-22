@@ -4,6 +4,7 @@ import { asyncHandler } from '../middleware/errorHandler.js';
 class SupportRequestController {
   constructor() {
     this.createInterviewSupport = this.createInterviewSupport.bind(this);
+    this.createMockSupport = this.createMockSupport.bind(this);
   }
 
   createInterviewSupport = asyncHandler(async (req, res) => {
@@ -18,6 +19,23 @@ class SupportRequestController {
       req.user,
       req.body,
       req.files || {},
+      graphToken
+    );
+
+    res.status(201).json(result);
+  });
+
+  createMockSupport = asyncHandler(async (req, res) => {
+    const graphTokenHeader = req.headers['x-graph-access-token'];
+    const graphToken = typeof graphTokenHeader === 'string' ? graphTokenHeader.trim() : '';
+
+    if (!graphToken) {
+      return res.status(401).json({ success: false, error: 'missing_graph_token' });
+    }
+
+    const result = await supportRequestService.sendMockInterviewRequest(
+      req.user,
+      req.body,
       graphToken
     );
 
