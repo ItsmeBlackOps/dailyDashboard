@@ -13,6 +13,7 @@ import BranchCandidatesPage from './pages/BranchCandidates';
 import AdminAlertsPage from './pages/AdminAlerts';
 import UserManagementPage from './pages/UserManagement';
 import ResumeUnderstanding from './pages/ResumeUnderstanding';
+import FeedBack from './pages/FeedBack';
 
 const queryClient = new QueryClient();
 
@@ -31,6 +32,7 @@ const App = () => (
             <Route path="/admin-alerts" element={<AdminAlertsPage />} />
             <Route path="/resume-understanding" element={<ResumeUnderstanding />} />
             <Route path="/user-management" element={<UserManagementPage />} />
+            <Route path="/feedback" element={<FeedBack />} />
             {/* Add any other protected routes here */}
           </Route>
 

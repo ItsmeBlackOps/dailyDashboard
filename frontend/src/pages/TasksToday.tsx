@@ -2547,7 +2547,14 @@ const getRowClasses = (status = "") => {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       ) : (
-                        <span className="text-xs text-muted-foreground">No access</span>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => navigate("/feedback")}
+                        >
+                          FeedBack
+                        </Button>
                       )}
                     </TableCell>
                   </TableRow>
