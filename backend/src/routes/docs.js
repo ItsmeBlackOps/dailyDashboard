@@ -132,6 +132,50 @@ const openapi = {
           '503': { description: 'Mail integration not configured' }
         }
       }
+    },
+    '/tasks/{taskId}/interviewer-questions': {
+      post: {
+        summary: 'Extract interviewer questions from a transcript',
+        description:
+          'Available to recruiter, mlead, mam, and mm roles. Requires that the interview transcript (TxAv) exists for the task. Uses the configured OpenAI chat model (defaults to gpt-4.1) to return interviewer-only questions.',
+        parameters: [
+          {
+            name: 'taskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' }
+          }
+        ],
+        responses: {
+          '200': {
+            description: 'Questions extracted successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    questions: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/InterviewerQuestion' }
+                    },
+                    generatedAt: { type: 'string', format: 'date-time' },
+                    rateLimit: {
+                      allOf: [{ $ref: '#/components/schemas/RateLimitInfo' }],
+                      nullable: true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          '400': { description: 'Missing task id or transcript is empty' },
+          '403': { description: 'Insufficient permissions' },
+          '404': { description: 'Task or transcript not found' },
+          '429': { description: 'Rate limit exceeded' },
+          '503': { description: 'Feature disabled or upstream service unavailable' }
+        }
+      }
     }
   },
   components: {
@@ -159,6 +203,25 @@ const openapi = {
             description: 'Suggested assignees based on candidate expert and hierarchy',
             items: { type: 'string' }
           }
+        }
+      },
+      InterviewerQuestion: {
+        type: 'object',
+        required: ['question', 'type', 'paraphrased'],
+        properties: {
+          question: { type: 'string', description: 'Interviewer question text (sanitized)' },
+          type: {
+            type: 'string',
+            enum: ['behavioral', 'technical', 'managerial', 'process', 'culture', 'other']
+          },
+          paraphrased: { type: 'boolean', description: 'True when the question is paraphrased' }
+        }
+      },
+      RateLimitInfo: {
+        type: 'object',
+        properties: {
+          remaining: { type: 'integer', minimum: 0 },
+          resetAt: { type: 'string', format: 'date-time', nullable: true }
         }
       },
       InterviewSupportPayload: {

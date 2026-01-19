@@ -20,7 +20,7 @@ import { Separator } from "@/components/ui/separator";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Badge } from "@/components/ui/badge";
 import { io, Socket } from "socket.io-client";
-import { useAuth, API_URL } from "@/hooks/useAuth";
+import { useAuth, API_URL, SOCKET_URL } from "@/hooks/useAuth";
 import { UpdateLog, type UpdateLogEntry } from "@/components/dashboard/UpdateLog";
 import {
   Dialog,
@@ -176,7 +176,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
     }
 
     const token = localStorage.getItem('accessToken') || '';
-    const socket = io(API_URL, {
+    const socket = io(SOCKET_URL, {
       autoConnect: false,
       transports: ['websocket'],
       auth: { token }
@@ -254,7 +254,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
     }
 
     const token = localStorage.getItem('accessToken') || '';
-    const socket = io(API_URL, {
+    const socket = io(SOCKET_URL, {
       autoConnect: false,
       transports: ['websocket'],
       auth: { token }

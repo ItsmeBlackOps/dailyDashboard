@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, API_URL } from "@/hooks/useAuth";
+import { useAuth, SOCKET_URL } from "@/hooks/useAuth";
 
 interface AdminAwaitingExpertProps {
   role: string;
@@ -76,7 +76,7 @@ export function AdminAwaitingExpert({ role }: AdminAwaitingExpertProps) {
       return null;
     }
     const token = localStorage.getItem("accessToken") || "";
-    return io(API_URL, {
+    return io(SOCKET_URL, {
       autoConnect: false,
       transports: ["websocket"],
       auth: { token }

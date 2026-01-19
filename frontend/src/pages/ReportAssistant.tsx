@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth, API_URL } from '@/hooks/useAuth';
+import { useAuth, SOCKET_URL } from '@/hooks/useAuth';
 import { Send, Download, Paperclip, Smile } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -68,7 +68,7 @@ const ReportAssistant = () => {
   const socket: Socket | null = useMemo(() => {
     if (!canUseAssistant) return null;
     const token = localStorage.getItem('accessToken') || '';
-    return io(API_URL, {
+    return io(SOCKET_URL, {
       autoConnect: false,
       transports: ['websocket'],
       auth: { token }

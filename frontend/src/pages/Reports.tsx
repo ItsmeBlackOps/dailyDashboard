@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth, API_URL } from '@/hooks/useAuth';
+import { useAuth, SOCKET_URL } from '@/hooks/useAuth';
 import { useTab } from '@/hooks/useTabs';
 import { BarChart3, FileText, Download, Plus, TrendingUp, Users, DollarSign, Target, FileSpreadsheet } from 'lucide-react';
 
@@ -198,7 +198,7 @@ export default function Reports() {
 
   const socket: Socket = useMemo(() => {
     const token = localStorage.getItem('accessToken') || '';
-    return io(API_URL, {
+    return io(SOCKET_URL, {
       autoConnect: false,
       transports: ['websocket'],
       auth: { token },

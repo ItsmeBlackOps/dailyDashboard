@@ -34,7 +34,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, API_URL } from "@/hooks/useAuth";
+import { useAuth, API_URL, SOCKET_URL } from "@/hooks/useAuth";
 import { playTune, sendNotification } from "@/utils/notify";
 import { Toaster } from "@/components/ui/toaster";
 import { useTab } from "@/hooks/useTabs";
@@ -871,7 +871,7 @@ export default function TasksToday() {
   // === Socket ===
   const socket: Socket = useMemo(() => {
     const token = localStorage.getItem("accessToken") || "";
-    return io(API_URL, {
+    return io(SOCKET_URL, {
       autoConnect: false,
       transports: ["websocket"],
       auth: { token },

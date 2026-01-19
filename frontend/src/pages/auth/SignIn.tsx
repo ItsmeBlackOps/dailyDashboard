@@ -13,7 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Eye, EyeOff, Mail, Lock } from "lucide-react";
-import { API_URL } from "../../hooks/useAuth";
+import { SOCKET_URL } from "../../hooks/useAuth";
 import { deriveDisplayNameFromEmail } from "@/utils/userNames";
 export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
@@ -24,7 +24,7 @@ export default function SignIn() {
   const location = useLocation();
   const from = location.state?.from?.pathname || "/tasks";
   const socket: Socket = useMemo(
-    () => io(API_URL, { autoConnect: false, transports: ["websocket"] }),
+    () => io(SOCKET_URL, { autoConnect: false, transports: ["websocket"] }),
     []
   );
   useEffect(() => {
