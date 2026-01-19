@@ -65,6 +65,40 @@ const openapi = {
         }
       }
     },
+    '/support/assessment': {
+      post: {
+        summary: 'Send assessment support request email',
+        description: 'Works like the interview support flow but highlights assessment receipt details, requires resume and assessment info attachments, and supports arbitrary supplemental files.',
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                $ref: '#/components/schemas/AssessmentSupportPayload'
+              }
+            }
+          }
+        },
+        responses: {
+          '201': {
+            description: 'Assessment support request queued',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    message: { type: 'string' }
+                  }
+                }
+              }
+            }
+          },
+          '400': { description: 'Validation failed' },
+          '403': { description: 'Insufficient permissions' }
+        }
+      }
+    },
     '/graph/mail/send': {
       post: {
         summary: 'Send email via Microsoft Graph',
@@ -172,6 +206,65 @@ const openapi = {
             type: 'string',
             format: 'binary',
             description: 'Optional job description attachment (PDF)'
+          }
+        }
+      },
+      AssessmentSupportPayload: {
+        type: 'object',
+        required: [
+          'candidateId',
+          'endClient',
+          'jobTitle',
+          'assessmentReceivedDateTime',
+          'resume',
+          'assessmentInfo'
+        ],
+        properties: {
+          candidateId: { type: 'string', description: 'Candidate identifier from branch candidates list' },
+          endClient: { type: 'string', description: 'Client name, title-cased automatically' },
+          jobTitle: { type: 'string', description: 'Target job title, title-cased automatically' },
+          assessmentReceivedDateTime: {
+            type: 'string',
+            format: 'date-time',
+            description: 'Assessment received at timestamp normalised to America/New_York timezone'
+          },
+          assessmentDuration: {
+            type: 'string',
+            nullable: true,
+            description: 'Optional duration detail. When omitted, mark `noDurationMentioned` true.'
+          },
+          noDurationMentioned: {
+            type: 'boolean',
+            description: 'Flag to signal that duration information was not supplied'
+          },
+          additionalInfo: {
+            type: 'string',
+            description: 'Free-form details rendered ahead of the summary table',
+            nullable: true
+          },
+          jobDescriptionText: {
+            type: 'string',
+            description: 'Job description text rendered below the summary table',
+            nullable: true
+          },
+          screeningDone: {
+            type: 'boolean',
+            description: 'When true, the email highlights that screening is complete'
+          },
+          resume: {
+            type: 'string',
+            format: 'binary',
+            description: 'Required candidate resume attachment'
+          },
+          assessmentInfo: {
+            type: 'string',
+            format: 'binary',
+            description: 'Required assessment information attachment'
+          },
+          additionalAttachments: {
+            type: 'array',
+            items: { type: 'string', format: 'binary' },
+            description: 'Optional supporting files (any format)'
           }
         }
       },

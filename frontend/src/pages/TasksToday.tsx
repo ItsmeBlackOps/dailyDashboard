@@ -182,6 +182,48 @@ interface ThanksMailEntry {
   generatedAt: string;
 }
 
+const INTERVIEWER_QUESTION_TYPES = [
+  'behavioral',
+  'technical',
+  'managerial',
+  'process',
+  'culture',
+  'other'
+] as const;
+
+type InterviewerQuestionType = (typeof INTERVIEWER_QUESTION_TYPES)[number];
+
+interface InterviewerQuestion {
+  question: string;
+  type: InterviewerQuestionType;
+  paraphrased: boolean;
+}
+
+interface InterviewerQuestionCacheEntry {
+  questions: InterviewerQuestion[];
+  generatedAt: string;
+}
+
+const normalizeQuestionType = (value: unknown): InterviewerQuestionType => {
+  if (typeof value !== 'string') {
+    return 'other';
+  }
+  const trimmed = value.trim().toLowerCase();
+  return INTERVIEWER_QUESTION_TYPES.includes(trimmed as InterviewerQuestionType)
+    ? (trimmed as InterviewerQuestionType)
+    : 'other';
+};
+
+const sanitizeQuestionText = (value: unknown): string => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return DOMPurify.sanitize(value, { USE_PROFILES: { html: false } }).trim().slice(0, 2000);
+};
+
+const formatQuestionType = (type: InterviewerQuestionType): string =>
+  type.charAt(0).toUpperCase() + type.slice(1);
+
 const TASK_STATUS_MAP = "tasksTodayStatusMap";
 const TZ = "America/New_York";
 const WINDOWS_TZ = "Eastern Standard Time"; // Teams/Outlook expect Windows TZ names
@@ -197,6 +239,10 @@ const THANKS_MAIL_CACHE_KEY = "thanksMailDrafts";
 const MAX_STORED_THANKS_ENTRIES = 20;
 const THANKS_MAIL_LIMIT = 3;
 const THANKS_MAIL_WINDOW_HOURS = 6;
+const QUESTIONS_CACHE_KEY = "interviewerQuestionsCache";
+const MAX_STORED_QUESTION_ENTRIES = 20;
+const QUESTIONS_LIMIT = 3;
+const QUESTIONS_WINDOW_HOURS = 6;
 
 // Reminder persistence keys
 const REM_SCHEDULE_KEY = "interviewRemindersScheduled"; // JSON: { [key]: triggerAtISO }
@@ -291,6 +337,12 @@ export default function TasksToday() {
   const [thanksMailError, setThanksMailError] = useState('');
   const [thanksMailLoading, setThanksMailLoading] = useState(false);
   const [thanksMailRateInfo, setThanksMailRateInfo] = useState<{ remaining: number; resetAt: string } | null>(null);
+  const [questionsDialogTask, setQuestionsDialogTask] = useState<Task | null>(null);
+  const [questionsList, setQuestionsList] = useState<InterviewerQuestion[]>([]);
+  const [questionsGeneratedAt, setQuestionsGeneratedAt] = useState<string | null>(null);
+  const [questionsError, setQuestionsError] = useState('');
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [questionsRateInfo, setQuestionsRateInfo] = useState<{ remaining: number; resetAt?: string } | null>(null);
   const storedResumeAvailable = useMemo(() => {
     if (!mockPreview) return false;
     return mockPreview.storedAttachments.some((attachment) => {
@@ -387,6 +439,107 @@ export default function TasksToday() {
       localStorage.setItem(THANKS_MAIL_CACHE_KEY, JSON.stringify(parsed));
     } catch (error) {
       console.error('Failed to persist thanks mail draft', error);
+    }
+  }, [currentUserEmail]);
+
+  const loadQuestionsFromStorage = useCallback((taskId: string): InterviewerQuestionCacheEntry | null => {
+    if (!currentUserEmail) {
+      return null;
+    }
+    try {
+      const raw = localStorage.getItem(QUESTIONS_CACHE_KEY);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') {
+        return null;
+      }
+      const userCache = parsed[currentUserEmail];
+      if (!userCache || typeof userCache !== 'object') {
+        return null;
+      }
+      const entry = userCache[taskId];
+      if (!entry || !Array.isArray(entry.questions) || typeof entry.generatedAt !== 'string') {
+        return null;
+      }
+      const questions = entry.questions
+        .map((item: InterviewerQuestion) => {
+          const question = sanitizeQuestionText(item?.question);
+          if (!question) {
+            return null;
+          }
+          return {
+            question,
+            type: normalizeQuestionType(item?.type),
+            paraphrased: item?.paraphrased === true
+          };
+        })
+        .filter(Boolean) as InterviewerQuestion[];
+
+      if (questions.length === 0) {
+        return null;
+      }
+
+      return {
+        questions,
+        generatedAt: entry.generatedAt
+      };
+    } catch (error) {
+      console.error('Failed to read stored interviewer questions', error);
+      return null;
+    }
+  }, [currentUserEmail]);
+
+  const persistQuestionsToStorage = useCallback((taskId: string, entry: InterviewerQuestionCacheEntry) => {
+    if (!currentUserEmail) {
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(QUESTIONS_CACHE_KEY);
+      let parsed: Record<string, Record<string, InterviewerQuestionCacheEntry>> = {};
+      if (raw) {
+        const candidate = JSON.parse(raw);
+        if (candidate && typeof candidate === 'object') {
+          parsed = candidate;
+        }
+      }
+
+      const sanitizedQuestions = entry.questions
+        .map((item) => {
+          const question = sanitizeQuestionText(item?.question);
+          if (!question) {
+            return null;
+          }
+          return {
+            question,
+            type: normalizeQuestionType(item?.type),
+            paraphrased: item?.paraphrased === true
+          };
+        })
+        .filter(Boolean) as InterviewerQuestion[];
+
+      const userCache = parsed[currentUserEmail] && typeof parsed[currentUserEmail] === 'object'
+        ? parsed[currentUserEmail]
+        : {};
+
+      userCache[taskId] = {
+        questions: sanitizedQuestions,
+        generatedAt: entry.generatedAt
+      };
+
+      const ordered = Object.entries(userCache)
+        .filter(([, value]) => value
+          && Array.isArray(value.questions)
+          && typeof value.generatedAt === 'string')
+        .sort(([, a], [, b]) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
+        .slice(0, MAX_STORED_QUESTION_ENTRIES);
+
+      parsed[currentUserEmail] = Object.fromEntries(ordered);
+
+      localStorage.setItem(QUESTIONS_CACHE_KEY, JSON.stringify(parsed));
+    } catch (error) {
+      console.error('Failed to persist interviewer questions', error);
     }
   }, [currentUserEmail]);
 
@@ -1533,6 +1686,152 @@ const getRowClasses = (status = "") => {
     }
   }, [thanksMailContent, toast]);
 
+  const closeQuestionsDialog = useCallback(() => {
+    setQuestionsDialogTask(null);
+    setQuestionsList([]);
+    setQuestionsGeneratedAt(null);
+    setQuestionsError('');
+    setQuestionsRateInfo(null);
+    setQuestionsLoading(false);
+  }, []);
+
+  const handleOpenQuestionsDialog = useCallback(
+    (task: Task, cached?: InterviewerQuestionCacheEntry | null) => {
+      const stored = cached ?? loadQuestionsFromStorage(task._id);
+      if (!task.transcription && (!stored || stored.questions.length === 0)) {
+        toast({
+          title: 'Transcript unavailable',
+          description:
+            'TxAv is missing for this task. Ask the transcription team to upload the transcript before extracting interviewer questions.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      setQuestionsList(stored?.questions || []);
+      setQuestionsGeneratedAt(stored?.generatedAt || null);
+      setQuestionsRateInfo(null);
+      setQuestionsError('');
+      setQuestionsLoading(false);
+      setQuestionsDialogTask(task);
+    },
+    [loadQuestionsFromStorage, toast]
+  );
+
+  const handleFetchInterviewerQuestions = useCallback(async () => {
+    if (!questionsDialogTask) {
+      return;
+    }
+
+    if (!questionsDialogTask.transcription) {
+      setQuestionsError('Transcript not available for this task.');
+      return;
+    }
+
+    setQuestionsLoading(true);
+    setQuestionsError('');
+    const pendingToast = toast({
+      title: 'Extracting interviewer questions…',
+      description: 'This may take up to a minute. You can keep working—we\'ll notify you once it\'s ready.',
+      duration: 60000
+    });
+
+    try {
+      const response = await authFetch(
+        `${API_URL}/api/tasks/${questionsDialogTask._id}/interviewer-questions`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({})
+        }
+      );
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message =
+          typeof payload?.error === 'string' ? payload.error : 'Unable to extract interviewer questions.';
+        setQuestionsError(message);
+        if (payload?.rateLimit) {
+          setQuestionsRateInfo(payload.rateLimit);
+        }
+        pendingToast.dismiss();
+        return;
+      }
+
+      const sanitized = Array.isArray(payload.questions)
+        ? (payload.questions
+            .map((item: any) => {
+              const question = sanitizeQuestionText(item?.question);
+              if (!question) {
+                return null;
+              }
+              return {
+                question,
+                type: normalizeQuestionType(item?.type),
+                paraphrased: item?.paraphrased === true
+              };
+            })
+            .filter(Boolean) as InterviewerQuestion[])
+        : [];
+
+      setQuestionsList(sanitized);
+      const generatedAt =
+        typeof payload.generatedAt === 'string' ? payload.generatedAt : new Date().toISOString();
+      setQuestionsGeneratedAt(generatedAt);
+      setQuestionsRateInfo(payload.rateLimit || null);
+      persistQuestionsToStorage(questionsDialogTask._id, {
+        questions: sanitized,
+        generatedAt
+      });
+      pendingToast.dismiss();
+      toast({
+        title: 'Questions ready',
+        description: 'Interviewer questions extracted and cached.',
+        className: 'bg-gradient-to-r from-indigo-500 via-blue-500 to-sky-500 text-white shadow-lg',
+        duration: 6000
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unable to extract interviewer questions.';
+      setQuestionsError(message);
+      pendingToast.dismiss();
+    } finally {
+      pendingToast.dismiss();
+      setQuestionsLoading(false);
+    }
+  }, [API_URL, authFetch, persistQuestionsToStorage, questionsDialogTask, toast]);
+
+  const handleCopyQuestions = useCallback(async () => {
+    if (questionsList.length === 0) {
+      return;
+    }
+
+    const text = questionsList
+      .map(
+        (entry, index) =>
+          `${index + 1}. [${entry.type}] ${entry.question}${entry.paraphrased ? ' (paraphrased)' : ''}`
+      )
+      .join('\n');
+
+    try {
+      if (!navigator?.clipboard?.writeText) {
+        setQuestionsError('Clipboard access is unavailable in this environment. Copy the questions manually.');
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      toast({
+        title: 'Copied to clipboard',
+        description: 'Interviewer questions copied as plain text.'
+      });
+    } catch (error) {
+      setQuestionsError('Unable to copy the questions. Copy them manually instead.');
+      console.error('Failed to copy interviewer questions', error);
+    }
+  }, [questionsList, toast]);
+
   const createOutlookEvent = useCallback(
     async (
       task: Task,
@@ -2427,7 +2726,11 @@ const getRowClasses = (status = "") => {
                 const isMeetingBusy = Boolean(meetingBusy[task._id]);
                 const joinLink = extractJoinLink(task);
                 const storedThanksDraft = loadThanksMailFromStorage(task._id);
+                const storedQuestionsEntry = loadQuestionsFromStorage(task._id);
                 const canOpenThanksMail = Boolean(task.transcription || storedThanksDraft);
+                const canOpenQuestions = Boolean(
+                  task.transcription || (storedQuestionsEntry?.questions?.length || 0) > 0
+                );
                 return (
                   <TableRow key={task._id} className={getRowClasses(task.status)}>
                     {showSubject && (
@@ -2524,12 +2827,20 @@ const getRowClasses = (status = "") => {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             {canGenerateThanksMail && (
-                              <DropdownMenuItem
-                                onClick={() => handleOpenThanksMailDialog(task, storedThanksDraft)}
-                                disabled={!canOpenThanksMail}
-                              >
-                                Generate Thanks Mail
-                              </DropdownMenuItem>
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() => handleOpenThanksMailDialog(task, storedThanksDraft)}
+                                  disabled={!canOpenThanksMail}
+                                >
+                                  Generate Thanks Mail
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleOpenQuestionsDialog(task, storedQuestionsEntry)}
+                                  disabled={!canOpenQuestions}
+                                >
+                                  Extract Interviewer Questions
+                                </DropdownMenuItem>
+                              </>
                             )}
                             {canGenerateThanksMail && (canRequestMock || canCloneSupport) && (
                               <DropdownMenuSeparator />
@@ -2679,12 +2990,112 @@ const getRowClasses = (status = "") => {
           ) : (
             <p className="text-sm text-muted-foreground">Select a task to prepare the mock request.</p>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={closeMockDialog} disabled={mockSending}>
-              Cancel
-            </Button>
-            <Button onClick={handleMockSend} disabled={mockSending || !mockPreview}>
-              {mockSending ? 'Sending…' : 'Send Mock Email'}
+      <DialogFooter>
+        <Button variant="outline" onClick={closeMockDialog} disabled={mockSending}>
+          Cancel
+        </Button>
+        <Button onClick={handleMockSend} disabled={mockSending || !mockPreview}>
+          {mockSending ? 'Sending…' : 'Send Mock Email'}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+      <Dialog open={Boolean(questionsDialogTask)} onOpenChange={(open) => !open && closeQuestionsDialog()}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Extract Interviewer Questions</DialogTitle>
+          </DialogHeader>
+          {questionsDialogTask ? (
+            <div className="space-y-4">
+              <Alert>
+                <AlertTitle>GPT-5 usage is limited</AlertTitle>
+                <AlertDescription className="text-sm text-muted-foreground">
+                  You can extract up to {QUESTIONS_LIMIT} question lists every {QUESTIONS_WINDOW_HOURS} hours. Results are cached locally for{' '}
+                  {questionsDialogTask["Candidate Name"] || 'this candidate'}.
+                </AlertDescription>
+              </Alert>
+              {!questionsDialogTask.transcription && (
+                <Alert variant="destructive">
+                  <AlertTitle>Transcript missing</AlertTitle>
+                  <AlertDescription>
+                    TxAv is unavailable. You can review saved questions below, but extracting a fresh list requires the recorded transcript.
+                  </AlertDescription>
+                </Alert>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Extraction can take up to a minute. Continue working— you&apos;ll get a toast once the list is ready.
+              </p>
+              {questionsGeneratedAt && (
+                <p className="text-xs text-muted-foreground">
+                  Last extracted on {new Date(questionsGeneratedAt).toLocaleString()}
+                </p>
+              )}
+              <div className="rounded-md border bg-card/30 p-4">
+                {questionsList.length > 0 ? (
+                  <ol className="space-y-3 text-sm text-foreground">
+                    {questionsList.map((entry, index) => (
+                      <li key={`${entry.question}-${index}`} className="rounded-md border bg-card/60 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <Badge variant="secondary" className="text-xs font-semibold uppercase tracking-wide">
+                            {formatQuestionType(entry.type)}
+                          </Badge>
+                          {entry.paraphrased && (
+                            <span className="text-xs font-medium text-muted-foreground">Paraphrased</span>
+                          )}
+                        </div>
+                        <p className="mt-2 text-sm leading-5 text-foreground">{entry.question}</p>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No questions extracted yet. Run the extractor to populate this list.
+                  </p>
+                )}
+              </div>
+              {questionsRateInfo && (
+                <p className="text-xs text-muted-foreground">
+                  {questionsRateInfo.remaining} of {QUESTIONS_LIMIT} requests remaining. Resets around{' '}
+                  {questionsRateInfo.resetAt
+                    ? new Date(questionsRateInfo.resetAt).toLocaleTimeString()
+                    : 'the next window'}.
+                </p>
+              )}
+              {questionsError && <p className="text-sm text-red-600">{questionsError}</p>}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Select a task with TxAv to extract interviewer questions.
+            </p>
+          )}
+          <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex w-full flex-col gap-1 sm:flex-row sm:items-center">
+              <Button
+                type="button"
+                variant="outline"
+                className="sm:w-auto"
+                onClick={closeQuestionsDialog}
+                disabled={questionsLoading}
+              >
+                Close
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="sm:w-auto"
+                onClick={handleCopyQuestions}
+                disabled={questionsList.length === 0}
+              >
+                Copy questions
+              </Button>
+            </div>
+            <Button
+              type="button"
+              onClick={handleFetchInterviewerQuestions}
+              disabled={questionsLoading || !questionsDialogTask?.transcription}
+              className="sm:w-auto"
+            >
+              {questionsLoading ? 'Extracting… (takes up to a minute)' : 'Extract with GPT-5'}
             </Button>
           </DialogFooter>
         </DialogContent>
