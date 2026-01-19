@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import { useAuth, API_URL } from "@/hooks/useAuth";
+import { useAuth, SOCKET_URL } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -115,7 +115,7 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
   const socket: Socket | null = useMemo(() => {
     if (typeof window === 'undefined') return null;
     const token = localStorage.getItem("accessToken") || "";
-    return io(API_URL, {
+    return io(SOCKET_URL, {
       autoConnect: false,
       transports: ["websocket"],
       auth: { token },

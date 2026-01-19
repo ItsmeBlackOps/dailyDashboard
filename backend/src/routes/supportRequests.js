@@ -8,8 +8,10 @@ const router = express.Router();
 
 const attachmentLimit = config.support?.attachmentMaxBytes ?? 5 * 1024 * 1024;
 
-const upload = multer({
-  storage: multer.memoryStorage(),
+const memoryStorage = multer.memoryStorage();
+
+const interviewUpload = multer({
+  storage: memoryStorage,
   limits: {
     fileSize: attachmentLimit,
     files: 8,
@@ -25,16 +27,34 @@ const upload = multer({
   },
 });
 
+const assessmentUpload = multer({
+  storage: memoryStorage,
+  limits: {
+    fileSize: attachmentLimit,
+    files: 8,
+  },
+});
+
 router.use(authenticateHTTP);
 
 router.post(
   '/interview',
-  upload.fields([
+  interviewUpload.fields([
     { name: 'resume', maxCount: 1 },
     { name: 'jobDescription', maxCount: 1 },
     { name: 'additionalAttachments', maxCount: 6 },
   ]),
   supportRequestController.createInterviewSupport
+);
+
+router.post(
+  '/assessment',
+  assessmentUpload.fields([
+    { name: 'resume', maxCount: 1 },
+    { name: 'assessmentInfo', maxCount: 1 },
+    { name: 'additionalAttachments', maxCount: 6 },
+  ]),
+  supportRequestController.createAssessmentSupport
 );
 
 router.post(

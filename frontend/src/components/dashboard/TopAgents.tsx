@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
-import { useAuth, API_URL } from "@/hooks/useAuth";
+import { useAuth, SOCKET_URL } from "@/hooks/useAuth";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -199,7 +199,7 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
   const socket: Socket | null = useMemo(() => {
     if (typeof window === 'undefined') return null;
     const token = localStorage.getItem("accessToken") || "";
-    return io(API_URL, {
+    return io(SOCKET_URL, {
       autoConnect: false,
       transports: ["websocket"],
       auth: { token },

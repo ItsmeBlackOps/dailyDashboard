@@ -8,6 +8,54 @@ export class UserModel {
     this.cache = new Map();
   }
 
+  formatCachePayload(userDoc = {}) {
+    if (!userDoc?.email) {
+      return null;
+    }
+
+    return {
+      passwordHash: userDoc.passwordHash,
+      role: userDoc.role,
+      teamLead: userDoc.teamLead,
+      manager: userDoc.manager,
+      active: userDoc.active !== undefined ? Boolean(userDoc.active) : true,
+      profile: userDoc.profile || null,
+      _id: userDoc._id
+    };
+  }
+
+  setCacheEntryFromDocument(userDoc) {
+    const payload = this.formatCachePayload(userDoc);
+    if (!payload) {
+      return;
+    }
+
+    const normalizedEmail = userDoc.email.toLowerCase();
+    this.cache.set(normalizedEmail, payload);
+  }
+
+  async refreshCacheForEmail(email) {
+    if (!this.collection || !email) {
+      return;
+    }
+
+    const lowerEmail = email.toLowerCase();
+
+    try {
+      const document = await this.collection.findOne({ email: lowerEmail });
+      if (document) {
+        this.setCacheEntryFromDocument(document);
+      } else {
+        this.cache.delete(lowerEmail);
+      }
+    } catch (error) {
+      logger.error('Failed to refresh user cache entry', {
+        email: lowerEmail,
+        error: error.message
+      });
+    }
+  }
+
   async initialize() {
     this.collection = database.getCollection('users');
     await this.loadUsers();
@@ -20,15 +68,7 @@ export class UserModel {
       this.cache.clear();
 
       for (const user of users) {
-        this.cache.set(user.email.toLowerCase(), {
-          passwordHash: user.passwordHash,
-          role: user.role,
-          teamLead: user.teamLead,
-          manager: user.manager,
-          active: user.active !== undefined ? Boolean(user.active) : true,
-          profile: user.profile || null,
-          _id: user._id
-        });
+        this.setCacheEntryFromDocument(user);
       }
 
       logger.info(`✅ Loaded ${this.cache.size} users into cache`);
@@ -51,15 +91,7 @@ export class UserModel {
               await this.collection.findOne({ _id: change.documentKey._id });
 
             if (doc) {
-              this.cache.set(doc.email.toLowerCase(), {
-                passwordHash: doc.passwordHash,
-                role: doc.role,
-                teamLead: doc.teamLead,
-                manager: doc.manager,
-                active: doc.active !== undefined ? Boolean(doc.active) : true,
-                profile: doc.profile || null,
-                _id: doc._id
-              });
+              this.setCacheEntryFromDocument(doc);
               logger.debug('🔄 User cache updated', { email: doc.email });
             }
           }
@@ -110,6 +142,11 @@ export class UserModel {
       delete userData.passwordHash;
 
       const result = await this.collection.insertOne(user);
+      const insertedUser = {
+        ...user,
+        _id: result.insertedId
+      };
+      this.setCacheEntryFromDocument(insertedUser);
       logger.info('User created', { email: user.email, id: result.insertedId });
 
       return result;
@@ -142,6 +179,8 @@ export class UserModel {
         { $set: update }
       );
 
+      await this.refreshCacheForEmail(email);
+
       logger.info('User updated', { email, modifiedCount: result.modifiedCount });
       return result;
     } catch (error) {
@@ -152,7 +191,9 @@ export class UserModel {
 
   async deleteUser(email) {
     try {
-      const result = await this.collection.deleteOne({ email: email.toLowerCase() });
+      const lowerEmail = email.toLowerCase();
+      const result = await this.collection.deleteOne({ email: lowerEmail });
+      this.cache.delete(lowerEmail);
       logger.info('User deleted', { email, deletedCount: result.deletedCount });
       return result;
     } catch (error) {

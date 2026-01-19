@@ -1,5 +1,6 @@
 import { taskService } from '../services/taskService.js';
 import { thanksMailService } from '../services/thanksMailService.js';
+import { interviewerQuestionService } from '../services/interviewerQuestionService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 
@@ -107,6 +108,29 @@ export class TaskController {
       success: true,
       markdown: result.markdown,
       html: result.html,
+      generatedAt: result.generatedAt,
+      rateLimit: result.rateLimit
+    });
+  });
+
+  getInterviewerQuestions = asyncHandler(async (req, res) => {
+    const { taskId } = req.params;
+
+    if (!taskId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Task id is required'
+      });
+    }
+
+    const result = await interviewerQuestionService.getInterviewerQuestions({
+      taskId,
+      user: req.user
+    });
+
+    res.status(200).json({
+      success: true,
+      questions: result.questions,
       generatedAt: result.generatedAt,
       rateLimit: result.rateLimit
     });

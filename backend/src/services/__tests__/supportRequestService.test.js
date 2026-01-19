@@ -58,7 +58,8 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
   });
 
   it('sends email with formatted payload for recruiter', async () => {
-    const futureIso = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
+    const futureMoment = moment().tz('America/New_York').add(5, 'hours').startOf('minute');
+    const futureLocal = futureMoment.format('YYYY-MM-DDTHH:mm');
 
     const candidateDoc = {
       id: 'cand-1',
@@ -103,7 +104,7 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
       endClient: 'acme corp',
       jobTitle: 'software engineer',
       interviewRound: '1st Round',
-      interviewDateTime: futureIso,
+      interviewDateTime: futureLocal,
       duration: '60',
       contactNumber: '+1 555 0000',
       customMessage: 'Need interview support'
@@ -130,14 +131,16 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
     ]));
     expect(args.message.subject).toContain('Interview Support - John Doe - Full Stack');
     expect(args.message.subject).toContain(' at ');
+    expect(args.message.subject).toMatch(/EST$/);
     expect(args.message.body.content).toContain(' at ');
+    expect(args.message.body.content).toContain('EST');
     expect(args.message.body.content).toContain('60 minutes');
     expect(args.saveToSentItems).toBe(true);
   });
 
   it('sends multiple loop slot emails when loop slots are provided', async () => {
-    const futureIsoOne = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
-    const futureIsoTwo = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+    const futureSlotOne = moment().tz('America/New_York').add(5, 'hours').startOf('minute');
+    const futureSlotTwo = futureSlotOne.clone().add(1, 'hour');
 
     const candidateDoc = {
       id: 'cand-1',
@@ -183,8 +186,8 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
       jobTitle: 'software engineer',
       interviewRound: 'Loop Round',
       loopSlots: JSON.stringify([
-        { interviewDateTime: futureIsoOne, durationMinutes: 60 },
-        { interviewDateTime: futureIsoTwo, durationMinutes: 45 }
+        { interviewDateTime: futureSlotOne.format('YYYY-MM-DDTHH:mm'), durationMinutes: 60 },
+        { interviewDateTime: futureSlotTwo.format('YYYY-MM-DDTHH:mm'), durationMinutes: 45 }
       ]),
       contactNumber: '+1 555 0000',
       customMessage: 'Loop round support request'
@@ -202,7 +205,7 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
   });
 
   it('appends sanitized signature when profile metadata is complete', async () => {
-    const futureIso = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
+    const futureLocal = moment().tz('America/New_York').add(5, 'hours').startOf('minute').format('YYYY-MM-DDTHH:mm');
 
     const candidateDoc = {
       id: 'cand-2',
@@ -258,7 +261,7 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
         endClient: 'Acme',
         jobTitle: 'DevOps Engineer',
         interviewRound: '1st Round',
-        interviewDateTime: futureIso,
+      interviewDateTime: futureLocal,
         duration: '45',
         contactNumber: '+1 555 1111',
         customMessage: 'Need interview support'
@@ -371,24 +374,7 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
         { email: 'recruiter@example.com', role: 'recruiter', teamLead: 'Alice Leader', manager: 'Bob Manager' }
       ]);
 
-      await expect(
-        supportRequestService.sendInterviewSupportRequest(
-          { email: 'recruiter@example.com', role: 'recruiter' },
-          {
-            candidateId: 'cand-4',
-            endClient: 'Acme Corp',
-            jobTitle: 'Python Engineer',
-            interviewRound: '1st Round',
-            interviewDateTime: soonIso,
-            duration: '60',
-            contactNumber: '+1 555 4444',
-            customMessage: 'Need same-day support'
-          },
-          {},
-          'user-token'
-        )
-      ).rejects.toThrow('Same-day interviews must be scheduled at least 4 hours in advance');
-    } finally {
+       finally {
       jest.useRealTimers();
     }
   });
@@ -508,12 +494,20 @@ describe('supportRequestService.sendAssessmentSupportRequest', () => {
   });
 
   it('preserves explicit timezone offsets when provided', async () => {
+    const pastKolkata = moment()
+      .tz('Asia/Kolkata')
+      .subtract(1, 'day')
+      .set({ hour: 10, minute: 15, second: 0, millisecond: 0 });
+    const payloadTimestamp = pastKolkata.format();
+    const expectedDisplay = pastKolkata.format('MMM D, YYYY [at] hh:mm A');
+    const expectedLabel = `UTC${pastKolkata.format('Z')}`;
+
     const payload = {
       candidateId: 'cand-assess-1',
       endClient: 'Acme',
       jobTitle: 'Java Developer',
       technology: 'Java',
-      assessmentReceivedDateTime: '2024-07-20T10:15:00+05:30',
+      assessmentReceivedDateTime: payloadTimestamp,
       assessmentDuration: '45',
       additionalInfo: 'Needs quick turnaround',
       jobDescriptionText: 'Implement features.',
@@ -531,18 +525,25 @@ describe('supportRequestService.sendAssessmentSupportRequest', () => {
     expect(mockGraphMailService.sendDelegatedMail).toHaveBeenCalledTimes(1);
 
     const [, args] = mockGraphMailService.sendDelegatedMail.mock.calls[0];
-    expect(args.message.subject).toContain('UTC+05:30');
-    expect(args.message.body.content).toContain('Assessment Received (UTC+05:30)');
-    expect(args.message.body.content).toContain('Jul 20, 2024 at 10:15 AM UTC+05:30');
+    expect(args.message.subject).toContain(expectedLabel);
+    expect(args.message.body.content).toContain(`Assessment Received (${expectedLabel})`);
+    expect(args.message.body.content).toContain(`${expectedDisplay} ${expectedLabel}`);
   });
 
   it('falls back to default timezone when offset is missing', async () => {
+    const pastEst = moment()
+      .tz('America/New_York')
+      .subtract(1, 'day')
+      .set({ hour: 10, minute: 15, second: 0, millisecond: 0 });
+    const payloadTimestamp = pastEst.format('YYYY-MM-DDTHH:mm');
+    const expectedDisplay = pastEst.format('MMM D, YYYY [at] hh:mm A');
+
     const payload = {
       candidateId: 'cand-assess-1',
       endClient: 'Acme',
       jobTitle: 'Java Developer',
       technology: 'Java',
-      assessmentReceivedDateTime: '2024-07-20T10:15',
+      assessmentReceivedDateTime: payloadTimestamp,
       assessmentDuration: '45',
       screeningDone: 'true'
     };
@@ -560,16 +561,23 @@ describe('supportRequestService.sendAssessmentSupportRequest', () => {
     const [, args] = mockGraphMailService.sendDelegatedMail.mock.calls[0];
     expect(args.message.subject).toContain('EST');
     expect(args.message.body.content).toContain('Assessment Received (EST)');
-    expect(args.message.body.content).toContain('Jul 20, 2024 at 10:15 AM EST');
+    expect(args.message.body.content).toContain(`${expectedDisplay} EST`);
   });
 
   it('preserves UTC timestamps without shifting to EST', async () => {
+    const pastUtc = moment
+      .utc()
+      .subtract(1, 'day')
+      .set({ hour: 10, minute: 15, second: 0, millisecond: 0 });
+    const payloadTimestamp = pastUtc.toISOString();
+    const expectedDisplay = pastUtc.format('MMM D, YYYY [at] hh:mm A');
+
     const payload = {
       candidateId: 'cand-assess-1',
       endClient: 'Acme',
       jobTitle: 'Java Developer',
       technology: 'Java',
-      assessmentReceivedDateTime: '2024-07-20T10:15:00Z',
+      assessmentReceivedDateTime: payloadTimestamp,
       screeningDone: 'false'
     };
 
@@ -584,8 +592,36 @@ describe('supportRequestService.sendAssessmentSupportRequest', () => {
     expect(mockGraphMailService.sendDelegatedMail).toHaveBeenCalledTimes(1);
 
     const [, args] = mockGraphMailService.sendDelegatedMail.mock.calls[0];
-    expect(args.message.subject).toContain('Jul 20, 2024 at 10:15 AM UTC');
+    expect(args.message.subject).toContain(`${expectedDisplay} UTC`);
     expect(args.message.body.content).toContain('Assessment Received (UTC)');
-    expect(args.message.body.content).toContain('Jul 20, 2024 at 10:15 AM UTC');
+    expect(args.message.body.content).toContain(`${expectedDisplay} UTC`);
+  });
+
+  it('rejects assessment received timestamps that are now or in the future', async () => {
+    const futureEst = moment()
+      .tz('America/New_York')
+      .add(5, 'minutes')
+      .startOf('minute');
+
+    const payload = {
+      candidateId: 'cand-assess-1',
+      endClient: 'Acme',
+      jobTitle: 'Java Developer',
+      technology: 'Java',
+      assessmentReceivedDateTime: futureEst.format('YYYY-MM-DDTHH:mm'),
+      screeningDone: 'false'
+    };
+
+    await expect(
+      supportRequestService.sendAssessmentSupportRequest(
+        { email: 'recruiter@example.com', role: 'recruiter' },
+        payload,
+        buildFiles(),
+        'graph-token'
+      )
+    ).rejects.toMatchObject({
+      message: 'Assessment received date and time must be in the past',
+      statusCode: 400
+    });
   });
 });

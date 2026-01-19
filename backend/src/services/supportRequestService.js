@@ -582,15 +582,30 @@ class SupportRequestService {
     const durationInput = trimString(payload.duration || '');
 
     const parseSlotMoment = (value) => {
-      if (!value) {
+      const trimmed = trimString(value);
+      if (!trimmed) {
         return null;
       }
-      const isoCandidate = moment(value, moment.ISO_8601, true);
-      if (isoCandidate.isValid()) {
-        return isoCandidate.tz(DEFAULT_TIMEZONE);
+
+      if (hasExplicitTimezone(trimmed)) {
+        const zoned = moment.parseZone(trimmed, moment.ISO_8601, true);
+        if (!zoned.isValid()) {
+          return null;
+        }
+        return {
+          moment: zoned,
+          normalizedValue: trimmed
+        };
       }
-      const legacyCandidate = moment.tz(value, 'YYYY-MM-DDTHH:mm', DEFAULT_TIMEZONE);
-      return legacyCandidate.isValid() ? legacyCandidate : null;
+
+      const estMoment = moment.tz(trimmed, 'YYYY-MM-DDTHH:mm', DEFAULT_TIMEZONE);
+      if (!estMoment.isValid()) {
+        return null;
+      }
+      return {
+        moment: estMoment,
+        normalizedValue: estMoment.format('YYYY-MM-DDTHH:mm')
+      };
     };
 
     const now = moment().tz(DEFAULT_TIMEZONE);
@@ -616,12 +631,14 @@ class SupportRequestService {
         throw error;
       }
 
-      const slotMoment = parseSlotMoment(interviewDateTimeInput);
-      if (!slotMoment) {
+      const parsedSlot = parseSlotMoment(interviewDateTimeInput);
+      if (!parsedSlot) {
         const error = new Error('Provide a valid interview date and time in EST');
         error.statusCode = 400;
         throw error;
       }
+
+      const slotMoment = parsedSlot.moment;
 
       if (slotMoment.isBefore(now)) {
         const error = new Error('Interview date and time must be in the future');
@@ -629,16 +646,10 @@ class SupportRequestService {
         throw error;
       }
 
-      if (slotMoment.isSame(now, 'day') && slotMoment.diff(now, 'minutes') < SAME_DAY_LEAD_MINUTES) {
-        const error = new Error('Same-day interviews must be scheduled at least 4 hours in advance');
-        error.statusCode = 400;
-        throw error;
-      }
-
 
 
       resolvedSlots.push({
-        interviewDateTime: slotMoment.toISOString(),
+        interviewDateTime: parsedSlot.normalizedValue,
         durationMinutes,
       });
     } else {
@@ -671,12 +682,14 @@ class SupportRequestService {
           throw error;
         }
 
-        const slotMoment = parseSlotMoment(slotDateTimeRaw);
-        if (!slotMoment) {
+        const parsedSlot = parseSlotMoment(slotDateTimeRaw);
+        if (!parsedSlot) {
           const error = new Error('Loop slot has an invalid interview date/time');
           error.statusCode = 400;
           throw error;
         }
+
+        const slotMoment = parsedSlot.moment;
 
         if (slotMoment.isBefore(now)) {
           const error = new Error('Loop slot must be scheduled in the future');
@@ -684,16 +697,9 @@ class SupportRequestService {
           throw error;
         }
 
-        if (slotMoment.isSame(now, 'day') && slotMoment.diff(now, 'minutes') < SAME_DAY_LEAD_MINUTES) {
-          const error = new Error('Same-day interviews must be scheduled at least 4 hours in advance');
-          error.statusCode = 400;
-          throw error;
-        }
-
-
 
         resolvedSlots.push({
-          interviewDateTime: slotMoment.toISOString(),
+          interviewDateTime: parsedSlot.normalizedValue,
           durationMinutes: slotDurationMinutes,
         });
       }
@@ -914,6 +920,17 @@ class SupportRequestService {
 
     if (!receivedMoment.isValid()) {
       const error = new Error('Assessment received date and time is invalid');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const nowEst = moment().tz(DEFAULT_TIMEZONE);
+    const comparisonMoment = preserveSourceTimezone
+      ? receivedMoment.clone().tz(DEFAULT_TIMEZONE)
+      : receivedMoment.clone();
+
+    if (!comparisonMoment.isBefore(nowEst)) {
+      const error = new Error('Assessment received date and time must be in the past');
       error.statusCode = 400;
       throw error;
     }

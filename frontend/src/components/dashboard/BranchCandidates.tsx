@@ -16,8 +16,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, API_URL } from "@/hooks/useAuth";
+import { useAuth, API_URL, SOCKET_URL } from "@/hooks/useAuth";
 import { EmailSignature } from "@/components/layout/emailSignature";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { cn } from "@/lib/utils";
@@ -81,6 +82,19 @@ interface SupportFormState {
   interviewDateTime: string;
   duration: string;
   contactNumber: string;
+}
+
+interface AssessmentFormState {
+  candidateName: string;
+  technology: string;
+  email: string;
+  contactNumber: string;
+  endClient: string;
+  jobTitle: string;
+  assessmentReceivedDateTime: string;
+  assessmentDuration: string;
+  additionalInfo: string;
+  jobDescriptionText: string;
 }
 
 interface SupportCloneAttachment {
@@ -365,6 +379,70 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const pendingCustomMessageForJdRef = useRef<string>('');
   const customMessageWarningToastRef = useRef<ReturnType<typeof toast> | null>(null);
   const [durationWarning, setDurationWarning] = useState('');
+  const [assessmentOpen, setAssessmentOpen] = useState(false);
+  const [assessmentCandidate, setAssessmentCandidate] = useState<CandidateRow | null>(null);
+  const [assessmentForm, setAssessmentForm] = useState<AssessmentFormState>({
+    candidateName: '',
+    technology: '',
+    email: '',
+    contactNumber: '',
+    endClient: '',
+    jobTitle: '',
+    assessmentReceivedDateTime: '',
+    assessmentDuration: '',
+    additionalInfo: '',
+    jobDescriptionText: ''
+  });
+  const [assessmentDate, setAssessmentDate] = useState<Date | null>(null);
+  const [assessmentTime, setAssessmentTime] = useState('');
+  const [assessmentTimeInput, setAssessmentTimeInput] = useState('');
+  const [assessmentTimeWarning, setAssessmentTimeWarning] = useState('');
+  const [assessmentDatePickerOpen, setAssessmentDatePickerOpen] = useState(false);
+  const [assessmentNoDuration, setAssessmentNoDuration] = useState(false);
+  const [assessmentScreeningDone, setAssessmentScreeningDone] = useState(false);
+  const [assessmentResumeFile, setAssessmentResumeFile] = useState<File | null>(null);
+  const [assessmentInfoFile, setAssessmentInfoFile] = useState<File | null>(null);
+  const [assessmentAdditionalFiles, setAssessmentAdditionalFiles] = useState<File[]>([]);
+  const [assessmentError, setAssessmentError] = useState('');
+  const [assessmentSubmitting, setAssessmentSubmitting] = useState(false);
+  const acquireGraphAccessToken = useCallback(async (): Promise<string> => {
+    let activeAccount = instance.getActiveAccount() ?? account ?? null;
+    let graphToken = '';
+    try {
+      if (!activeAccount) {
+        const loginResult = await instance.loginPopup({ scopes: GRAPH_MAIL_SCOPES });
+        activeAccount = loginResult.account ?? loginResult.accounts?.[0] ?? null;
+        graphToken = loginResult.accessToken || '';
+        if (activeAccount) {
+          instance.setActiveAccount(activeAccount);
+        }
+      }
+
+      if (activeAccount && !graphToken) {
+        try {
+          const tokenResponse = await instance.acquireTokenSilent({
+            account: activeAccount,
+            scopes: GRAPH_MAIL_SCOPES
+          });
+          graphToken = tokenResponse.accessToken;
+        } catch (tokenError) {
+          console.warn('Silent Graph token acquisition failed, attempting popup', tokenError);
+          const popupResponse = await instance.acquireTokenPopup({
+            scopes: GRAPH_MAIL_SCOPES
+          });
+          graphToken = popupResponse.accessToken;
+        }
+      }
+
+      if (!graphToken) {
+        throw new Error('Unable to acquire Graph access token');
+      }
+      return graphToken;
+    } catch (tokenError) {
+      console.error('Failed to acquire Graph token', tokenError);
+      throw tokenError instanceof Error ? tokenError : new Error('Unable to acquire Graph access token');
+    }
+  }, [account, instance]);
   const [pendingCloneDraft, setPendingCloneDraft] = useState<SupportCloneDraft | null>(null);
   const cloneHydrationRef = useRef(false);
   const cloneSlotHydrationRef = useRef(false);
@@ -599,7 +677,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       let interviewDateTimeField = '';
 
       if (draft.interviewDateTime) {
-        const startMoment = moment(draft.interviewDateTime).tz(EST_TIMEZONE);
+        const startMoment = moment.tz(draft.interviewDateTime, 'YYYY-MM-DDTHH:mm', EST_TIMEZONE);
         if (startMoment.isValid()) {
           interviewDate = startMoment.toDate();
           interviewTimeValue = startMoment.format('HH:mm');
@@ -638,7 +716,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       if (draft.loopSlots && draft.loopSlots.length > 0) {
         loopSlotCounter.current = 0;
         const hydratedSlots = draft.loopSlots.map((slot) => {
-          const slotMoment = moment(slot.interviewDateTime).tz(EST_TIMEZONE);
+          const slotMoment = moment.tz(slot.interviewDateTime, 'YYYY-MM-DDTHH:mm', EST_TIMEZONE);
           const date = slotMoment.isValid() ? slotMoment.toDate() : null;
           const timeValue = slotMoment.isValid() ? slotMoment.format('HH:mm') : '';
           const timeInput = slotMoment.isValid() ? slotMoment.format('hh:mm A') : '';
@@ -694,22 +772,44 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     return `${String(normalizedHour).padStart(2, '0')}:${String(normalizedMinute).padStart(2, '0')}`;
   }, []);
 
-  const warnIfOutOfHours = useCallback((date: Date | null, time: string) => {
+  const buildEstMoment = useCallback((date: Date | null, time: string) => {
     if (!date || !time) {
+      return null;
+    }
+
+    const [hoursRaw, minutesRaw] = time.split(':');
+    const hours = Number.parseInt(hoursRaw ?? '', 10);
+    const minutes = Number.parseInt(minutesRaw ?? '', 10);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+      return null;
+    }
+
+    const estMoment = moment.tz(
+      {
+        year: date.getFullYear(),
+        month: date.getMonth(),
+        date: date.getDate(),
+        hour: hours,
+        minute: minutes,
+        second: 0,
+        millisecond: 0
+      },
+      EST_TIMEZONE
+    );
+
+    return estMoment.isValid() ? estMoment : null;
+  }, []);
+
+  const warnIfOutOfHours = useCallback((date: Date | null, time: string) => {
+    const estMoment = buildEstMoment(date, time);
+    if (!estMoment) {
       supportWindowWarningKey.current = '';
       return;
     }
 
-    const [hours, minutes] = time.split(':').map((segment) => Number.parseInt(segment, 10));
-    const zoned = moment(date).tz(EST_TIMEZONE).set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
-    if (!zoned.isValid()) {
-      supportWindowWarningKey.current = '';
-      return;
-    }
-
-    const hour = zoned.hour();
-    const minute = zoned.minute();
-    const warningKey = zoned.toISOString();
+    const hour = estMoment.hour();
+    const minute = estMoment.minute();
+    const warningKey = estMoment.format('YYYY-MM-DDTHH:mm');
     const outsideWindow = hour < 9 || hour > 18 || (hour === 18 && minute > 0);
 
     if (outsideWindow && supportWindowWarningKey.current !== warningKey) {
@@ -719,12 +819,13 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         variant: 'destructive'
       });
       supportWindowWarningKey.current = warningKey;
+      return;
     }
 
-  if (!outsideWindow) {
-    supportWindowWarningKey.current = '';
-  }
-}, [toast]);
+    if (!outsideWindow) {
+      supportWindowWarningKey.current = '';
+    }
+  }, [buildEstMoment, toast]);
 
   const movePendingMessageToJd = useCallback(() => {
     const pending = pendingCustomMessageForJdRef.current.trim();
@@ -957,6 +1058,35 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     loopSlotCounter.current = 0;
   }, []);
 
+  const resetAssessmentState = useCallback(() => {
+    setAssessmentOpen(false);
+    setAssessmentCandidate(null);
+    setAssessmentForm({
+      candidateName: '',
+      technology: '',
+      email: '',
+      contactNumber: '',
+      endClient: '',
+      jobTitle: '',
+      assessmentReceivedDateTime: '',
+      assessmentDuration: '',
+      additionalInfo: '',
+      jobDescriptionText: ''
+    });
+    setAssessmentDate(null);
+    setAssessmentTime('');
+    setAssessmentTimeInput('');
+    setAssessmentTimeWarning('');
+    setAssessmentDatePickerOpen(false);
+    setAssessmentNoDuration(false);
+    setAssessmentScreeningDone(false);
+    setAssessmentResumeFile(null);
+    setAssessmentInfoFile(null);
+    setAssessmentAdditionalFiles([]);
+    setAssessmentError('');
+    setAssessmentSubmitting(false);
+  }, []);
+
   const openSupportDialog = useCallback((candidate: CandidateRow) => {
     const formattedName = titleCasePreserveSpacing(candidate.name || '').replace(/\s+/g, ' ').trim();
     const formattedTechnology = candidate.technology
@@ -991,6 +1121,39 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setLoopSlots([]);
     loopSlotCounter.current = 0;
     setSupportOpen(true);
+  }, [titleCasePreserveSpacing]);
+
+  const openAssessmentDialog = useCallback((candidate: CandidateRow) => {
+    const formattedName = titleCasePreserveSpacing(candidate.name || '').replace(/\s+/g, ' ').trim();
+    const formattedTechnology = candidate.technology
+      ? titleCasePreserveSpacing(candidate.technology).replace(/\s+/g, ' ').trim()
+      : '';
+    setAssessmentCandidate(candidate);
+    setAssessmentForm({
+      candidateName: formattedName,
+      technology: formattedTechnology,
+      email: (candidate.email || '').toLowerCase(),
+      contactNumber: (candidate.contact || '').trim(),
+      endClient: '',
+      jobTitle: '',
+      assessmentReceivedDateTime: '',
+      assessmentDuration: '',
+      additionalInfo: '',
+      jobDescriptionText: ''
+    });
+    setAssessmentDate(null);
+    setAssessmentTime('');
+    setAssessmentTimeInput('');
+    setAssessmentTimeWarning('');
+    setAssessmentDatePickerOpen(false);
+    setAssessmentNoDuration(false);
+    setAssessmentScreeningDone(false);
+    setAssessmentResumeFile(null);
+    setAssessmentInfoFile(null);
+    setAssessmentAdditionalFiles([]);
+    setAssessmentError('');
+    setAssessmentSubmitting(false);
+    setAssessmentOpen(true);
   }, [titleCasePreserveSpacing]);
 
   const handleSupportFieldChange = useCallback((field: keyof SupportFormState, value: string) => {
@@ -1046,13 +1209,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   }, [titleCasePreserveSpacing]);
 
   const computeInterviewDateTimeValue = useCallback((date: Date | null, time: string): string => {
-    if (!date || !time) {
-      return '';
-    }
-    const [hours, minutes] = time.split(':').map((segment) => Number.parseInt(segment, 10));
-    const zoned = moment(date).tz(EST_TIMEZONE).set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
-    return zoned.format('YYYY-MM-DDTHH:mm');
-  }, []);
+    const estMoment = buildEstMoment(date, time);
+    return estMoment ? estMoment.format('YYYY-MM-DDTHH:mm') : '';
+  }, [buildEstMoment]);
 
   const handleSupportDateSelect = useCallback((date: Date | undefined) => {
     if (!date) return;
@@ -1129,6 +1288,221 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       }
     }
   }, []);
+
+  const handleAssessmentFieldChange = useCallback((field: keyof AssessmentFormState, value: string) => {
+    if (field === 'candidateName' || field === 'technology' || field === 'email' || field === 'contactNumber' || field === 'assessmentReceivedDateTime') {
+      return;
+    }
+
+    setAssessmentError('');
+    setAssessmentForm((prev) => {
+      if (field === 'endClient' || field === 'jobTitle') {
+        return { ...prev, [field]: titleCasePreserveSpacing(value) };
+      }
+      if (field === 'assessmentDuration') {
+        const digitsOnly = value.replace(/[^0-9]/g, '').slice(0, 3);
+        return { ...prev, assessmentDuration: digitsOnly };
+      }
+
+      return { ...prev, [field]: value };
+    });
+  }, [titleCasePreserveSpacing]);
+
+  const handleAssessmentDateSelect = useCallback((date: Date | undefined) => {
+    if (!date) return;
+    setAssessmentDate(date);
+    setAssessmentError('');
+    setAssessmentDatePickerOpen(false);
+    setAssessmentForm((prev) => ({
+      ...prev,
+      assessmentReceivedDateTime: computeInterviewDateTimeValue(date, assessmentTime)
+    }));
+  }, [assessmentTime, computeInterviewDateTimeValue]);
+
+  const handleAssessmentTimeChange = useCallback((value: string) => {
+    setAssessmentTimeInput(value);
+    const normalized = validateTimeInput(value);
+    if (!normalized) {
+      setAssessmentTimeWarning('Enter a valid time in 5-minute increments (e.g., 03:15 PM).');
+      setAssessmentTime('');
+      setAssessmentForm((prev) => ({
+        ...prev,
+        assessmentReceivedDateTime: ''
+      }));
+      return;
+    }
+
+    setAssessmentTimeWarning('');
+    setAssessmentTime(normalized);
+    setAssessmentForm((prev) => ({
+      ...prev,
+      assessmentReceivedDateTime: computeInterviewDateTimeValue(assessmentDate, normalized)
+    }));
+  }, [assessmentDate, computeInterviewDateTimeValue, validateTimeInput]);
+
+  const handleAssessmentFileChange = useCallback((field: 'resume' | 'assessmentInfo' | 'additionalAttachments', files: FileList | null) => {
+    if (!files || files.length === 0) {
+      if (field === 'resume') setAssessmentResumeFile(null);
+      if (field === 'assessmentInfo') setAssessmentInfoFile(null);
+      if (field === 'additionalAttachments') setAssessmentAdditionalFiles([]);
+      return;
+    }
+
+    const validateFile = (file: File) => {
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        const sizeMb = (MAX_ATTACHMENT_BYTES / (1024 * 1024)).toFixed(1);
+        throw new Error(`Attachments must be under ${sizeMb} MB.`);
+      }
+      return file;
+    };
+
+    try {
+      if (field === 'additionalAttachments') {
+        const validated = Array.from(files).map((file) => validateFile(file));
+        setAssessmentAdditionalFiles(validated);
+      } else {
+        const file = validateFile(files[0]);
+        if (field === 'resume') {
+          setAssessmentResumeFile(file);
+        } else {
+          setAssessmentInfoFile(file);
+        }
+      }
+      setAssessmentError('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid attachment';
+      setAssessmentError(message);
+      if (field === 'additionalAttachments') {
+        setAssessmentAdditionalFiles([]);
+      } else if (field === 'resume') {
+        setAssessmentResumeFile(null);
+      } else {
+        setAssessmentInfoFile(null);
+      }
+    }
+  }, []);
+
+  const handleAssessmentSubmit = useCallback(async () => {
+    if (!assessmentCandidate) {
+      setAssessmentError('No candidate selected.');
+      return;
+    }
+
+    const normalizedEndClient = titleCasePreserveSpacing(assessmentForm.endClient).replace(/\s+/g, ' ').trim();
+    if (!normalizedEndClient) {
+      setAssessmentError('End client is required.');
+      return;
+    }
+
+    const normalizedJobTitle = titleCasePreserveSpacing(assessmentForm.jobTitle).replace(/\s+/g, ' ').trim();
+    if (!normalizedJobTitle) {
+      setAssessmentError('Job title is required.');
+      return;
+    }
+
+    if (!assessmentForm.assessmentReceivedDateTime.trim()) {
+      setAssessmentError('Assessment received date and time is required.');
+      return;
+    }
+
+    if (assessmentTimeWarning) {
+      setAssessmentError(assessmentTimeWarning);
+      return;
+    }
+
+    if (!assessmentResumeFile) {
+      setAssessmentError('Attach the candidate resume before sending.');
+      return;
+    }
+
+    if (!assessmentInfoFile) {
+      setAssessmentError('Attach the assessment information before sending.');
+      return;
+    }
+
+    let graphToken = '';
+    try {
+      graphToken = await acquireGraphAccessToken();
+    } catch (tokenError) {
+      setAssessmentError('Authorize Microsoft access and try again.');
+      return;
+    }
+
+    try {
+      setAssessmentSubmitting(true);
+      setAssessmentError('');
+
+      const formData = new FormData();
+      formData.append('candidateId', assessmentCandidate.id);
+      formData.append('endClient', normalizedEndClient);
+      formData.append('jobTitle', normalizedJobTitle);
+      formData.append('assessmentReceivedDateTime', assessmentForm.assessmentReceivedDateTime);
+      if (assessmentForm.assessmentDuration.trim() && !assessmentNoDuration) {
+        formData.append('assessmentDuration', assessmentForm.assessmentDuration.trim());
+      }
+      formData.append('noDurationMentioned', assessmentNoDuration ? 'true' : 'false');
+      formData.append('screeningDone', assessmentScreeningDone ? 'true' : 'false');
+      if (assessmentForm.technology.trim()) {
+        formData.append('technology', assessmentForm.technology.trim());
+      }
+      if (assessmentForm.additionalInfo.trim()) {
+        formData.append('additionalInfo', assessmentForm.additionalInfo.trim());
+      }
+      if (assessmentForm.jobDescriptionText.trim()) {
+        formData.append('jobDescriptionText', assessmentForm.jobDescriptionText.trim());
+      }
+
+      formData.append('resume', assessmentResumeFile);
+      formData.append('assessmentInfo', assessmentInfoFile);
+      assessmentAdditionalFiles.forEach((file) => {
+        formData.append('additionalAttachments', file);
+      });
+
+      const response = await authFetch(`${API_URL}/api/support/assessment`, {
+        method: 'POST',
+        headers: {
+          'x-graph-access-token': graphToken
+        },
+        body: formData,
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const message = typeof payload?.error === 'string' ? payload.error : 'Unable to send assessment support request';
+        setAssessmentError(message);
+        return;
+      }
+
+      toast({
+        title: 'Assessment support request sent',
+        description: typeof payload?.message === 'string'
+          ? payload.message
+          : 'Assessment support email sent successfully.',
+      });
+
+      resetAssessmentState();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to send assessment support request';
+      setAssessmentError(message);
+    } finally {
+      setAssessmentSubmitting(false);
+    }
+  }, [
+    assessmentCandidate,
+    assessmentForm,
+    assessmentTimeWarning,
+    assessmentResumeFile,
+    assessmentInfoFile,
+    assessmentAdditionalFiles,
+    assessmentNoDuration,
+    assessmentScreeningDone,
+    authFetch,
+    toast,
+    titleCasePreserveSpacing,
+    resetAssessmentState,
+    acquireGraphAccessToken
+  ]);
 
   const handleSupportSubmit = useCallback(async () => {
     if (!supportCandidate) {
@@ -1227,7 +1601,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         }
 
         resolvedSlots.push({
-          interviewDateTime: slotMoment.toISOString(),
+          interviewDateTime: isoLocal,
           durationMinutes: minutes
         });
       }
@@ -1269,7 +1643,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
       singleInterviewMoment = interviewMoment;
       resolvedSlots.push({
-        interviewDateTime: interviewMoment.toISOString(),
+        interviewDateTime: supportForm.interviewDateTime,
         durationMinutes
       });
     }
@@ -1284,39 +1658,10 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       return;
     }
 
-    let activeAccount = account;
     let graphToken = '';
     try {
-      if (!activeAccount) {
-        const loginResult = await instance.loginPopup({ scopes: GRAPH_MAIL_SCOPES });
-        activeAccount = loginResult.account ?? loginResult.accounts?.[0] ?? null;
-        graphToken = loginResult.accessToken || '';
-        if (activeAccount) {
-          instance.setActiveAccount(activeAccount);
-        }
-      }
-
-      if (activeAccount && !graphToken) {
-        try {
-          const tokenResponse = await instance.acquireTokenSilent({
-            account: activeAccount,
-            scopes: GRAPH_MAIL_SCOPES
-          });
-          graphToken = tokenResponse.accessToken;
-        } catch (tokenError) {
-          console.warn('Silent Graph token acquisition failed, attempting popup', tokenError);
-          const popupResponse = await instance.acquireTokenPopup({
-            scopes: GRAPH_MAIL_SCOPES
-          });
-          graphToken = popupResponse.accessToken;
-        }
-      }
-
-      if (!graphToken) {
-        throw new Error('Unable to acquire Graph access token');
-      }
+      graphToken = await acquireGraphAccessToken();
     } catch (tokenError) {
-      console.error('Failed to acquire Graph token', tokenError);
       setSupportError('Authorize Microsoft access and try again.');
       return;
     }
@@ -1441,7 +1786,6 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     toast,
     titleCasePreserveSpacing,
     resetSupportState,
-    instance,
     supportInterviewDate,
     supportInterviewTime,
     customMessage,
@@ -1454,7 +1798,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     encodeAttachmentForStorage,
     ensureCustomMessageWarning,
     pendingCloneDraft,
-    persistSupportMockMaterials
+    persistSupportMockMaterials,
+    acquireGraphAccessToken
   ]);
 
   const combinedExpertOptions = useMemo(() => {
@@ -1494,7 +1839,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const socket: Socket | null = useMemo(() => {
     if (!canView) return null;
     const token = localStorage.getItem("accessToken") || "";
-    return io(API_URL, {
+    return io(SOCKET_URL, {
       autoConnect: false,
       transports: ["websocket"],
       auth: { token }
@@ -2558,6 +2903,16 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                                 Support
                               </Button>
                             )}
+                            {canSendSupport && (
+                              <Button
+                                size="xs"
+                                variant="outline"
+                                className="md:hidden w-fit"
+                                onClick={() => openAssessmentDialog(candidate)}
+                              >
+                                Assessment
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>{sanitizedTechnology}</TableCell>
@@ -2591,17 +2946,25 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                                     aria-label="Resume Understanding"
                                   >
                                     RU
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <span>Resume Understanding</span>
-                                </TooltipContent>
-                              </Tooltip>
-                              {canSendSupport && (
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => openSupportDialog(candidate)}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <span>Resume Understanding</span>
+                            </TooltipContent>
+                          </Tooltip>
+                          {canSendSupport && (
+                            <Button
+                              size="sm"
+                              onClick={() => openAssessmentDialog(candidate)}
+                            >
+                              Assessment
+                            </Button>
+                          )}
+                          {canSendSupport && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => openSupportDialog(candidate)}
                                   data-tour-id="branch-support-button"
                                 >
                                   Support
@@ -2864,6 +3227,231 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               </Button>
               <Button onClick={handleCreateCandidate} disabled={creating || recruiterOptions.length === 0 || !createResumeFile}>
                 {creating ? 'Submitting…' : 'Submit Candidate'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+      {canSendSupport && (
+        <Dialog open={assessmentOpen} onOpenChange={(open) => (!open ? resetAssessmentState() : setAssessmentOpen(true))}>
+          <DialogContent className="w-full max-h-[90vh] sm:max-h-[85vh] overflow-y-auto scroll-area sm:max-w-[660px] xl:max-w-[740px]">
+            <DialogHeader>
+              <DialogTitle>Request Assessment Support</DialogTitle>
+              <DialogDescription>
+                Share the assessment receipt details, highlight critical timelines, and attach the required files for the ops team.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="assessment-candidate-name">Candidate Name</Label>
+                  <Input id="assessment-candidate-name" value={assessmentForm.candidateName} disabled />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="assessment-technology">Technology</Label>
+                  <Input id="assessment-technology" value={assessmentForm.technology} disabled />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="assessment-email">Email ID</Label>
+                  <Input id="assessment-email" value={assessmentForm.email} disabled />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="assessment-contact">Contact Number</Label>
+                  <Input id="assessment-contact" value={assessmentForm.contactNumber} readOnly className="bg-muted" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="assessment-additional-info">Additional Info</Label>
+                <textarea
+                  id="assessment-additional-info"
+                  value={assessmentForm.additionalInfo}
+                  onChange={(event) => handleAssessmentFieldChange('additionalInfo', event.target.value)}
+                  className="w-full rounded border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  rows={3}
+                  placeholder="Share any priorities, blockers, or context to show above the summary table."
+                  disabled={assessmentSubmitting}
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="assessment-client">End Client</Label>
+                  <Input
+                    id="assessment-client"
+                    value={assessmentForm.endClient}
+                    onChange={(event) => handleAssessmentFieldChange('endClient', event.target.value)}
+                    placeholder="Client name"
+                    disabled={assessmentSubmitting}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="assessment-job-title">Job Title</Label>
+                  <Input
+                    id="assessment-job-title"
+                    value={assessmentForm.jobTitle}
+                    onChange={(event) => handleAssessmentFieldChange('jobTitle', event.target.value)}
+                    placeholder="Role title"
+                    disabled={assessmentSubmitting}
+                  />
+                </div>
+              </div>
+              <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-4">
+                <Label htmlFor="assessment-date" className="font-semibold text-amber-900">
+                  Assessment Received Date &amp; Time (EST)
+                </Label>
+                <p className="text-xs text-amber-900 opacity-80">This timestamp is highlighted in the support email subject and summary.</p>
+                <div className="mt-3 grid gap-2 sm:flex sm:items-center sm:gap-4">
+                  <Popover open={assessmentDatePickerOpen} onOpenChange={setAssessmentDatePickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        id="assessment-date"
+                        variant="outline"
+                        className={cn(
+                          "justify-start text-left font-normal",
+                          !assessmentDate && "text-muted-foreground"
+                        )}
+                        disabled={assessmentSubmitting}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {assessmentDate ? moment(assessmentDate).format('MMM DD, YYYY') : 'Pick a date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={assessmentDate ?? undefined}
+                        onSelect={handleAssessmentDateSelect}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <Input
+                    id="assessment-time"
+                    value={assessmentTimeInput}
+                    onChange={(event) => handleAssessmentTimeChange(event.target.value)}
+                    placeholder="HH:MM AM"
+                    disabled={assessmentSubmitting}
+                    className="sm:max-w-[160px]"
+                  />
+                </div>
+                {assessmentTimeWarning && (
+                  <p className="mt-2 text-xs font-medium text-red-600">{assessmentTimeWarning}</p>
+                )}
+              </div>
+              <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+                <div className="space-y-2">
+                  <Label htmlFor="assessment-duration">Assessment Duration (minutes)</Label>
+                  <Input
+                    id="assessment-duration"
+                    value={assessmentForm.assessmentDuration}
+                    onChange={(event) => handleAssessmentFieldChange('assessmentDuration', event.target.value)}
+                    placeholder="e.g., 60"
+                    disabled={assessmentSubmitting || assessmentNoDuration}
+                    inputMode="numeric"
+                  />
+                </div>
+                <div className="flex items-center gap-2 pt-2 sm:pt-0">
+                  <Checkbox
+                    id="assessment-no-duration"
+                    checked={assessmentNoDuration}
+                    onCheckedChange={(value) => {
+                      const isChecked = value === true;
+                      setAssessmentNoDuration(isChecked);
+                      if (isChecked) {
+                        setAssessmentForm((prev) => ({ ...prev, assessmentDuration: '' }));
+                      }
+                    }}
+                    disabled={assessmentSubmitting}
+                  />
+                  <Label htmlFor="assessment-no-duration" className="text-sm">
+                    No duration mentioned
+                  </Label>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="assessment-screening"
+                  checked={assessmentScreeningDone}
+                  onCheckedChange={(value) => setAssessmentScreeningDone(value === true)}
+                  disabled={assessmentSubmitting}
+                />
+                <Label htmlFor="assessment-screening" className="text-sm">
+                  Screening completed
+                </Label>
+              </div>
+              {assessmentScreeningDone && (
+                <p className="text-sm font-semibold text-red-600">
+                  Screening is done so prioritize this task.
+                </p>
+              )}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="assessment-resume">Attach Resume — required</Label>
+                  <Input
+                    id="assessment-resume"
+                    type="file"
+                    onChange={(event) => handleAssessmentFileChange('resume', event.target.files)}
+                    disabled={assessmentSubmitting}
+                  />
+                  {assessmentResumeFile ? (
+                    <p className="text-xs text-muted-foreground">{assessmentResumeFile.name}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Upload the latest candidate resume.</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="assessment-info">Attach Assessment Info — required</Label>
+                  <Input
+                    id="assessment-info"
+                    type="file"
+                    onChange={(event) => handleAssessmentFileChange('assessmentInfo', event.target.files)}
+                    disabled={assessmentSubmitting}
+                  />
+                  {assessmentInfoFile ? (
+                    <p className="text-xs text-muted-foreground">{assessmentInfoFile.name}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Include feedback or assessment results.</p>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="assessment-additional">Additional Attachments</Label>
+                <Input
+                  id="assessment-additional"
+                  type="file"
+                  multiple
+                  onChange={(event) => handleAssessmentFileChange('additionalAttachments', event.target.files)}
+                  disabled={assessmentSubmitting}
+                />
+                {assessmentAdditionalFiles.length > 0 && (
+                  <ul className="text-xs text-muted-foreground list-disc pl-5 space-y-0.5">
+                    {assessmentAdditionalFiles.map((file) => (
+                      <li key={file.name}>{file.name}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="assessment-job-description">Job Description (text)</Label>
+                <textarea
+                  id="assessment-job-description"
+                  value={assessmentForm.jobDescriptionText}
+                  onChange={(event) => handleAssessmentFieldChange('jobDescriptionText', event.target.value)}
+                  className="w-full rounded border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  rows={5}
+                  placeholder="Paste the relevant JD context, or leave blank if the documents cover it."
+                  disabled={assessmentSubmitting}
+                />
+              </div>
+              {assessmentError && <p className="text-sm text-destructive">{assessmentError}</p>}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={resetAssessmentState} disabled={assessmentSubmitting}>
+                Cancel
+              </Button>
+              <Button onClick={handleAssessmentSubmit} disabled={assessmentSubmitting}>
+                {assessmentSubmitting ? 'Sending…' : 'Send Assessment Support'}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -16,5 +16,6 @@ router.get('/:taskId', taskController.getTaskById);
 
 router.post('/search', taskController.searchTasks);
 router.post('/:taskId/thanks-mail', taskController.generateThanksMail);
+router.post('/:taskId/interviewer-questions', taskController.getInterviewerQuestions);
 
 export default router;

@@ -75,6 +75,12 @@
 - Given a natural-language request, the assistant generates a MongoDB filter against the `taskBody` collection and returns a preview plus a download token.
 - The frontend exposes the assistant at `/reports/assistant` with a chat interface, preview table, and Excel download button.
 
+### Interviewer Question Extraction
+- `POST /api/tasks/:taskId/interviewer-questions` extracts interviewer-only questions from the stored transcript (TxAv) using the configured OpenAI chat model (defaults to gpt-4.1).
+- Available to `recruiter`, `mlead`, `mam`, and `mm` roles. Access is rate-limited to three requests every six hours per user.
+- The endpoint sanitizes responses, normalizes question metadata, and returns a cached timestamp plus remaining quota indicators.
+- Shares the `OPENAI_*` configuration used by the thank-you email generator; ensure those environment variables are set before enabling the feature.
+
 ### Dev Scripts
 - `npm start` – runs the server
 - `npm test` – runs Jest unit tests
@@ -136,6 +142,7 @@ API documentation is provided using Swagger. A minimal OpenAPI 3.1 document is s
 - If no suggestion is available, the column shows `Not available` (entries are never filtered out due to missing suggestions).
 - Subject column is hidden by default. Users can toggle visibility via the “Show Subject” switch; the choice is persisted per-browser.
 - When Azure AD configuration is present, each task row exposes a “Create meeting” button that provisions an online Teams meeting based on the subject and scheduled time. First-time users see a consent banner that launches the Microsoft permissions dialog and polls the backend health check until consent succeeds. Once a meeting is created the join links are saved back onto the task, replacing the action with “Join meeting” and “Copy link” shortcuts.
+- Recruiters and leads can open the Actions menu and choose **Extract Interviewer Questions** (below **Generate Thanks Mail**) to fetch a sanitized, categorized list of interviewer questions. Extracted lists are cached locally per task and respect the same 3-per-6-hour GPT usage limit surfaced in the dialog.
 
 ### Microsoft Teams Meetings (prototype)
 

@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { API_URL, useAuth } from "@/hooks/useAuth";
+import { SOCKET_URL, useAuth } from "@/hooks/useAuth";
 
 type QueueStatus = "pending" | "done";
 
@@ -79,7 +79,7 @@ export default function ResumeUnderstanding() {
       return null;
     }
     const token = localStorage.getItem("accessToken") || "";
-    return io(API_URL, {
+    return io(SOCKET_URL, {
       autoConnect: false,
       transports: ["websocket"],
       auth: { token }
