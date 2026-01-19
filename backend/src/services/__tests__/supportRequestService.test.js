@@ -443,3 +443,149 @@ describe('supportRequestService.sendMockInterviewRequest', () => {
     expect(payload.saveToSentItems).toBe(true);
   });
 });
+
+describe('supportRequestService.sendAssessmentSupportRequest', () => {
+  const buildFiles = () => ({
+    resume: [{
+      originalname: 'resume.pdf',
+      buffer: Buffer.from('resume-file'),
+      mimetype: 'application/pdf',
+      size: 256
+    }],
+    assessmentInfo: [{
+      originalname: 'assessment-info.pdf',
+      buffer: Buffer.from('info-file'),
+      mimetype: 'application/pdf',
+      size: 256
+    }],
+    additionalAttachments: []
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    config.support.supportTo = 'tech.leaders@silverspaceinc.com';
+    config.support.supportCcFallback = [];
+    mockGraphMailService.sendDelegatedMail.mockResolvedValue({});
+    mockProfileService.getProfile.mockResolvedValue({ success: true, profile: { isComplete: false } });
+
+    const candidateDoc = {
+      id: 'cand-assess-1',
+      name: 'jane doe',
+      technology: 'java',
+      email: 'jane@example.com',
+      recruiter: 'recruiter@example.com',
+      contact: '+1 555 1234',
+      endClient: 'Acme'
+    };
+
+    mockCandidateModel.getCandidateById.mockResolvedValue(candidateDoc);
+    mockCandidateService.formatCandidateRecord.mockReturnValue({
+      ...candidateDoc,
+      name: 'Jane Doe',
+      technology: 'Java',
+      recruiterRaw: 'recruiter@example.com',
+      contact: '+1 555 1234'
+    });
+
+    mockUserModel.getUserByEmail.mockImplementation((email) => {
+      if (email === 'recruiter@example.com') {
+        return { teamLead: 'Alice Leader', manager: 'Bob Manager' };
+      }
+      if (email === 'alice.leader@example.com') {
+        return { teamLead: '', manager: 'Bob Manager' };
+      }
+      if (email === 'bob.manager@example.com') {
+        return { teamLead: '', manager: '' };
+      }
+      return null;
+    });
+
+    mockUserModel.getAllUsers.mockReturnValue([
+      { email: 'alice.leader@example.com', role: 'mlead', teamLead: '', manager: 'Bob Manager' },
+      { email: 'bob.manager@example.com', role: 'mam', teamLead: '', manager: '' },
+      { email: 'recruiter@example.com', role: 'recruiter', teamLead: 'Alice Leader', manager: 'Bob Manager' }
+    ]);
+  });
+
+  it('preserves explicit timezone offsets when provided', async () => {
+    const payload = {
+      candidateId: 'cand-assess-1',
+      endClient: 'Acme',
+      jobTitle: 'Java Developer',
+      technology: 'Java',
+      assessmentReceivedDateTime: '2024-07-20T10:15:00+05:30',
+      assessmentDuration: '45',
+      additionalInfo: 'Needs quick turnaround',
+      jobDescriptionText: 'Implement features.',
+      screeningDone: 'false'
+    };
+
+    const result = await supportRequestService.sendAssessmentSupportRequest(
+      { email: 'recruiter@example.com', role: 'recruiter' },
+      payload,
+      buildFiles(),
+      'graph-token'
+    );
+
+    expect(result).toEqual({ success: true, message: 'Assessment support request sent' });
+    expect(mockGraphMailService.sendDelegatedMail).toHaveBeenCalledTimes(1);
+
+    const [, args] = mockGraphMailService.sendDelegatedMail.mock.calls[0];
+    expect(args.message.subject).toContain('UTC+05:30');
+    expect(args.message.body.content).toContain('Assessment Received (UTC+05:30)');
+    expect(args.message.body.content).toContain('Jul 20, 2024 at 10:15 AM UTC+05:30');
+  });
+
+  it('falls back to default timezone when offset is missing', async () => {
+    const payload = {
+      candidateId: 'cand-assess-1',
+      endClient: 'Acme',
+      jobTitle: 'Java Developer',
+      technology: 'Java',
+      assessmentReceivedDateTime: '2024-07-20T10:15',
+      assessmentDuration: '45',
+      screeningDone: 'true'
+    };
+
+    const result = await supportRequestService.sendAssessmentSupportRequest(
+      { email: 'recruiter@example.com', role: 'recruiter' },
+      payload,
+      buildFiles(),
+      'graph-token'
+    );
+
+    expect(result).toEqual({ success: true, message: 'Assessment support request sent' });
+    expect(mockGraphMailService.sendDelegatedMail).toHaveBeenCalledTimes(1);
+
+    const [, args] = mockGraphMailService.sendDelegatedMail.mock.calls[0];
+    expect(args.message.subject).toContain('EST');
+    expect(args.message.body.content).toContain('Assessment Received (EST)');
+    expect(args.message.body.content).toContain('Jul 20, 2024 at 10:15 AM EST');
+  });
+
+  it('preserves UTC timestamps without shifting to EST', async () => {
+    const payload = {
+      candidateId: 'cand-assess-1',
+      endClient: 'Acme',
+      jobTitle: 'Java Developer',
+      technology: 'Java',
+      assessmentReceivedDateTime: '2024-07-20T10:15:00Z',
+      screeningDone: 'false'
+    };
+
+    const result = await supportRequestService.sendAssessmentSupportRequest(
+      { email: 'recruiter@example.com', role: 'recruiter' },
+      payload,
+      buildFiles(),
+      'graph-token'
+    );
+
+    expect(result).toEqual({ success: true, message: 'Assessment support request sent' });
+    expect(mockGraphMailService.sendDelegatedMail).toHaveBeenCalledTimes(1);
+
+    const [, args] = mockGraphMailService.sendDelegatedMail.mock.calls[0];
+    expect(args.message.subject).toContain('Jul 20, 2024 at 10:15 AM UTC');
+    expect(args.message.body.content).toContain('Assessment Received (UTC)');
+    expect(args.message.body.content).toContain('Jul 20, 2024 at 10:15 AM UTC');
+  });
+});

@@ -1,3 +1,4 @@
+import path from 'path';
 import moment from 'moment-timezone';
 import { candidateModel } from '../models/Candidate.js';
 import { userModel } from '../models/User.js';
@@ -23,6 +24,7 @@ const INTERVIEW_ROUNDS = new Set([
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_TIMEZONE = 'America/New_York';
+const SAME_DAY_LEAD_MINUTES = 4 * 60;
 
 function normalizeWhitespace(value = '') {
   return value.toString().trim().replace(/\s+/g, ' ');
@@ -73,15 +75,82 @@ function escapeHtml(value = '') {
     .replace(/'/g, '&#39;');
 }
 
-function formatDateTimeForEmail(isoString) {
-  const tzMoment = moment.tz(isoString, DEFAULT_TIMEZONE);
+function hasExplicitTimezone(value = '') {
+  return /([zZ]|[+-]\d{2}:?\d{2})$/u.test(trimString(value));
+}
+
+function buildUtcOffsetLabel(momentInstance) {
+  if (!moment.isMoment(momentInstance)) {
+    return '';
+  }
+  const offset = momentInstance.format('Z');
+  if (!offset) {
+    return '';
+  }
+  return offset === '+00:00' ? 'UTC' : `UTC${offset}`;
+}
+
+function formatDateTimeForEmail(input, options = {}) {
+  const {
+    timezone = DEFAULT_TIMEZONE,
+    convertToTimezone = true,
+    customLabel
+  } = options;
+
+  const trimmedCustomLabel = typeof customLabel === 'string' ? customLabel.trim() : '';
+
+  let tzMoment;
+  let shouldConvert = Boolean(convertToTimezone && timezone);
+
+  if (moment.isMoment(input)) {
+    tzMoment = input.clone();
+  } else if (typeof input === 'string') {
+    const trimmedInput = trimString(input);
+    const inputHasExplicitTimezone = hasExplicitTimezone(trimmedInput);
+
+    if (shouldConvert && inputHasExplicitTimezone) {
+      shouldConvert = false;
+    }
+
+    if (shouldConvert && timezone) {
+      tzMoment = moment.tz(trimmedInput, timezone);
+    } else {
+      tzMoment = moment.parseZone(trimmedInput, moment.ISO_8601, true);
+      if (!tzMoment.isValid()) {
+        tzMoment = moment(trimmedInput);
+      }
+    }
+  } else {
+    throw new Error('Invalid interview date');
+  }
+
   if (!tzMoment.isValid()) {
     throw new Error('Invalid interview date');
   }
+
+  if (shouldConvert && timezone) {
+    tzMoment = tzMoment.tz(timezone);
+  }
+
   const formatted = tzMoment.format('MMM D, YYYY [at] hh:mm A');
+
+  let zoneLabel = trimmedCustomLabel;
+  if (!zoneLabel) {
+    if (shouldConvert && timezone === DEFAULT_TIMEZONE) {
+      zoneLabel = 'EST';
+    } else if (!shouldConvert && timezone === DEFAULT_TIMEZONE) {
+      const comparisonMoment = moment.tz(tzMoment.valueOf(), timezone);
+      zoneLabel = comparisonMoment.utcOffset() === tzMoment.utcOffset() ? 'EST' : buildUtcOffsetLabel(tzMoment);
+    } else {
+      zoneLabel = buildUtcOffsetLabel(tzMoment);
+    }
+  }
+
+  const suffix = zoneLabel ? ` ${zoneLabel}` : '';
   return {
-    subjectFragment: `${formatted} EST`,
-    display: `${formatted} EST`,
+    subjectFragment: `${formatted}${suffix}`,
+    display: `${formatted}${suffix}`,
+    zoneLabel
   };
 }
 
@@ -144,6 +213,30 @@ function buildParagraphSection(text = '') {
   }
 
   return `<div style="margin-top:16px;">${paragraphs}</div>`;
+}
+
+function buildAdditionalInfoSection(text = '') {
+  const normalized = trimString(text).replace(/\r\n/g, '\n');
+  if (!normalized) {
+    return '';
+  }
+
+  const paragraphs = normalized
+    .split(/\n{2,}/u)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block, index) => {
+      const html = escapeHtml(block).replace(/\n/g, '<br />');
+      const marginTop = index === 0 ? 0 : 12;
+      return `<p style="margin:${marginTop}px 0 0;font-family:Arial, sans-serif;font-size:14px;line-height:1.5;color:#0f1e3d;">${html}</p>`;
+    })
+    .join('');
+
+  if (!paragraphs) {
+    return '';
+  }
+
+  return `<div style="margin:12px 0;">${paragraphs}</div>`;
 }
 
 function sanitizeAttachments(files = []) {
@@ -221,6 +314,43 @@ function sanitizeStoredMockAttachments(attachments = []) {
   }
 
   return sanitized;
+}
+
+function sanitizeFlexibleAttachments(files = []) {
+  if (!Array.isArray(files) || files.length === 0) {
+    return [];
+  }
+
+  const maxBytes = config.support?.attachmentMaxBytes ?? 5 * 1024 * 1024;
+  return files.map((file) => {
+    if (!file || typeof file.originalname !== 'string' || !file.buffer) {
+      const error = new Error('Invalid attachment payload');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (file.size > maxBytes) {
+      const error = new Error(`${file.originalname} exceeds the maximum size of ${(maxBytes / (1024 * 1024)).toFixed(1)} MB`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const rawName = path.basename(file.originalname).trim();
+    const sanitizedName = rawName
+      .replace(/[^\w.\-()\[\]\s]/g, '_')
+      .replace(/\s+/g, ' ')
+      .slice(0, 120) || 'attachment.dat';
+
+    const contentType = file.mimetype && typeof file.mimetype === 'string'
+      ? file.mimetype
+      : 'application/octet-stream';
+
+    return {
+      filename: sanitizedName,
+      content: file.buffer,
+      contentType
+    };
+  });
 }
 
 class SupportRequestService {
@@ -339,6 +469,62 @@ class SupportRequestService {
     return `${intro}${tableHtml}${jobDescriptionSection}`;
   }
 
+  buildAssessmentHtmlBody(data) {
+    const sections = [];
+    sections.push('<p style="font-family:Arial, sans-serif;font-size:14px;color:#0f1e3d;">Assessment support request details:</p>');
+
+    if (data.screeningDone) {
+      sections.push('<p style="font-family:Arial, sans-serif;font-size:14px;font-weight:700;color:#b91c1c;margin:0 0 12px;">Screening is done so prioritize this task.</p>');
+    }
+
+    const additionalInfo = typeof data.additionalInfo === 'string' ? data.additionalInfo : '';
+    const additionalInfoSection = buildAdditionalInfoSection(additionalInfo);
+    if (additionalInfoSection) {
+      sections.push('<div style="font-family:Arial, sans-serif;font-size:13px;font-weight:600;color:#0f1e3d;margin:8px 0 4px;">Additional Info</div>');
+      sections.push(additionalInfoSection);
+    }
+
+    const assessmentLabel = data.assessmentZoneLabel
+      ? `Assessment Received (${data.assessmentZoneLabel})`
+      : 'Assessment Received';
+
+    const rows = [
+      { label: assessmentLabel, value: data.assessmentDateTimeDisplay, highlight: true },
+      { label: 'Candidate Name', value: data.candidateName },
+      { label: 'Technology', value: data.technology },
+      { label: 'Email ID', value: data.candidateEmail },
+      { label: 'Contact Number', value: data.contactNumber },
+      { label: 'End Client', value: data.endClient },
+      { label: 'Job Title', value: data.jobTitle },
+      { label: 'Assessment Duration', value: data.durationDisplay || 'Not provided' },
+    ];
+
+    const headerBaseStyle = 'padding:6px 12px;background:#031022;color:#fff;';
+    const cellBaseStyle = 'padding:6px 12px;border:1px solid #0f1e3d;';
+    const headerHighlightStyle = 'padding:6px 12px;background:#9a3412;color:#fff;font-weight:700;';
+    const cellHighlightStyle = 'padding:6px 12px;border:2px solid #ca8a04;background:#fef08a;font-weight:700;color:#78350f;';
+
+    const tableRows = rows
+      .map((row) => {
+        const safeLabel = escapeHtml(row.label);
+        const safeValue = escapeHtml(row.value ?? '');
+        const headerStyle = row.highlight ? headerHighlightStyle : headerBaseStyle;
+        const cellStyle = row.highlight ? cellHighlightStyle : cellBaseStyle;
+        return `<tr><th align="left" style="${headerStyle}">${safeLabel}</th><td style="${cellStyle}">${safeValue}</td></tr>`;
+      })
+      .join('');
+
+    sections.push(`<table style="border-collapse:collapse;border:1px solid #0f1e3d;font-family:Arial, sans-serif;font-size:14px;min-width:420px;margin-top:8px;">${tableRows}</table>`);
+
+    const jobDescriptionSection = buildParagraphSection(data.jobDescriptionText);
+    if (jobDescriptionSection) {
+      sections.push('<div style="font-family:Arial, sans-serif;font-size:13px;font-weight:600;color:#0f1e3d;margin-top:16px;">Job Description</div>');
+      sections.push(jobDescriptionSection);
+    }
+
+    return sections.join('');
+  }
+
   async sendInterviewSupportRequest(user, payload = {}, files = {}, graphAccessToken) {
     const normalizedRole = this.ensureRoleAllowed(user);
 
@@ -443,6 +629,12 @@ class SupportRequestService {
         throw error;
       }
 
+      if (slotMoment.isSame(now, 'day') && slotMoment.diff(now, 'minutes') < SAME_DAY_LEAD_MINUTES) {
+        const error = new Error('Same-day interviews must be scheduled at least 4 hours in advance');
+        error.statusCode = 400;
+        throw error;
+      }
+
 
 
       resolvedSlots.push({
@@ -488,6 +680,12 @@ class SupportRequestService {
 
         if (slotMoment.isBefore(now)) {
           const error = new Error('Loop slot must be scheduled in the future');
+          error.statusCode = 400;
+          throw error;
+        }
+
+        if (slotMoment.isSame(now, 'day') && slotMoment.diff(now, 'minutes') < SAME_DAY_LEAD_MINUTES) {
+          const error = new Error('Same-day interviews must be scheduled at least 4 hours in advance');
           error.statusCode = 400;
           throw error;
         }
@@ -664,6 +862,240 @@ class SupportRequestService {
     return {
       success: true,
       message
+    };
+  }
+
+  async sendAssessmentSupportRequest(user, payload = {}, files = {}, graphAccessToken) {
+    const normalizedRole = this.ensureRoleAllowed(user);
+
+    if (!graphAccessToken) {
+      const error = new Error('Missing graph access token');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    const candidateId = normalizeWhitespace(payload.candidateId || '');
+    if (!candidateId) {
+      const error = new Error('Candidate id is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const endClient = toTitleCase(payload.endClient || '');
+    if (!endClient) {
+      const error = new Error('End client is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const jobTitle = toTitleCase(payload.jobTitle || '');
+    if (!jobTitle) {
+      const error = new Error('Job title is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const receivedInputRaw = trimString(payload.assessmentReceivedDateTime || '');
+    if (!receivedInputRaw) {
+      const error = new Error('Assessment received date and time is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const hasSourceTimezone = hasExplicitTimezone(receivedInputRaw);
+    let receivedMoment = moment.parseZone(receivedInputRaw, moment.ISO_8601, true);
+    let preserveSourceTimezone = false;
+
+    if (receivedMoment.isValid() && hasSourceTimezone) {
+      preserveSourceTimezone = true;
+    } else {
+      receivedMoment = moment.tz(receivedInputRaw, 'YYYY-MM-DDTHH:mm', DEFAULT_TIMEZONE);
+    }
+
+    if (!receivedMoment.isValid()) {
+      const error = new Error('Assessment received date and time is invalid');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const assessmentMomentDetails = formatDateTimeForEmail(receivedMoment, {
+      convertToTimezone: !preserveSourceTimezone,
+      timezone: DEFAULT_TIMEZONE,
+      customLabel: preserveSourceTimezone ? buildUtcOffsetLabel(receivedMoment) : 'EST'
+    });
+
+    const noDurationMentioned = String(payload.noDurationMentioned ?? '').toLowerCase() === 'true';
+    const rawDuration = trimString(payload.assessmentDuration || '');
+    let durationDisplay = 'Not provided';
+    if (noDurationMentioned) {
+      durationDisplay = 'No duration mentioned';
+    } else if (rawDuration) {
+      durationDisplay = /^\d+$/u.test(rawDuration)
+        ? `${rawDuration} minutes`
+        : rawDuration;
+    }
+
+    const candidateRecord = await this.loadCandidate(candidateId);
+    const formattedCandidate = candidateService.formatCandidateRecord(candidateRecord);
+
+    const contactNumber = trimString(
+      formattedCandidate.contact ||
+      candidateRecord.contact ||
+      candidateRecord.Contact ||
+      candidateRecord['Contact No'] ||
+      ''
+    );
+
+    if (!contactNumber) {
+      const error = new Error('Contact number is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const recruiterEmail = ensureEmail(
+      formattedCandidate.recruiterRaw || candidateRecord.recruiter || candidateRecord.createdBy || '',
+      'Recruiter email'
+    );
+    this.ensureAccess(user, { ...formattedCandidate, recruiter: recruiterEmail }, normalizedRole);
+
+    const candidateName = toTitleCase(formattedCandidate.name || candidateRecord.name || '');
+    const technology = formatTechnology(
+      payload.technology ||
+      formattedCandidate.technology ||
+      candidateRecord.technology ||
+      ''
+    );
+    const candidateEmail = ensureEmail(
+      formattedCandidate.email || candidateRecord.email || '',
+      'Candidate email'
+    );
+
+    const requesterEmail = ensureEmail(user.email || '', 'Requester email');
+    const requesterDisplay = deriveDisplayNameFromEmail(requesterEmail);
+
+    let signatureHtml = '';
+    try {
+      const profileResult = await profileService.getProfile(requesterEmail);
+      const profile = profileResult?.profile;
+      if (profile?.isComplete) {
+        signatureHtml = buildEmailSignatureHtml({
+          email: requesterEmail,
+          displayName: profile.displayName,
+          jobRole: profile.jobRole,
+          phoneNumber: profile.phoneNumber,
+          companyName: profile.companyName,
+          companyUrl: profile.companyUrl
+        });
+      }
+    } catch (profileError) {
+      logger.warn('Failed to build signature for assessment support email', {
+        error: profileError instanceof Error ? profileError.message : profileError,
+        email: requesterEmail
+      });
+    }
+
+    const { teamLeadEmail, managerEmail } = this.gatherHierarchyEmails(recruiterEmail);
+
+    const supportConfig = config.support || {};
+    const toRecipients = new Set([supportConfig.supportTo || 'tech.leaders@silverspaceinc.com']);
+    const ccRecipients = new Set(supportConfig.supportCcFallback || []);
+    ccRecipients.add(requesterEmail);
+    if (teamLeadEmail) {
+      ccRecipients.add(teamLeadEmail);
+    }
+    if (managerEmail) {
+      ccRecipients.add(managerEmail);
+    }
+
+    const resumeAttachments = sanitizeFlexibleAttachments(files.resume);
+    const assessmentInfoAttachments = sanitizeFlexibleAttachments(files.assessmentInfo);
+    const additionalAttachments = sanitizeFlexibleAttachments(files.additionalAttachments);
+
+    if (resumeAttachments.length === 0) {
+      const error = new Error('Attach the candidate resume before sending.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (assessmentInfoAttachments.length === 0) {
+      const error = new Error('Attach the assessment information before sending.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const allAttachments = [
+      resumeAttachments[0],
+      assessmentInfoAttachments[0],
+      ...additionalAttachments
+    ];
+
+    const additionalInfo = typeof payload.additionalInfo === 'string' ? payload.additionalInfo : '';
+    const jobDescriptionText = typeof payload.jobDescriptionText === 'string'
+      ? payload.jobDescriptionText
+      : '';
+    const screeningDone = String(payload.screeningDone ?? '').toLowerCase() === 'true';
+
+    const htmlBody = this.buildAssessmentHtmlBody({
+      candidateName,
+      technology,
+      candidateEmail,
+      contactNumber,
+      endClient,
+      jobTitle,
+      assessmentDateTimeDisplay: assessmentMomentDetails.display,
+      assessmentZoneLabel: assessmentMomentDetails.zoneLabel,
+      durationDisplay,
+      additionalInfo,
+      jobDescriptionText,
+      screeningDone
+    });
+
+    const preface = `<p style="font-family:Arial, sans-serif;font-size:14px;color:#0f1e3d;">Requested by <strong>${escapeHtml(requesterDisplay)}</strong> </p>`;
+    const sections = [preface, htmlBody];
+    if (signatureHtml) {
+      sections.push(`<div style="margin-top:24px;">${signatureHtml}</div>`);
+    }
+
+    const message = {
+      subject: `Assessment Support - ${candidateName} - ${jobTitle} - ${assessmentMomentDetails.subjectFragment}`,
+      body: {
+        contentType: 'HTML',
+        content: sections.join('')
+      },
+      toRecipients: Array.from(toRecipients).map((address) => ({
+        emailAddress: { address }
+      })),
+      ccRecipients: Array.from(ccRecipients).map((address) => ({
+        emailAddress: { address }
+      }))
+    };
+
+    if (allAttachments.length > 0) {
+      message.attachments = allAttachments.map((attachment) => ({
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: attachment.filename,
+        contentType: attachment.contentType,
+        contentBytes: attachment.content.toString('base64')
+      }));
+    }
+
+    await graphMailService.sendDelegatedMail(graphAccessToken, {
+      message,
+      saveToSentItems: true
+    });
+
+    logger.info('Assessment support request sent', {
+      candidateEmail,
+      requestedBy: requesterEmail,
+      assessmentReceived: assessmentMomentDetails.display,
+      to: Array.from(toRecipients),
+      cc: Array.from(ccRecipients),
+      attachments: allAttachments.length
+    });
+
+    return {
+      success: true,
+      message: 'Assessment support request sent'
     };
   }
 
