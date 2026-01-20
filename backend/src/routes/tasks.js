@@ -17,5 +17,6 @@ router.get('/:taskId', taskController.getTaskById);
 router.post('/search', taskController.searchTasks);
 router.post('/:taskId/thanks-mail', taskController.generateThanksMail);
 router.post('/:taskId/interviewer-questions', taskController.getInterviewerQuestions);
+router.delete('/:taskId', taskController.deleteTask);
 
 export default router;

@@ -252,6 +252,10 @@ const REM_FIRED_KEY = "interviewRemindersFired"; // JSON: string[]
 const MINUTES_BEFORE = 35;
 const MAX_DELAY = 2147483647; // ~24.85 days (2^31 - 1)
 
+import { SubjectValidationBadge } from "@/components/tasks/SubjectValidationBadge";
+import { DeleteTaskDialog } from "@/components/tasks/DeleteTaskDialog";
+import { Trash2 } from "lucide-react";
+
 export default function TasksToday() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [filterStatus, setFilterStatus] = useState("all");
@@ -259,6 +263,8 @@ export default function TasksToday() {
   const [recruiterFilter, setRecruiterFilter] = useState("");
   const [expertFilter, setExpertFilter] = useState("");
   const [error, setError] = useState("");
+  const [isLoadingInitial, setIsLoadingInitial] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [showSubject, setShowSubject] = useState<boolean>(() => {
     try {
       const raw = localStorage.getItem("tasksTodayShowSubject");
@@ -343,6 +349,14 @@ export default function TasksToday() {
   const [questionsError, setQuestionsError] = useState('');
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questionsRateInfo, setQuestionsRateInfo] = useState<{ remaining: number; resetAt?: string } | null>(null);
+
+  // Delete Dialog State
+  const [deleteTaskDialog, setDeleteTaskDialog] = useState<{ open: boolean; task: Task | null }>({
+    open: false,
+    task: null
+  });
+
+
   const storedResumeAvailable = useMemo(() => {
     if (!mockPreview) return false;
     return mockPreview.storedAttachments.some((attachment) => {
@@ -709,6 +723,33 @@ export default function TasksToday() {
     [toast]
   );
 
+  const handleDeleteTask = useCallback(async (taskId: string) => {
+    try {
+      const response = await authFetch(`${API_URL}/api/tasks/${taskId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Task Deleted",
+          description: "The task has been permanently deleted.",
+        });
+        setTasks((prev) => prev.filter(t => t._id !== taskId));
+      } else {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to delete task');
+      }
+    } catch (error: any) {
+      console.error("Delete task error", error);
+      toast({
+        title: "Delete Failed",
+        description: error.message || "Could not delete the task",
+        variant: "destructive"
+      });
+      throw error;
+    }
+  }, [authFetch, toast]);
+
   const ensureMicrosoftAccount = useCallback(async (): Promise<AccountInfo | null> => {
     if (!canManageMeetings) return null;
     let activeAccount = account || instance.getActiveAccount() || null;
@@ -781,7 +822,7 @@ export default function TasksToday() {
   useEffect(() => {
     try {
       localStorage.setItem("tasksTodayShowSubject", JSON.stringify(showSubject));
-    } catch {}
+    } catch { }
   }, [showSubject]);
 
   useEffect(() => {
@@ -880,40 +921,40 @@ export default function TasksToday() {
 
   // === Styling helpers ===
   const getStatusBadge = (status = "") =>
-    ({
-      completed: "bg-emerald-500 text-white",
-      cancelled: "bg-red-500 text-white",
-      acknowledged: "bg-amber-500 text-white",
-      pending: "bg-blue-500 text-white",
-    }[status.toLowerCase()] || "bg-gray-500 text-white");
+  ({
+    completed: "bg-emerald-500 text-white",
+    cancelled: "bg-red-500 text-white",
+    acknowledged: "bg-amber-500 text-white",
+    pending: "bg-blue-500 text-white",
+  }[status.toLowerCase()] || "bg-gray-500 text-white");
 
-const getRowClasses = (status = "") => {
-  const base = status.toLowerCase();
+  const getRowClasses = (status = "") => {
+    const base = status.toLowerCase();
 
-  const gradients: Record<string, string> = {
-    // Green (Completed)
-    completed:
-      "bg-gradient-to-r from-[#43cea2]/85 to-[#185a9d]/35 border-l-4 border-[#43cea2]/70",
+    const gradients: Record<string, string> = {
+      // Green (Completed)
+      completed:
+        "bg-gradient-to-r from-[#43cea2]/85 to-[#185a9d]/35 border-l-4 border-[#43cea2]/70",
 
-    // Red (Cancelled)
-    cancelled:
-      "bg-gradient-to-r from-[#ff6a6a]/85 to-[#c31432]/35 border-l-4 border-[#ff6a6a]/70",
+      // Red (Cancelled)
+      cancelled:
+        "bg-gradient-to-r from-[#ff6a6a]/85 to-[#c31432]/35 border-l-4 border-[#ff6a6a]/70",
 
-    // Yellow (Acknowledged)
-    acknowledged:
-      "bg-gradient-to-r from-[#f7971e]/90 to-[#ffd200]/40 border-l-4 border-[#f7971e]/70",
+      // Yellow (Acknowledged)
+      acknowledged:
+        "bg-gradient-to-r from-[#f7971e]/90 to-[#ffd200]/40 border-l-4 border-[#f7971e]/70",
 
-    // Blue (Pending)
-    pending:
-      "bg-gradient-to-r from-[#36d1dc]/85 to-[#5b86e5]/35 border-l-4 border-[#36d1dc]/70",
+      // Blue (Pending)
+      pending:
+        "bg-gradient-to-r from-[#36d1dc]/85 to-[#5b86e5]/35 border-l-4 border-[#36d1dc]/70",
+    };
+
+    // Grey (default/fallback)
+    return (
+      gradients[base] ||
+      "bg-gradient-to-r from-[#bdc3c7]/70 to-[#2c3e50]/30 border-l-4 border-[#bdc3c7]/70"
+    );
   };
-
-  // Grey (default/fallback)
-  return (
-    gradients[base] ||
-    "bg-gradient-to-r from-[#bdc3c7]/70 to-[#2c3e50]/30 border-l-4 border-[#bdc3c7]/70"
-  );
-};
 
 
   // === Parsing helpers (strict) ===
@@ -1004,10 +1045,10 @@ const getRowClasses = (status = "") => {
         const rawUrl = typeof rawAttachment.url === 'string' ? rawAttachment.url : '';
         const safeUrl = rawUrl
           ? DOMPurify.sanitize(rawUrl, {
-              ALLOWED_TAGS: [],
-              ALLOWED_ATTR: [],
-              ALLOWED_URI_REGEXP: /^(https?|blob|data):/i,
-            }).trim()
+            ALLOWED_TAGS: [],
+            ALLOWED_ATTR: [],
+            ALLOWED_URI_REGEXP: /^(https?|blob|data):/i,
+          }).trim()
           : '';
 
         const rawType = typeof rawAttachment.type === 'string' ? rawAttachment.type : '';
@@ -1763,18 +1804,18 @@ const getRowClasses = (status = "") => {
 
       const sanitized = Array.isArray(payload.questions)
         ? (payload.questions
-            .map((item: any) => {
-              const question = sanitizeQuestionText(item?.question);
-              if (!question) {
-                return null;
-              }
-              return {
-                question,
-                type: normalizeQuestionType(item?.type),
-                paraphrased: item?.paraphrased === true
-              };
-            })
-            .filter(Boolean) as InterviewerQuestion[])
+          .map((item: any) => {
+            const question = sanitizeQuestionText(item?.question);
+            if (!question) {
+              return null;
+            }
+            return {
+              question,
+              type: normalizeQuestionType(item?.type),
+              paraphrased: item?.paraphrased === true
+            };
+          })
+          .filter(Boolean) as InterviewerQuestion[])
         : [];
 
       setQuestionsList(sanitized);
@@ -2125,10 +2166,10 @@ const getRowClasses = (status = "") => {
           prev.map((item) =>
             item._id === task._id
               ? {
-                  ...item,
-                  joinUrl,
-                  joinWebUrl,
-                }
+                ...item,
+                joinUrl,
+                joinWebUrl,
+              }
               : item
           )
         );
@@ -2337,14 +2378,32 @@ const getRowClasses = (status = "") => {
   const writeMap = (m: Record<string, string>) =>
     localStorage.setItem(TASK_STATUS_MAP, JSON.stringify(m));
 
-  const fetchTasks = useCallback(() => {
-    const payload = { ...buildDashboardPayload({ ...filters, dateField: selectedTabRef.current as any }) };
+  const fetchTasks = useCallback((isInitial = true, offset = 0) => {
+    const BATCH_SIZE = isInitial ? 30 : 20;
+    const payload = {
+      ...buildDashboardPayload({ ...filters, dateField: selectedTabRef.current as any }),
+      limit: BATCH_SIZE,
+      offset
+    };
+
+    if (isInitial) {
+      setIsLoadingInitial(true);
+      setError("");
+    } else {
+      setIsLoadingMore(true);
+    }
+
     socket.emit(
       "getTasksByRange",
       payload,
       (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
         if (!resp.success) {
-          setError(resp.error || "Failed to load tasks");
+          if (isInitial) {
+            setError(resp.error || "Failed to load tasks");
+            setIsLoadingInitial(false);
+          } else {
+            setIsLoadingMore(false);
+          }
           toast({
             title: "Error",
             description: resp.error || "Failed to load tasks",
@@ -2353,46 +2412,54 @@ const getRowClasses = (status = "") => {
           return;
         }
 
-        const incoming = sortByPrimaryStart(resp.tasks || []);
-
-        // Notifications only when viewing Today (not upcoming)
+        const incoming = resp.tasks || [];
         const isTodayView = filters.range === 'day' && !filters.upcoming && moment(filters.dayDate).isSame(moment.tz(TZ), 'day');
-        const oldMap = readMap();
-        const newMap: Record<string, string> = {};
-        incoming.forEach((task) => {
-          const seenBefore = seenTasksRef.current.has(task._id) || Object.prototype.hasOwnProperty.call(oldMap, task._id);
-          newMap[task._id] = task.status || "";
-          seenTasksRef.current.add(task._id);
-          if (!firstLoad.current && isTodayView) {
-            if (!seenBefore) {
-              const desc = DOMPurify.sanitize(task.subject || "");
-              toast({ title: "New Task Added", description: desc });
-              sendNotification("New Task Added", desc);
-              playTune();
-            } else if (oldMap[task._id] !== task.status) {
-              const desc = DOMPurify.sanitize(task.subject || "");
-              const s = DOMPurify.sanitize(task.status || "");
-              toast({
-                title: "Task Status Updated",
-                description: `${desc} is now ${s}`,
-              });
-              sendNotification("Task Status Updated", `${desc} is now ${s}`);
-              playTune();
-            }
+
+        setTasks((prev) => {
+          let nextTasks: Task[];
+          if (isInitial) {
+            nextTasks = incoming;
+          } else {
+            // Merge and de-dupe
+            const combined = [...prev, ...incoming];
+            const unique = Array.from(new Map(combined.map(t => [t._id, t])).values());
+            nextTasks = unique;
           }
+          const sorted = sortByPrimaryStart(nextTasks);
+          if (isTodayView) reconcileReminders(sorted);
+          return sorted;
         });
-        writeMap(newMap);
-        firstLoad.current = false;
 
-        setTasks(incoming);
+        // Update status map for notifications
+        if (incoming.length > 0) {
+          const oldMap = readMap();
+          const newMap = { ...oldMap };
+          incoming.forEach((task) => {
+            newMap[task._id] = task.status || "";
+            seenTasksRef.current.add(task._id);
+          });
+          writeMap(newMap);
+        }
 
-        // Schedule reminders only for today's interviews view
-        if (isTodayView) {
-          reconcileReminders(incoming);
+        if (isInitial) {
+          setIsLoadingInitial(false);
+          firstLoad.current = false;
+        }
+
+        // Progressive load: if we got a full batch, try next
+        if (incoming.length === BATCH_SIZE) {
+          fetchTasks(false, offset + BATCH_SIZE);
+        } else {
+          setIsLoadingMore(false);
         }
       }
     );
   }, [socket, toast, reconcileReminders, sortByPrimaryStart, filters]);
+
+  // Trigger fetch on filter change
+  useEffect(() => {
+    fetchTasks(true, 0);
+  }, [fetchTasks]);
 
   useEffect(() => {
     const onNew = (task: Task) => {
@@ -2491,17 +2558,18 @@ const getRowClasses = (status = "") => {
     socket.on("taskUpdated", onUpdate);
     socket.on("connect_error", onAuthError);
 
-    socket.once("connect", fetchTasks);
+    socket.once("connect", () => fetchTasks(true, 0));
     socket.connect();
 
-    const interval = setInterval(fetchTasks, 60_000);
+    // Polling disabled in favor of real-time socket events
+    // const interval = setInterval(fetchTasks, 60_000);
 
     return () => {
       socket.off("taskCreated", onNew);
       socket.off("taskUpdated", onUpdate);
       socket.off("connect_error", onAuthError);
       socket.disconnect();
-      clearInterval(interval);
+      // clearInterval(interval);
 
       // Clean all timers
       for (const [, id] of timersRef.current.entries()) window.clearTimeout(id);
@@ -2686,7 +2754,11 @@ const getRowClasses = (status = "") => {
           <p className="text-sm text-red-500">{teamLeadError}</p>
         )}
 
-        {displayed.length === 0 ? (
+        {isLoadingInitial ? (
+          <div className="flex justify-center p-8">
+            <p className="text-muted-foreground animate-pulse">Loading tasks...</p>
+          </div>
+        ) : displayed.length === 0 ? (
           <p>No tasks found for the selected filters.</p>
         ) : (
           <Table>
@@ -2734,7 +2806,10 @@ const getRowClasses = (status = "") => {
                 return (
                   <TableRow key={task._id} className={getRowClasses(task.status)}>
                     {showSubject && (
-                      <TableCell>{DOMPurify.sanitize(task.subject || "")}</TableCell>
+                      <TableCell>
+                        {DOMPurify.sanitize(task.subject || "")}
+                        <SubjectValidationBadge task={task} />
+                      </TableCell>
                     )}
                     <TableCell>{DOMPurify.sanitize(task["Candidate Name"] || "")}</TableCell>
                     <TableCell>{formatDate(start)}</TableCell>
@@ -2757,9 +2832,8 @@ const getRowClasses = (status = "") => {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span
-                            className={`inline-flex h-3 w-3 rounded-full border border-border ${
-                              task.transcription ? 'bg-green-500' : 'bg-red-500'
-                            }`}
+                            className={`inline-flex h-3 w-3 rounded-full border border-border ${task.transcription ? 'bg-green-500' : 'bg-red-500'
+                              }`}
                             role="img"
                             aria-label={
                               task.transcription
@@ -2818,7 +2892,7 @@ const getRowClasses = (status = "") => {
                       )}
                     </TableCell>
                     <TableCell>
-                      {canCloneSupport || canRequestMock || canGenerateThanksMail ? (
+                      {canCloneSupport || canRequestMock || canGenerateThanksMail || user === 'admin' ? (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button size="sm" variant="outline">
@@ -2826,6 +2900,18 @@ const getRowClasses = (status = "") => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {user === "admin" && (
+                              <>
+                                <DropdownMenuItem
+                                  className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                  onClick={() => setDeleteTaskDialog({ open: true, task })}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Delete Task
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
                             {canGenerateThanksMail && (
                               <>
                                 <DropdownMenuItem
@@ -2865,7 +2951,13 @@ const getRowClasses = (status = "") => {
                 );
               })}
             </TableBody>
+
           </Table>
+        )}
+        {isLoadingMore && (
+          <div className="py-2 text-center text-xs text-muted-foreground animate-pulse border-t">
+            Loading more tasks...
+          </div>
         )}
       </div>
       <Dialog open={Boolean(mockDialogTask)} onOpenChange={(open) => !open && closeMockDialog()}>
@@ -2990,16 +3082,16 @@ const getRowClasses = (status = "") => {
           ) : (
             <p className="text-sm text-muted-foreground">Select a task to prepare the mock request.</p>
           )}
-      <DialogFooter>
-        <Button variant="outline" onClick={closeMockDialog} disabled={mockSending}>
-          Cancel
-        </Button>
-        <Button onClick={handleMockSend} disabled={mockSending || !mockPreview}>
-          {mockSending ? 'Sending…' : 'Send Mock Email'}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeMockDialog} disabled={mockSending}>
+              Cancel
+            </Button>
+            <Button onClick={handleMockSend} disabled={mockSending || !mockPreview}>
+              {mockSending ? 'Sending…' : 'Send Mock Email'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={Boolean(questionsDialogTask)} onOpenChange={(open) => !open && closeQuestionsDialog()}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -3190,6 +3282,13 @@ const getRowClasses = (status = "") => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </DashboardLayout>
+      {/* Delete Task Dialog */}
+      <DeleteTaskDialog
+        open={deleteTaskDialog.open}
+        onOpenChange={(open) => setDeleteTaskDialog(prev => ({ ...prev, open }))}
+        task={deleteTaskDialog.task}
+        onConfirm={handleDeleteTask}
+      />
+    </DashboardLayout >
   );
 }

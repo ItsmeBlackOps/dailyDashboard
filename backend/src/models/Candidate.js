@@ -45,7 +45,19 @@ export class CandidateModel {
 
   async initialize() {
     this.collection = database.getCollection('candidateDetails');
-    logger.info('CandidateModel initialized with candidateDetails collection');
+
+    // Create indexes for efficient querying
+    try {
+      await Promise.all([
+        this.collection.createIndex({ Recruiter: 1 }),
+        this.collection.createIndex({ Expert: 1 }),
+        this.collection.createIndex({ workflowStatus: 1 }),
+        this.collection.createIndex({ resumeUnderstandingStatus: 1 })
+      ]);
+      logger.info('CandidateModel initialized and indexes verified');
+    } catch (error) {
+      logger.error('Failed to create indexes for CandidateModel', { error: error.message });
+    }
   }
 
   async getCandidatesByBranch(branch, { limit, search } = {}) {
@@ -581,12 +593,12 @@ export class CandidateModel {
       },
       ...(upsert
         ? {
-            $setOnInsert: {
-              docType: 'userProfile',
-              email: lowerEmail,
-              created_at: now
-            }
+          $setOnInsert: {
+            docType: 'userProfile',
+            email: lowerEmail,
+            created_at: now
           }
+        }
         : {})
     };
 

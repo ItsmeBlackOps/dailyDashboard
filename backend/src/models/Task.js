@@ -106,8 +106,9 @@ export class TaskModel {
     }
   }
 
-  async getTasksForUser(userEmail, userRole, teamEmails, manager, tab = "Date of Interview", targetDate) {
+  async getTasksForUser(userEmail, userRole, teamEmails, manager, tab = "Date of Interview", targetDate, options = {}) {
     try {
+      const { limit, offset } = options;
       const targetMoment = targetDate
         ? moment(targetDate).tz('America/New_York')
         : moment.tz('America/New_York');
@@ -167,11 +168,25 @@ export class TaskModel {
         ? { $and: [roleFilter, dateFilter] }
         : dateFilter;
 
-      logger.debug('Executing task query', { userEmail, query });
+      logger.debug('Executing task query', { userEmail, query, limit, offset });
+
+      const pipeline = [{ $match: query }];
+
+      // Ensure specific sort order so pagination is stable
+      // We rely on _id for stability if dates are strings or duplicates exist
+      pipeline.push({ $sort: { _id: -1 } });
+
+      if (offset !== undefined && offset > 0) {
+        pipeline.push({ $skip: offset });
+      }
+      if (limit !== undefined && limit > 0) {
+        pipeline.push({ $limit: limit });
+      }
 
       const docs = await this.collection
         .aggregate([
-          { $match: query },
+          ...pipeline,
+          { $match: {} }, // just to continue chain cleanly if pipeline was empty (it's not)
           // Join transcripts to flag availability
           {
             $lookup: {
@@ -686,8 +701,9 @@ export class TaskModel {
     }
   }
 
-  async getTasksByRange(userEmail, userRole, manager, teamEmails, startDate, endDate, dateField = 'Date of Interview') {
+  async getTasksByRange(userEmail, userRole, manager, teamEmails, startDate, endDate, dateField = 'Date of Interview', options = {}) {
     try {
+      const { limit, offset } = options;
       let effectiveTeamEmails = Array.isArray(teamEmails) ? [...teamEmails] : [];
       const normalizedRole = (userRole || '').toLowerCase();
 
@@ -725,9 +741,22 @@ export class TaskModel {
         ...dateMatch
       };
 
+      const pipeline = [{ $match: baseMatch }];
+
+      // Stable sort for pagination
+      pipeline.push({ $sort: { _id: -1 } });
+
+      if (offset !== undefined && offset > 0) {
+        pipeline.push({ $skip: offset });
+      }
+      if (limit !== undefined && limit > 0) {
+        pipeline.push({ $limit: limit });
+      }
+
       const docs = await this.collection
         .aggregate([
-          { $match: baseMatch },
+          ...pipeline,
+          { $match: {} }, // Pass-through checks
           {
             $lookup: {
               from: 'transcripts',
