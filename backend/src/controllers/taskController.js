@@ -11,14 +11,19 @@ export class TaskController {
 
   getTasks = asyncHandler(async (req, res) => {
     const user = req.user;
-    const { tab = "Date of Interview" } = req.query;
+    const { tab = "Date of Interview", limit, offset } = req.query;
 
     const result = await this.taskService.getTasksForUser(
       user.email,
       user.role,
       user.teamLead,
       user.manager,
-      tab
+      tab,
+      undefined,
+      {
+        limit: limit ? parseInt(limit, 10) : undefined,
+        offset: offset ? parseInt(offset, 10) : undefined
+      }
     );
 
     res.status(200).json(result);
@@ -134,6 +139,26 @@ export class TaskController {
       generatedAt: result.generatedAt,
       rateLimit: result.rateLimit
     });
+  });
+
+  deleteTask = asyncHandler(async (req, res) => {
+    const { taskId } = req.params;
+    const user = req.user;
+
+    if (!taskId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Task id is required'
+      });
+    }
+
+    const result = await this.taskService.deleteTask(
+      taskId,
+      user.email,
+      user.role
+    );
+
+    res.status(200).json(result);
   });
 
   healthCheck = asyncHandler(async (req, res) => {

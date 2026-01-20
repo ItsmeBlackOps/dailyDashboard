@@ -893,7 +893,7 @@ class CandidateService {
     }
 
     const normalizedRole = user.role.trim().toLowerCase();
-    if (!['mm', 'mam', 'mlead', 'recruiter', 'lead', 'am','admin'].includes(normalizedRole)) {
+    if (!['mm', 'mam', 'mlead', 'recruiter', 'lead', 'am', 'admin'].includes(normalizedRole)) {
       const error = new Error('Access denied');
       error.statusCode = 403;
       throw error;
@@ -918,11 +918,11 @@ class CandidateService {
 
     if (normalizedRole === 'recruiter') {
       const allowedKeys = ['name', 'email', 'contact', 'technology'];
-     for (const key of Object.keys(sanitizedPayload)) {
-       if (!allowedKeys.includes(key)) {
-         delete sanitizedPayload[key];
-       }
-     }
+      for (const key of Object.keys(sanitizedPayload)) {
+        if (!allowedKeys.includes(key)) {
+          delete sanitizedPayload[key];
+        }
+      }
       delete sanitizedPayload.expert;
     }
 
@@ -1302,6 +1302,77 @@ class CandidateService {
     const error = new Error('Access denied');
     error.statusCode = 403;
     throw error;
+  }
+  async getComments(user, candidateId) {
+    if (!user?.email || !user?.role) {
+      const error = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    const normalizedRole = user.role.trim().toLowerCase();
+    const query = { candidateId: new ObjectId(candidateId) };
+
+    // Experts cannot see complaints
+    if (normalizedRole === 'expert' || normalizedRole === 'user') {
+      query.type = { $ne: 'complaint' };
+    }
+
+    const comments = await CandidateComment.find(query).sort({ createdAt: 1 });
+
+    return comments.map(c => ({
+      id: c._id,
+      author: c.author,
+      content: c.content,
+      type: c.type,
+      createdAt: c.createdAt
+    }));
+  }
+
+  async addComment(user, candidateId, content, type = 'internal') {
+    if (!user?.email || !user?.role) {
+      const error = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    if (!content || !content.trim()) {
+      const error = new Error('Comment content is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const normalizedRole = user.role.trim().toLowerCase();
+
+    // Only Recruiter side or Admins/Managers can create complaints
+    const canCreateComplaint = ['recruiter', 'mlead', 'mam', 'mm', 'admin', 'manager'].includes(normalizedRole);
+
+    if (type === 'complaint' && !canCreateComplaint) {
+      // Ideally throw error, or force type to internal. Let's force to internal for safety? 
+      // Or throw 403. Let's throw error.
+      const error = new Error('You are not authorized to create complaint comments');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const comment = await CandidateComment.create({
+      candidateId: new ObjectId(candidateId),
+      author: {
+        email: user.email,
+        name: formatDisplayName(user.email),
+        role: user.role
+      },
+      content: content.trim(),
+      type: type
+    });
+
+    return {
+      id: comment._id,
+      author: comment.author,
+      content: comment.content,
+      type: comment.type,
+      createdAt: comment.createdAt
+    };
   }
 }
 

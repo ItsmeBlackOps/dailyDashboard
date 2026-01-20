@@ -14,10 +14,10 @@ export class TaskService {
     this.userModel = userModel;
   }
 
-  async getTasksForUser(userEmail, userRole, teamLead, manager, tab = "Date of Interview", targetDate) {
+  async getTasksForUser(userEmail, userRole, teamLead, manager, tab = "Date of Interview", targetDate, options = {}) {
     const timer = createTimer('taskService.getTasksForUser', logger);
     try {
-      logger.debug('Getting tasks for user', { userEmail, userRole, tab, targetDate });
+      logger.debug('Getting tasks for user', { userEmail, userRole, tab, targetDate, options });
 
       const teamEmails = this.userModel
         .getTeamEmails(userEmail, userRole, teamLead)
@@ -29,7 +29,8 @@ export class TaskService {
         teamEmails,
         manager,
         tab,
-        targetDate
+        targetDate,
+        options
       );
 
       logger.info('Tasks retrieved for user', {
@@ -68,7 +69,9 @@ export class TaskService {
         start,
         end,
         dateField,
-        upcoming = false
+        upcoming = false,
+        limit,
+        offset
       } = options || {};
 
       const effectiveDateField = this.resolveDateField(userRole, dateField);
@@ -87,7 +90,7 @@ export class TaskService {
         userRole,
         dateField: effectiveDateField,
         range: rangeUsed,
-        requested: { start, end, dateField, range, upcoming }
+        requested: { start, end, dateField, range, upcoming, limit, offset }
       });
 
       const teamEmails = this.userModel
@@ -101,7 +104,8 @@ export class TaskService {
         teamEmails,
         startIso,
         endIso,
-        effectiveDateField
+        effectiveDateField,
+        { limit, offset }
       );
 
       logger.info('Tasks by range retrieved', {
@@ -275,6 +279,53 @@ export class TaskService {
       throw error;
     } finally {
       timer.end({ taskId, userEmail });
+    }
+  }
+
+  async deleteTask(taskId, userEmail, userRole) {
+    const timer = createTimer('taskService.deleteTask', logger);
+    try {
+      logger.info('Attempting to delete task', { taskId, userEmail, userRole });
+
+      // STRICT ADMIN CHECK
+      if (userRole !== 'admin') {
+        logger.warn('Unauthorized delete attempt', { userEmail, userRole, taskId });
+        throw new Error('Unauthorized: Only admins can delete tasks');
+      }
+
+      let filter = { _id: taskId };
+      if (ObjectId.isValid(taskId)) {
+        try {
+          filter = { _id: new ObjectId(taskId) };
+        } catch (error) {
+          logger.warn('Invalid ObjectId for delete', { taskId, error: error.message });
+          // Fallback to string match if simple objectid fails, though usually consistent
+        }
+      }
+
+      const result = await this.taskModel.collection.deleteOne(filter);
+
+      if (result.deletedCount === 0) {
+        logger.warn('Task not found for deletion', { taskId });
+        throw new Error('Task not found');
+      }
+
+      logger.info('Task deleted successfully', { taskId, userEmail });
+
+      return {
+        success: true,
+        message: 'Task deleted successfully',
+        taskId
+      };
+    } catch (error) {
+      logger.error('Failed to delete task', {
+        error: error.message,
+        taskId,
+        userEmail
+      });
+      throw error;
+    } finally {
+      timer.end({ taskId, userEmail, userRole });
     }
   }
 

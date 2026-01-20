@@ -199,11 +199,11 @@ export class TaskSocketHandler {
         return callback({ success: false, error: 'Validation failed', details: validation.errors });
       }
 
-      const { start, end, range, dateField, upcoming } = sanitizedData;
+      const { start, end, range, dateField, upcoming, limit, offset } = sanitizedData;
 
       logger.debug('Getting tasks by range via socket', {
         userEmail: user.email,
-        payload: { start, end, range, dateField, upcoming },
+        payload: { start, end, range, dateField, upcoming, limit, offset },
         socketId: socket.id
       });
 
@@ -212,7 +212,15 @@ export class TaskSocketHandler {
         user.role,
         user.teamLead,
         user.manager,
-        { start, end, range, dateField, upcoming }
+        {
+          start,
+          end,
+          range,
+          dateField,
+          upcoming,
+          limit: typeof limit === 'number' ? limit : undefined,
+          offset: typeof offset === 'number' ? offset : undefined
+        }
       );
 
       logger.info('Tasks by range retrieved via socket', {
