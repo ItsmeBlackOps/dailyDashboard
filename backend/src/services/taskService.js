@@ -490,7 +490,11 @@ export class TaskService {
       }
 
       if (expert) {
-        query.assignedTo = { $regex: expert, $options: 'i' };
+        query.$or = [
+          { assignedTo: { $regex: expert, $options: 'i' } },
+          { suggestions: { $regex: expert, $options: 'i' } }
+        ];
+        // Note: candidateExpertRaw is not usually on taskBody so we can't search it easily without aggregation
       }
 
       if (status) {

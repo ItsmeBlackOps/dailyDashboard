@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Building2, ExternalLink, Globe, Menu, Phone, User, UserCog, LogOut, ChevronDown, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Building2, ExternalLink, Globe, Menu, Phone, User, UserCog, LogOut, ChevronDown, CheckCircle2, AlertTriangle, Bell, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -19,6 +19,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useUserProfile, formatPhoneDraft, formatPhoneCanonical } from '@/contexts/UserProfileContext';
+import { useNotifications } from '@/context/NotificationContext';
+import DOMPurify from 'dompurify';
 
 interface HeaderProps {
   toggleSidebar: () => void;
@@ -108,6 +110,8 @@ export function Header({ toggleSidebar }: HeaderProps) {
     }
   };
 
+  const { notifications, unreadCount, markAsRead, clearAll } = useNotifications();
+
   return (
     <header className="sticky top-0 z-30 bg-background border-b border-border h-16 flex items-center px-3 md:px-4 shadow-sm gap-2">
       <Button onClick={toggleSidebar} variant="ghost" size="icon" aria-label="Toggle sidebar">
@@ -120,6 +124,61 @@ export function Header({ toggleSidebar }: HeaderProps) {
 
       <div className="ml-auto flex items-center gap-2">
         <ThemeToggle />
+
+        {/* Notification Bell */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="relative">
+              <Bell className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span>
+                </span>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-80">
+            <DropdownMenuLabel className="flex items-center justify-between">
+              <span>Notifications ({unreadCount})</span>
+              {notifications.length > 0 && (
+                <Button variant="ghost" size="xs" onClick={clearAll} className="h-auto p-1 text-xs">
+                  Clear all
+                </Button>
+              )}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {notifications.length === 0 ? (
+              <div className="p-4 text-center text-sm text-muted-foreground">
+                No new notifications
+              </div>
+            ) : (
+              <div className="max-h-[300px] overflow-y-auto">
+                {notifications.map(notif => (
+                  <DropdownMenuItem
+                    key={notif.id}
+                    className={`flex flex-col items-start gap-1 p-3 cursor-pointer ${!notif.read ? 'bg-muted/50' : ''}`}
+                    onSelect={(e) => {
+                      e.preventDefault(); // Prevent closing immediately to allow interaction? Or close and nav?
+                      markAsRead(notif.id);
+                      // Navigation logic could go here (e.g. open drawer)
+                    }}
+                  >
+                    <div className="flex items-start justify-between w-full">
+                      <span className="font-semibold text-sm">{notif.title}</span>
+                      {!notif.read && <span className="h-2 w-2 rounded-full bg-primary mt-1" />}
+                    </div>
+                    <span className="text-xs text-muted-foreground line-clamp-2">{notif.description}</span>
+                    <span className="text-[10px] text-muted-foreground/70 self-end">
+                      {new Date(notif.timestamp).toLocaleTimeString()}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </div>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <Button onClick={openConsentPopup} variant="ghost" size="sm">
           <ExternalLink className="h-4 w-4 mr-1" />
           Grant Teams Consent

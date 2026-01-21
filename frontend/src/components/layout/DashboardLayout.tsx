@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Header } from './Header';
 import { ThemeProvider } from '@/hooks/useTheme';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { UserProfileProvider } from '@/contexts/UserProfileContext';
 import { useToast } from '@/hooks/use-toast';
+import { NotificationProvider } from '@/context/NotificationContext';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -46,17 +47,19 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <ThemeProvider>
       <UserProfileProvider>
-        <div className="h-screen flex flex-col">
-          <Header toggleSidebar={toggleSidebar} openSettings={openSettings} />
+        <NotificationProvider>
+          <div className="h-screen flex flex-col">
+            <Header toggleSidebar={toggleSidebar} openSettings={openSettings} />
 
-          {/* Keep sidebar beside main, not under header */}
-          <div className="flex flex-1 overflow-hidden">
-            <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
-            <main className="flex-1 overflow-auto p-4 md:p-6">
-              {children}
-            </main>
+            {/* Keep sidebar beside main, not under header */}
+            <div className="flex flex-1 overflow-hidden">
+              <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
+              <main className="flex-1 overflow-auto p-4 md:p-6">
+                {children}
+              </main>
+            </div>
           </div>
-        </div>
+        </NotificationProvider>
       </UserProfileProvider>
     </ThemeProvider>
   );

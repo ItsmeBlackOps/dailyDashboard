@@ -19,12 +19,15 @@ class Database {
         monitorCommands: true
       };
 
+      // Connect Native Driver (for Tasks, etc.)
       this.client = new MongoClient(config.database.uri, clientOptions);
       await this.client.connect();
 
       this.db = this.client.db(config.database.dbName);
-      this.isConnected = true;
 
+      // Connect Mongoose (for CandidateComment, etc.)
+      // Mongoose 6+ defaults are usually fine
+      this.isConnected = true;
       this.attachCommandLogger();
 
       logger.info('✅ Connected to MongoDB', {

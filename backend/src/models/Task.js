@@ -540,7 +540,7 @@ export class TaskModel {
           }
         }
 
-        if ((candidateMatchesEmail || candidateMatchesTokens) && statusLower === 'pending') {
+        if (candidateMatchesEmail || candidateMatchesTokens) {
           logSuggestionDebug('TasksToday suggestion matched user', {
             ...baseMeta,
             reason: candidateMatchesEmail ? 'email_match' : 'token_match',
@@ -548,19 +548,6 @@ export class TaskModel {
           });
           tasks.push(task);
           continue;
-        }
-
-        if (candidateMatchesEmail || candidateMatchesTokens) {
-          logSuggestionDebug('TasksToday suggestion match skipped due to status', {
-            ...baseMeta,
-            reason: 'non_pending_status',
-            tokenMatchSource: candidateMatchesEmail ? 'email' : userTokenMatchSource
-          });
-        } else if (statusLower === 'pending' && suggestionTokens.size > 0) {
-          logSuggestionDebug('TasksToday suggestion did not match user tokens', {
-            ...baseMeta,
-            reason: 'no_token_match'
-          });
         }
       }
     }
@@ -996,17 +983,11 @@ export class TaskModel {
         patterns.push({ assignedTo: { $regex: `^${escapeRegex(selfName)}$`, $options: 'i' } });
       }
 
-      const unassignedRegex = '^\\s*(?:not\\s+assigned)?\\s*$';
-      const unassignedPatterns = [
-        { assignedTo: { $exists: false } },
-        { assignedTo: { $regex: unassignedRegex, $options: 'i' } },
-        { assignedExpert: { $exists: false } },
-        { assignedExpert: { $regex: unassignedRegex, $options: 'i' } },
-        { AssignedExpert: { $exists: false } },
-        { AssignedExpert: { $regex: unassignedRegex, $options: 'i' } }
-      ];
+      // [FIX] Removed unassignedPatterns. Users should only see their assigned tasks.
+      // Including unassigned tasks causes pagination/limit issues where relevant tasks are pushed out.
+      // filterAndFormatTasks likely hides unassigned ones anyway.
 
-      return { $or: [...patterns, ...unassignedPatterns] };
+      return { $or: patterns };
     }
 
     const emailParts = emailLocal.split('.');

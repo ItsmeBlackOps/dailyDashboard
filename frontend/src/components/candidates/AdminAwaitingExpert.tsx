@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DOMPurify from "dompurify";
 import { io, Socket } from "socket.io-client";
+import { MessageSquare } from "lucide-react";
+
+import { ResumeDiscussionDrawer } from "@/components/resume/ResumeDiscussionDrawer";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -84,6 +87,7 @@ export function AdminAwaitingExpert({ role }: AdminAwaitingExpertProps) {
   }, [isAdmin]);
 
   const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
+  const [selectedCandidate, setSelectedCandidate] = useState<CandidateRecord | null>(null);
   const [expertInputs, setExpertInputs] = useState<Record<string, string>>({});
   const [assigning, setAssigning] = useState<Record<string, boolean>>({});
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
@@ -424,13 +428,23 @@ export function AdminAwaitingExpert({ role }: AdminAwaitingExpertProps) {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          onClick={() => handleAssign(candidate.id)}
-                          disabled={assigningRow || candidate.resumeUnderstanding}
-                        >
-                          {assigningRow ? 'Assigning…' : 'Assign Expert'}
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setSelectedCandidate(candidate)}
+                            title="Discussion"
+                          >
+                            <MessageSquare className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleAssign(candidate.id)}
+                            disabled={assigningRow || candidate.resumeUnderstanding}
+                          >
+                            {assigningRow ? 'Assigning…' : 'Assign Expert'}
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -440,6 +454,14 @@ export function AdminAwaitingExpert({ role }: AdminAwaitingExpertProps) {
           </div>
         )}
       </CardContent>
+      {selectedCandidate && (
+        <ResumeDiscussionDrawer
+          isOpen={!!selectedCandidate}
+          onClose={() => setSelectedCandidate(null)}
+          candidateId={selectedCandidate.id}
+          candidateName={selectedCandidate.name}
+        />
+      )}
     </Card>
   );
 }

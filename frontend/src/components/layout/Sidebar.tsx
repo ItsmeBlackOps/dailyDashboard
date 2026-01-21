@@ -93,11 +93,11 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
   const adminAlertSocketRef = useRef<Socket | null>(null);
   const currentUserEmail = useMemo(() => (localStorage.getItem("email") || "").trim().toLowerCase(), []);
   const showResumeNav = useMemo(
-    () => ["expert", "user", "lead", "am"].includes(normalizedRole),
+    () => ["expert", "user", "lead", "am", "recruiter", "manager", "admin", "mlead", "mam", "mm"].includes(normalizedRole),
     [normalizedRole]
   );
   const shouldFilterResumeEvents = useMemo(
-    () => !["lead", "am"].includes(normalizedRole),
+    () => !["lead", "am", "recruiter", "manager", "admin", "mlead", "mam", "mm"].includes(normalizedRole),
     [normalizedRole]
   );
   const [isUpdateLogOpen, setIsUpdateLogOpen] = useState(false);
@@ -322,8 +322,8 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
               ? "fixed inset-y-0 left-0 w-64"
               : "-translate-x-full w-64"
             : isOpen
-            ? "w-64"
-            : "w-16"
+              ? "w-64"
+              : "w-16"
         )}
         aria-label="Sidebar"
         aria-expanded={isOpen}

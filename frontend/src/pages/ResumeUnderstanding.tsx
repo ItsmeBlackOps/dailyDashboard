@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DOMPurify from "dompurify";
 import { io, Socket } from "socket.io-client";
+import { MessageSquare } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { SOCKET_URL, useAuth } from "@/hooks/useAuth";
+import { ResumeDiscussionDrawer } from "@/components/resume/ResumeDiscussionDrawer";
+
 
 type QueueStatus = "pending" | "done";
 
@@ -52,9 +55,23 @@ export default function ResumeUnderstanding() {
   const { toast } = useToast();
   const { refreshAccessToken } = useAuth();
   const role = useMemo(() => (localStorage.getItem("role") || "").trim().toLowerCase(), []);
-  const allowed = useMemo(() => ["expert", "user", "lead", "am"].includes(role), [role]);
-  const showCompletedTab = role !== 'user';
+  const allowed = useMemo(
+    () => ["expert", "user", "lead", "am", "recruiter", "manager", "admin", "mlead", "mam", "mm"].includes(role),
+    [role]
+  );
+  const showCompletedTab = role !== 'user' && role !== 'expert'; // Expert/User only sees pending usually? No, original logic was role !== 'user'. User IS expert? 
+  // Original: `const showCompletedTab = role !== 'user';`
+  // 'user' role is usually the Expert.
+  // We want Recruiters to see completed tab? Yes.
+
+  const shouldFilterByExpert = useMemo(
+    () => ["expert", "user"].includes(role),
+    [role]
+  );
+
   const [activeStatus, setActiveStatus] = useState<QueueStatus>("pending");
+  const [selectedCandidate, setSelectedCandidate] = useState<CandidateRecord | null>(null);
+
   const [queues, setQueues] = useState<Record<QueueStatus, CandidateRecord[]>>({
     pending: [],
     done: []
@@ -87,7 +104,6 @@ export default function ResumeUnderstanding() {
   }, [allowed]);
 
   const userEmail = useMemo(() => (localStorage.getItem("email") || "").trim().toLowerCase(), []);
-  const shouldFilterByExpert = useMemo(() => !["lead", "am"].includes(role), [role]);
 
   const fetchQueue = useCallback((status: QueueStatus) => {
     if (!socket) return;
@@ -368,6 +384,14 @@ export default function ResumeUnderstanding() {
                               </TableCell>
                               <TableCell className="text-right space-y-2">
                                 <div className="flex justify-end gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setSelectedCandidate(candidate)}
+                                    title="Discussion"
+                                  >
+                                    <MessageSquare className="h-4 w-4" />
+                                  </Button>
                                   {activeStatus === 'pending' ? (
                                     <Button
                                       size="sm"
@@ -403,6 +427,14 @@ export default function ResumeUnderstanding() {
           </CardContent>
         </Card>
       </div>
+      {selectedCandidate && (
+        <ResumeDiscussionDrawer
+          isOpen={!!selectedCandidate}
+          onClose={() => setSelectedCandidate(null)}
+          candidateId={selectedCandidate.id}
+          candidateName={selectedCandidate.name}
+        />
+      )}
     </DashboardLayout>
   );
 }
