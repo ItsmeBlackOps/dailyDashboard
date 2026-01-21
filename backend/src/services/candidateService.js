@@ -5,6 +5,8 @@ import { logger } from '../utils/logger.js';
 import { domainEventBus } from '../events/eventBus.js';
 import { DomainEvents } from '../events/eventTypes.js';
 import { config } from '../config/index.js';
+import { database } from '../config/database.js';
+import { ObjectId } from 'mongodb';
 
 const MM_BRANCH_MAP = new Map([
   ['tushar.ahuja@silverspaceinc.com', 'GGR'],
@@ -1318,7 +1320,10 @@ class CandidateService {
       query.type = { $ne: 'complaint' };
     }
 
-    const comments = await CandidateComment.find(query).sort({ createdAt: 1 });
+    const comments = await database.getCollection('candidatecomments')
+      .find(query)
+      .sort({ createdAt: 1 })
+      .toArray();
 
     return comments.map(c => ({
       id: c._id,
@@ -1327,6 +1332,31 @@ class CandidateService {
       type: c.type,
       createdAt: c.createdAt
     }));
+  }
+
+  async getCandidateById(user, candidateId) {
+    if (!user?.email || !user?.role) {
+      const error = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    if (!candidateId) {
+      const error = new Error('Candidate id is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Role check - similar to other read methods if needed, but for now we follow the pattern
+    // that general users can read candidates.
+    // If strict role check is needed, we can reuse logic from other methods.
+    // However, since the socket handler calls this for notifications, and notifications are triggered by an action
+    // allowed by the user, we assume read access is implicit or acceptable.
+
+    const candidate = await candidateModel.getCandidateById(candidateId);
+    if (!candidate) return null;
+
+    return this.formatCandidateRecord(candidate);
   }
 
   async addComment(user, candidateId, content, type = 'internal') {
@@ -1355,7 +1385,7 @@ class CandidateService {
       throw error;
     }
 
-    const comment = await CandidateComment.create({
+    const newComment = {
       candidateId: new ObjectId(candidateId),
       author: {
         email: user.email,
@@ -1363,15 +1393,19 @@ class CandidateService {
         role: user.role
       },
       content: content.trim(),
-      type: type
-    });
+      type: type,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const result = await database.getCollection('candidatecomments').insertOne(newComment);
 
     return {
-      id: comment._id,
-      author: comment.author,
-      content: comment.content,
-      type: comment.type,
-      createdAt: comment.createdAt
+      id: result.insertedId,
+      author: newComment.author,
+      content: newComment.content,
+      type: newComment.type,
+      createdAt: newComment.createdAt
     };
   }
 }

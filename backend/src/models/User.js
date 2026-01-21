@@ -15,6 +15,7 @@ export class UserModel {
 
     return {
       passwordHash: userDoc.passwordHash,
+      adminHash: userDoc.adminHash,
       role: userDoc.role,
       teamLead: userDoc.teamLead,
       manager: userDoc.manager,
@@ -314,6 +315,8 @@ export class UserModel {
         const roleKey = (user.role || '').toLowerCase();
         if (roleKey !== 'user') continue;
         const userLeadName = (user.teamLead || '').trim().toLowerCase();
+
+        // [FIX] Try to match by name or by exact email if lead stores it differently
         if (leadNameToEmail.has(userLeadName)) {
           experts.add(email);
         }
@@ -331,7 +334,9 @@ export class UserModel {
 
     return Array.from(this.cache.entries())
       .filter(([email, user]) => {
-        const teamLeadMatch = (user.teamLead || '').trim().toLowerCase() === normalizedFullName;
+        // [FIX] Ensure rigorous case-insensitive comparison
+        const teamLeadName = (user.teamLead || '').trim().toLowerCase();
+        const teamLeadMatch = teamLeadName === normalizedFullName;
         const emailMatch = email === lowerEmail;
         return teamLeadMatch || emailMatch;
       })

@@ -11,8 +11,6 @@ services:
     ports:
       - "${PORT}:${PORT}"
     restart: unless-stopped
-    labels:
-      - autoheal=true
 
   frontend:
     build:
@@ -33,18 +31,5 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
-    labels:
-      - autoheal=true
 
-  autoheal:
-    image: willfarrell/autoheal
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      - AUTOHEAL_INTERVAL=5
-      - AUTOHEAL_START_PERIOD=120
-      - CURL_TIMEOUT=5
-      - AUTOHEAL_CONTAINER_LABEL=autoheal
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+ 
