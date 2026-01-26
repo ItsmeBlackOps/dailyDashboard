@@ -16,7 +16,7 @@ const root = createRoot(container);
 
 // [Harsh] PostHog Configuration
 const posthogOptions = {
-  api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+  api_host: 'https://us.i.posthog.com',
   defaults: '2025-11-30', // Updated value
   capture_exceptions: true,
   debug: import.meta.env.MODE === 'development',
@@ -36,7 +36,7 @@ msalInstance
     root.render(
       <MsalProvider instance={msalInstance}>
         <PostHogProvider
-          apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_KEY}
+          apiKey={'phc_3e5ZCWNkfVdyMC846ZUyJavZt2T5GaYTgttkqK800tj'}
           options={posthogOptions}
         >
           <App />
