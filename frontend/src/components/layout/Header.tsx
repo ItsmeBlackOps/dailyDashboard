@@ -20,9 +20,6 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useUserProfile, formatPhoneDraft, formatPhoneCanonical } from '@/contexts/UserProfileContext';
 import { useNotifications } from '@/context/NotificationContext';
-import { NotificationDetailsDialog } from '@/components/dashboard/NotificationDetailsDialog';
-import DOMPurify from 'dompurify';
-
 interface HeaderProps {
   toggleSidebar: () => void;
   openSettings?: () => void; // keep if you plan to use it later
@@ -35,7 +32,6 @@ export function Header({ toggleSidebar }: HeaderProps) {
   const posthog = usePostHog();
   const { profile, loading, saving, updateProfile } = useUserProfile();
   const [editOpen, setEditOpen] = useState(false);
-  const [selectedNotification, setSelectedNotification] = useState<any>(null);
   const [formState, setFormState] = useState({ displayName: '', jobRole: '', phoneNumber: '' });
 
   const openConsentPopup = useCallback(() => {
@@ -115,7 +111,7 @@ export function Header({ toggleSidebar }: HeaderProps) {
     }
   };
 
-  const { notifications, unreadCount, markAsRead, clearAll } = useNotifications();
+  const { notifications, unreadCount, markAsRead, clearAll, openModal } = useNotifications();
 
   return (
     <header className="sticky top-0 z-30 bg-background border-b border-border h-16 flex items-center px-3 md:px-4 shadow-sm gap-2">
@@ -146,9 +142,9 @@ export function Header({ toggleSidebar }: HeaderProps) {
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel className="flex items-center justify-between">
               <span>Notifications ({unreadCount})</span>
-              {notifications.length > 0 && (
-                <Button variant="ghost" size="xs" onClick={clearAll} className="h-auto p-1 text-xs">
-                  Clear all
+              {unreadCount > 0 && (
+                <Button variant="ghost" size="xs" onClick={clearAll} className="h-auto p-1 text-xs text-primary">
+                  Mark all read
                 </Button>
               )}
             </DropdownMenuLabel>
@@ -165,10 +161,8 @@ export function Header({ toggleSidebar }: HeaderProps) {
                     className={`flex flex-col items-start gap-1 p-3 cursor-pointer ${!notif.read ? 'bg-muted/50' : ''}`}
                     onSelect={(e) => {
                       e.preventDefault();
-                      markAsRead(notif.id);
-                      if (notif.type === 'batch') {
-                        setSelectedNotification(notif);
-                      }
+                      // Open modal for ANY notification to see details
+                      openModal(notif);
                     }}
                   >
                     <div className="flex items-start justify-between w-full">
@@ -341,12 +335,6 @@ export function Header({ toggleSidebar }: HeaderProps) {
           </form>
         </DialogContent>
       </Dialog>
-
-      <NotificationDetailsDialog
-        isOpen={!!selectedNotification}
-        onClose={() => setSelectedNotification(null)}
-        notification={selectedNotification}
-      />
     </header>
   );
 }
