@@ -9,15 +9,37 @@ import DOMPurify from 'dompurify';
 const SOUND_RING = '/sounds/ring.mp3';
 const SOUND_DOUBLE_BEEP = '/sounds/double-beep.mp3';
 
+interface ChangeDetails {
+    oldValue?: any;
+    newValue?: any;
+    changedFields?: string[];
+    bulkCandidates?: Array<{
+        candidateId: string;
+        candidateName: string;
+        oldValue: any;
+        newValue: any;
+    }>;
+}
+
+interface Actor {
+    email: string;
+    name: string;
+    role: string;
+}
+
 interface NotificationEvent {
     id: string;
-    type: 'comment' | 'assignment' | 'info';
+    type: 'comment' | 'assignment' | 'info' | 'batch';
     title: string;
     description: string;
     timestamp: string;
     read: boolean;
     candidateId?: string; // For linking
     commentId?: string;
+    link?: string; // Add link support
+    changeDetails?: ChangeDetails;
+    actor?: Actor;
+    batchData?: any[];
 }
 
 interface NotificationContextType {
@@ -25,6 +47,11 @@ interface NotificationContextType {
     unreadCount: number;
     markAsRead: (id: string) => void;
     clearAll: () => void;
+    // Modal State
+    selectedNotification: NotificationEvent | null;
+    isModalOpen: boolean;
+    openModal: (notification: NotificationEvent) => void;
+    closeModal: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | null>(null);
@@ -39,6 +66,9 @@ export function useNotifications() {
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
     const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
+    const [selectedNotification, setSelectedNotification] = useState<NotificationEvent | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
     const { toast } = useToast();
     const { refreshAccessToken, authFetch } = useAuth();
     const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -78,6 +108,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         }
     };
 
+    const openModal = (notification: NotificationEvent) => {
+        setSelectedNotification(notification);
+        setIsModalOpen(true);
+        // Mark as read when opening? Optional.
+        if (!notification.read) {
+            markAsRead(notification.id);
+        }
+    };
+
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setSelectedNotification(null);
+    };
+
     // Initial Fetch
     useEffect(() => {
         if (!userId) return;
@@ -88,14 +132,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                 const data = await res.json();
                 if (data.success && Array.isArray(data.notifications)) {
                     setNotifications(data.notifications.map((n: any) => ({
-                        id: n.id,
+                        id: n.id || n._id,
                         type: n.type,
                         title: n.title,
                         description: n.description,
-                        timestamp: n.timestamp,
-                        read: n.read,
+                        timestamp: n.createdAt || n.timestamp, // Handle DB field
+                        read: n.isRead || n.read, // Handle DB field
                         candidateId: n.candidateId,
-                        link: n.link
+                        link: n.link,
+                        changeDetails: n.changeDetails,
+                        actor: n.actor,
+                        batchData: n.batchData
                     })));
                 }
             } catch (err) {
@@ -247,8 +294,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         socket.on('resumeUnderstandingUpdated', handleUpdate);
 
         // Status Update Handler (Marketing Status)
-        const handleStatusUpdate = (payload: { candidate: any, newStatus: string, updatedBy: any }) => {
-            const { candidate, newStatus, updatedBy } = payload;
+        const handleStatusUpdate = (payload: { candidate: any, newStatus: string, updatedBy: any, changeDetails?: ChangeDetails, actor?: Actor }) => {
+            const { candidate, newStatus, updatedBy, changeDetails, actor } = payload;
             const updaterName = updatedBy?.name || 'Unknown User';
             const candidateName = candidate?.name || 'Candidate';
 
@@ -259,7 +306,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                 description: `Status of ${candidateName} updated to ${newStatus} by ${updaterName}`,
                 timestamp: new Date().toISOString(),
                 read: false,
-                candidateId: candidate?.id
+                candidateId: candidate?.id,
+                changeDetails,
+                actor
             };
 
             setNotifications(prev => [newNotif, ...prev]);
@@ -272,6 +321,31 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         };
 
         socket.on('candidateStatusUpdated', handleStatusUpdate);
+
+        // Bulk Status Update Handler
+        const handleBulkStatusUpdate = (payload: { count: number, status: string, updatedBy: any, ids: string[], changeDetails?: any, actor?: any }) => {
+            console.log('🔔 Bulk Status Notification Received:', payload);
+            const { count, status, updatedBy, changeDetails, actor } = payload;
+
+            const newNotif: NotificationEvent = {
+                id: `bulk-${Date.now()}`,
+                type: 'batch',
+                title: 'Bulk Status Update',
+                description: `Updated ${count} candidates to ${status} by ${updatedBy?.name || 'User'}`,
+                timestamp: new Date().toISOString(),
+                read: false,
+                changeDetails,
+                actor
+            };
+
+            setNotifications(prev => [newNotif, ...prev]);
+            toast({
+                title: newNotif.title,
+                description: newNotif.description,
+            });
+            playSound('ring');
+        }
+        socket.on('bulkCandidateStatusUpdated', handleBulkStatusUpdate);
 
         // Task Notification Handler
         const handleTaskNotification = (payload: any) => {
@@ -306,6 +380,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             socket.off('resumeUnderstandingAssigned', handleAssignment);
             socket.off('resumeUnderstandingUpdated', handleUpdate);
             socket.off('candidateStatusUpdated', handleStatusUpdate);
+            socket.off('bulkCandidateStatusUpdated', handleBulkStatusUpdate);
             socket.off('taskNotification', handleTaskNotification);
             socket.disconnect();
         };
@@ -332,7 +407,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
     return (
-        <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, clearAll }}>
+        <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, clearAll, selectedNotification, isModalOpen, openModal, closeModal }}>
             {children}
             {/* Audio element if needed for persistent playback context, but new Audio() works often */}
         </NotificationContext.Provider>

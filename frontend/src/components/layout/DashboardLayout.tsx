@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { UserProfileProvider } from '@/contexts/UserProfileContext';
 import { useToast } from '@/hooks/use-toast';
 import { NotificationProvider } from '@/context/NotificationContext';
+import { NotificationDetailModal } from '@/components/ui/notification-modal';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -58,6 +59,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 {children}
               </main>
             </div>
+            <NotificationDetailModal />
           </div>
         </NotificationProvider>
       </UserProfileProvider>

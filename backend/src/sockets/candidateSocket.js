@@ -388,7 +388,21 @@ class CandidateSocketHandler {
       const oldCandidate = await candidateService.getCandidateById(user, candidateId);
       const updated = await candidateService.updateCandidate(user, candidateId, { status });
 
-      const payload = { candidate: updated, newStatus: status, updatedBy: user };
+      const payload = {
+        candidate: updated,
+        newStatus: status,
+        updatedBy: user,
+        changeDetails: {
+          oldValue: oldCandidate?.workflowStatus || oldCandidate?.status,
+          newValue: status,
+          changedFields: ['status']
+        },
+        actor: {
+          email: user.email,
+          name: user.displayName || user.name,
+          role: user.role
+        }
+      };
 
       // Persistent Notification to ALL stakeholders
       const allWatchers = candidateService.resolveAllWatchers(updated);
@@ -494,7 +508,16 @@ class CandidateSocketHandler {
           count: results.length,
           status,
           updatedBy: user,
-          ids: results.map(r => r.id)
+          ids: results.map(r => r.id),
+          changeDetails: {
+            bulkCandidates: batchData,
+            newValue: status
+          },
+          actor: {
+            email: user.email,
+            name: user.displayName || user.name,
+            role: user.role
+          }
         };
 
         Array.from(allWatchers).forEach(w => {

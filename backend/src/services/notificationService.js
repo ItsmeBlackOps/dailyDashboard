@@ -48,7 +48,9 @@ class NotificationService {
             read: n.isRead,
             candidateId: n.candidateId,
             link: n.link,
-            batchData: n.batchData
+            batchData: n.batchData,
+            changeDetails: n.changeDetails,
+            actor: n.actor
         }));
     }
 
