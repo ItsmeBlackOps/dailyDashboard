@@ -241,14 +241,14 @@ class CandidateSocketHandler {
       let expertUser = null;
       let recruiterUser = null;
       try {
-        if (updated.Expert) {
-          expertUser = await userService.getUserByEmail(updated.Expert);
+        if (updated.expertRaw) {
+          expertUser = await userService.getUserByEmail(updated.expertRaw);
           if (expertUser && !expertUser.name) {
             expertUser.name = userService.formatDisplayNameFromEmail(expertUser.email);
           }
         }
-        if (updated.Recruiter) {
-          recruiterUser = await userService.getUserByEmail(updated.Recruiter);
+        if (updated.recruiterRaw) {
+          recruiterUser = await userService.getUserByEmail(updated.recruiterRaw);
           if (recruiterUser && !recruiterUser.name) {
             recruiterUser.name = userService.formatDisplayNameFromEmail(recruiterUser.email);
           }

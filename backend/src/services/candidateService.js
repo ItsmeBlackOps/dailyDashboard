@@ -579,27 +579,29 @@ class CandidateService {
       };
     }
 
-    const recruiterEmail = formatEmail(candidate.recruiter ?? '');
-    const recruiterDisplay = recruiterEmail ? formatDisplayName(recruiterEmail) : formatDisplayName(candidate.recruiter ?? '');
-    const expertValue = candidate.expert ?? '';
+    const recruiterEmail = formatEmail(candidate.recruiter ?? candidate.Recruiter ?? candidate.recruiterRaw ?? '');
+    const recruiterDisplay = recruiterEmail ? formatDisplayName(recruiterEmail) : formatDisplayName(candidate.recruiter ?? candidate.Recruiter ?? '');
+    const expertValue = candidate.expert ?? candidate.Expert ?? candidate.expertRaw ?? '';
     const expertDisplay = formatDisplayName(expertValue);
     const resumeLink = (candidate.resumeLink || '').toString().trim();
 
     return {
       ...candidate,
-      name: toTitleCase(candidate.name ?? ''),
-      branch: candidate.branch ?? '',
+      name: toTitleCase(candidate.name ?? candidate['Candidate Name'] ?? ''),
+      branch: candidate.branch ?? candidate.Branch ?? '',
       recruiter: recruiterDisplay,
       recruiterRaw: recruiterEmail,
       expert: expertDisplay,
       expertRaw: expertValue,
-      technology: formatTechnology(candidate.technology ?? ''),
-      email: formatEmail(candidate.email ?? ''),
-      contact: candidate.contact ?? '',
+      Expert: expertValue, // Compatibility
+      technology: formatTechnology(candidate.technology ?? candidate.Technology ?? ''),
+      email: formatEmail(candidate.email ?? candidate['Email ID'] ?? ''),
+      contact: candidate.contact ?? candidate['Contact No'] ?? '',
       workflowStatus: candidate.workflowStatus || WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: candidate.resumeUnderstandingStatus || RESUME_UNDERSTANDING_STATUS.pending,
       resumeUnderstanding: (candidate.resumeUnderstandingStatus || RESUME_UNDERSTANDING_STATUS.pending) === RESUME_UNDERSTANDING_STATUS.done,
       createdBy: candidate.createdBy || null,
+      Recruiter: recruiterEmail, // Compatibility
       resumeLink
     };
   }
