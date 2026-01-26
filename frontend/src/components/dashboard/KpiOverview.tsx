@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePostHog } from 'posthog-js/react';
 import { io, Socket } from "socket.io-client";
 import { useAuth, SOCKET_URL } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,6 +106,18 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
   const [selectedRounds, setSelectedRounds] = useState<Set<string>>(new Set());
   const [selectedBranches, setSelectedBranches] = useState<Set<string>>(new Set());
   const { refreshAccessToken } = useAuth();
+  const posthog = usePostHog();
+
+  useEffect(() => {
+    if (kpi) {
+      posthog.capture('dashboard_kpi_interaction', {
+        user_role: role,
+        rounds_filter: Array.from(selectedRounds),
+        branch_filter: Array.from(selectedBranches),
+        total_count: kpi.totals.overall
+      });
+    }
+  }, [selectedRounds, selectedBranches, kpi, role, posthog]);
 
   const allowCustomFetch = useMemo(() => {
     if (filters.upcoming) return true;
@@ -408,11 +421,11 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
             ) : (
               (selectedBranches.size > 0 ? branchEntries.filter(([b]) => selectedBranches.has(b)) : branchEntries)
                 .map(([branch, count]) => (
-                <div key={branch} className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
-                  <span className="font-medium">{branch}</span>
-                  <span>{shorthand.format(count)}</span>
-                </div>
-              ))
+                  <div key={branch} className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
+                    <span className="font-medium">{branch}</span>
+                    <span>{shorthand.format(count)}</span>
+                  </div>
+                ))
             )}
           </CardContent>
         </Card>

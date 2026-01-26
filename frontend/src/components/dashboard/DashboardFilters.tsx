@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { usePostHog } from 'posthog-js/react';
+import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -55,9 +57,27 @@ const MONTH_ITEMS = Array.from({ length: 12 }, (_, month) => ({
 }));
 
 export function DashboardFilters({ filters, onChange, allowReceivedDate = false }: DashboardFiltersProps) {
+  const { user } = useAuth();
+  const posthog = usePostHog();
+
   const [customOpen, setCustomOpen] = useState(false);
   const [customRange, setCustomRange] = useState<DateRange | undefined>();
   const [dayPickerOpen, setDayPickerOpen] = useState(false);
+
+  // Helper to ensure properties are consistent
+  const trackFilterChange = (type: string, value: any, extra = {}) => {
+    posthog.capture('dashboard_filter_changed', {
+      user_role: user?.role,
+      branch: user?.branch, // Assuming user object has branch, or remove if not available
+      filter_type: type,
+      value_selected: value,
+      range_current: filters.range,
+      is_upcoming: filters.upcoming,
+      start_date: filters.start,
+      end_date: filters.end,
+      ...extra
+    });
+  };
 
   const now = useMemo(() => new Date(), []);
   const currentYear = now.getFullYear();
@@ -118,6 +138,7 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
 
   const applyDayValue = (date: Date) => {
     const { startIso, endIso, dayIso } = computeDayRange(date, DEFAULT_TIMEZONE);
+    trackFilterChange('range_specific', 'day', { day_date: dayIso });
     onChange({
       ...filters,
       range: "day",
@@ -149,6 +170,7 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
     const index = clampWeekIndex(partial?.weekIndex ?? filters.weekIndex ?? options[0].index, options);
     const selected = options.find((option) => option.index === index) ?? options[0];
 
+    trackFilterChange('range_specific', 'week', { week_index: selected.index, week_year: targetYear });
     onChange({
       ...filters,
       range: "week",
@@ -165,6 +187,7 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
     const targetMonth = partial?.monthMonth ?? filters.monthMonth ?? currentMonth;
     const { startIso, endIso } = computeMonthRange(targetYear, targetMonth, DEFAULT_TIMEZONE);
 
+    trackFilterChange('range_specific', 'month', { month: targetMonth, year: targetYear });
     onChange({
       ...filters,
       range: "month",
@@ -179,6 +202,8 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
     if (value === filters.range) {
       return;
     }
+
+    trackFilterChange('range_tab', value);
 
     switch (value) {
       case "day": {
@@ -202,12 +227,14 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
   };
 
   const handleUpcomingToggle = (checked: boolean) => {
+    trackFilterChange('upcoming_toggle', checked);
     onChange({ ...filters, upcoming: checked });
   };
 
   const handleDateFieldChange = (value: DashboardDateField) => {
     const resolved = allowReceivedDate ? value : "Date of Interview";
     if (resolved === filters.dateField) return;
+    trackFilterChange('date_field', resolved);
     onChange({ ...filters, dateField: resolved });
   };
 
@@ -220,11 +247,14 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
 
     const startIso = startOfDay(range.from).toISOString();
     const endIso = endOfDay(range.to).toISOString();
+
+    trackFilterChange('custom_range', 'set', { start_iso: startIso, end_iso: endIso });
     onChange({ ...filters, range: "custom", start: startIso, end: endIso });
   };
 
   const clearCustomRange = () => {
     setCustomRange(undefined);
+    trackFilterChange('custom_range', 'cleared');
     onChange({ ...filters, range: "custom", start: undefined, end: undefined });
   };
 
