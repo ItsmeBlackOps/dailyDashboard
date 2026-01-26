@@ -27,6 +27,7 @@ import { useMsal } from "@azure/msal-react";
 import { GRAPH_MAIL_SCOPES } from "@/constants";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToastAction } from "@/components/ui/toast";
+import { StatusBadge } from "@/components/candidates/StatusBadge";
 
 interface BranchCandidatesProps {
   role: string;
@@ -43,6 +44,7 @@ interface CandidateRow {
   technology: string;
   email: string;
   contact: string;
+  status: string; // Added Status
   receivedDate?: string | null;
   updatedAt?: string | null;
   lastWriteAt?: string | null;
@@ -348,6 +350,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [createResumeError, setCreateResumeError] = useState('');
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState<string>('');
+  const [bulkUpdating, setBulkUpdating] = useState(false);
   const canSendSupport = ['recruiter', 'mlead', 'mam', 'mm'].includes(normalizedRole);
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportCandidate, setSupportCandidate] = useState<CandidateRow | null>(null);
@@ -706,7 +711,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       setSupportError('');
       setSupportTimeWarning('');
       setDurationWarning('');
-    setCustomMessage('');
+      setCustomMessage('');
       setJobDescriptionText(draft.jobDescriptionText || '');
 
       if (draft.durationMinutes && draft.durationMinutes % 5 !== 0) {
@@ -1846,6 +1851,92 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     });
   }, [canView]);
 
+  const handleStatusUpdate = useCallback((id: string, newStatus: string) => {
+    return new Promise<void>((resolve, reject) => {
+      if (!socket) {
+        toast({ title: 'Connection Error', description: 'Socket not connected', variant: 'destructive' });
+        reject(new Error('Socket not connected'));
+        return;
+      }
+
+      socket.emit('updateCandidateStatus', { candidateId: id, status: newStatus }, (response: any) => {
+        if (response?.success) {
+          setCandidates((prev) => prev.map((c) => {
+            if (c.id === id) {
+              return { ...c, status: newStatus };
+            }
+            return c;
+          }));
+
+          // Only show toast if not bulk updating to avoid spam
+          if (!bulkUpdating) {
+            toast({
+              title: 'Status Updated',
+              description: `Candidate status changed to ${newStatus}`
+            });
+          }
+          resolve();
+        } else {
+          const msg = response?.error || 'Failed to update status';
+          toast({ title: 'Update Failed', description: msg, variant: 'destructive' });
+          reject(new Error(msg));
+        }
+      });
+    });
+  }, [socket, toast, bulkUpdating]);
+
+  const handleSelectRow = useCallback((id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback((checked: boolean) => {
+    if (checked) {
+      const allIds = filteredCandidates.map((c) => c.id);
+      setSelectedIds(new Set(allIds));
+    } else {
+      setSelectedIds(new Set());
+    }
+  }, [filteredCandidates]);
+
+  const handleBulkStatusUpdate = useCallback(async (newStatus: string) => {
+    if (!newStatus || selectedIds.size === 0) return;
+
+    setBulkUpdating(true);
+    const ids = Array.from(selectedIds);
+
+    // Use refined Bulk Update (HAR-37)
+    socket.emit('bulkUpdateCandidateStatus', { ids, status: newStatus }, (response: any) => {
+      setBulkUpdating(false);
+      setBulkStatus('');
+      setSelectedIds(new Set());
+
+      if (response.success) {
+        toast({
+          title: 'Bulk Update Complete',
+          description: `Successfully updated ${response.updated} candidates.`,
+        });
+      } else {
+        toast({
+          title: 'Bulk Update Failed',
+          description: response.error || `Failed to update candidates.`,
+          variant: 'destructive'
+        });
+      }
+    });
+  }, [selectedIds, toast]);
+
+
+
+
+
   const driverRef = useRef<ReturnType<typeof driver> | null>(null);
   const introRef = useRef<HTMLDivElement | null>(null);
   const updatesRef = useRef<HTMLDivElement | null>(null);
@@ -2712,6 +2803,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     return null;
   };
 
+  const isAllSelected = filteredCandidates.length > 0 && selectedIds.size === filteredCandidates.length;
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < filteredCandidates.length;
+
   return (
     <>
       <Card>
@@ -2807,6 +2901,41 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
             {renderScopeBadge()}
           </div>
 
+          {selectedIds.size > 0 && canEdit && (
+            <div className="flex items-center gap-4 rounded-md border border-primary/20 bg-primary/5 p-3">
+              <span className="text-sm font-medium">{selectedIds.size} candidates selected</span>
+              <Select
+                value={bulkStatus}
+                onValueChange={(val) => {
+                  setBulkStatus(val);
+                  if (val) handleBulkStatusUpdate(val);
+                }}
+                disabled={bulkUpdating}
+              >
+                <SelectTrigger className="w-[180px] h-8 bg-background">
+                  <SelectValue placeholder="Update Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="Hold">Hold</SelectItem>
+                  <SelectItem value="Low Priority">Low Priority</SelectItem>
+                  <SelectItem value="Backout">Backout</SelectItem>
+                  <SelectItem value="Placement Offer">Placement Offer</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleSelectAll(false)}
+                disabled={bulkUpdating}
+                className="ml-auto"
+              >
+                Clear Selection
+              </Button>
+              {bulkUpdating && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+            </div>
+          )}
+
           {recentNotifications.length > 0 && (
             <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
               <div className="flex items-center justify-between gap-2">
@@ -2859,10 +2988,20 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {canEdit && (
+                      <TableHead className="w-[40px]">
+                        <Checkbox
+                          checked={isAllSelected}
+                          onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                          aria-label="Select all"
+                        />
+                      </TableHead>
+                    )}
                     <TableHead>Candidate</TableHead>
                     <TableHead>Technology</TableHead>
                     <TableHead>Expert</TableHead>
                     <TableHead>Recruiter</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Resume</TableHead>
                     <TableHead>Contact</TableHead>
@@ -2887,8 +3026,19 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                       }
                     }
 
+                    const isSelected = selectedIds.has(candidate.id);
+
                     return (
-                      <TableRow key={candidate.id}>
+                      <TableRow key={candidate.id} data-state={isSelected ? "selected" : undefined}>
+                        {canEdit && (
+                          <TableCell>
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(checked) => handleSelectRow(candidate.id, checked === true)}
+                              aria-label={`Select ${sanitizedName}`}
+                            />
+                          </TableCell>
+                        )}
                         <TableCell className="align-top">
                           <div className="flex flex-col gap-2">
                             <span>{sanitizedName}</span>
@@ -2918,6 +3068,14 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                         <TableCell>{sanitizedTechnology}</TableCell>
                         <TableCell>{sanitizedExpert}</TableCell>
                         <TableCell>{sanitizedRecruiter}</TableCell>
+                        <TableCell>
+                          <StatusBadge
+                            status={candidate.status}
+                            candidateId={candidate.id}
+                            canEdit={['recruiter', 'mlead', 'mam', 'mm', 'admin'].includes(normalizedRole)}
+                            onUpdate={handleStatusUpdate}
+                          />
+                        </TableCell>
                         <TableCell>{sanitizedEmail}</TableCell>
                         <TableCell>
                           {resumeHref ? (
@@ -2946,25 +3104,25 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                                     aria-label="Resume Understanding"
                                   >
                                     RU
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <span>Resume Understanding</span>
-                            </TooltipContent>
-                          </Tooltip>
-                          {canSendSupport && (
-                            <Button
-                              size="sm"
-                              onClick={() => openAssessmentDialog(candidate)}
-                            >
-                              Assessment
-                            </Button>
-                          )}
-                          {canSendSupport && (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => openSupportDialog(candidate)}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <span>Resume Understanding</span>
+                                </TooltipContent>
+                              </Tooltip>
+                              {canSendSupport && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => openAssessmentDialog(candidate)}
+                                >
+                                  Assessment
+                                </Button>
+                              )}
+                              {canSendSupport && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => openSupportDialog(candidate)}
                                   data-tour-id="branch-support-button"
                                 >
                                   Support
@@ -2988,7 +3146,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         </CardContent>
         {canEdit && (
           <Dialog open={isEditOpen} onOpenChange={(open) => (!open ? resetEditState() : setIsEditOpen(true))}>
-          <DialogContent className="w-full max-h-[90vh] sm:max-h-[85vh] overflow-y-auto scroll-area sm:max-w-[560px]">
+            <DialogContent className="w-full max-h-[90vh] sm:max-h-[85vh] overflow-y-auto scroll-area sm:max-w-[560px]">
               <DialogHeader>
                 <DialogTitle>Edit Candidate</DialogTitle>
                 <DialogDescription>
@@ -3000,37 +3158,37 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               <div className="space-y-4 py-2">
                 <div className="space-y-2">
                   <Label htmlFor="candidate-name">Name</Label>
-          <Input
-            id="candidate-name"
-            value={formState.name}
-            onChange={(event) => handleFormChange('name', event.target.value)}
-            onBlur={() => handleFormBlur('name')}
-            placeholder="Candidate name"
-            disabled={!canEditBasicFields}
-          />
+                  <Input
+                    id="candidate-name"
+                    value={formState.name}
+                    onChange={(event) => handleFormChange('name', event.target.value)}
+                    onBlur={() => handleFormBlur('name')}
+                    placeholder="Candidate name"
+                    disabled={!canEditBasicFields}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="candidate-email">Email</Label>
-          <Input
-            id="candidate-email"
-            type="email"
-            value={formState.email}
-            onChange={(event) => handleFormChange('email', event.target.value)}
-            onBlur={() => handleFormBlur('email')}
-            placeholder="candidate@example.com"
-            disabled={!canEditBasicFields}
-          />
+                  <Input
+                    id="candidate-email"
+                    type="email"
+                    value={formState.email}
+                    onChange={(event) => handleFormChange('email', event.target.value)}
+                    onBlur={() => handleFormBlur('email')}
+                    placeholder="candidate@example.com"
+                    disabled={!canEditBasicFields}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="candidate-technology">Technology</Label>
-          <Input
-            id="candidate-technology"
-            value={formState.technology}
-            onChange={(event) => handleFormChange('technology', event.target.value)}
-            onBlur={() => handleFormBlur('technology')}
-            placeholder="Primary technology"
-            disabled={!canEditBasicFields}
-          />
+                  <Input
+                    id="candidate-technology"
+                    value={formState.technology}
+                    onChange={(event) => handleFormChange('technology', event.target.value)}
+                    onBlur={() => handleFormBlur('technology')}
+                    placeholder="Primary technology"
+                    disabled={!canEditBasicFields}
+                  />
                 </div>
                 {canChangeExpertField ? (
                   <div className="space-y-2">
@@ -3094,13 +3252,13 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 {canChangeContactField ? (
                   <div className="space-y-2">
                     <Label htmlFor="candidate-contact">Contact</Label>
-        <Input
-          id="candidate-contact"
-          value={formState.contact}
-          onChange={(event) => handleFormChange('contact', event.target.value)}
-          onBlur={() => handleFormBlur('contact')}
-          placeholder="Contact number"
-        />
+                    <Input
+                      id="candidate-contact"
+                      value={formState.contact}
+                      onChange={(event) => handleFormChange('contact', event.target.value)}
+                      onBlur={() => handleFormBlur('contact')}
+                      placeholder="Contact number"
+                    />
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -3134,44 +3292,44 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
             <div className="space-y-4 py-2">
               <div className="space-y-2">
                 <Label htmlFor="create-name">Name</Label>
-        <Input
-          id="create-name"
-          value={createForm.name}
-          onChange={(event) => handleCreateFieldChange('name', event.target.value)}
-          onBlur={() => handleCreateFieldBlur('name')}
-          placeholder="Candidate name"
-        />
+                <Input
+                  id="create-name"
+                  value={createForm.name}
+                  onChange={(event) => handleCreateFieldChange('name', event.target.value)}
+                  onBlur={() => handleCreateFieldBlur('name')}
+                  placeholder="Candidate name"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-email">Email</Label>
-        <Input
-          id="create-email"
-          type="email"
-          value={createForm.email}
-          onChange={(event) => handleCreateFieldChange('email', event.target.value)}
-          onBlur={() => handleCreateFieldBlur('email')}
-          placeholder="candidate@example.com"
-        />
+                <Input
+                  id="create-email"
+                  type="email"
+                  value={createForm.email}
+                  onChange={(event) => handleCreateFieldChange('email', event.target.value)}
+                  onBlur={() => handleCreateFieldBlur('email')}
+                  placeholder="candidate@example.com"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-technology">Technology</Label>
-        <Input
-          id="create-technology"
-          value={createForm.technology}
-          onChange={(event) => handleCreateFieldChange('technology', event.target.value)}
-          onBlur={() => handleCreateFieldBlur('technology')}
-          placeholder="Primary technology"
-        />
+                <Input
+                  id="create-technology"
+                  value={createForm.technology}
+                  onChange={(event) => handleCreateFieldChange('technology', event.target.value)}
+                  onBlur={() => handleCreateFieldBlur('technology')}
+                  placeholder="Primary technology"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-branch">Branch</Label>
-        <Input
-          id="create-branch"
-          value={createForm.branch}
-          onChange={(event) => handleCreateFieldChange('branch', event.target.value)}
-          onBlur={() => handleCreateFieldBlur('branch')}
-          placeholder="e.g., GGR"
-        />
+                <Input
+                  id="create-branch"
+                  value={createForm.branch}
+                  onChange={(event) => handleCreateFieldChange('branch', event.target.value)}
+                  onBlur={() => handleCreateFieldBlur('branch')}
+                  placeholder="e.g., GGR"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-recruiter">Recruiter</Label>
@@ -3198,11 +3356,11 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-contact">Contact (optional)</Label>
-        <Input
-          id="create-contact"
-          value={createForm.contact}
-          onChange={(event) => handleCreateFieldChange('contact', event.target.value)}
-          onBlur={() => handleCreateFieldBlur('contact')}
+                <Input
+                  id="create-contact"
+                  value={createForm.contact}
+                  onChange={(event) => handleCreateFieldChange('contact', event.target.value)}
+                  onBlur={() => handleCreateFieldBlur('contact')}
                   placeholder="Contact number"
                 />
               </div>

@@ -20,7 +20,8 @@ const DEFAULT_PROJECTION = {
   createdBy: 1,
   metadata: 1,
   resumeLink: 1,
-  docType: 1
+  docType: 1,
+  status: 1
 };
 
 export const WORKFLOW_STATUS = {
@@ -106,7 +107,7 @@ export class CandidateModel {
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getCandidatesByRecruiters(recruiterEmails, { limit, search, visibility } = {}) {
+  async getCandidatesByRecruiters(recruiterEmails, { limit, search, visibility, workflowStatus, resumeUnderstandingStatus } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
@@ -168,6 +169,14 @@ export class CandidateModel {
       docType: { $in: [null, 'candidate'] }
     };
 
+    if (workflowStatus) {
+      query.workflowStatus = Array.isArray(workflowStatus) ? { $in: workflowStatus } : workflowStatus;
+    }
+
+    if (resumeUnderstandingStatus) {
+      query.resumeUnderstandingStatus = resumeUnderstandingStatus;
+    }
+
     if (search) {
       query['Candidate Name'] = { $regex: search, $options: 'i' };
     }
@@ -219,6 +228,7 @@ export class CandidateModel {
         ...(updates.workflowStatus !== undefined ? { workflowStatus: updates.workflowStatus } : {}),
         ...(updates.resumeUnderstandingStatus !== undefined ? { resumeUnderstandingStatus: updates.resumeUnderstandingStatus } : {}),
         ...(updates.resumeLink !== undefined ? { resumeLink: updates.resumeLink } : {}),
+        ...(updates.status !== undefined ? { status: updates.status } : {}),
         ...(updates.createdBy !== undefined ? { createdBy: updates.createdBy } : {}),
         updated_at: new Date()
       }
@@ -628,6 +638,7 @@ export class CandidateModel {
       technology: doc.Technology ?? '',
       email: doc['Email ID'] ?? '',
       contact: doc['Contact No'] ?? '',
+      status: doc.status || 'Active',
       receivedDate: doc.source?.receivedDateTime ?? null,
       updatedAt: doc.updated_at instanceof Date ? doc.updated_at.toISOString() : doc.updated_at ?? null,
       lastWriteAt: doc._last_write instanceof Date ? doc._last_write.toISOString() : doc._last_write ?? null,

@@ -59,8 +59,7 @@ export default function ResumeUnderstanding() {
     () => ["expert", "user", "lead", "am", "recruiter", "manager", "admin", "mlead", "mam", "mm"].includes(role),
     [role]
   );
-  const showCompletedTab = role !== 'user' && role !== 'expert'; // Expert/User only sees pending usually? No, original logic was role !== 'user'. User IS expert? 
-  // Original: `const showCompletedTab = role !== 'user';`
+  const showCompletedTab = role !== 'user' && role !== 'expert';
   // 'user' role is usually the Expert.
   // We want Recruiters to see completed tab? Yes.
 
@@ -392,23 +391,25 @@ export default function ResumeUnderstanding() {
                                   >
                                     <MessageSquare className="h-4 w-4" />
                                   </Button>
-                                  {activeStatus === 'pending' ? (
-                                    <Button
-                                      size="sm"
-                                      onClick={() => updateResumeStatus(candidate.id, 'done')}
-                                      disabled={candidateActionLoading}
-                                    >
-                                      {candidateActionLoading ? 'Updating…' : 'Mark Done'}
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => updateResumeStatus(candidate.id, 'pending')}
-                                      disabled={candidateActionLoading}
-                                    >
-                                      {candidateActionLoading ? 'Updating…' : 'Mark Pending'}
-                                    </Button>
+                                  {(role === 'admin' || (role === 'expert' || role === 'user') && candidate.expertRaw === userEmail) && (
+                                    activeStatus === 'pending' ? (
+                                      <Button
+                                        size="sm"
+                                        onClick={() => updateResumeStatus(candidate.id, 'done')}
+                                        disabled={candidateActionLoading}
+                                      >
+                                        {candidateActionLoading ? 'Updating…' : 'Mark Done'}
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => updateResumeStatus(candidate.id, 'pending')}
+                                        disabled={candidateActionLoading}
+                                      >
+                                        {candidateActionLoading ? 'Updating…' : 'Mark Pending'}
+                                      </Button>
+                                    )
                                   )}
                                 </div>
                                 {candidateError && (

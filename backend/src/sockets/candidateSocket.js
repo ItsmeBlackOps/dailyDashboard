@@ -1,4 +1,5 @@
 import { candidateService } from '../services/candidateService.js';
+import { notificationService } from '../services/notificationService.js';
 import {
   validateCandidateQuery,
   validateCandidateUpdate,
@@ -6,11 +7,13 @@ import {
   validateCandidateCreate,
   validateAssignExpert,
   validateResumeUnderstanding,
+  validateCandidateStatusUpdate,
   validateResumeQueueQuery,
   validateResumeCountQuery
 } from '../middleware/validation.js';
 import { socketAsyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
+import { userService } from '../services/userService.js';
 
 class CandidateSocketHandler {
   handleConnection(socket) {
@@ -23,6 +26,8 @@ class CandidateSocketHandler {
     socket.on('getPendingExpertAssignmentsCount', socketAsyncHandler(this.handleGetPendingExpertAssignmentsCount.bind(this)));
     socket.on('getResumeUnderstandingQueue', socketAsyncHandler(this.handleGetResumeUnderstandingQueue.bind(this)));
     socket.on('getResumeUnderstandingCount', socketAsyncHandler(this.handleGetResumeUnderstandingCount.bind(this)));
+    socket.on('updateCandidateStatus', socketAsyncHandler(this.handleUpdateStatus.bind(this)));
+    socket.on('bulkUpdateCandidateStatus', socketAsyncHandler(this.handleBulkUpdateStatus.bind(this)));
     socket.on('getResumeComments', socketAsyncHandler(this.handleGetResumeComments.bind(this)));
     socket.on('addResumeComment', socketAsyncHandler(this.handleAddResumeComment.bind(this)));
     socket.on('joinCandidateRoom', (candidateId) => {
@@ -232,13 +237,38 @@ class CandidateSocketHandler {
       const { candidateId, expert } = validation.payload;
       const updated = await candidateService.assignExpert(user, candidateId, expert);
 
-      this.emitToRoles(socket, ['admin'], 'candidateExpertAssigned', { candidate: updated });
+      // Enrich payload for Frontend Notification Logic
+      let expertUser = null;
+      let recruiterUser = null;
+      try {
+        if (updated.Expert) {
+          expertUser = await userService.getUserByEmail(updated.Expert);
+          if (expertUser && !expertUser.name) {
+            expertUser.name = userService.formatDisplayNameFromEmail(expertUser.email);
+          }
+        }
+        if (updated.Recruiter) {
+          recruiterUser = await userService.getUserByEmail(updated.Recruiter);
+          if (recruiterUser && !recruiterUser.name) {
+            recruiterUser.name = userService.formatDisplayNameFromEmail(recruiterUser.email);
+          }
+        }
+      } catch (e) { logger.warn('Failed to enrich assignment notification', e); }
+
+      const richPayload = {
+        candidate: updated,
+        expert: expertUser,
+        recruiter: recruiterUser
+      };
+
+      this.emitToRoles(socket, ['admin'], 'candidateExpertAssigned', richPayload);
 
       const assignmentWatchers = candidateService.resolveResumeUnderstandingWatchers(updated.expertRaw || expert);
-      for (const watcher of assignmentWatchers) {
-        this.emitToUser(socket, watcher, 'resumeUnderstandingAssigned', {
-          candidate: updated
-        });
+      const hierarchyWatchers = candidateService.resolveHierarchyWatchers(updated);
+      const allWatchers = new Set([...assignmentWatchers, ...hierarchyWatchers]);
+
+      for (const watcher of allWatchers) {
+        this.emitToUser(socket, watcher, 'resumeUnderstandingAssigned', richPayload);
       }
 
       return callback({ success: true, candidate: updated });
@@ -323,7 +353,8 @@ class CandidateSocketHandler {
       const updateWatchers = candidateService.resolveResumeUnderstandingWatchers(updated.expertRaw || user.email);
       for (const watcher of updateWatchers) {
         this.emitToUser(socket, watcher, 'resumeUnderstandingUpdated', {
-          candidate: updated
+          candidate: updated,
+          updatedBy: user // Pass who performed the update
         });
       }
       this.emitToRoles(socket, ['admin'], 'candidateResumeStatusChanged', {
@@ -332,16 +363,212 @@ class CandidateSocketHandler {
 
       return callback({ success: true, candidate: updated });
     } catch (error) {
-      logger.error('Socket updateResumeUnderstanding failed', {
-        error: error.message,
-        socketId: socket.id,
-        userEmail: socket.data.user?.email
-      });
+      logger.error('Socket updateResumeUnderstanding failed', { error: error.message });
+      return callback({ success: false, error: 'Update failed' });
+    }
+  }
 
-      return callback({
-        success: false,
-        error: error.statusCode === 403 || error.statusCode === 400 ? error.message : 'Unable to update status'
+  async handleUpdateStatus(socket, data, callback) {
+    if (!callback) return;
+    const user = socket.data.user;
+    if (!user) return callback({ success: false, error: 'Auth required' });
+
+    // RBAC
+    if (!['recruiter', 'mlead', 'mam', 'mm', 'admin'].includes(user.role)) {
+      return callback({ success: false, error: 'Unauthorized' });
+    }
+
+    const validation = validateCandidateStatusUpdate(data);
+    if (!validation.isValid) return callback({ success: false, error: 'Validation failed' });
+
+    try {
+      const { candidateId, status } = validation.payload;
+      const updated = await candidateService.updateCandidate(user, candidateId, { status });
+
+      const payload = { candidate: updated, newStatus: status, updatedBy: user };
+
+      // Persistent Notification to ALL stakeholders
+      const allWatchers = candidateService.resolveAllWatchers(updated);
+
+      const notifData = {
+        type: 'info',
+        title: 'Status Updated',
+        description: `Status of ${updated.name} updated to ${status} by ${user.displayName || user.name || user.email}`,
+        candidateId: updated.id,
+        link: `/candidate/${updated.id}`
+      };
+
+      await notificationService.broadcastToWatchers(allWatchers, notifData);
+
+      // Real-time Emit
+      allWatchers.forEach(w => this.emitToUser(socket, w, 'candidateStatusUpdated', payload));
+
+      callback({ success: true, candidate: updated });
+    } catch (e) {
+      logger.error('Update Status Failed', e);
+      callback({ success: false, error: e.message });
+    }
+  }
+
+  async handleBulkUpdateStatus(socket, data, callback) {
+    if (!callback) return;
+    const user = socket.data.user;
+    if (!user) return callback({ success: false, error: 'Auth required' });
+
+    if (!['recruiter', 'mlead', 'mam', 'mm', 'admin'].includes(user.role)) {
+      return callback({ success: false, error: 'Unauthorized' });
+    }
+
+    const { ids, status } = data;
+    if (!Array.isArray(ids) || ids.length === 0 || !status) {
+      return callback({ success: false, error: 'Invalid payload' });
+    }
+
+    try {
+      const results = [];
+      const errors = [];
+      const allWatchers = new Set();
+      const batchData = [];
+
+      // Process sequentially to be safe, or Promise.all for speed.
+      // Sequential ensures we don't overwhelm DB if batch is huge.
+      for (const id of ids) {
+        try {
+          // Verify status transition logic via updateCandidate
+          const updated = await candidateService.updateCandidate(user, id, { status });
+          results.push(updated);
+
+          // Collect watchers for this specific candidate
+          const watchers = candidateService.resolveAllWatchers(updated);
+          watchers.forEach(w => allWatchers.add(w));
+
+          batchData.push({
+            id: updated.id,
+            name: updated.name,
+            status: status
+          });
+        } catch (err) {
+          errors.push({ id, error: err.message });
+        }
+      }
+
+      if (results.length > 0) {
+        // Persistent Batch Notification
+        const notifData = {
+          type: 'batch', // New type
+          title: 'Bulk Status Update',
+          description: `Updated ${results.length} candidates to ${status} by ${user.displayName || user.name || user.email}`,
+          batchData: batchData
+        };
+
+        await notificationService.broadcastToWatchers(Array.from(allWatchers), notifData);
+
+        // Real-time Emit (Single Batch Event)
+        // We emit 'candidateStatusUpdated' for each? No, that causes spam.
+        // We emit 'bulkCandidateStatusUpdated'.
+        const payload = {
+          count: results.length,
+          status,
+          updatedBy: user,
+          ids: results.map(r => r.id)
+        };
+
+        Array.from(allWatchers).forEach(w => {
+          this.emitToUser(socket, w, 'bulkCandidateStatusUpdated', payload);
+        });
+      }
+
+      callback({
+        success: true,
+        updated: results.length,
+        failed: errors.length,
+        errors: errors.length > 0 ? errors : undefined
       });
+    } catch (e) {
+      logger.error('Bulk Update Failed', e);
+      callback({ success: false, error: e.message });
+    }
+  }
+
+  async handleBulkAssignExpert(socket, data, callback) {
+    if (!callback) return;
+    const user = socket.data.user;
+    if (!user) return callback({ success: false, error: 'Auth required' });
+
+    if (!['admin', 'manager', 'lead', 'am'].includes(user.role)) {
+      return callback({ success: false, error: 'Unauthorized' });
+    }
+
+    const { ids, expertEmail } = data;
+    if (!Array.isArray(ids) || ids.length === 0 || !expertEmail) {
+      return callback({ success: false, error: 'Invalid payload' });
+    }
+
+    try {
+      const results = [];
+      const errors = [];
+      const allWatchers = new Set();
+      const batchData = [];
+
+      for (const id of ids) {
+        try {
+          // Re-use update logic for assignment
+          // Check if candidateService has specialized assign method?
+          // Usually assignment is just updating 'expert' field + status trigger.
+          // Using updateCandidate for consistency.
+          const updated = await candidateService.updateCandidate(user, id, {
+            expert: expertEmail,
+            workflowStatus: 'Awaiting Expert' // Force status valid for assignment? Or let service decide?
+            // Service usually handles status transition if expert is assigned.
+            // But let's assume updateCandidate helper handles it if we pass expert.
+          });
+          results.push(updated);
+
+          const watchers = candidateService.resolveAllWatchers(updated);
+          watchers.forEach(w => allWatchers.add(w));
+
+          batchData.push({
+            id: updated.id,
+            name: updated.name,
+            expert: expertEmail
+          });
+        } catch (err) {
+          errors.push({ id, error: err.message });
+        }
+      }
+
+      if (results.length > 0) {
+        // Persistent Batch Notification
+        const notifData = {
+          type: 'batch',
+          title: 'Bulk Expert Assignment',
+          description: `Assigned ${results.length} candidates to ${expertEmail} by ${user.displayName || user.name}`,
+          batchData: batchData
+        };
+
+        await notificationService.broadcastToWatchers(Array.from(allWatchers), notifData);
+
+        // Real-time
+        const payload = {
+          count: results.length,
+          expert: expertEmail,
+          updatedBy: user,
+          ids: results.map(r => r.id)
+        };
+        Array.from(allWatchers).forEach(w => {
+          this.emitToUser(socket, w, 'bulkCandidateExpertAssigned', payload);
+        });
+      }
+
+      callback({
+        success: true,
+        updated: results.length,
+        failed: errors.length,
+        errors: errors.length > 0 ? errors : undefined
+      });
+    } catch (e) {
+      logger.error('Bulk Assign Failed', e);
+      callback({ success: false, error: e.message });
     }
   }
 
@@ -538,12 +765,14 @@ class CandidateSocketHandler {
   async handleAddResumeComment(socket, payload, callback) {
     const { candidateId, content, type } = payload;
     const user = socket.data.user;
+    logger.info(`DEBUG: handleAddResumeComment triggered by ${user?.email}`);
     let comment;
 
     try {
       comment = await candidateService.addComment(user, candidateId, content, type);
+      logger.info('DEBUG: Comment saved successfully');
     } catch (error) {
-      logger.error('handleAddResumeComment failed', {
+      logger.error('DEBUG: handleAddResumeComment failed', {
         error: error.message,
         candidateId,
         user: user?.email
@@ -557,6 +786,12 @@ class CandidateSocketHandler {
 
     // Notifications (Non-critical path)
     try {
+      const commentAuthorName = user.displayName || userService.deriveDisplayNameFromEmail(user.email);
+      // Ensure comment object has author name for realtime recipients
+      if (comment && comment.author && !comment.author.name) {
+        comment.author.name = commentAuthorName;
+      }
+
       // 1. Broadcast to room (real-time chat for those open)
       this.emitToCandidateRoom(socket, candidateId, 'newComment', {
         candidateId,
@@ -564,16 +799,18 @@ class CandidateSocketHandler {
       });
 
       // 2. Global Notification (for those NOT in room or minimized)
+      logger.info('DEBUG: Fetching candidate for notification context');
       const candidate = await candidateService.getCandidateById(user, candidateId);
 
       if (candidate) {
+        logger.info('DEBUG: Candidate found. Triggering emitCommentNotifications');
         this.emitCommentNotifications(socket, candidate, comment, user);
       } else {
-        logger.warn('Candidate not found for notification', { candidateId });
+        logger.warn('DEBUG: Candidate NOT found for notification', { candidateId });
       }
     } catch (notificationError) {
       // Log error but do not fail the request since comment was saved
-      logger.error('Comment notification failed', {
+      logger.error('DEBUG: Comment notification failed', {
         error: notificationError.message,
         candidateId,
         user: user?.email
@@ -586,59 +823,42 @@ class CandidateSocketHandler {
   emitCommentNotifications(socket, candidate, comment, sender) {
     if (!candidate) return;
 
-    const recipients = new Set();
     const senderEmail = sender.email.toLowerCase();
     const senderRole = sender.role.toLowerCase();
 
     // Helpers
-    const addRole = (r) => {
-      // In a real app we'd map role -> users. Here we might need a helper method or broadcast to room 'role:admin'
-      // For simplicity, we will emit to specific users if known, and broadcast to roles.
-      // socket.to(`role:${r}`).emit(...)
-      // Assuming we have rooms for roles from authSocket or similar.
-      this.emitToRole(socket, r, 'newCommentNotification', { candidate, comment });
-    };
-
     const addUser = (email) => {
       if (email && email.toLowerCase() !== senderEmail) {
         this.emitToUser(socket, email, 'newCommentNotification', { candidate, comment });
       }
     };
 
-    // Logic
-    const expertEmail = (candidate.expertRaw || "").trim();
-    const recruiterEmail = (candidate.recruiter || "").trim(); // This might be name, need email if stored. 
-    // Checking candidate schema: 'recruiter' is string (name?). 
-    // If we don't have recruiter email, we might rely on 'created_by' or 'manager'.
-    // For now, we'll notify known roles.
+    // 1. Notify Admin (Always safety net)
+    this.emitToRoles(socket, ['admin'], 'newCommentNotification', { candidate, comment });
 
-    const isComplaint = comment.type === 'complaint';
+    // 2. Resolve Hierarchy (Recruiter -> MLead -> MAM -> MM)
+    const hierarchyEmails = candidateService.resolveHierarchyWatchers
+      ? candidateService.resolveHierarchyWatchers(candidate)
+      : [];
 
-    // 1. Notify Admin/Leads (Always)
-    addRole('admin');
-    addRole('lead');
-    addRole('manager');
-    addRole('am');
-    addRole('mam');
-    addRole('mlead');
+    logger.info(`DEBUG: Comment Notification Targets [Candidate: ${candidate.id}]`, {
+      hierarchy: hierarchyEmails,
+      sender: senderEmail
+    });
 
-    // 2. Notify Expert (Only if NOT complaint)
-    if (!isComplaint) {
-      if (senderRole !== 'expert') {
-        // If sender is NOT expert, notify expert
-        addUser(expertEmail);
-      }
-    }
+    hierarchyEmails.forEach(email => addUser(email));
 
-    // 3. Notify Recruiter (If known)
-    // If the sender is the Expert, we definitely want the Recruiter to know.
-    // Since we might not have recruiter EMAIL in candidate.recruiter (it's often a name),
-    // we rely on the implementation that Recruiters are listening to 'role:recruiter' or we skip if unknown.
-    // But typically we should try.
-    // (Skipping specific recruiter email lookup for now to avoid complexity without schema check, relying on role broadcast if applicable or just Admin/Lead safety net).
-    if (senderRole === 'expert') {
-      // Expert wrote something -> Notify generic recruiter role? Or specific?
-      // addRole('recruiter'); // Might be too noisy.
+    // 3. Notify Expert Hierarchy (Expert -> Lead -> AM)
+    if (comment.type !== 'complaint') {
+      const expertEmail = (candidate.expertRaw || candidate.Expert || "").trim();
+      const expertWatchers = candidateService.resolveExpertHierarchy
+        ? candidateService.resolveExpertHierarchy(expertEmail)
+        : expertEmail ? [expertEmail] : [];
+
+      expertWatchers.forEach(email => {
+        logger.info(`DEBUG: Adding Expert Hierarchy target: ${email}`);
+        addUser(email);
+      });
     }
   }
 
@@ -679,7 +899,10 @@ class CandidateSocketHandler {
       namespace.sockets.forEach((clientSocket) => {
         const clientEmail = clientSocket.data.user?.email?.toLowerCase();
         if (clientEmail && clientEmail === normalizedEmail) {
+          logger.info(`DEBUG: Emitting ${event} to connected user ${clientEmail}`);
           clientSocket.emit(event, payload);
+          // Also emit a debug event to frontend to check connectivity
+          clientSocket.emit('debug_notification_trace', { type: event, target: clientEmail, timestamp: new Date() });
         }
       });
     } catch (error) {

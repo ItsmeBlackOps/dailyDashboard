@@ -759,7 +759,33 @@ export const validateResumeUnderstanding = (data = {}) => {
     payload
   };
 };
+export const validateCandidateStatusUpdate = (data = {}) => {
+  const errors = [];
+  const payload = {};
+  const allowedStatuses = ['Active', 'Hold', 'Low Priority', 'Backout', 'Placement Offer'];
 
+  const { candidateId, status } = data || {};
+
+  if (!candidateId || typeof candidateId !== 'string' || candidateId.trim().length === 0) {
+    errors.push('candidateId is required');
+  } else {
+    payload.candidateId = candidateId.trim();
+  }
+
+  if (!status || typeof status !== 'string' || status.trim().length === 0) {
+    errors.push('status is required');
+  } else if (!allowedStatuses.includes(status.trim())) {
+    errors.push(`status must be one of: ${allowedStatuses.join(', ')}`);
+  } else {
+    payload.status = status.trim();
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    payload
+  };
+};
 export const validateResumeQueueQuery = (data = {}) => {
   const errors = [];
   const payload = {};
