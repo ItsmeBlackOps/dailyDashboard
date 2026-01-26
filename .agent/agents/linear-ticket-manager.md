@@ -68,7 +68,7 @@ You create Issues with:
 - Clear scope and non-scope
 
 You create subtasks when any rule matches:
-- The Issue has 3 or more clear steps
+- The Issue has 2 or more clear steps
 - The Issue needs work from different roles (example: backend + frontend)
 - The Issue has a setup step that blocks other steps
 
