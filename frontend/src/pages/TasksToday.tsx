@@ -1,5 +1,6 @@
 // src/components/TasksToday.tsx
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import DOMPurify from "dompurify";
 import moment, { Moment } from "moment-timezone";
 import { io, Socket } from "socket.io-client";
@@ -257,6 +258,7 @@ import { DeleteTaskDialog } from "@/components/tasks/DeleteTaskDialog";
 import { Trash2 } from "lucide-react";
 
 export default function TasksToday() {
+  const posthog = usePostHog(); // [Harsh] Analytics
   const [tasks, setTasks] = useState<Task[]>([]);
   const [filterStatus, setFilterStatus] = useState("all");
   const [candidateFilter, setCandidateFilter] = useState("");
@@ -1104,6 +1106,34 @@ export default function TasksToday() {
     },
     []
   );
+
+  // [Harsh] Analytics - Track Filter Changes
+  useEffect(() => {
+    if (filters.range) {
+      posthog?.capture('task_filter_changed', {
+        filter_type: 'range',
+        value: filters.range,
+        start: filters.start,
+        end: filters.end
+      });
+    }
+  }, [filters.range, filters.start, filters.end, posthog]);
+
+  useEffect(() => {
+    if (filters.dateField) {
+      posthog?.capture('task_filter_changed', {
+        filter_type: 'date_field',
+        value: filters.dateField
+      });
+    }
+  }, [filters.dateField, posthog]);
+
+  useEffect(() => {
+    posthog?.capture('task_filter_changed', {
+      filter_type: 'upcoming_only',
+      value: filters.upcoming
+    });
+  }, [filters.upcoming, posthog]);
 
   const readMockFileAsDataUrl = useCallback(
     (file: File) =>
@@ -2191,6 +2221,13 @@ export default function TasksToday() {
           }
 
           await createOutlookEvent(task, activeAccount, { joinUrl, joinWebUrl });
+
+          // [Harsh] Analytics - Track Meeting Join
+          posthog?.capture('task_meeting_joined', {
+            platform: 'Teams',
+            candidate_name: task['Candidate Name'],
+            technology: task['Technology']
+          });
 
           const recipientRaw = task['Email ID'] ?? '';
           const recipientEmail = typeof recipientRaw === 'string' ? recipientRaw.trim() : '';

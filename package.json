@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
+    "posthog-js": "^1.335.2",
     "socket.io-client": "^4.8.1"
   }
 }
