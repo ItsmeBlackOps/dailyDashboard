@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import DOMPurify from "dompurify";
 import moment from "moment-timezone";
 import { io, Socket } from "socket.io-client";
@@ -1733,6 +1734,13 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           : 'Interview support request emailed successfully.',
       });
 
+      // [Harsh] Track Support
+      posthog?.capture('support_submitted', {
+        candidate: supportForm.candidateName,
+        tech: supportForm.technology,
+        round: supportForm.interviewRound
+      });
+
       const storedAttachments: SupportCloneAttachment[] = [];
       try {
         if (resumeFile) {
@@ -1897,6 +1905,24 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     });
   }, []);
 
+  const filteredCandidates = useMemo(() => {
+    if (!search.trim()) return candidates;
+    const query = search.trim().toLowerCase();
+    return candidates.filter((candidate) => {
+      const haystack = [
+        candidate.name,
+        candidate.technology,
+        candidate.recruiter,
+        candidate.expert
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [candidates, search]);
+
+
   const handleSelectAll = useCallback((checked: boolean) => {
     if (checked) {
       const allIds = filteredCandidates.map((c) => c.id);
@@ -1905,6 +1931,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       setSelectedIds(new Set());
     }
   }, [filteredCandidates]);
+
+  // [Harsh] PostHog
+  const posthog = usePostHog();
 
   const handleBulkStatusUpdate = useCallback(async (newStatus: string) => {
     if (!newStatus || selectedIds.size === 0) return;
@@ -1923,15 +1952,22 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           title: 'Bulk Update Complete',
           description: `Successfully updated ${response.updated} candidates.`,
         });
+        // [Harsh] Track Bulk Object
+        posthog?.capture('bulk_status_update', {
+          count: ids.length,
+          new_status: newStatus,
+          ids: ids
+        });
       } else {
         toast({
           title: 'Bulk Update Failed',
           description: response.error || `Failed to update candidates.`,
           variant: 'destructive'
         });
+        posthog?.capture('bulk_status_update_failed', { error: response.error });
       }
     });
-  }, [selectedIds, toast]);
+  }, [selectedIds, toast, posthog]);
 
 
 
@@ -2368,22 +2404,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     };
   }, [socket, fetchCandidates, toast]);
 
-  const filteredCandidates = useMemo(() => {
-    if (!search.trim()) return candidates;
-    const query = search.trim().toLowerCase();
-    return candidates.filter((candidate) => {
-      const haystack = [
-        candidate.name,
-        candidate.technology,
-        candidate.recruiter,
-        candidate.expert
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [candidates, search]);
+
 
   if (!canView) {
     return null;

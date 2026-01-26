@@ -28,8 +28,11 @@ interface HeaderProps {
   openSettings?: () => void; // keep if you plan to use it later
 }
 
+import { usePostHog } from 'posthog-js/react';
+
 export function Header({ toggleSidebar }: HeaderProps) {
   const { logout } = useAuth();
+  const posthog = usePostHog();
   const { profile, loading, saving, updateProfile } = useUserProfile();
   const [editOpen, setEditOpen] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<any>(null);
@@ -269,7 +272,11 @@ export function Header({ toggleSidebar }: HeaderProps) {
               <UserCog className="mr-2 h-4 w-4" />
               <span>Edit contact details</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => logout()}>
+            <DropdownMenuItem onSelect={() => {
+              posthog?.capture('user_logged_out');
+              posthog?.reset();
+              logout();
+            }}>
               <LogOut className="mr-2 h-4 w-4" />
               <span>Sign out</span>
             </DropdownMenuItem>
