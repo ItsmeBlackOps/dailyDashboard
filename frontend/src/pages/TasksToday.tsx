@@ -264,6 +264,51 @@ export default function TasksToday() {
   const [candidateFilter, setCandidateFilter] = useState("");
   const [recruiterFilter, setRecruiterFilter] = useState("");
   const [expertFilter, setExpertFilter] = useState("");
+
+  // Track Candidate Search (Debounced)
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (candidateFilter) {
+        posthog.capture('tasks_filter_changed', {
+          user_role: authUser?.role,
+          filter_type: 'candidate_search',
+          has_search_term: true,
+          value_length: candidateFilter.length
+        });
+      }
+    }, 1000);
+    return () => clearTimeout(handler);
+  }, [candidateFilter, authUser?.role, posthog]);
+
+  // Track Recruiter Search (Debounced)
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (recruiterFilter) {
+        posthog.capture('tasks_filter_changed', {
+          user_role: authUser?.role,
+          filter_type: 'recruiter_search',
+          has_search_term: true,
+          value_length: recruiterFilter.length
+        });
+      }
+    }, 1000);
+    return () => clearTimeout(handler);
+  }, [recruiterFilter, authUser?.role, posthog]);
+
+  // Track Expert Search (Debounced)
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (expertFilter) {
+        posthog.capture('tasks_filter_changed', {
+          user_role: authUser?.role,
+          filter_type: 'expert_search',
+          has_search_term: true,
+          value_length: expertFilter.length
+        });
+      }
+    }, 1000);
+    return () => clearTimeout(handler);
+  }, [expertFilter, authUser?.role, posthog]);
   const [error, setError] = useState("");
   const [isLoadingInitial, setIsLoadingInitial] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -279,9 +324,31 @@ export default function TasksToday() {
   const firstLoad = useRef(true);
   const seenTasksRef = useRef<Set<string>>(new Set());
 
-  // timersRef keeps active timeout ids per reminder key
+  // timersRef keeps active active per reminder key
   const timersRef = useRef<Map<string, number>>(new Map());
-  const { refreshAccessToken, authFetch } = useAuth();
+  const { refreshAccessToken, authFetch, user: authUser } = useAuth();
+
+  useEffect(() => {
+    if (authUser?.role) {
+      posthog.capture('tasks_viewed', {
+        user_role: authUser.role,
+        default_range: 'day',
+        // tasks_count_initial will be hard to get here as tasks load async
+      });
+    }
+  }, [authUser?.role, posthog]);
+
+  // Track Status Change
+  useEffect(() => {
+    if (!firstLoad.current) {
+      posthog.capture('tasks_filter_changed', {
+        user_role: authUser?.role,
+        filter_type: 'status',
+        status_value: filterStatus,
+        value: filterStatus
+      });
+    }
+  }, [filterStatus, authUser?.role, posthog]);
   const { selectedTab, setSelectedTab } = useTab();
   const roleRaw = localStorage.getItem("role") || "";
   const normalizedRole = roleRaw.trim().toLowerCase();
@@ -690,6 +757,12 @@ export default function TasksToday() {
   const handleOpenMeeting = useCallback(
     (url: string) => {
       if (!url) return;
+
+      posthog.capture('task_action_performed', {
+        user_role: authUser?.role,
+        action_type: 'join_meeting'
+      });
+
       try {
         window.open(url, '_blank', 'noopener,noreferrer');
       } catch (error) {
@@ -701,7 +774,7 @@ export default function TasksToday() {
         });
       }
     },
-    [toast]
+    [toast, authUser?.role, posthog]
   );
 
   const handleCopyMeeting = useCallback(
@@ -725,6 +798,102 @@ export default function TasksToday() {
     [toast]
   );
 
+  const handleMockSend = useCallback(async (payload: any) => {
+    setMockSending(true);
+    setMockError('');
+    try {
+      const response = await authFetch(`${API_URL}/api/tasks/mock-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        setMockDialogTask(null);
+        setMockPreview(null);
+        setMockResumeUpload(null);
+        setMockJdUpload(null);
+        setMockJobDescription('');
+
+        posthog.capture('mock_request_submitted', {
+          user_role: authUser?.role,
+          technology: mockPreview.technology,
+          has_resume: storedResumeAvailable || !!mockResumeUpload,
+        });
+
+        toast({
+          title: "Mock Request Sent",
+          description: "Ideally, an expert will be assigned soon.",
+        });
+      } else {
+        const err = await response.json();
+        setMockError(err.error || "Failed to send request.");
+      }
+    } catch (error: any) {
+      console.error("Mock send error", error);
+      setMockError(error.message || "Failed to send request.");
+    } finally {
+      setMockSending(false);
+    }
+  }, [mockPreview, mockResumeUpload, mockJdUpload, mockJobDescription, authFetch, toast, storedResumeAvailable, authUser?.role, posthog, setMockSending, setMockError, setMockDialogTask, setMockPreview, setMockResumeUpload, setMockJdUpload, setMockJobDescription]);
+
+  const handleGenerateThanksMail = useCallback(async () => {
+    if (!thanksDialogTask) return;
+
+    setThanksMailLoading(true);
+    setThanksMailError('');
+    try {
+      const response = await authFetch(`${API_URL}/api/tasks/${thanksDialogTask._id}/thanks-mail`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateName: thanksDialogTask.candidateName,
+          interviewerName: thanksDialogTask.interviewerName,
+          jobTitle: thanksDialogTask.jobTitle,
+          interviewDate: thanksDialogTask.date,
+          interviewTime: thanksDialogTask.time,
+          interviewDuration: thanksDialogTask.duration,
+          interviewType: thanksDialogTask.type,
+          technology: thanksDialogTask.technology,
+        }),
+      });
+      const data = await response.json();
+      if (data.success && data.content) {
+        setThanksMailContent(data.content);
+        setThanksMailHtml(data.html || '');
+        const nowIso = new Date().toISOString();
+        setThanksMailGeneratedAt(nowIso);
+
+        persistThanksMailToStorage(thanksDialogTask._id, {
+          content: data.content,
+          html: data.html || '',
+          generatedAt: nowIso
+        });
+
+        // Update rate info if provided
+        if (data.rateLimit) {
+          setThanksMailRateInfo({
+            remaining: data.rateLimit.remaining,
+            resetAt: data.rateLimit.resetAt
+          });
+        }
+
+        posthog.capture('thanks_mail_generated', {
+          user_role: authUser?.role,
+          task_id: thanksDialogTask._id
+        });
+
+      } else {
+        setThanksMailError(data.error || 'Failed to generate email.');
+      }
+    } catch (error: any) {
+      console.error('Thanks mail generation failed', error);
+      setThanksMailError(error.message || 'Failed to generate email.');
+    } finally {
+      setThanksMailLoading(false);
+    }
+  }, [authFetch, thanksDialogTask, persistThanksMailToStorage, authUser?.role, posthog]);
+
   const handleDeleteTask = useCallback(async (taskId: string) => {
     try {
       const response = await authFetch(`${API_URL}/api/tasks/${taskId}`, {
@@ -736,6 +905,13 @@ export default function TasksToday() {
           title: "Task Deleted",
           description: "The task has been permanently deleted.",
         });
+
+        posthog.capture('task_action_performed', {
+          user_role: authUser?.role,
+          action_type: 'delete',
+          task_id: taskId
+        });
+
         setTasks((prev) => prev.filter(t => t._id !== taskId));
       } else {
         const err = await response.json();
@@ -750,7 +926,7 @@ export default function TasksToday() {
       });
       throw error;
     }
-  }, [authFetch, toast]);
+  }, [authFetch, toast, authUser?.role, posthog]);
 
   const ensureMicrosoftAccount = useCallback(async (): Promise<AccountInfo | null> => {
     if (!canManageMeetings) return null;
@@ -1338,6 +1514,11 @@ export default function TasksToday() {
         };
 
         localStorage.setItem(SUPPORT_CLONE_STORAGE_KEY, JSON.stringify(payload));
+        posthog?.capture('task_action_performed', {
+          user_role: authUser?.role,
+          action_type: 'clone_support',
+          task_id: task._id
+        });
         persistMockMaterials({
           candidateName: payload.candidateName,
           candidateEmail: payload.candidateEmail,
