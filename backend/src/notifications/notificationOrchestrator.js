@@ -131,6 +131,8 @@ export class NotificationOrchestrator {
       expert: event.candidate.expertRaw || event.candidate.expert || event.candidate.Expert || '',
       triggeredBy: event.actor?.email || null,
       triggeredByRole: event.actor?.role || null,
+      changeDetails: event.changeDetails || null,
+      actor: event.actor || null,
       occurredAt: event.occurredAt || new Date().toISOString(),
       ttlMs: DEFAULT_TTL_MS
     };

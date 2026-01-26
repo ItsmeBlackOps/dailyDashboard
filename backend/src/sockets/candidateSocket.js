@@ -383,6 +383,9 @@ class CandidateSocketHandler {
 
     try {
       const { candidateId, status } = validation.payload;
+
+      // Fetch old status for change tracking
+      const oldCandidate = await candidateService.getCandidateById(user, candidateId);
       const updated = await candidateService.updateCandidate(user, candidateId, { status });
 
       const payload = { candidate: updated, newStatus: status, updatedBy: user };
@@ -395,7 +398,17 @@ class CandidateSocketHandler {
         title: 'Status Updated',
         description: `Status of ${updated.name} updated to ${status} by ${user.displayName || user.name || user.email}`,
         candidateId: updated.id,
-        link: `/candidate/${updated.id}`
+        link: `/candidate/${updated.id}`,
+        changeDetails: {
+          oldValue: oldCandidate?.workflowStatus || oldCandidate?.status,
+          newValue: status,
+          changedFields: ['status']
+        },
+        actor: {
+          email: user.email,
+          name: user.displayName || user.name,
+          role: user.role
+        }
       };
 
       await notificationService.broadcastToWatchers(allWatchers, notifData);
@@ -434,6 +447,7 @@ class CandidateSocketHandler {
       // Sequential ensures we don't overwhelm DB if batch is huge.
       for (const id of ids) {
         try {
+          const oldCandidate = await candidateService.getCandidateById(user, id);
           // Verify status transition logic via updateCandidate
           const updated = await candidateService.updateCandidate(user, id, { status });
           results.push(updated);
@@ -443,9 +457,10 @@ class CandidateSocketHandler {
           watchers.forEach(w => allWatchers.add(w));
 
           batchData.push({
-            id: updated.id,
-            name: updated.name,
-            status: status
+            candidateId: updated.id,
+            candidateName: updated.name,
+            oldValue: oldCandidate?.workflowStatus || oldCandidate?.status,
+            newValue: status
           });
         } catch (err) {
           errors.push({ id, error: err.message });
@@ -458,7 +473,16 @@ class CandidateSocketHandler {
           type: 'batch', // New type
           title: 'Bulk Status Update',
           description: `Updated ${results.length} candidates to ${status} by ${user.displayName || user.name || user.email}`,
-          batchData: batchData
+          batchData: batchData,
+          changeDetails: {
+            bulkCandidates: batchData,
+            newValue: status
+          },
+          actor: {
+            email: user.email,
+            name: user.displayName || user.name,
+            role: user.role
+          }
         };
 
         await notificationService.broadcastToWatchers(Array.from(allWatchers), notifData);
