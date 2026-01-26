@@ -20,7 +20,7 @@ Notification Schema Idea:
 
 class NotificationModel {
     async initialize() {
-        const db = database.getDb();
+        const db = database.getDatabase();
         const collection = db.collection(COLLECTION);
 
         // Create TTL index on expiresAt (7 days usually set in logic, but here we can just index it to expire when date is reached)
@@ -49,7 +49,9 @@ class NotificationModel {
             candidateId: data.candidateId ? new ObjectId(data.candidateId) : null,
             createdAt: now,
             expiresAt: data.expiresAt || expiresAt,
-            batchData: data.batchData || null
+            batchData: data.batchData || null,
+            changeDetails: data.changeDetails || null,
+            actor: data.actor || null
         };
 
         const result = await collection.insertOne(notification);
@@ -74,7 +76,9 @@ class NotificationModel {
             candidateId: n.candidateId ? new ObjectId(n.candidateId) : null,
             createdAt: now,
             expiresAt: expiresAt,
-            batchData: n.batchData || null
+            batchData: n.batchData || null,
+            changeDetails: n.changeDetails || null,
+            actor: n.actor || null
         }));
 
         await collection.insertMany(docs);

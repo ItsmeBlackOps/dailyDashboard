@@ -85,7 +85,9 @@ export class NotificationDeliveryWorker {
           description: payload.message || payload.description || '',
           link: payload.link || null,
           candidateId: payload.candidateId || null,
-          batchData: payload.batchData || null
+          batchData: payload.batchData || null,
+          changeDetails: payload.changeDetails || null,
+          actor: payload.actor || null
         });
         logger.debug('Notification persisted to database', {
           recipient: recipientEmail,

@@ -1177,6 +1177,32 @@ class CandidateService {
     return formatted;
   }
 
+  getCandidateChangeDetails(oldDoc, newDoc, changedFields) {
+    const details = {
+      changedFields,
+      oldValue: {},
+      newValue: {}
+    };
+
+    for (const field of changedFields) {
+      // Handle mapping if keys differ in DB vs API (simple assumption: they match or are mapped)
+      // Implementation assumes 'updates' keys match DB keys or are handled by model
+      // We extract from doc assuming keys match. 
+      // Note: updates keys might be different from doc keys if model maps them. 
+      // For now, we trust changedFields are mostly direct.
+
+      // Special handling for Status fields if needed, or simple equality
+      details.oldValue[field] = oldDoc[field] ?? null;
+      details.newValue[field] = newDoc[field] ?? null;
+
+      // Attempt to resolve display names for known ID/Email fields
+      if (['recruiter', 'expert', 'teamLead', 'manager'].includes(field)) {
+        // Keep raw for reference
+      }
+    }
+    return details;
+  }
+
   async updateCandidate(user, candidateId, updates = {}) {
     if (!user?.email || !user?.role) {
       const error = new Error('Authentication required');
@@ -1201,6 +1227,13 @@ class CandidateService {
       throw error;
     }
 
+    const oldDoc = await candidateModel.getCandidateById(candidateId);
+    if (!oldDoc) {
+      const error = new Error('Candidate not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
     const updated = await candidateModel.updateCandidateById(candidateId, updates);
 
     logger.info('Candidate updated via updateCandidate', {
@@ -1210,6 +1243,10 @@ class CandidateService {
     });
 
     const formatted = this.formatCandidateRecord(updated);
+    const changedFields = Object.keys(updates);
+
+    // Generate change details (old vs new)
+    const changeDetails = this.getCandidateChangeDetails(oldDoc, updated, changedFields);
 
     domainEventBus.publish(DomainEvents.CandidateUpdated, {
       eventId: crypto.randomUUID(),
@@ -1218,7 +1255,8 @@ class CandidateService {
         email: user.email,
         role: user.role
       },
-      changes: Object.keys(updates),
+      changes: changedFields,
+      changeDetails,
       occurredAt: new Date().toISOString()
     });
 
