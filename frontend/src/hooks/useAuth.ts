@@ -123,5 +123,12 @@ export function useAuth() {
     [logout, refreshAccessToken]
   );
 
-  return { authFetch, logout, refreshAccessToken };
+  const user = {
+    email: localStorage.getItem('email'),
+    role: localStorage.getItem('role'),
+    branch: localStorage.getItem('branch'), // Assuming branch is stored or derived
+    displayName: localStorage.getItem('displayName')
+  };
+
+  return { authFetch, logout, refreshAccessToken, user };
 }

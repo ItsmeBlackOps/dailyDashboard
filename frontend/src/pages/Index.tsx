@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { usePostHog } from 'posthog-js/react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { TopAgents } from '@/components/dashboard/TopAgents';
 import { KpiOverview } from '@/components/dashboard/KpiOverview';
@@ -44,9 +45,21 @@ const Index = () => {
     };
   });
 
+  const posthog = usePostHog();
+
   useEffect(() => {
     setRole(getStoredRole());
   }, []);
+
+  useEffect(() => {
+    if (role && typeof window !== 'undefined') {
+      posthog.capture('dashboard_viewed', {
+        user_role: role,
+        initial_tab: filters.dateField,
+        is_mobile: window.innerWidth < 768,
+      });
+    }
+  }, [role, posthog, filters.dateField]);
 
   useEffect(() => {
     const desiredField = resolveInitialDateField(role);

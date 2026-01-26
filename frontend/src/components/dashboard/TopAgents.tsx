@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { usePostHog } from 'posthog-js/react';
 import { io, Socket } from "socket.io-client";
 import { useAuth, SOCKET_URL } from "@/hooks/useAuth";
 
@@ -109,10 +110,10 @@ export function TopAgentsChart({
 
   return (
     <>
-    <ChartContainer
-      config={config}
-      className="relative h-56 w-full rounded-xl border border-white/10 bg-white/5 backdrop-blur supports-[backdrop-filter]:bg-white/5 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.3)]"
-    >
+      <ChartContainer
+        config={config}
+        className="relative h-56 w-full rounded-xl border border-white/10 bg-white/5 backdrop-blur supports-[backdrop-filter]:bg-white/5 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.3)]"
+      >
         <BarChart
           data={data}
           margin={{ top: 8, right: 16, left: 8, bottom: 0 }}
@@ -160,8 +161,8 @@ export function TopAgentsChart({
       </ChartContainer>
       {/* Color legend removed per request. Tooltip remains for values. */}
     </>
-    );
-  }
+  );
+}
 
 export function TopAgents({ filters, role }: TopAgentsProps) {
   const [leaders, setLeaders] = useState<LeadersPayload>({
@@ -172,6 +173,16 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const { refreshAccessToken } = useAuth();
+  const posthog = usePostHog();
+
+  useEffect(() => {
+    posthog.capture('dashboard_top_agents_viewed', {
+      user_role: role,
+      view_mode: view,
+      agents_count: list.length,
+      agent_search_active: agentFilter.size > 0
+    });
+  }, [view, agentFilter, list.length, role, posthog]);
   // const [displayMode, setDisplayMode] = useState<DisplayMode>("all");
 
   const allowedViews: ViewMode[] = useMemo(() => {
