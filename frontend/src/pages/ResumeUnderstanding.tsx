@@ -220,6 +220,21 @@ export default function ResumeUnderstanding() {
     }
   }, [showCompletedTab, activeStatus]);
 
+  // Track Page View
+  useEffect(() => {
+    posthog.capture('resume_understanding_viewed', {
+      user_role: role
+    });
+  }, [role, posthog]);
+
+  // Track Tab Change
+  useEffect(() => {
+    posthog.capture('resume_tab_changed', {
+      user_role: role,
+      tab: activeStatus
+    });
+  }, [activeStatus, role, posthog]);
+
   const updateResumeStatus = (candidateId: string, status: QueueStatus) => {
     if (!socket) return;
 
