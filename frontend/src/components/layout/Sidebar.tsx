@@ -54,10 +54,10 @@ function NavItem({ icon: Icon, label, href, badge, isOpen, tourId }: NavItemProp
       end={href === "/"}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
+          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-white/5",
           isActive
-            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-            : "text-sidebar-foreground/80 hover:text-sidebar-foreground"
+            ? "bg-primary/20 text-primary shadow-[0_0_15px_-3px_rgba(var(--primary),0.4)] font-semibold border border-primary/20"
+            : "text-muted-foreground hover:text-foreground"
         )
       }
       data-nav-item={href}
@@ -316,7 +316,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
 
       <aside
         className={cn(
-          "bg-sidebar border-r border-border z-50 transition-all duration-300 ease-in-out flex flex-col h-full overflow-hidden",
+          "glass-panel z-50 transition-all duration-300 ease-in-out flex flex-col h-full overflow-hidden",
           isMobile
             ? isOpen
               ? "fixed inset-y-0 left-0 w-64"

@@ -114,7 +114,7 @@ export function Header({ toggleSidebar }: HeaderProps) {
   const { notifications, unreadCount, markAsRead, clearAll, openModal } = useNotifications();
 
   return (
-    <header className="sticky top-0 z-30 bg-background border-b border-border h-16 flex items-center px-3 md:px-4 shadow-sm gap-2">
+    <header className="glass sticky top-0 z-30 h-16 flex items-center px-3 md:px-4 shadow-sm gap-2">
       <Button onClick={toggleSidebar} variant="ghost" size="icon" aria-label="Toggle sidebar">
         <Menu className="h-5 w-5" />
       </Button>
