@@ -15,6 +15,8 @@ import {
 import { Eye, EyeOff, Mail, Lock } from "lucide-react";
 import { SOCKET_URL } from "../../hooks/useAuth";
 import { deriveDisplayNameFromEmail } from "@/utils/userNames";
+import { usePostHog } from 'posthog-js/react'; // [Harsh] Import PostHog
+
 export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ email: "", password: "" });
@@ -22,6 +24,8 @@ export default function SignIn() {
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
+  const posthog = usePostHog(); // [Harsh] Use Hook
+
   const from = location.state?.from?.pathname || "/tasks";
   const socket: Socket = useMemo(
     () => io(SOCKET_URL, { autoConnect: false, transports: ["websocket"] }),
@@ -47,6 +51,8 @@ export default function SignIn() {
         setLoading(false);
         if (!response.success) {
           setError(response.error || "Login failed");
+          // [Harsh] Track failure
+          posthog?.capture('login_failed', { error: response.error });
           socket.disconnect();
           return;
         }
@@ -62,6 +68,15 @@ export default function SignIn() {
         localStorage.setItem("email", normalizedEmail);
         localStorage.setItem("displayName", deriveDisplayNameFromEmail(normalizedEmail));
         localStorage.setItem("supportAnnouncementPending", 'true');
+
+        // [Harsh] Identify User in PostHog
+        if (posthog) {
+          posthog.identify(normalizedEmail, {
+            email: normalizedEmail,
+            role: response.role
+          });
+          posthog.capture('user_logged_in', { role: response.role });
+        }
 
         // Reconnect socket with token for future events
         socket.disconnect();
