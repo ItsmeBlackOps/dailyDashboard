@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import DOMPurify from "dompurify";
 import { io, Socket } from "socket.io-client";
 import { MessageSquare } from "lucide-react";
@@ -52,6 +53,7 @@ const STATUS_LABELS: Record<QueueStatus, string> = {
 };
 
 export default function ResumeUnderstanding() {
+  const posthog = usePostHog(); // [Harsh] Analytics
   const { toast } = useToast();
   const { refreshAccessToken } = useAuth();
   const role = useMemo(() => (localStorage.getItem("role") || "").trim().toLowerCase(), []);
@@ -249,6 +251,13 @@ export default function ResumeUnderstanding() {
           pending: [candidate, ...filteredPending],
           done: filteredDone
         };
+      });
+
+      // [Harsh] Analytics - Track Resume Queue Processing
+      posthog?.capture('resume_queue_processed', {
+        action: status === 'done' ? 'mark_done' : 'mark_pending',
+        expert_email: localStorage.getItem('email'),
+        candidate_id: candidateId
       });
 
       toast({

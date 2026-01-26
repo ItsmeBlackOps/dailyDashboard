@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -119,6 +120,7 @@ const INITIAL_UPDATE_DRAFT: BulkUpdateDraft = {
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const UserManagementPage = () => {
+  const posthog = usePostHog(); // [Harsh] Analytics
   const { authFetch } = useAuth();
   const { toast } = useToast();
 
@@ -562,6 +564,13 @@ const UserManagementPage = () => {
       setCreateResult(data);
 
       if (data.success) {
+        // [Harsh] Analytics - Track Bulk User Creation
+        posthog?.capture('admin_bulk_user_action', {
+          action_type: 'create',
+          user_count: data.created.length,
+          target_roles: [...new Set(payload.map(p => p.role))]
+        });
+
         toast({ title: 'Users created', description: `${data.created.length} user(s) created successfully.` });
         resetCreateRows();
         fetchManageableUsers();
@@ -693,6 +702,13 @@ const UserManagementPage = () => {
       setUpdateResult(data);
 
       if (data.success) {
+        // [Harsh] Analytics - Track Bulk User Update
+        posthog?.capture('admin_bulk_user_action', {
+          action_type: 'update',
+          user_count: data.updates.length,
+          target_roles: [...new Set(selectedUsers.map(u => u.role))]
+        });
+
         toast({ title: 'Users updated', description: `${data.updates.length} user(s) updated.` });
         setUpdateDraft(INITIAL_UPDATE_DRAFT);
         setSelectedEmails(new Set());
