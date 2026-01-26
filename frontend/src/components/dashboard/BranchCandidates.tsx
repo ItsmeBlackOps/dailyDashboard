@@ -29,6 +29,7 @@ import { GRAPH_MAIL_SCOPES } from "@/constants";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToastAction } from "@/components/ui/toast";
 import { StatusBadge } from "@/components/candidates/StatusBadge";
+import { Loader2 } from "lucide-react";
 
 interface BranchCandidatesProps {
   role: string;
