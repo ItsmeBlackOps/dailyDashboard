@@ -249,7 +249,11 @@ const UserManagementPage = () => {
     setSelfEmail(localStorage.getItem('email') || '');
     setSelfManagerName(localStorage.getItem('manager') || '');
     setSelfDisplayNameOverride(formatNameInput(localStorage.getItem('displayName') ?? ''));
-  }, []);
+
+    posthog.capture('user_management_viewed', {
+      user_role: localStorage.getItem('role') || ''
+    });
+  }, [posthog]);
 
   useEffect(() => {
     if (canManage) {

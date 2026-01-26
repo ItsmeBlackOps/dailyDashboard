@@ -45,13 +45,26 @@ interface NavItemProps {
   tourId?: string;
 }
 
+import { usePostHog } from 'posthog-js/react';
+
 function NavItem({ icon: Icon, label, href, badge, isOpen, tourId }: NavItemProps) {
   const location = useLocation();
+  const posthog = usePostHog();
+  const role = localStorage.getItem("role") || "unknown";
+
+  const handleClick = () => {
+    posthog.capture('sidebar_navigation_clicked', {
+      destination: href,
+      label: label,
+      user_role: role
+    });
+  };
 
   return (
     <NavLink
       to={href}
       end={href === "/"}
+      onClick={handleClick}
       className={({ isActive }) =>
         cn(
           "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-white/5",
