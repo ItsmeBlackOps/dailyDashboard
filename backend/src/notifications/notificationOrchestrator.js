@@ -137,6 +137,18 @@ export class NotificationOrchestrator {
       ttlMs: DEFAULT_TTL_MS
     };
 
+    if (
+      !basePayload.candidateName ||
+      basePayload.candidateName === 'Unknown Candidate' ||
+      !basePayload.expert ||
+      basePayload.expert === 'Unknown Expert'
+    ) {
+      console.log(
+        '[Payload Notification for Unknown Candidate Name and Unknown Expert]',
+        JSON.stringify(basePayload, null, 2)
+      );
+    }
+
     switch (eventType) {
       case DomainEvents.CandidateCreated:
         return {

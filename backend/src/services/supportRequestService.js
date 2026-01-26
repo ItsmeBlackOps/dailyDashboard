@@ -383,7 +383,7 @@ class SupportRequestService {
     const normalizedRecruiter = recruiterEmail.toLowerCase();
     const requesterEmail = (user.email || '').toLowerCase();
 
-    if (normalizedRole === 'recruiter' || normalizedRole === 'mlead' || normalizedRole === 'mam') {
+    if (normalizedRole === 'recruiter') {
       if (!normalizedRecruiter || normalizedRecruiter !== requesterEmail) {
         const error = new Error('This candidate is assigned to a different recruiter');
         error.statusCode = 403;
