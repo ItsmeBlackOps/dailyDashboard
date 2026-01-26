@@ -1243,7 +1243,14 @@ class CandidateService {
     });
 
     const formatted = this.formatCandidateRecord(updated);
-    const changedFields = Object.keys(updates);
+
+    // Filter changedFields to only include actual changes
+    const changedFields = Object.keys(updates).filter(key => {
+      const newVal = updates[key];
+      const oldVal = oldDoc[key];
+      // Simple equality check. For stricter check use deep equality if needed.
+      return newVal != oldVal; // Loose equality to handle undefined/null mismatch if appropriate, or strict !==
+    });
 
     // Generate change details (old vs new)
     const changeDetails = this.getCandidateChangeDetails(oldDoc, updated, changedFields);
@@ -1253,7 +1260,8 @@ class CandidateService {
       candidate: formatted,
       actor: {
         email: user.email,
-        role: user.role
+        role: user.role,
+        name: user.name || user.displayName || formatDisplayName(user.email)
       },
       changes: changedFields,
       changeDetails,
