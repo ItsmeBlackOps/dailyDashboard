@@ -85,7 +85,7 @@ export class TaskService {
         rangeUsed = 'upcoming';
       }
 
-      logger.debug('Getting tasks by range', {
+      logger.debug('Getting tasks by range (Aggregation)', {
         userEmail,
         userRole,
         dateField: effectiveDateField,
@@ -97,18 +97,161 @@ export class TaskService {
         .getTeamEmails(userEmail, userRole, teamLead)
         .map((email) => email.toLowerCase());
 
-      const tasks = await this.taskModel.getTasksByRange(
-        userEmail,
-        userRole,
-        manager,
-        teamEmails,
-        startIso,
-        endIso,
-        effectiveDateField,
-        { limit, offset }
+      // 1. Initial Match (Criteria)
+      const initialMatch = {};
+
+      // Date Logic for Pipeline
+      // effectiveDateField is usually 'Date of Interview' or 'receivedDateTime'
+      if (rangeUsed === 'upcoming') {
+        // Upcoming Logic (Date >= Today)
+        const dateExpr = {
+          $dateFromString: {
+            dateString: "$Date of Interview",
+            format: "%m/%d/%Y",
+            timezone: "America/New_York",
+            onError: null,
+            onNull: null
+          }
+        };
+        const todayDate = moment.tz(TIMEZONE).startOf('day').toDate();
+        initialMatch.$expr = { $gt: [dateExpr, todayDate] };
+      } else {
+        // Range Logic
+        if (effectiveDateField === 'receivedDateTime') {
+          initialMatch.receivedDateTime = {};
+          if (startIso) initialMatch.receivedDateTime.$gte = startIso;
+          if (endIso) initialMatch.receivedDateTime.$lte = endIso;
+        } else {
+          // String Date Logic for "Date of Interview"
+          // Standard string compare works IF formats are standard, but legacy MM/DD/YYYY is flawed for range.
+          // Best effort: convert to date via $dateFromString
+          const dateExpr = {
+            $dateFromString: {
+              dateString: "$Date of Interview",
+              format: "%m/%d/%Y",
+              timezone: "America/New_York",
+              onError: null,
+              onNull: null
+            }
+          };
+
+          // Convert ISO strings back to Date objects for comparison
+          const startDateObj = startIso ? new Date(startIso) : null;
+          const endDateObj = endIso ? new Date(endIso) : null;
+
+          const exprFilters = [];
+          if (startDateObj) exprFilters.push({ $gte: [dateExpr, startDateObj] });
+          if (endDateObj) exprFilters.push({ $lt: [dateExpr, endDateObj] });
+
+          if (exprFilters.length > 0) {
+            initialMatch.$expr = { $and: exprFilters };
+          }
+        }
+      }
+
+      // 2. Base Pipeline
+      const pipeline = [
+        { $match: initialMatch }
+      ];
+
+      // 3. Lookups (Access Control Dependencies) -- SAME AS SEARCH
+      pipeline.push(
+        {
+          $lookup: {
+            from: 'transcripts',
+            localField: 'subject',
+            foreignField: 'title',
+            as: 'transcripts'
+          }
+        },
+        {
+          $lookup: {
+            from: 'candidateDetails',
+            localField: 'Candidate Name',
+            foreignField: 'Candidate Name',
+            as: 'candidateDetails',
+            pipeline: [
+              { $project: { _id: 0, Expert: 1 } }
+            ]
+          }
+        },
+        {
+          $addFields: {
+            transcription: { $gt: [{ $size: '$transcripts' }, 0] },
+            candidateExpertRaw: {
+              $let: {
+                vars: { item: { $first: '$candidateDetails' } },
+                in: { $ifNull: ['$$item.Expert', null] }
+              }
+            }
+          }
+        },
+        { $unset: ['replies', 'body', 'transcripts', 'candidateDetails'] }
       );
 
-      logger.info('Tasks by range retrieved', {
+      // 4. Access Control (Visibility Filter) -- SAME AS SEARCH
+      // We should extract this logic ideally, but for now copying ensures strict equivalence.
+      const normalizedRole = userRole.toLowerCase();
+      let visibilityMatch = {};
+
+      if (normalizedRole === 'admin') {
+        // No filter
+      } else if (['mam', 'mm', 'mlead'].includes(normalizedRole)) {
+        visibilityMatch = this.buildSearchQuery(userEmail, userRole, manager, teamEmails);
+      } else if (normalizedRole === 'recruiter') {
+        visibilityMatch = this.buildSearchQuery(userEmail, userRole, manager, teamEmails);
+      } else if (['lead', 'am'].includes(normalizedRole)) {
+        // Optimization: Use $in for assignedTo to hit the Index
+        const emailList = teamEmails.filter(Boolean);
+        if (emailList.length > 0) {
+          const regexObj = { $regex: emailList.map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), $options: 'i' };
+          visibilityMatch = {
+            $or: [
+              { assignedTo: { $in: emailList } }, // Primary Index Path
+              { assignedTo: regexObj },
+              { candidateExpertRaw: regexObj }
+            ]
+          };
+        } else {
+          const selfRegex = { $regex: userEmail, $options: 'i' };
+          visibilityMatch = {
+            $or: [
+              { assignedTo: userEmail },
+              { assignedTo: selfRegex },
+              { candidateExpertRaw: selfRegex }
+            ]
+          };
+        }
+      } else {
+        const selfRegex = { $regex: userEmail, $options: 'i' };
+        visibilityMatch = {
+          $or: [
+            { assignedTo: userEmail },
+            { assignedTo: selfRegex },
+            { candidateExpertRaw: selfRegex },
+            { suggestions: selfRegex }
+          ]
+        };
+      }
+
+      if (Object.keys(visibilityMatch).length > 0) {
+        pipeline.push({ $match: visibilityMatch });
+      }
+
+      // 5. Pagination & Formatting
+      pipeline.push({ $sort: { _id: -1 } });
+      if (offset) pipeline.push({ $skip: offset });
+      if (limit) pipeline.push({ $limit: limit });
+
+      const collation = { locale: 'en', strength: 2 };
+
+      const docs = await this.taskModel.collection.aggregate(pipeline, { collation }).toArray();
+
+      const tasks = docs
+        .map(task => this.taskModel.formatTask(task))
+        .filter(Boolean);
+
+      logger.info('Tasks by range retrieved (Aggregated)', {
         userEmail,
         taskCount: tasks.length,
         dateRange: { startIso, endIso },
@@ -477,43 +620,175 @@ export class TaskService {
         status,
         dateFrom,
         dateTo,
+        upcoming,
         limit = 50,
         offset = 0
       } = searchCriteria;
 
       const teamEmails = this.userModel.getTeamEmails(userEmail, userRole, teamLead);
+      const normalizedRole = userRole.toLowerCase();
 
-      let query = this.buildSearchQuery(userEmail, userRole, manager, teamEmails);
+      // 1. Initial Match (Performance Optimization)
+      const initialMatch = {};
 
       if (candidateName) {
-        query['Candidate Name'] = { $regex: candidateName, $options: 'i' };
-      }
-
-      if (expert) {
-        query.$or = [
-          { assignedTo: { $regex: expert, $options: 'i' } },
-          { suggestions: { $regex: expert, $options: 'i' } }
-        ];
-        // Note: candidateExpertRaw is not usually on taskBody so we can't search it easily without aggregation
+        initialMatch['Candidate Name'] = { $regex: candidateName, $options: 'i' };
       }
 
       if (status) {
-        query.status = status;
+        initialMatch.status = status;
       }
 
-      if (dateFrom || dateTo) {
-        query.receivedDateTime = {};
-        if (dateFrom) query.receivedDateTime.$gte = dateFrom;
-        if (dateTo) query.receivedDateTime.$lte = dateTo;
+      // Date Filters
+      if (upcoming) {
+        // "Upcoming" means Today onwards in NYC time
+        const todayStr = moment.tz(TIMEZONE).format('MM/DD/YYYY');
+        // We can't easily do string comparison on "MM/DD/YYYY" if we want ">= Today".
+        // However, the existing data relies on string dates.
+        // But since format is MM/DD/YYYY, standard string compare WON'T work correctly (01/01/2026 < 12/31/2025 is false, but 02 < 01 is false).
+        // Standard approach for this legacy string date format:
+        // We either need to parse dates in aggregation (slow) or rely on a regex or application-side filtering if volume is low.
+        // BUT, since we have limits, we can try to filter by converting field to date?
+        // Let's use $expr with $dateFromString if we are on MongoDB 3.6+.
+
+        // Helper to convert field
+        const dateExpr = {
+          $dateFromString: {
+            dateString: "$Date of Interview",
+            format: "%m/%d/%Y",
+            timezone: "America/New_York",
+            onError: null,
+            onNull: null
+          }
+        };
+        const todayDate = moment.tz(TIMEZONE).startOf('day').toDate();
+
+        initialMatch.$expr = {
+          $gte: [dateExpr, todayDate]
+        };
+      } else if (dateFrom || dateTo) {
+        if (!initialMatch.receivedDateTime) initialMatch.receivedDateTime = {};
+        if (dateFrom) initialMatch.receivedDateTime.$gte = dateFrom;
+        if (dateTo) initialMatch.receivedDateTime.$lte = dateTo;
       }
 
-      const tasks = await this.taskModel.collection
-        .find(query, { projection: { replies: 0, body: 0 } })
-        .skip(offset)
-        .limit(limit)
-        .toArray();
+      // 2. Base Pipeline
+      const pipeline = [
+        { $match: initialMatch }
+      ];
 
-      const formattedTasks = tasks
+      // 3. Lookups (Access Control Dependencies)
+      // We need these for "Suggested" checks and Transcripts
+      pipeline.push(
+        {
+          $lookup: {
+            from: 'transcripts',
+            localField: 'subject',
+            foreignField: 'title',
+            as: 'transcripts'
+          }
+        },
+        {
+          $lookup: {
+            from: 'candidateDetails',
+            localField: 'Candidate Name',
+            foreignField: 'Candidate Name',
+            as: 'candidateDetails',
+            pipeline: [
+              { $project: { _id: 0, Expert: 1 } }
+            ]
+          }
+        },
+        {
+          $addFields: {
+            transcription: { $gt: [{ $size: '$transcripts' }, 0] },
+            candidateExpertRaw: {
+              $let: {
+                vars: { item: { $first: '$candidateDetails' } },
+                in: { $ifNull: ['$$item.Expert', null] }
+              }
+            }
+          }
+        },
+        { $unset: ['replies', 'body', 'transcripts', 'candidateDetails'] }
+      );
+
+      // 4. Access Control (Visibility Filter)
+      // This MUST be applied after lookups because it depends on candidateExpertRaw
+      let visibilityMatch = {};
+
+      if (normalizedRole === 'admin') {
+        // No filter
+      } else if (['mam', 'mm', 'mlead'].includes(normalizedRole)) {
+        // Managers: Reuse buildUserQuery logic logic roughly
+        // But since buildUserQuery returns a query object, we can use it directly if it only touches base fields.
+        // Managers only look at cc/sender usually.
+        visibilityMatch = this.buildSearchQuery(userEmail, userRole, manager, teamEmails);
+      } else if (normalizedRole === 'recruiter') {
+        // Recruiters: Reuse buildUserQuery logic
+        visibilityMatch = this.buildSearchQuery(userEmail, userRole, manager, teamEmails);
+      } else if (['lead', 'am'].includes(normalizedRole)) {
+        // Leads: Team Assignment OR Team Suggestion
+        // We need regex to match any team member in assignedTo OR candidateExpertRaw
+        const teamRegex = teamEmails.map(e => {
+          // Escape special chars just in case
+          return e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }).join('|');
+
+        // Names? Logic in filterAndFormatTokens is complex (token matching).
+        // For search, we'll approximate with Email-based regex + basic Name regex if possible.
+        // Getting exact "Token Match" in Aggregation is very hard.
+        // We will stick to the RegExp of known team emails/names.
+        // To improve, we should make sure teamEmails includes names (which getTeamEmails tries to do via display name derivation? No usually just emails).
+
+      } else if (['lead', 'am'].includes(normalizedRole)) {
+        // Optimization: Use $in for assignedTo to hit the Index
+        const emailList = teamEmails.filter(Boolean);
+        if (emailList.length > 0) {
+          const regexObj = { $regex: emailList.map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), $options: 'i' };
+          visibilityMatch = {
+            $or: [
+              { assignedTo: { $in: emailList } }, // Primary Index Path
+              { assignedTo: regexObj }, // Fallback for case mismatch if collation fails (safe)
+              { candidateExpertRaw: regexObj }
+            ]
+          };
+        } else {
+          const selfRegex = { $regex: userEmail, $options: 'i' };
+          visibilityMatch = {
+            $or: [
+              { assignedTo: userEmail }, // Primary Index Path
+              { assignedTo: selfRegex },
+              { candidateExpertRaw: selfRegex }
+            ]
+          };
+        }
+      } else {
+        const selfRegex = { $regex: userEmail, $options: 'i' };
+        visibilityMatch = {
+          $or: [
+            { assignedTo: userEmail }, // Primary Index Path
+            { assignedTo: selfRegex },
+            { candidateExpertRaw: selfRegex },
+            { suggestions: selfRegex }
+          ]
+        };
+      }
+
+      if (Object.keys(visibilityMatch).length > 0) {
+        pipeline.push({ $match: visibilityMatch });
+      }
+
+      // 5. Pagination & Formatting
+      pipeline.push({ $sort: { _id: -1 } });
+      if (offset) pipeline.push({ $skip: offset });
+      if (limit) pipeline.push({ $limit: limit });
+
+      const collation = { locale: 'en', strength: 2 }; // Case Insensitive Index Usage
+
+      const docs = await this.taskModel.collection.aggregate(pipeline, { collation }).toArray();
+
+      const formattedTasks = docs
         .map(task => this.taskModel.formatTask(task))
         .filter(Boolean);
 

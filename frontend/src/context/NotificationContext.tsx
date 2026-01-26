@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useRef, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { SOCKET_URL, useAuth } from '@/hooks/useAuth';
+import { SOCKET_URL, API_URL, useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import DOMPurify from 'dompurify';
 
@@ -40,7 +40,7 @@ export function useNotifications() {
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
     const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
     const { toast } = useToast();
-    const { refreshAccessToken } = useAuth();
+    const { refreshAccessToken, authFetch } = useAuth();
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const userId = useMemo(() => localStorage.getItem("email") || "", []);
     const role = useMemo(() => localStorage.getItem("role") || "", []);
@@ -56,39 +56,75 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         });
     }, [userId]);
 
+    // Audio Objects (Memoized to prevent reloading)
+    const audioRing = useMemo(() => new Audio('/sounds/ring.mp3'), []);
+    const audioBeep = useMemo(() => new Audio('/sounds/double-beep.mp3'), []);
+
     const playSound = (type: 'ring' | 'beep') => {
-        const src = type === 'ring' ? SOUND_RING : SOUND_DOUBLE_BEEP;
+        const audio = type === 'ring' ? audioRing : audioBeep;
+
         try {
-            const audio = new Audio(src);
-            audio.volume = 0.5; // Reasonable volume
-            audio.play().catch(err => console.warn("Audio play failed (interaction needed?):", err));
+            audio.currentTime = 0; // Reset to start
+            audio.volume = 0.6;
+            const playPromise = audio.play();
+
+            if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                    console.warn(`Audio play failed for ${type}:`, err);
+                });
+            }
         } catch (error) {
-            console.error("Audio error", error);
+            console.error("Audio playback error", error);
         }
     };
+
+    // Initial Fetch
+    useEffect(() => {
+        if (!userId) return;
+
+        const fetchHistory = async () => {
+            try {
+                const res = await authFetch(`${API_URL}/api/notifications`);
+                const data = await res.json();
+                if (data.success && Array.isArray(data.notifications)) {
+                    setNotifications(data.notifications.map((n: any) => ({
+                        id: n.id,
+                        type: n.type,
+                        title: n.title,
+                        description: n.description,
+                        timestamp: n.timestamp,
+                        read: n.read,
+                        candidateId: n.candidateId,
+                        link: n.link
+                    })));
+                }
+            } catch (err) {
+                console.error('Failed to fetch notifications', err);
+            }
+        };
+
+        fetchHistory();
+    }, [userId, authFetch]);
 
     useEffect(() => {
         if (!socket) return;
 
         const handleConnect = () => {
             console.log("Notification Socket Connected");
-            // Join role rooms? Backend usually puts us in them automatically or we need to emit 'joinRole'
-            // Current candidateSocket doesn't explicit join roles, but authSocket might.
-            // We'll rely on emitToUser for now which targets socketId connected with auth.
         };
 
         const handleNewComment = (payload: { candidate: any, comment: any }) => {
             const { candidate, comment } = payload;
             const authorName = comment?.author?.name || 'Unknown';
             const candidateName = candidate?.name || 'Candidate';
+            const commentText = comment?.text || comment?.content || 'New comment'; // Handle content field
 
-            // Dedupe if needed (rare with socket)
-
+            // Notification List Item (Persistent)
             const newNotif: NotificationEvent = {
                 id: comment.id || Date.now().toString(),
                 type: 'comment',
-                title: `New Message: ${authorName}`,
-                description: `Comment on ${candidateName}`,
+                title: 'New Message',
+                description: `New message from ${authorName} regarding ${candidateName}`,
                 timestamp: new Date().toISOString(),
                 read: false,
                 candidateId: candidate?.id,
@@ -97,23 +133,55 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
             setNotifications(prev => [newNotif, ...prev]);
 
-            // TOAST & SOUND
+            // Toast Alert (Ephemeral - Specific Format)
+            console.log('🔔 Discussion Notification Triggered:', { authorName, commentText });
             toast({
-                title: newNotif.title,
-                description: newNotif.description,
+                title: 'New Discussion Message',
+                description: `${authorName}: ${commentText}`,
+                duration: 5000,
             });
             playSound('ring');
         };
 
-        const handleAssignment = (payload: { candidate: any }) => {
-            const { candidate } = payload;
-            const name = candidate?.name || 'Candidate';
+        const handleAssignment = (payload: { candidate: any, expert: any, recruiter: any }) => {
+            const { candidate, expert, recruiter } = payload;
+            const candidateName = candidate?.name || 'Unknown Candidate';
+            const expertName = expert?.name || 'Unknown Expert';
+            const expertEmail = expert?.email || '';
+            const recruiterEmail = recruiter?.email || '';
+
+            const myEmail = localStorage.getItem("email") || "";
+            const myRole = (localStorage.getItem("role") || "").toLowerCase();
+
+            let title = 'New Assignment';
+            let description = '';
+
+            // LOGIC MATRIX
+            if (myEmail === expertEmail) {
+                // Expert View
+                description = `A new candidate, ${candidateName}, has been assigned to you for the resume understanding.`;
+            } else if (['lead', 'am'].includes(myRole)) {
+                // Lead / AM View
+                description = `A new candidate, ${candidateName}, has been assigned to ${expertName} for the resume understanding.`;
+            } else if (myEmail === recruiterEmail) {
+                // Recruiter View (Creator)
+                // Note: Distinct story for 'Marketing' vs 'Expert Assigned'
+                // If expert is assigned, use the Expert Story. 
+                // We assume this event fires ON expert assignment.
+                description = `${expertName}, has been assigned to ${candidateName} for resume understanding.`;
+            } else if (['mam', 'mlead', 'manager'].includes(myRole)) {
+                // Manager View
+                description = `${expertName}, has been assigned to ${candidateName} for resume understanding.`;
+            } else {
+                // Fallback
+                description = `Task assigned: ${candidateName} to ${expertName}`;
+            }
 
             const newNotif: NotificationEvent = {
                 id: `assign-${candidate.id}-${Date.now()}`,
                 type: 'assignment',
-                title: 'New Assignment',
-                description: `You have been assigned to ${name}`,
+                title,
+                description,
                 timestamp: new Date().toISOString(),
                 read: false,
                 candidateId: candidate?.id
@@ -125,6 +193,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                 title: newNotif.title,
                 description: newNotif.description,
             });
+
+            console.log('🔔 Assignment Notification Triggered:', title);
             playSound('beep');
         };
 
@@ -147,6 +217,85 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         // Also 'resumeUnderstandingAssigned'
         socket.on('resumeUnderstandingAssigned', handleAssignment);
 
+        // Completion Handler
+        const handleUpdate = (payload: { candidate: any, updatedBy: any }) => {
+            const { candidate, updatedBy } = payload;
+
+            // Check if Status is 'Completed' (assuming 'completed' or 'Completed')
+            const status = (candidate?.resumeUnderstandingStatus || '').toLowerCase();
+            if (status === 'completed') {
+                const completerName = updatedBy?.name || candidate?.Expert || 'Expert'; // Fallback
+                const name = candidate?.name || 'Candidate';
+
+                const newNotif: NotificationEvent = {
+                    id: `complete-${candidate.id}-${Date.now()}`,
+                    type: 'info',
+                    title: 'Task Completed',
+                    description: `Resume Understanding, for ${name} is completed by ${completerName}`,
+                    timestamp: new Date().toISOString(),
+                    read: false,
+                    candidateId: candidate?.id
+                };
+
+                setNotifications(prev => [newNotif, ...prev]);
+                toast({ title: newNotif.title, description: newNotif.description });
+                playSound('beep');
+            }
+        };
+
+
+        socket.on('resumeUnderstandingUpdated', handleUpdate);
+
+        // Status Update Handler (Marketing Status)
+        const handleStatusUpdate = (payload: { candidate: any, newStatus: string, updatedBy: any }) => {
+            const { candidate, newStatus, updatedBy } = payload;
+            const updaterName = updatedBy?.name || 'Unknown User';
+            const candidateName = candidate?.name || 'Candidate';
+
+            const newNotif: NotificationEvent = {
+                id: `status-${candidate.id}-${Date.now()}`,
+                type: 'info',
+                title: 'Status Updated',
+                description: `Status of ${candidateName} updated to ${newStatus} by ${updaterName}`,
+                timestamp: new Date().toISOString(),
+                read: false,
+                candidateId: candidate?.id
+            };
+
+            setNotifications(prev => [newNotif, ...prev]);
+            toast({
+                title: newNotif.title,
+                description: newNotif.description,
+            });
+            console.log('🔔 Status Notification Triggered');
+            playSound('ring');
+        };
+
+        socket.on('candidateStatusUpdated', handleStatusUpdate);
+
+        // Task Notification Handler
+        const handleTaskNotification = (payload: any) => {
+            console.log('🔔 Task Notification Received:', payload);
+            const { title, description } = payload;
+
+            const newNotif: NotificationEvent = {
+                id: `task-${Date.now()}`,
+                type: 'info',
+                title: title || 'Task Update',
+                description: description || 'You have a new task update',
+                timestamp: new Date().toISOString(),
+                read: false,
+            };
+
+            setNotifications(prev => [newNotif, ...prev]);
+            toast({
+                title: newNotif.title,
+                description: newNotif.description,
+            });
+            playSound('ring');
+        };
+        socket.on('taskNotification', handleTaskNotification);
+
         socket.connect();
 
         return () => {
@@ -155,16 +304,29 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             socket.off('newCommentNotification', handleNewComment);
             socket.off('candidateExpertAssigned', handleAssignment);
             socket.off('resumeUnderstandingAssigned', handleAssignment);
+            socket.off('resumeUnderstandingUpdated', handleUpdate);
+            socket.off('candidateStatusUpdated', handleStatusUpdate);
+            socket.off('taskNotification', handleTaskNotification);
             socket.disconnect();
         };
     }, [socket, refreshAccessToken, toast]);
 
-    const markAsRead = (id: string) => {
+    const markAsRead = async (id: string) => {
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+        try {
+            await authFetch(`${API_URL}/api/notifications/${id}/read`, { method: 'PUT' });
+        } catch (err) {
+            console.error('Failed to mark notification read', err);
+        }
     };
 
-    const clearAll = () => {
-        setNotifications([]);
+    const clearAll = async () => {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true }))); // UI Optimistic
+        try {
+            await authFetch(`${API_URL}/api/notifications/read-all`, { method: 'PUT' });
+        } catch (err) {
+            console.error('Failed to clear notifications', err);
+        }
     };
 
     const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);

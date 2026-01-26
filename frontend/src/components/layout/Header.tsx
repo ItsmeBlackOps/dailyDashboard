@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useUserProfile, formatPhoneDraft, formatPhoneCanonical } from '@/contexts/UserProfileContext';
 import { useNotifications } from '@/context/NotificationContext';
+import { NotificationDetailsDialog } from '@/components/dashboard/NotificationDetailsDialog';
 import DOMPurify from 'dompurify';
 
 interface HeaderProps {
@@ -31,6 +32,7 @@ export function Header({ toggleSidebar }: HeaderProps) {
   const { logout } = useAuth();
   const { profile, loading, saving, updateProfile } = useUserProfile();
   const [editOpen, setEditOpen] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<any>(null);
   const [formState, setFormState] = useState({ displayName: '', jobRole: '', phoneNumber: '' });
 
   const openConsentPopup = useCallback(() => {
@@ -159,9 +161,11 @@ export function Header({ toggleSidebar }: HeaderProps) {
                     key={notif.id}
                     className={`flex flex-col items-start gap-1 p-3 cursor-pointer ${!notif.read ? 'bg-muted/50' : ''}`}
                     onSelect={(e) => {
-                      e.preventDefault(); // Prevent closing immediately to allow interaction? Or close and nav?
+                      e.preventDefault();
                       markAsRead(notif.id);
-                      // Navigation logic could go here (e.g. open drawer)
+                      if (notif.type === 'batch') {
+                        setSelectedNotification(notif);
+                      }
                     }}
                   >
                     <div className="flex items-start justify-between w-full">
@@ -330,6 +334,12 @@ export function Header({ toggleSidebar }: HeaderProps) {
           </form>
         </DialogContent>
       </Dialog>
+
+      <NotificationDetailsDialog
+        isOpen={!!selectedNotification}
+        onClose={() => setSelectedNotification(null)}
+        notification={selectedNotification}
+      />
     </header>
   );
 }

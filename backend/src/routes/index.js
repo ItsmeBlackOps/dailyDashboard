@@ -7,6 +7,7 @@ import graphMeetingRoutes from './graphMeetings.js';
 import supportRoutes from './supportRequests.js';
 import profileRoutes from './profile.js';
 import candidateRoutes from './candidates.js';
+import notificationRoutes from './notificationRoutes.js';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
@@ -20,6 +21,7 @@ router.use('/graph', graphMeetingRoutes);
 router.use('/support', supportRoutes);
 router.use('/profile', profileRoutes);
 router.use('/candidates', candidateRoutes);
+router.use('/notifications', notificationRoutes);
 router.use('/', docsRoutes);
 
 // Health check endpoint

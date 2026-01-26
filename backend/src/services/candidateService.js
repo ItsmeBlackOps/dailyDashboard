@@ -210,6 +210,129 @@ class CandidateService {
     return Array.from(watchers);
   }
 
+  resolveHierarchyWatchers(candidate) {
+    if (!candidate) return [];
+
+    const watchers = new Set();
+
+    // 1. Recruiter
+    const recruiterEmail = formatEmail(candidate.recruiterRaw || candidate.Recruiter || candidate.recruiter || '');
+    if (recruiterEmail) {
+      watchers.add(recruiterEmail);
+
+      // 2. MLead (Team Lead of Recruiter)
+      const recruiterUser = userModel.getUserByEmail(recruiterEmail);
+      if (recruiterUser && recruiterUser.teamLead) {
+        const mleadEmail = this._findEmailByName(recruiterUser.teamLead);
+        if (mleadEmail) {
+          watchers.add(mleadEmail);
+
+          // 3. MAM (Manager of MLead)
+          const mleadUser = userModel.getUserByEmail(mleadEmail);
+          if (mleadUser && mleadUser.manager) {
+            const mamEmail = this._findEmailByName(mleadUser.manager);
+            if (mamEmail) watchers.add(mamEmail);
+          }
+        }
+      }
+    }
+
+    // 4. MM (Branch Head)
+    if (candidate.Branch || candidate.branch) {
+      // Reverse lookup from MM_BRANCH_MAP? Or assume fixed MM emails?
+      // Map is: Email -> Branch. 
+      // We can iterate map to find email for branch.
+      const branch = (candidate.Branch || candidate.branch).toUpperCase();
+      for (const [email, mappedBranch] of MM_BRANCH_MAP.entries()) {
+        if (mappedBranch === branch) {
+          watchers.add(email);
+        }
+      }
+    }
+
+    return Array.from(watchers);
+  }
+
+  resolveExpertHierarchy(expertEmail) {
+    if (!expertEmail) return [];
+
+    const watchers = new Set();
+    const normalizedExpert = formatEmail(expertEmail);
+
+    if (normalizedExpert) {
+      watchers.add(normalizedExpert);
+
+      // 1. Team Lead
+      const expertUser = userModel.getUserByEmail(normalizedExpert);
+      if (expertUser && expertUser.teamLead) {
+        const leadEmail = this._findEmailByName(expertUser.teamLead);
+        if (leadEmail) {
+          watchers.add(leadEmail);
+
+          // 2. AM (Manager of Team Lead)
+          const leadUser = userModel.getUserByEmail(leadEmail);
+          if (leadUser && leadUser.manager) {
+            const amEmail = this._findEmailByName(leadUser.manager);
+            if (amEmail) watchers.add(amEmail);
+          }
+        }
+      }
+    }
+    return Array.from(watchers);
+  }
+
+  resolveAllWatchers(candidate) {
+    if (!candidate) return [];
+
+    const watchers = new Set();
+
+    // 1. Recruitment Hierarchy
+    const recruitmentWatchers = this.resolveHierarchyWatchers(candidate);
+    recruitmentWatchers.forEach(email => watchers.add(email));
+
+    // 2. Expert Hierarchy
+    if (candidate.expert) {
+      const expertWatchers = this.resolveExpertHierarchy(candidate.expert);
+      expertWatchers.forEach(email => watchers.add(email));
+    }
+
+    // 3. Admins
+    // Note: Fetching all users every time might be heavy but for now it's fine.
+    // Optimization: Cache admin emails if performance drops.
+    const allUsers = userModel.getAllUsers();
+    for (const user of allUsers) {
+      if ((user.role || '').toLowerCase() === 'admin') {
+        const email = formatEmail(user.email);
+        if (email) watchers.add(email);
+      }
+    }
+
+    return Array.from(watchers);
+  }
+
+  _findEmailByName(name) {
+    if (!name) return null;
+    // If name looks like email, return it normalized
+    if (name.includes('@')) return formatEmail(name);
+
+    const normalize = (n) => n ? n.toString().trim().toLowerCase().replace(/\s+/g, ' ') : '';
+    const target = normalize(name);
+
+    const allUsers = userModel.getAllUsers();
+    const found = allUsers.find(u => {
+      // Check explicit displayName
+      if (normalize(u.displayName) === target) return true;
+      if (normalize(u.name) === target) return true; // Some models use name
+
+      // Check derived from email
+      const derived = normalize(deriveDisplayNameFromEmail(u.email));
+      if (derived === target) return true;
+
+      return false;
+    });
+    return found ? found.email : null;
+  }
+
   buildSearchPattern(search) {
     if (typeof search !== 'string') {
       return undefined;
@@ -684,7 +807,73 @@ class CandidateService {
       return candidates.map((candidate) => this.formatCandidateRecord(candidate));
     }
 
-    if (normalizedRole === 'am' || normalizedRole === 'lead' || normalizedRole === 'expert' || normalizedRole === 'user') {
+    // Marketing / Branch Roles (Visibility Logic)
+    if (['mm', 'mam', 'mlead', 'recruiter'].includes(normalizedRole)) {
+      const workflowStatus = normalizedStatus === RESUME_UNDERSTANDING_STATUS.done
+        ? WORKFLOW_STATUS.completed
+        : WORKFLOW_STATUS.needsResumeUnderstanding;
+
+      if (normalizedRole === ROLE_MM) {
+        const branch = this.resolveBranchForMm(user.email, user.role);
+        if (!branch) return [];
+
+        const candidates = await candidateModel.getCandidatesByBranch(branch, {
+          limit: options?.limit,
+          workflowStatus,
+          resumeUnderstandingStatus: normalizedStatus
+        });
+        return candidates; // already formatted by model? No, model returns formatted objects? Yes in modified model code above I kept mapping.
+        // Wait, model returns doc mapped candidates? Yes.
+      }
+
+      if (normalizedRole === ROLE_MAM || normalizedRole === ROLE_MLEAD) {
+        const hierarchy = this.collectHierarchyEmails(user);
+        const normalizedEmail = normalizeEmail(user.email);
+        let recruiterEmails = new Set();
+
+        if (normalizedRole === ROLE_MAM) {
+          recruiterEmails = new Set([
+            ...hierarchy.recruiterEmails,
+            ...hierarchy.allSubordinateEmails,
+            normalizedEmail
+          ]);
+        } else {
+          // MLEAD
+          recruiterEmails = new Set([
+            ...hierarchy.recruiterEmails,
+            normalizedEmail
+          ]);
+        }
+
+        const candidates = await candidateModel.getCandidatesByRecruiters(
+          Array.from(recruiterEmails),
+          {
+            limit: options?.limit,
+            workflowStatus,
+            resumeUnderstandingStatus: normalizedStatus,
+            visibility: this.buildRecruiterVisibility(Array.from(recruiterEmails), user) // Ensure visibility aliases
+          }
+        );
+        return candidates;
+      }
+
+      if (normalizedRole === 'recruiter') {
+        const recruiterEmail = normalizeEmail(user.email);
+        const candidates = await candidateModel.getCandidatesByRecruiters(
+          [recruiterEmail],
+          {
+            limit: options?.limit,
+            workflowStatus,
+            resumeUnderstandingStatus: normalizedStatus,
+            visibility: this.buildRecruiterVisibility([recruiterEmail], user)
+          }
+        );
+        return candidates;
+      }
+    }
+
+    // Expert Roles (Lead, AM, Expert, User)
+    if (['am', 'lead', 'expert', 'user'].includes(normalizedRole)) {
       const expertEmails = this.resolveResumeQueueExpertEmails(user);
 
       if (expertEmails.length === 0) {
@@ -740,7 +929,31 @@ class CandidateService {
       return candidates.length;
     }
 
-    if (normalizedRole === 'am' || normalizedRole === 'lead' || normalizedRole === 'expert' || normalizedRole === 'user') {
+    // Marketing / Branch Roles (Visibility Logic)
+    if (['mm', 'mam', 'mlead', 'recruiter'].includes(normalizedRole)) {
+      // Since we don't have direct count methods for these permutations in CandidateModel yet without duplicating code,
+      // and counts are typically fast enough with efficient queries, we can reuse the fetch methods or add specific Count methods.
+      // For now, let's fetch IDs only? No, let's just use the Queue logic but we need count.
+      // Better: Fetch and return length. It's not optimal but functional for this Refactor. 
+      // Optimization: Add specific count methods later if needed, or rely on the query speed.
+
+      // Actually, user requested "view", count is part of header.
+      // Let's call getResumeUnderstandingQueue without limit and return length.
+      try {
+        const queue = await this.getResumeUnderstandingQueue(user, status, { limit: 0 }); // limit 0 might mean no limit? Models usually handle it. 
+        // My implementation of getResumeUnderstandingQueue handles logic routing.
+        // Check getResumeUnderstandingQueue implementation above.
+        // It calls model methods which might not support 0 as unlimited if not coded. 
+        // Model code: if (Number.isFinite(limit) && limit > 0) ...
+        // So passing 0 or undefined -> unlimited.
+        return queue.length;
+      } catch (e) {
+        return 0;
+      }
+    }
+
+    // Expert Roles
+    if (['am', 'lead', 'expert', 'user'].includes(normalizedRole)) {
       const expertEmails = this.resolveResumeQueueExpertEmails(user);
       if (expertEmails.length === 0) {
         return 0;
@@ -964,6 +1177,55 @@ class CandidateService {
     return formatted;
   }
 
+  async updateCandidate(user, candidateId, updates = {}) {
+    if (!user?.email || !user?.role) {
+      const error = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    const normalizedRole = user.role.trim().toLowerCase();
+
+    // Validate RBAC for status updates
+    if (updates.status !== undefined) {
+      if (!['recruiter', 'mlead', 'mam', 'mm', 'admin', 'manager'].includes(normalizedRole)) {
+        const error = new Error('Access denied. Only recruitment roles can update candidate status.');
+        error.statusCode = 403;
+        throw error;
+      }
+    }
+
+    if (!candidateId) {
+      const error = new Error('Candidate id is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const updated = await candidateModel.updateCandidateById(candidateId, updates);
+
+    logger.info('Candidate updated via updateCandidate', {
+      candidateId,
+      updatedBy: user.email,
+      updates
+    });
+
+    const formatted = this.formatCandidateRecord(updated);
+
+    domainEventBus.publish(DomainEvents.CandidateUpdated, {
+      eventId: crypto.randomUUID(),
+      candidate: formatted,
+      actor: {
+        email: user.email,
+        role: user.role
+      },
+      changes: Object.keys(updates),
+      occurredAt: new Date().toISOString()
+    });
+
+    return formatted;
+  }
+
+
   async createCandidateFromManager(user, payload = {}) {
     if (!user?.email || !user?.role) {
       const error = new Error('Authentication required');
@@ -972,8 +1234,11 @@ class CandidateService {
     }
 
     const normalizedRole = user.role.trim().toLowerCase();
-    if (!['manager', 'admin', 'mm'].includes(normalizedRole)) {
-      const error = new Error('Access denied');
+
+    // STRICT: Only MM and Admin can create via this flow.
+    // Managers, Recruiters, MAM, MLead are Excluded.
+    if (!['admin', 'mm'].includes(normalizedRole)) {
+      const error = new Error('Access denied. Only Branch Heads (MM) can create candidates.');
       error.statusCode = 403;
       throw error;
     }
@@ -1173,12 +1438,13 @@ class CandidateService {
       }
 
       if (normalizedRole === ROLE_MLEAD) {
-        const recruiters = hierarchy.recruiterEmails.size
-          ? Array.from(hierarchy.recruiterEmails)
-          : [normalizedEmail];
+        const recruiters = new Set([
+          ...hierarchy.recruiterEmails,
+          normalizedEmail
+        ]);
         const result = await this.fetchCandidatesByRecruiters(
           user,
-          recruiters,
+          Array.from(recruiters),
           { ...options, includeSelfPatterns: true }
         );
         result.options = {
