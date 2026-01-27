@@ -15,6 +15,19 @@ import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '@/context/NotificationContext';
 import { ArrowRight, User } from 'lucide-react';
 
+function capitalize(segment: string = '') {
+    if (!segment) return '';
+    return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+}
+
+function deriveDisplayNameFromEmail(email: string) {
+    const local = (email || '').split('@')[0];
+    const parts = local.split(/[._\s-]+/).filter(Boolean);
+    if (parts.length === 0) return email || '';
+    return parts.map(capitalize).join(' ');
+}
+
+
 export function NotificationDetailModal() {
     const { selectedNotification, isModalOpen, closeModal } = useNotifications();
     const navigate = useNavigate();
@@ -29,9 +42,10 @@ export function NotificationDetailModal() {
         }
         closeModal();
     };
-
+    // console.log(changeDetails);
     const isBulk = type === 'batch' && (batchData?.length || 0) > 0;
-
+    // console.log("Batch Data", batchData);
+    // console.log("Change Details", changeDetails);
     return (
         <Dialog open={isModalOpen} onOpenChange={(open) => !open && closeModal()}>
             <DialogContent className="sm:max-w-md md:max-w-lg lg:max-w-xl">
@@ -49,7 +63,11 @@ export function NotificationDetailModal() {
                 {actor && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 p-2 rounded-md">
                         <User className="w-4 h-4" />
-                        <span>Updated by <span className="font-medium text-foreground">{actor.name}</span> ({actor.role})</span>
+                        <span>
+                            Updated by <span className="font-medium text-foreground">
+                                {actor.name || deriveDisplayNameFromEmail(actor.email)}
+                            </span> ({actor.role})
+                        </span>
                     </div>
                 )}
 
@@ -59,7 +77,7 @@ export function NotificationDetailModal() {
                         <div className="grid grid-cols-[1fr,auto,1fr] gap-2 items-center text-sm">
                             <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-md border border-red-100 dark:border-red-900/50">
                                 <div className="text-xs text-muted-foreground uppercase mb-1">Old Value</div>
-                                <div className="font-medium">{String(changeDetails.oldValue?.status || changeDetails.oldValue || 'N/A')}</div>
+                                <div className="font-medium">{String(changeDetails.oldValue || 'N/A')}</div>
                             </div>
                             <ArrowRight className="w-4 h-4 text-muted-foreground" />
                             <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-md border border-green-100 dark:border-green-900/50">

@@ -165,7 +165,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             const authorName = comment?.author?.name || 'Unknown';
             const candidateName = candidate?.name || 'Candidate';
             const commentText = comment?.text || comment?.content || 'New comment'; // Handle content field
-
+            // console.log(candidate);
             // Notification List Item (Persistent)
             const newNotif: NotificationEvent = {
                 id: comment.id || Date.now().toString(),
@@ -191,15 +191,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         };
 
         const handleAssignment = (payload: { candidate: any, expert: any, recruiter: any }) => {
+            // console.log('[Frontend Notification Payload]', JSON.stringify(payload, null, 2));
             const { candidate, expert, recruiter } = payload;
-            const candidateName = candidate?.name || 'Unknown Candidate';
-            const expertName = expert?.name || 'Unknown Expert';
-            const expertEmail = expert?.email || '';
-            const recruiterEmail = recruiter?.email || '';
+            const candidateName = candidate?.["Candidate Name"] || 'Unknown Candidate';
+            const expertName = candidate?.expert || 'Unknown Expert';
+            const expertEmail = candidate?.Expert || '';
+            const recruiterEmail = candidate?.recruiterRaw || '';
 
             const myEmail = localStorage.getItem("email") || "";
             const myRole = (localStorage.getItem("role") || "").toLowerCase();
-
+            console.log("[Handle Assignment Payload]:", payload);
             let title = 'New Assignment';
             let description = '';
 
@@ -271,7 +272,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             // Check if Status is 'Completed' (assuming 'completed' or 'Completed')
             const status = (candidate?.resumeUnderstandingStatus || '').toLowerCase();
             if (status === 'completed') {
-                const completerName = updatedBy?.name || candidate?.Expert || 'Expert'; // Fallback
+                const completerName = updatedBy?.name || candidate?.expert || 'Expert'; // Fallback
                 const name = candidate?.name || 'Candidate';
 
                 const newNotif: NotificationEvent = {
@@ -335,7 +336,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                 timestamp: new Date().toISOString(),
                 read: false,
                 changeDetails,
-                actor
+                actor,
+                batchData: changeDetails?.bulkCandidates
             };
 
             setNotifications(prev => [newNotif, ...prev]);
