@@ -4,6 +4,7 @@ import { TooltipProvider } from '@radix-ui/react-tooltip';
 
 import SignIn from './pages/auth/SignIn';
 import TasksToday from './pages/TasksToday';
+import { Toaster } from './components/ui/toaster';
 import { Toast } from './components/ui/toast';
 import Index from './pages/Index';
 import AuthorizedRoute from './routes/AuthorizedRoute';
@@ -13,6 +14,7 @@ import BranchCandidatesPage from './pages/BranchCandidates';
 import AdminAlertsPage from './pages/AdminAlerts';
 import UserManagementPage from './pages/UserManagement';
 import ResumeUnderstanding from './pages/ResumeUnderstanding';
+import DashboardV2 from './pages/DashboardV2';
 
 const queryClient = new QueryClient();
 
@@ -31,6 +33,7 @@ const App = () => (
             <Route path="/admin-alerts" element={<AdminAlertsPage />} />
             <Route path="/resume-understanding" element={<ResumeUnderstanding />} />
             <Route path="/user-management" element={<UserManagementPage />} />
+            <Route path="/dashboard-v2" element={<DashboardV2 />} />
             {/* Add any other protected routes here */}
           </Route>
 
@@ -41,6 +44,7 @@ const App = () => (
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      <Toaster />
     </TooltipProvider>
   </QueryClientProvider>
 );

@@ -1,0 +1,119 @@
+items:
+  - kind: project
+    action: create
+    key: DASH_V2
+    team: "Harsh Patel"
+    name: "Dashboard V2"
+    description: "Rebuild of Daily Dashboard with Premium UI and Optimized Backend"
+    startDate: "2026-02-02"
+    dueDate: "2026-04-01"
+    milestones:
+      - key: MS_SETUP
+        name: "Phase 1: Foundation & Setup"
+        dueDate: "2026-02-09"
+      - key: MS_AUTH
+        name: "Phase 2: Authentication & RBAC"
+        dueDate: "2026-02-16"
+      - key: MS_CORE
+        name: "Phase 3: Core Features (Candidates)"
+        dueDate: "2026-03-09"
+      - key: MS_ADMIN
+        name: "Phase 4: Admin & Reporting"
+        dueDate: "2026-03-23"
+      - key: MS_LAUNCH
+        name: "Phase 5: QA & Launch"
+        dueDate: "2026-04-01"
+  - kind: issue
+    action: create
+    key: ISS_SETUP_1
+    team: "Harsh Patel"
+    projectKey: DASH_V2
+    parentKey: null
+    title: "Initialize V2 Repository Structure"
+    description: |
+      Context: Greenfield project setup.
+      Goal: Setup Monorepo (or organized repo) with Backend/Frontend folders.
+      Scope: Dockerfile, package.json, TSConfig, ESLint/Prettier.
+      Acceptance checks:
+        - [ ] Repo created
+        - [ ] Docker compose runs hello world
+        - [ ] Lint command passes
+    status: "Todo"
+    priority: 1
+    labels: ["devops", "setup"]
+  - kind: issue
+    action: create
+    key: ISS_AUTH_1
+    team: "Harsh Patel"
+    projectKey: DASH_V2
+    title: "Implement Backend Authentication (JWT)"
+    description: |
+      Goal: Secure API with JWT.
+      Acceptance checks:
+        - [ ] Login Endpoint returns Access/Refresh Token
+        - [ ] Auth Middleware verifies token
+        - [ ] Refresh Token Endpoint working
+    status: "Todo"
+    priority: 1
+    labels: ["backend", "auth"]
+  - kind: issue
+    action: create
+    key: ISS_AUTH_2
+    team: "Harsh Patel"
+    projectKey: DASH_V2
+    title: "Implement Frontend Login & SignUp Pages"
+    description: |
+      Goal: Premium Glassmorphism Login UI.
+      Acceptance checks:
+        - [ ] Login Form with Validation
+        - [ ] Connect to Backend API
+        - [ ] Store Tokens in LocalStorage/Cookie
+        - [ ] Redirect to Dashboard on success
+    status: "Todo"
+    priority: 1
+    labels: ["frontend", "auth", "ui"]
+  - kind: issue
+    action: create
+    key: ISS_DASH_1
+    team: "Harsh Patel"
+    projectKey: DASH_V2
+    title: "Develop Main Dashboard Layout"
+    description: |
+      Goal: Glassmorphism Sidebar + Header layout.
+      Acceptance checks:
+        - [ ] Collapsible Sidebar
+        - [ ] Sticky Header
+        - [ ] Responsive Design
+    status: "Todo"
+    priority: 2
+    labels: ["frontend", "ui"]
+  - kind: issue
+    action: create
+    key: ISS_CAND_1
+    team: "Harsh Patel"
+    projectKey: DASH_V2
+    title: "Candidate Management API (CRUD)"
+    description: |
+      Goal: Backend endpoints for Candidates.
+      Acceptance checks:
+        - [ ] GET /candidates (with pagination/search)
+        - [ ] POST /candidates
+        - [ ] PUT /candidates/:id
+    status: "Todo"
+    priority: 2
+    labels: ["backend", "api"]
+  - kind: issue
+    action: create
+    key: ISS_CAND_2
+    team: "Harsh Patel"
+    projectKey: DASH_V2
+    title: "Resume Understanding Workflow"
+    description: |
+      Goal: Workflow for Experts to review resumes.
+      Acceptance checks:
+        - [ ] Assign Expert API
+        - [ ] UI for Expert to see pending resumes
+        - [ ] Mark as "Done" updates status
+    status: "Todo"
+    priority: 2
+    labels: ["fullstack", "workflow"]

@@ -1,26 +1,40 @@
 version: "3.9"
 
 services:
-  backend:
+  gateway:
+    image: nginx:alpine
+    container_name: dailydb-gateway
+    restart: unless-stopped
+    ports:
+      - "${PORT}:${PORT}"           # Backend Port
+      - "${FRONTEND_PORT}:${FRONTEND_PORT}" # Frontend Port
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - backend-blue
+      - frontend-blue
+
+  # --- BLUE STACK ---
+  backend-blue:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: dailydb-backend
+    container_name: dailydb-backend-blue
     env_file:
       - .env
-    ports:
-      - "${PORT}:${PORT}"
+    expose:
+      - "${PORT}" # Internal only
     restart: unless-stopped
 
-  frontend:
+  frontend-blue:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: dailydb-frontend
+    container_name: dailydb-frontend-blue
     env_file:
       - .env
-    ports:
-      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
+    expose:
+      - "${FRONTEND_PORT}" # Internal only
     environment:
       VITE_PUBLIC_POSTHOG_KEY: ${VITE_PUBLIC_POSTHOG_KEY}
       VITE_PUBLIC_POSTHOG_HOST: ${VITE_PUBLIC_POSTHOG_HOST}
@@ -32,6 +46,41 @@ services:
       NEW_RELIC_NO_CONFIG_FILE: ${NEW_RELIC_NO_CONFIG_FILE}
     restart: unless-stopped
     depends_on:
-      - backend
+      - backend-blue
+
+  # --- GREEN STACK ---
+  backend-green:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dailydb-backend-green
+    env_file:
+      - .env
+    expose:
+      - "${PORT}" # Internal only
+    restart: unless-stopped
+  
+  frontend-green:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dailydb-frontend-green
+    env_file:
+      - .env
+    expose:
+      - "${FRONTEND_PORT}" # Internal only
+    environment:
+      VITE_PUBLIC_POSTHOG_KEY: ${VITE_PUBLIC_POSTHOG_KEY}
+      VITE_PUBLIC_POSTHOG_HOST: ${VITE_PUBLIC_POSTHOG_HOST}
+      API_URL: ${API_URL}
+      FRONTEND_PORT: ${FRONTEND_PORT}
+      NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY}
+      NEW_RELIC_APP_NAME: ${NEW_RELIC_APP_NAME}
+      NEW_RELIC_LOG_LEVEL: ${NEW_RELIC_LOG_LEVEL}
+      NEW_RELIC_NO_CONFIG_FILE: ${NEW_RELIC_NO_CONFIG_FILE}
+    restart: unless-stopped
+    depends_on:
+      - backend-green
+
 
  

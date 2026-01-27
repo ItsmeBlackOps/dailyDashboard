@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Building2, ExternalLink, Globe, Menu, Phone, User, UserCog, LogOut, ChevronDown, CheckCircle2, AlertTriangle, Bell, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { API_BASE } from '@/constants';
@@ -112,6 +112,22 @@ export function Header({ toggleSidebar }: HeaderProps) {
   };
 
   const { notifications, unreadCount, markAsRead, clearAll, openModal } = useNotifications();
+  const navigate = useNavigate();
+
+  const handleNotificationClick = (notif: any) => {
+    markAsRead(notif.id);
+
+    if (notif.type === 'comment' || notif.title?.toLowerCase().includes('discussion')) {
+      // Navigate to Resume Understanding with discussion param
+      if (notif.candidateId) {
+        navigate(`/resume-understanding?discussionCandidateId=${notif.candidateId}`);
+        return;
+      }
+    }
+
+    // Default behavior: open modal
+    openModal(notif);
+  };
 
   return (
     <header className="glass sticky top-0 z-30 h-16 flex items-center px-3 md:px-4 shadow-sm gap-2">
@@ -161,8 +177,7 @@ export function Header({ toggleSidebar }: HeaderProps) {
                     className={`flex flex-col items-start gap-1 p-3 cursor-pointer ${!notif.read ? 'bg-muted/50' : ''}`}
                     onSelect={(e) => {
                       e.preventDefault();
-                      // Open modal for ANY notification to see details
-                      openModal(notif);
+                      handleNotificationClick(notif);
                     }}
                   >
                     <div className="flex items-start justify-between w-full">
