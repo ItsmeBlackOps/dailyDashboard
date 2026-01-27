@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => ({
   preview: {
     port: 8180,
     host: '::',
-    allowedHosts: ['dailydf.tunn.dev', 'dailydf.silverspace.tech'], // 👈 THIS IS THE FIX
+    // allowedHosts: ['dailydf.tunn.dev', 'dailydf.silverspace.tech'], // Disabled to allow Gateway proxying
   },
   plugins: [react()].filter(Boolean),
   resolve: {
