@@ -7,9 +7,19 @@ const EST_TIMEZONE = 'America/New_York';
 
 export class DashboardController {
     constructor() {
-        this.taskCollection = database.getCollection('taskBody');
-        this.candidateCollection = database.getCollection('candidateDetails');
-        this.userCollection = database.getCollection('users');
+        // Lazy access via getters
+    }
+
+    get taskCollection() {
+        return database.getCollection('taskBody');
+    }
+
+    get candidateCollection() {
+        return database.getCollection('candidateDetails');
+    }
+
+    get userCollection() {
+        return database.getCollection('users');
     }
 
     calculateDateRange(period, startDate, endDate) {
@@ -105,35 +115,20 @@ export class DashboardController {
             // Add self just in case
             teamEmails.push(email);
 
-            // Filter: Sender OR Owner OR Assigned must be in team
-            // Note: Regex match for list is inefficient, but $in with regex is not supported easily.
-            // We can use $in with exact values if normalized, or a big $or regex.
-            // Given expected team size (<50), $in on exact email keys (sender) or Name keys (owner) is best.
-
-            // We need Names for Name columns (Owner, Assigned fallback)
             const teamNames = teamEmails.map(e => userModel.formatDisplayNameFromEmail(e));
 
             return {
                 ...baseMatch,
                 $or: [
-                    { senderRecruiter: { $in: teamEmails } }, // Task sender is email
-                    { assignedExpert: { $in: teamEmails } }, // Task assigned is email often
-                    { ownerRecruiter: { $in: teamNames } }   // Candidate recruiter is Name
+                    { senderRecruiter: { $in: teamEmails } },
+                    { assignedExpert: { $in: teamEmails } },
+                    { ownerRecruiter: { $in: teamNames } }
                 ]
             };
         }
 
         // MM: Whole Branch
         if (role === 'mm') {
-            // Identify Branch: Check user profile metadata or infer?
-            // Fallback: Check if they are listed as Recruiter in any Candidate from a branch?
-            // Or just allow all IF filtered by branch explicitly?
-            // Since we can't reliably auto-detect branch without structured data, 
-            // we assume MM accounts are strictly tied to a branch via explicit 'Branch' filter in UI.
-            // Implementation: If `Branch` is passed in `baseMatch`, respect it.
-            // If not, we might be exposing too much.
-            // SAFEGUARD: Find one candidate owned by this user (if they act as recruiter) to get branch?
-            // Safer: Query User Metadata.
             const userProfile = await userModel.getUserProfileMetadata(email);
             const branch = userProfile?.metadata?.branch;
 
@@ -143,9 +138,6 @@ export class DashboardController {
                     effectiveBranch: branch
                 };
             }
-            // If no branch found, restrict to nothing to be safe, or allow all?
-            // User said "itself and whole branch".
-            // If we can't find branch, maybe they only see "themselves".
             return {
                 ...baseMatch,
                 $or: [
@@ -211,7 +203,6 @@ export class DashboardController {
                 }
             ];
 
-            // Insert Scoping Match before Grouping
             const scopedMatch = await this.getScopedMatchStage(user, {
                 ...(branch ? { effectiveBranch: branch } : {}),
                 ...(recruiterEmail ? { senderRecruiter: { $regex: recruiterEmail, $options: 'i' } } : {})
@@ -381,9 +372,6 @@ export class DashboardController {
             const user = req.user;
             const thirtyDaysAgo = moment().subtract(30, 'days').toDate();
 
-            // Note: Filtering logic needs to happen AFTER lookup for Candidates effectively,
-            // but here we start with Candidates.
-
             let pipeline = [
                 {
                     $match: {
@@ -400,30 +388,8 @@ export class DashboardController {
                 }
             ];
 
-            // Apply Scope on Candidate Fields
-            // MLead/Lead/MAM/AM should see candidates owned by their team
-            // Recruiter should see candidates they own
             const scopedMatch = await this.getScopedMatchStage(user, {});
-            // Note: getScopedMatchStage uses 'senderRecruiter'(email) / 'assignedExpert'(email) / 'ownerRecruiter'(name)
-            // Candidate collection has 'Recruiter' (name) -> ownerRecruiter
-            // It does NOT have 'senderRecruiter' or 'assignedExpert' directly unless joined.
-            // But for Management stats (Stagnant Candidates), we care about OWNERSHIP mostly.
-
-            // We need to adjust 'scopedMatch' because it might contain keys not present here.
-            // Let's create a Candidate-Specific Scope helper or simplify.
-            // Simpler: Reuse specific logic here.
-
-            // Map scopedMatch keys to Candidate keys?
-            // scopedMatch can have $or: [ {senderRecruiter...}, {ownerRecruiter...} ]
-            // We only have ownerRecruiter here.
-            // So we filter the scope condition to only check ownerRecruiter or effectiveBranch.
-
-            // Hack: We can just use the same function but we must acknowledge 'senderRecruiter' and 'assignedExpert' won't match anything 
-            // unless we lookup tasks FIRST.
-            // But we are looking for candidates with NO tasks (stagnant).
-            // So checking 'assignedExpert' is moot for 0 task candidates.
-            // We verify via 'ownerRecruiter' (Recruiter Name).
-
+            // Note: As analyzed before, we apply this with the understanding that we are filtering on Candidate fields (ownerRecruiter)
             pipeline.push({ $match: scopedMatch });
 
             pipeline.push(
