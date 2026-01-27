@@ -10,6 +10,7 @@ import { ManagementReports } from '@/components/dashboard/v2/ManagementReports';
 export default function DashboardV2() {
     const { user } = useAuth();
     const [period, setPeriod] = useStateString('month');
+    const [dateBasis, setDateBasis] = useStateString('interview'); // 'interview' or 'received'
     const role = (localStorage.getItem('role') || '').toLowerCase();
 
     return (
@@ -21,9 +22,19 @@ export default function DashboardV2() {
                         Welcome back, {user?.name || 'User'}
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
-                    <Select value={period} onValueChange={setPeriod}>
+                <div className="flex flex-wrap items-center gap-2">
+                    <Select value={dateBasis} onValueChange={setDateBasis}>
                         <SelectTrigger className="w-[180px]">
+                            <SelectValue placeholder="Date Basis" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="interview">Date of Interview</SelectItem>
+                            <SelectItem value="received">Date Received</SelectItem>
+                        </SelectContent>
+                    </Select>
+
+                    <Select value={period} onValueChange={setPeriod}>
+                        <SelectTrigger className="w-[160px]">
                             <SelectValue placeholder="Select period" />
                         </SelectTrigger>
                         <SelectContent>
@@ -48,7 +59,6 @@ export default function DashboardV2() {
 
                 <TabsContent value="overview" className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        {/* Simplified metrics could go here, for now reusing components or placeholders */}
                         <div className="p-6 bg-card rounded-xl border shadow-sm">
                             <h3 className="font-semibold text-sm text-muted-foreground">Total Candidates (Month)</h3>
                             <div className="text-2xl font-bold mt-2">--</div>
@@ -61,7 +71,7 @@ export default function DashboardV2() {
                 </TabsContent>
 
                 <TabsContent value="recruiter" className="space-y-4">
-                    <RecruiterAnalytics period={period} />
+                    <RecruiterAnalytics period={period} dateBasis={dateBasis} />
                 </TabsContent>
 
                 <TabsContent value="expert" className="space-y-4">

@@ -14,12 +14,16 @@ import {
 
 interface RecruiterStat {
     _id: string; // Recruiter Name
-    totalInterviews: number;
-    statusBreakdown: { status: string; count: number }[];
-    roundsDetail: string[];
+    totalInterviewsSent: number;
+    completed: number;
+    cancelled: number;
+    rescheduled: number;
+    notDone: number;
+    qualityScore: number;
+    roundCounts: Record<string, number>;
 }
 
-export function RecruiterAnalytics({ period }: { period: string }) {
+export function RecruiterAnalytics({ period, dateBasis }: { period: string; dateBasis: string }) {
     const [stats, setStats] = useState<RecruiterStat[]>([]);
     const [loading, setLoading] = useState(true);
     const { authFetch } = useAuth();
@@ -28,7 +32,7 @@ export function RecruiterAnalytics({ period }: { period: string }) {
         const fetchStats = async () => {
             setLoading(true);
             try {
-                const res = await authFetch(`${API_URL}/api/dashboard/stats/recruiter?period=${period}`);
+                const res = await authFetch(`${API_URL}/api/dashboard/stats/recruiter?period=${period}&dateBasis=${dateBasis}`);
                 const data = await res.json();
                 if (data.success) {
                     setStats(data.data);
@@ -41,36 +45,37 @@ export function RecruiterAnalytics({ period }: { period: string }) {
         };
 
         fetchStats();
-    }, [period, authFetch]);
+    }, [period, dateBasis, authFetch]);
 
     if (loading) {
         return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>;
     }
 
-    // Prepare Chart Data
-    const chartData = stats.map(s => ({
+    const chartData = stats.slice(0, 15).map(s => ({
         name: s._id || 'Unknown',
-        Interviews: s.totalInterviews,
-        Completed: s.statusBreakdown.find(b => b.status === 'Completed')?.count || 0
+        Sent: s.totalInterviewsSent,
+        Completed: s.completed,
+        NotDone: s.notDone
     }));
 
     return (
         <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Interview Volume by Recruiter</CardTitle>
+                        <CardTitle>Recruiter Performance (Top 15)</CardTitle>
                     </CardHeader>
-                    <CardContent className="h-[300px]">
+                    <CardContent className="h-[400px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={chartData}>
                                 <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="name" />
+                                <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} interval={0} />
                                 <YAxis />
                                 <Tooltip />
                                 <Legend />
-                                <Bar dataKey="Interviews" fill="#3b82f6" />
+                                <Bar dataKey="Sent" fill="#3b82f6" />
                                 <Bar dataKey="Completed" fill="#22c55e" />
+                                <Bar dataKey="NotDone" fill="#ef4444" />
                             </BarChart>
                         </ResponsiveContainer>
                     </CardContent>
@@ -78,23 +83,27 @@ export function RecruiterAnalytics({ period }: { period: string }) {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Top Performers</CardTitle>
+                        <CardTitle>Detailed KPIs</CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="h-[400px] overflow-auto">
                         <Table>
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Recruiter</TableHead>
-                                    <TableHead className="text-right">Total</TableHead>
-                                    <TableHead className="text-right">Active</TableHead>
+                                    <TableHead className="text-right">Sent</TableHead>
+                                    <TableHead className="text-right">Done</TableHead>
+                                    <TableHead className="text-right">Score</TableHead>
+                                    <TableHead className="text-right hidden sm:table-cell">Canc/Resch</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {stats.slice(0, 5).map((s, idx) => (
+                                {stats.map((s, idx) => (
                                     <TableRow key={idx}>
                                         <TableCell className="font-medium">{s._id}</TableCell>
-                                        <TableCell className="text-right">{s.totalInterviews}</TableCell>
-                                        <TableCell className="text-right">{s.statusBreakdown.find(x => x.status === 'Active')?.count || 0}</TableCell>
+                                        <TableCell className="text-right">{s.totalInterviewsSent}</TableCell>
+                                        <TableCell className="text-right">{s.completed}</TableCell>
+                                        <TableCell className="text-right font-bold text-blue-600">{s.qualityScore.toFixed(1)}</TableCell>
+                                        <TableCell className="text-right hidden sm:table-cell">{s.cancelled + s.rescheduled}</TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
