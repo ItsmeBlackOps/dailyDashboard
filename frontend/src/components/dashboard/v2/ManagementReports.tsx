@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useAuth, API_URL } from '@/hooks/useAuth';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertTriangle, Clock } from 'lucide-react';
 import {
     Table,
     TableBody,
@@ -16,8 +16,9 @@ interface AtRiskCandidate {
     'Candidate Name': string;
     Branch: string;
     Recruiter: string;
-    interviewCount: number;
-    lastInterview: string | null;
+    totalInterviews: number;
+    recentInterviews: number;
+    lastInterviewDate: string | null;
 }
 
 export function ManagementReports() {
@@ -54,9 +55,9 @@ export function ManagementReports() {
                 <CardHeader>
                     <div className="flex items-center gap-2">
                         <AlertTriangle className="h-5 w-5 text-red-500" />
-                        <CardTitle>Stagnant Candidates (Low Interaction)</CardTitle>
+                        <CardTitle>Candidates At Risk (Stagnation)</CardTitle>
                     </div>
-                    <CardDescription>Active candidates with the least number of interviews recorded.</CardDescription>
+                    <CardDescription>Active candidates with 0 interviews in the last 30 days.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -64,8 +65,8 @@ export function ManagementReports() {
                             <TableRow>
                                 <TableHead>Candidate</TableHead>
                                 <TableHead>Branch</TableHead>
-                                <TableHead>Recruiter</TableHead>
-                                <TableHead className="text-right">Interviews</TableHead>
+                                <TableHead>Recruiter owner</TableHead>
+                                <TableHead className="text-right">Total Int.</TableHead>
                                 <TableHead className="text-right">Last Interview</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -75,13 +76,12 @@ export function ManagementReports() {
                                     <TableCell className="font-medium">{c['Candidate Name']}</TableCell>
                                     <TableCell>{c.Branch}</TableCell>
                                     <TableCell>{c.Recruiter}</TableCell>
-                                    <TableCell className="text-right">
-                                        <Badge variant="outline" className={c.interviewCount === 0 ? "bg-red-50 text-red-700 border-red-200" : ""}>
-                                            {c.interviewCount}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-right text-xs text-muted-foreground">
-                                        {c.lastInterview ? new Date(c.lastInterview).toLocaleDateString() : 'Never'}
+                                    <TableCell className="text-right">{c.totalInterviews}</TableCell>
+                                    <TableCell className="text-right flex justify-end items-center gap-2">
+                                        <span className="text-muted-foreground">
+                                            {c.lastInterviewDate ? new Date(c.lastInterviewDate).toLocaleDateString() : 'Never'}
+                                        </span>
+                                        {!c.lastInterviewDate && <Clock className="h-3 w-3 text-red-500" />}
                                     </TableCell>
                                 </TableRow>
                             ))}

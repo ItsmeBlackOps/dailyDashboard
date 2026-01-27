@@ -16,8 +16,8 @@ interface ExpertStat {
     expert: string;
     totalTasks: number;
     completedTasks: number;
-    activeTasks: number;
-    completionRate: number;
+    activeBucket: number;
+    acknowledgedShare: number;
     roundCounts: Record<string, number>;
 }
 
@@ -54,7 +54,7 @@ export function ExpertAnalytics({ period }: { period: string }) {
             <div className="grid grid-cols-1 gap-4">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Expert Performance</CardTitle>
+                        <CardTitle>Expert Utilization & Performance</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <Table>
@@ -62,10 +62,10 @@ export function ExpertAnalytics({ period }: { period: string }) {
                                 <TableRow>
                                     <TableHead>Expert</TableHead>
                                     <TableHead className="text-right">Total Tasks</TableHead>
-                                    <TableHead className="text-right">Active</TableHead>
+                                    <TableHead className="text-right">Active Bucket</TableHead>
                                     <TableHead className="text-right">Completed</TableHead>
-                                    <TableHead className="text-right">Rate</TableHead>
-                                    <TableHead>Common Rounds</TableHead>
+                                    <TableHead className="text-right">Ack. Rate</TableHead>
+                                    <TableHead>Top Rounds</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -73,14 +73,15 @@ export function ExpertAnalytics({ period }: { period: string }) {
                                     <TableRow key={idx}>
                                         <TableCell className="font-medium">{s.expert}</TableCell>
                                         <TableCell className="text-right">{s.totalTasks}</TableCell>
-                                        <TableCell className="text-right">{s.activeTasks}</TableCell>
+                                        <TableCell className="text-right text-blue-600 font-semibold">{s.activeBucket}</TableCell>
                                         <TableCell className="text-right">{s.completedTasks}</TableCell>
                                         <TableCell className="text-right">
-                                            <Badge variant={s.completionRate > 80 ? 'default' : 'secondary'}>
-                                                {s.completionRate.toFixed(1)}%
+                                            <Badge variant={s.acknowledgedShare > 90 ? 'outline' : 'secondary'}
+                                                className={s.acknowledgedShare < 80 ? 'bg-red-50 text-red-700' : ''}>
+                                                {s.acknowledgedShare.toFixed(1)}%
                                             </Badge>
                                         </TableCell>
-                                        <TableCell className="text-xs text-muted-foreground">
+                                        <TableCell className="text-xs text-muted-foreground w-[200px] truncate">
                                             {Object.entries(s.roundCounts)
                                                 .sort(([, a], [, b]) => b - a)
                                                 .slice(0, 3)
