@@ -11,6 +11,8 @@ import notificationRoutes from './notificationRoutes.js';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
+import dashboardRoutes from './dashboardRoutes.js';
+
 const router = express.Router();
 
 // API routes
@@ -22,6 +24,7 @@ router.use('/support', supportRoutes);
 router.use('/profile', profileRoutes);
 router.use('/candidates', candidateRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/dashboard', dashboardRoutes);
 router.use('/', docsRoutes);
 
 // Health check endpoint

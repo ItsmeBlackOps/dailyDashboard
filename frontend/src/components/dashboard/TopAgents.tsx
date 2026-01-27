@@ -175,14 +175,7 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
   const { refreshAccessToken } = useAuth();
   const posthog = usePostHog();
 
-  useEffect(() => {
-    posthog.capture('dashboard_top_agents_viewed', {
-      user_role: role,
-      view_mode: view,
-      agents_count: list.length,
-      agent_search_active: agentFilter.size > 0
-    });
-  }, [view, agentFilter, list.length, role, posthog]);
+
   // const [displayMode, setDisplayMode] = useState<DisplayMode>("all");
 
   const allowedViews: ViewMode[] = useMemo(() => {
@@ -301,6 +294,15 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
     if (agentFilter.size === 0) return combined;
     return combined.filter((l) => agentFilter.has(l.id));
   }, [leaders, view, agentFilter]);
+
+  useEffect(() => {
+    posthog.capture('dashboard_top_agents_viewed', {
+      user_role: role,
+      view_mode: view,
+      agents_count: list.length,
+      agent_search_active: agentFilter.size > 0
+    });
+  }, [view, agentFilter, list.length, role, posthog]);
 
   const rowHighlightClasses = useCallback((leader: LeaderResponse) => {
     if (leader.highlight) {

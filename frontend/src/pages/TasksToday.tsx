@@ -259,6 +259,7 @@ import { Trash2 } from "lucide-react";
 
 export default function TasksToday() {
   const posthog = usePostHog(); // [Harsh] Analytics
+  const { refreshAccessToken, authFetch, user: authUser } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [filterStatus, setFilterStatus] = useState("all");
   const [candidateFilter, setCandidateFilter] = useState("");
@@ -326,7 +327,6 @@ export default function TasksToday() {
 
   // timersRef keeps active active per reminder key
   const timersRef = useRef<Map<string, number>>(new Map());
-  const { refreshAccessToken, authFetch, user: authUser } = useAuth();
 
   useEffect(() => {
     if (authUser?.role) {
@@ -798,101 +798,6 @@ export default function TasksToday() {
     [toast]
   );
 
-  const handleMockSend = useCallback(async (payload: any) => {
-    setMockSending(true);
-    setMockError('');
-    try {
-      const response = await authFetch(`${API_URL}/api/tasks/mock-request`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        setMockDialogTask(null);
-        setMockPreview(null);
-        setMockResumeUpload(null);
-        setMockJdUpload(null);
-        setMockJobDescription('');
-
-        posthog.capture('mock_request_submitted', {
-          user_role: authUser?.role,
-          technology: mockPreview.technology,
-          has_resume: storedResumeAvailable || !!mockResumeUpload,
-        });
-
-        toast({
-          title: "Mock Request Sent",
-          description: "Ideally, an expert will be assigned soon.",
-        });
-      } else {
-        const err = await response.json();
-        setMockError(err.error || "Failed to send request.");
-      }
-    } catch (error: any) {
-      console.error("Mock send error", error);
-      setMockError(error.message || "Failed to send request.");
-    } finally {
-      setMockSending(false);
-    }
-  }, [mockPreview, mockResumeUpload, mockJdUpload, mockJobDescription, authFetch, toast, storedResumeAvailable, authUser?.role, posthog, setMockSending, setMockError, setMockDialogTask, setMockPreview, setMockResumeUpload, setMockJdUpload, setMockJobDescription]);
-
-  const handleGenerateThanksMail = useCallback(async () => {
-    if (!thanksDialogTask) return;
-
-    setThanksMailLoading(true);
-    setThanksMailError('');
-    try {
-      const response = await authFetch(`${API_URL}/api/tasks/${thanksDialogTask._id}/thanks-mail`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          candidateName: thanksDialogTask.candidateName,
-          interviewerName: thanksDialogTask.interviewerName,
-          jobTitle: thanksDialogTask.jobTitle,
-          interviewDate: thanksDialogTask.date,
-          interviewTime: thanksDialogTask.time,
-          interviewDuration: thanksDialogTask.duration,
-          interviewType: thanksDialogTask.type,
-          technology: thanksDialogTask.technology,
-        }),
-      });
-      const data = await response.json();
-      if (data.success && data.content) {
-        setThanksMailContent(data.content);
-        setThanksMailHtml(data.html || '');
-        const nowIso = new Date().toISOString();
-        setThanksMailGeneratedAt(nowIso);
-
-        persistThanksMailToStorage(thanksDialogTask._id, {
-          content: data.content,
-          html: data.html || '',
-          generatedAt: nowIso
-        });
-
-        // Update rate info if provided
-        if (data.rateLimit) {
-          setThanksMailRateInfo({
-            remaining: data.rateLimit.remaining,
-            resetAt: data.rateLimit.resetAt
-          });
-        }
-
-        posthog.capture('thanks_mail_generated', {
-          user_role: authUser?.role,
-          task_id: thanksDialogTask._id
-        });
-
-      } else {
-        setThanksMailError(data.error || 'Failed to generate email.');
-      }
-    } catch (error: any) {
-      console.error('Thanks mail generation failed', error);
-      setThanksMailError(error.message || 'Failed to generate email.');
-    } finally {
-      setThanksMailLoading(false);
-    }
-  }, [authFetch, thanksDialogTask, persistThanksMailToStorage, authUser?.role, posthog]);
 
   const handleDeleteTask = useCallback(async (taskId: string) => {
     try {
@@ -1795,6 +1700,12 @@ export default function TasksToday() {
 
       persistMockMaterials(storedEntry);
 
+      posthog.capture('mock_request_submitted', {
+        user_role: authUser?.role,
+        technology: payload.technology,
+        has_resume: !!resumeAttachment
+      });
+
       toast({
         title: 'Mock request sent',
         description: 'Mock interview details emailed successfully.'
@@ -1901,6 +1812,12 @@ export default function TasksToday() {
       setThanksMailGeneratedAt(generatedAt);
       setThanksMailRateInfo(payload.rateLimit || null);
       persistThanksMailToStorage(thanksDialogTask._id, { content: markdown, html: safeHtml, generatedAt });
+
+      posthog.capture('thanks_mail_generated', {
+        user_role: authUser?.role,
+        task_id: thanksDialogTask._id
+      });
+
       pendingToast.dismiss();
       toast({
         title: 'Thank-you email ready',

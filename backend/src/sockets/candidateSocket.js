@@ -393,7 +393,7 @@ class CandidateSocketHandler {
         newStatus: status,
         updatedBy: user,
         changeDetails: {
-          oldValue: oldCandidate?.workflowStatus || oldCandidate?.status,
+          oldValue: oldCandidate?.status,
           newValue: status,
           changedFields: ['status']
         },
@@ -414,7 +414,7 @@ class CandidateSocketHandler {
         candidateId: updated.id,
         link: `/candidate/${updated.id}`,
         changeDetails: {
-          oldValue: oldCandidate?.workflowStatus || oldCandidate?.status,
+          oldValue: oldCandidate?.status,
           newValue: status,
           changedFields: ['status']
         },
@@ -473,7 +473,7 @@ class CandidateSocketHandler {
           batchData.push({
             candidateId: updated.id,
             candidateName: updated.name,
-            oldValue: oldCandidate?.workflowStatus || oldCandidate?.status,
+            oldValue: oldCandidate?.status,
             newValue: status
           });
         } catch (err) {

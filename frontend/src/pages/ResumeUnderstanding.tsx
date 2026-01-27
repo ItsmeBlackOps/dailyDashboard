@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import DOMPurify from "dompurify";
 import { io, Socket } from "socket.io-client";
@@ -90,7 +91,9 @@ export default function ResumeUnderstanding() {
     done: false
   });
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const socket = useMemo<Socket | null>(() => {
     if (!allowed) {
@@ -120,7 +123,12 @@ export default function ResumeUnderstanding() {
       }
 
       const rows = Array.isArray(response.candidates) ? response.candidates : [];
-      setQueues((prev) => ({ ...prev, [status]: rows }));
+      // Defensive filtering for pending queue
+      const filteredRows = status === 'pending'
+        ? rows.filter(c => c.resumeUnderstandingStatus !== 'done')
+        : rows;
+
+      setQueues((prev) => ({ ...prev, [status]: filteredRows }));
       setLoadingStatus((prev) => ({ ...prev, [status]: false }));
       setFetched((prev) => ({ ...prev, [status]: true }));
     });
@@ -234,6 +242,20 @@ export default function ResumeUnderstanding() {
       tab: activeStatus
     });
   }, [activeStatus, role, posthog]);
+
+  // Handle Deep Linking for Discussion
+  useEffect(() => {
+    const discussionId = searchParams.get('discussionCandidateId');
+    if (discussionId && !selectedCandidate) {
+      // Check if we have it in current queues
+      const allCandidates = [...queues.pending, ...queues.done];
+      const found = allCandidates.find(c => c.id === discussionId);
+      if (found) {
+        setSelectedCandidate(found);
+      }
+      // Optional: If not found, we might need to fetch it individually or wait for queue fetch
+    }
+  }, [searchParams, queues, selectedCandidate]);
 
   const updateResumeStatus = (candidateId: string, status: QueueStatus) => {
     if (!socket) return;
