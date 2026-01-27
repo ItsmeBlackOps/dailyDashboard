@@ -1,5 +1,6 @@
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import { userModel } from '../models/User.js';
 import moment from 'moment-timezone';
 
 const EST_TIMEZONE = 'America/New_York';
@@ -39,8 +40,6 @@ export class DashboardController {
         return { start: start.toDate(), end: end.toDate() };
     }
 
-    // Helper to normalize Round Logic: actualRound > Interview Round 
-    // And "Loop X" -> "Loop"
     getRoundNormalizationLogic() {
         return {
             $let: {
@@ -58,26 +57,119 @@ export class DashboardController {
         };
     }
 
+    async getScopedMatchStage(user, baseMatch = {}) {
+        if (!user) return baseMatch;
+        const role = (user.role || '').toLowerCase();
+        const email = (user.email || '').toLowerCase();
+
+        // Admin: See all
+        if (role === 'admin') {
+            return baseMatch;
+        }
+
+        // Recruiter: See self (Sender OR Owner)
+        if (role === 'recruiter') {
+            return {
+                ...baseMatch,
+                $or: [
+                    { senderRecruiter: { $regex: email, $options: 'i' } },
+                    { ownerRecruiter: { $regex: userModel.formatDisplayNameFromEmail(email), $options: 'i' } }
+                ]
+            };
+        }
+
+        // Expert (User): See assigned tasks
+        if (role === 'user' || role === 'expert') {
+            return {
+                ...baseMatch,
+                assignedExpert: { $regex: email, $options: 'i' }
+            };
+        }
+
+        // Lead/MLead/AM: See Team + Self
+        if (['lead', 'mlead', 'am', 'mam'].includes(role)) {
+            let teamEmails = [];
+
+            if (role === 'mam') {
+                // MAM: Teams under him (Users where manager == MAM)
+                const mamName = userModel.formatDisplayNameFromEmail(email);
+                const users = await this.userCollection.find({
+                    manager: { $regex: mamName, $options: 'i' }
+                }).toArray();
+                teamEmails = users.map(u => u.email.toLowerCase());
+            } else {
+                // Lead/AM: Use existing logic
+                teamEmails = userModel.getTeamEmails(email, role, user.teamLead);
+            }
+
+            // Add self just in case
+            teamEmails.push(email);
+
+            // Filter: Sender OR Owner OR Assigned must be in team
+            // Note: Regex match for list is inefficient, but $in with regex is not supported easily.
+            // We can use $in with exact values if normalized, or a big $or regex.
+            // Given expected team size (<50), $in on exact email keys (sender) or Name keys (owner) is best.
+
+            // We need Names for Name columns (Owner, Assigned fallback)
+            const teamNames = teamEmails.map(e => userModel.formatDisplayNameFromEmail(e));
+
+            return {
+                ...baseMatch,
+                $or: [
+                    { senderRecruiter: { $in: teamEmails } }, // Task sender is email
+                    { assignedExpert: { $in: teamEmails } }, // Task assigned is email often
+                    { ownerRecruiter: { $in: teamNames } }   // Candidate recruiter is Name
+                ]
+            };
+        }
+
+        // MM: Whole Branch
+        if (role === 'mm') {
+            // Identify Branch: Check user profile metadata or infer?
+            // Fallback: Check if they are listed as Recruiter in any Candidate from a branch?
+            // Or just allow all IF filtered by branch explicitly?
+            // Since we can't reliably auto-detect branch without structured data, 
+            // we assume MM accounts are strictly tied to a branch via explicit 'Branch' filter in UI.
+            // Implementation: If `Branch` is passed in `baseMatch`, respect it.
+            // If not, we might be exposing too much.
+            // SAFEGUARD: Find one candidate owned by this user (if they act as recruiter) to get branch?
+            // Safer: Query User Metadata.
+            const userProfile = await userModel.getUserProfileMetadata(email);
+            const branch = userProfile?.metadata?.branch;
+
+            if (branch) {
+                return {
+                    ...baseMatch,
+                    effectiveBranch: branch
+                };
+            }
+            // If no branch found, restrict to nothing to be safe, or allow all?
+            // User said "itself and whole branch".
+            // If we can't find branch, maybe they only see "themselves".
+            return {
+                ...baseMatch,
+                $or: [
+                    { senderRecruiter: { $regex: email, $options: 'i' } },
+                    { ownerRecruiter: { $regex: userModel.formatDisplayNameFromEmail(email), $options: 'i' } }
+                ]
+            };
+        }
+
+        return baseMatch;
+    }
+
+
     async getRecruiterStats(req, res) {
         try {
             const { period, startDate, endDate, branch, recruiterEmail, dateBasis } = req.query;
             let { start, end } = this.calculateDateRange(period, startDate, endDate);
+            const user = req.user;
 
-            // Determine Date Field: 'Date of Interview' or 'source.receivedDateTime'
-            // Default to 'Date of Interview' for Activity trends
-            const dateField = dateBasis === 'received' ? 'source.receivedDateTime' : 'Date of Interview'; // Note: Date of Interview is string "MM/DD/YYYY" or similar in DB usually?
-
-            // If we use Date of Interview (string), we must match string format "MM/DD/YYYY"
-            // If we use receivedDateTime (ISO Date), we match Date objects
+            const dateField = dateBasis === 'received' ? 'source.receivedDateTime' : 'Date of Interview';
             const isStringDate = dateField === 'Date of Interview';
 
             const matchStage = {};
             if (isStringDate) {
-                // This rough string match assumes inclusive range
-                // Better: Filter in projection or convert strings to dates
-                // For now, let's allow fetching by regex or assume exact date for daily? 
-                // Actually, let's use a $expr with $dateFromString if possible, or simple "MM/DD/YYYY" string gen
-                // Simpler approach for now:
                 matchStage[dateField] = {
                     $gte: moment(start).format('MM/DD/YYYY'),
                     $lte: moment(end).format('MM/DD/YYYY')
@@ -86,9 +178,8 @@ export class DashboardController {
                 matchStage[dateField] = { $gte: start, $lte: end };
             }
 
-            const pipeline = [
+            let pipeline = [
                 { $match: matchStage },
-                // Join CandidateDetails for Branch & Recruiter Owner info
                 {
                     $lookup: {
                         from: 'candidateDetails',
@@ -102,19 +193,13 @@ export class DashboardController {
                     $addFields: {
                         normalizedRound: this.getRoundNormalizationLogic(),
                         effectiveBranch: { $ifNull: ['$candidateInfo.Branch', 'Unknown'] },
-                        // "Interviews they sent" = TaskBody.sender
-                        senderRecruiter: '$sender', // Recruiter who SENT the interview
-                        ownerRecruiter: '$candidateInfo.Recruiter', // Recruiter who OWNS the candidate
+                        senderRecruiter: { $toLower: '$sender' },
+                        ownerRecruiter: '$candidateInfo.Recruiter',
 
-                        // "Not Done" Logic: Past End Time & Not Completed/Cancelled
                         isNotDone: {
                             $and: [
                                 {
                                     $lt: [
-                                        // Parse End Time... Assuming 'Date of Interview' + 'End Time Of Interview' 
-                                        // This is expensive in aggregation. Let's simplify: 
-                                        // If Status not in [Completed, Cancelled] AND Date < Today
-                                        // We ignore time for now for performance unless strictly needed
                                         { $dateFromString: { dateString: '$Date of Interview', format: '%m/%d/%Y', onError: new Date() } },
                                         new Date()
                                     ]
@@ -123,33 +208,36 @@ export class DashboardController {
                             ]
                         }
                     }
-                },
-                {
-                    $match: {
-                        ...(branch ? { effectiveBranch: branch } : {}),
-                        ...(recruiterEmail ? { senderRecruiter: { $regex: recruiterEmail, $options: 'i' } } : {})
-                    }
-                },
-                {
-                    $group: {
-                        _id: '$senderRecruiter',
-                        totalInterviewsSent: { $sum: 1 },
-                        completed: {
-                            $sum: { $cond: [{ $in: [{ $toLower: '$status' }, ['completed', 'done']] }, 1, 0] }
-                        },
-                        cancelled: {
-                            $sum: { $cond: [{ $eq: [{ $toLower: '$status' }, 'cancelled'] }, 1, 0] }
-                        },
-                        rescheduled: {
-                            $sum: { $cond: [{ $eq: [{ $toLower: '$status' }, 'rescheduled'] }, 1, 0] }
-                        },
-                        notDone: {
-                            $sum: { $cond: ['$isNotDone', 1, 0] }
-                        },
-                        rounds: { $push: '$normalizedRound' }
-                    }
-                },
-                // Calculate Score: (Completed * 1.0) − (Cancelled * 0.5) − (Rescheduled * 0.3) − (NotDone * 1.0)
+                }
+            ];
+
+            // Insert Scoping Match before Grouping
+            const scopedMatch = await this.getScopedMatchStage(user, {
+                ...(branch ? { effectiveBranch: branch } : {}),
+                ...(recruiterEmail ? { senderRecruiter: { $regex: recruiterEmail, $options: 'i' } } : {})
+            });
+
+            pipeline.push({ $match: scopedMatch });
+
+            pipeline.push({
+                $group: {
+                    _id: '$senderRecruiter',
+                    totalInterviewsSent: { $sum: 1 },
+                    completed: {
+                        $sum: { $cond: [{ $in: [{ $toLower: '$status' }, ['completed', 'done']] }, 1, 0] }
+                    },
+                    cancelled: {
+                        $sum: { $cond: [{ $eq: [{ $toLower: '$status' }, 'cancelled'] }, 1, 0] }
+                    },
+                    rescheduled: {
+                        $sum: { $cond: [{ $eq: [{ $toLower: '$status' }, 'rescheduled'] }, 1, 0] }
+                    },
+                    notDone: {
+                        $sum: { $cond: ['$isNotDone', 1, 0] }
+                    },
+                    rounds: { $push: '$normalizedRound' }
+                }
+            },
                 {
                     $project: {
                         recruiter: '$_id',
@@ -174,10 +262,10 @@ export class DashboardController {
                     }
                 },
                 { $sort: { totalInterviewsSent: -1 } }
-            ];
+            );
 
             const stats = await this.taskCollection.aggregate(pipeline).toArray();
-            // Calculate Round distribution in JS to save db CPU
+
             const processed = stats.map(stat => {
                 const roundCounts = {};
                 (stat.roundsDetail || []).forEach(r => {
@@ -199,6 +287,7 @@ export class DashboardController {
         try {
             const { period, startDate, endDate, expertEmail } = req.query;
             let { start, end } = this.calculateDateRange(period, startDate, endDate);
+            const user = req.user;
 
             const matchStage = {
                 'Date of Interview': {
@@ -221,30 +310,34 @@ export class DashboardController {
                 {
                     $addFields: {
                         assignedExpert: { $ifNull: ['$assignedTo', '$candidateDetails.Expert'] },
+                        senderRecruiter: { $toLower: '$sender' },
+                        ownerRecruiter: '$candidateDetails.Recruiter',
                         normalizedRound: this.getRoundNormalizationLogic()
                     }
-                },
-                {
-                    $match: {
-                        ...(expertEmail ? { assignedExpert: { $regex: expertEmail, $options: 'i' } } : {})
-                    }
-                },
-                {
-                    $group: {
-                        _id: '$assignedExpert',
-                        totalTasks: { $sum: 1 },
-                        completedTasks: {
-                            $sum: { $cond: [{ $in: [{ $toLower: '$status' }, ['completed', 'done']] }, 1, 0] }
-                        },
-                        pendingTasks: {
-                            $sum: { $cond: [{ $in: [{ $toLower: '$status' }, ['pending', 'assigned', 'acknowledged']] }, 1, 0] }
-                        },
-                        acknowledged: {
-                            $sum: { $cond: [{ $eq: ['$assignment.acknowledged', true] }, 1, 0] }
-                        },
-                        roundsConducted: { $push: '$normalizedRound' }
-                    }
-                },
+                }
+            ];
+
+            const scopedMatch = await this.getScopedMatchStage(user, {
+                ...(expertEmail ? { assignedExpert: { $regex: expertEmail, $options: 'i' } } : {})
+            });
+            pipeline.push({ $match: scopedMatch });
+
+            pipeline.push({
+                $group: {
+                    _id: '$assignedExpert',
+                    totalTasks: { $sum: 1 },
+                    completedTasks: {
+                        $sum: { $cond: [{ $in: [{ $toLower: '$status' }, ['completed', 'done']] }, 1, 0] }
+                    },
+                    pendingTasks: {
+                        $sum: { $cond: [{ $in: [{ $toLower: '$status' }, ['pending', 'assigned', 'acknowledged']] }, 1, 0] }
+                    },
+                    acknowledged: {
+                        $sum: { $cond: [{ $eq: ['$assignment.acknowledged', true] }, 1, 0] }
+                    },
+                    roundsConducted: { $push: '$normalizedRound' }
+                }
+            },
                 {
                     $project: {
                         expert: '$_id',
@@ -261,7 +354,7 @@ export class DashboardController {
                         rounds: '$roundsConducted'
                     }
                 }
-            ];
+            );
 
             const stats = await this.taskCollection.aggregate(pipeline).toArray();
 
@@ -285,13 +378,13 @@ export class DashboardController {
     async getManagementStats(req, res) {
         try {
             const { branch } = req.query;
-            // Logic: Stagnant Candidates
-            // Active candidates with LOW interview count in last 30 days
-            // Coverage Rate Logic also needed but for this endpoint let's stick to the "List" report
-
+            const user = req.user;
             const thirtyDaysAgo = moment().subtract(30, 'days').toDate();
 
-            const pipeline = [
+            // Note: Filtering logic needs to happen AFTER lookup for Candidates effectively,
+            // but here we start with Candidates.
+
+            let pipeline = [
                 {
                     $match: {
                         status: 'Active',
@@ -299,6 +392,41 @@ export class DashboardController {
                         ...(branch ? { Branch: branch } : {})
                     }
                 },
+                {
+                    $addFields: {
+                        ownerRecruiter: '$Recruiter',
+                        effectiveBranch: '$Branch'
+                    }
+                }
+            ];
+
+            // Apply Scope on Candidate Fields
+            // MLead/Lead/MAM/AM should see candidates owned by their team
+            // Recruiter should see candidates they own
+            const scopedMatch = await this.getScopedMatchStage(user, {});
+            // Note: getScopedMatchStage uses 'senderRecruiter'(email) / 'assignedExpert'(email) / 'ownerRecruiter'(name)
+            // Candidate collection has 'Recruiter' (name) -> ownerRecruiter
+            // It does NOT have 'senderRecruiter' or 'assignedExpert' directly unless joined.
+            // But for Management stats (Stagnant Candidates), we care about OWNERSHIP mostly.
+
+            // We need to adjust 'scopedMatch' because it might contain keys not present here.
+            // Let's create a Candidate-Specific Scope helper or simplify.
+            // Simpler: Reuse specific logic here.
+
+            // Map scopedMatch keys to Candidate keys?
+            // scopedMatch can have $or: [ {senderRecruiter...}, {ownerRecruiter...} ]
+            // We only have ownerRecruiter here.
+            // So we filter the scope condition to only check ownerRecruiter or effectiveBranch.
+
+            // Hack: We can just use the same function but we must acknowledge 'senderRecruiter' and 'assignedExpert' won't match anything 
+            // unless we lookup tasks FIRST.
+            // But we are looking for candidates with NO tasks (stagnant).
+            // So checking 'assignedExpert' is moot for 0 task candidates.
+            // We verify via 'ownerRecruiter' (Recruiter Name).
+
+            pipeline.push({ $match: scopedMatch });
+
+            pipeline.push(
                 {
                     $lookup: {
                         from: 'taskBody',
@@ -342,11 +470,10 @@ export class DashboardController {
                         }
                     }
                 },
-                // Filter for "Risk": Recent interviews < 1 (i.e., 0)
                 { $match: { recentInterviews: { $lt: 1 } } },
-                { $sort: { lastInterviewDate: 1 } }, // Oldest interaction first (most stagnant)
+                { $sort: { lastInterviewDate: 1 } },
                 { $limit: 100 }
-            ];
+            );
 
             const report = await this.candidateCollection.aggregate(pipeline).toArray();
             res.json({ success: true, data: report });
