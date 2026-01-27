@@ -381,7 +381,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
               <NavItem
                 icon={LayoutDashboard}
                 label="Dashboard"
-                href="/"
+                href={['admin', 'recruiter', 'manager', 'mlead', 'lead', 'mam', 'am', 'mm', 'user', 'expert'].includes(normalizedRole) ? "/dashboard-v2" : "/"}
                 isOpen={isOpen}
               />
               <NavItem
