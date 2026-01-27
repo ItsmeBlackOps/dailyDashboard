@@ -50,9 +50,13 @@ export default function DashboardV2() {
             <Tabs defaultValue="overview" className="space-y-4">
                 <TabsList>
                     <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="recruiter">Recruiter Stats</TabsTrigger>
-                    <TabsTrigger value="expert">Expert Stats</TabsTrigger>
-                    {['admin', 'manager', 'mlead', 'lead'].includes(role) && (
+                    {['admin', 'recruiter', 'manager', 'mlead', 'lead', 'mam', 'am', 'mm'].includes(role) && (
+                        <TabsTrigger value="recruiter">Recruiter Stats</TabsTrigger>
+                    )}
+                    {['admin', 'user', 'expert', 'manager', 'mlead', 'lead', 'mam', 'am', 'mm'].includes(role) && (
+                        <TabsTrigger value="expert">Expert Stats</TabsTrigger>
+                    )}
+                    {['admin', 'manager', 'mlead', 'lead', 'mam', 'am', 'mm'].includes(role) && (
                         <TabsTrigger value="management">Management Reports</TabsTrigger>
                     )}
                 </TabsList>
