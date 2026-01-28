@@ -371,6 +371,8 @@ export default function ResumeUnderstanding() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Candidate</TableHead>
+                          {/* [HAR-86] Expert Name Column */}
+                          {role !== 'user' && <TableHead>Expert Name</TableHead>}
                           <TableHead>Technology</TableHead>
                           <TableHead>Recruiter</TableHead>
                           <TableHead>Branch</TableHead>
@@ -397,6 +399,10 @@ export default function ResumeUnderstanding() {
                           return (
                             <TableRow key={candidate.id}>
                               <TableCell>{DOMPurify.sanitize(candidate.name || '')}</TableCell>
+                              {/* [HAR-86] Expert Name Cell */}
+                              {role !== 'user' && (
+                                <TableCell>{DOMPurify.sanitize(candidate.expert || '')}</TableCell>
+                              )}
                               <TableCell>{DOMPurify.sanitize(candidate.technology || '')}</TableCell>
                               <TableCell>{DOMPurify.sanitize(candidate.recruiter || '')}</TableCell>
                               <TableCell>{DOMPurify.sanitize(candidate.branch || '')}</TableCell>
@@ -437,7 +443,7 @@ export default function ResumeUnderstanding() {
                                   >
                                     <MessageSquare className="h-4 w-4" />
                                   </Button>
-                                  {(role === 'admin' || (role === 'expert' || role === 'user') && candidate.expertRaw === userEmail) && (
+                                  {(role === 'admin' || ((role === 'lead' || role === 'user') && (candidate.expertRaw || '').toLowerCase() === userEmail.toLowerCase())) && (
                                     activeStatus === 'pending' ? (
                                       <Button
                                         size="sm"
