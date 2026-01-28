@@ -6,6 +6,7 @@ import { UserProfileProvider } from '@/contexts/UserProfileContext';
 import { useToast } from '@/hooks/use-toast';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { NotificationDetailModal } from '@/components/ui/notification-modal';
+import { ChangelogDialog } from '@/components/dashboard/ChangelogDialog';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -45,6 +46,23 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   }, [toast]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const seen = window.localStorage.getItem('resumeUnderstandingUpdateSeen_20260128');
+      if (!seen) {
+        toast({
+          title: 'Resume Understanding Update',
+          description: 'If you want to send resume understanding for a candidate again, you can click the button and it will be sent.',
+          duration: 8000,
+        });
+        window.localStorage.setItem('resumeUnderstandingUpdateSeen_20260128', 'true');
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, [toast]);
+
   return (
     <ThemeProvider>
       <UserProfileProvider>
@@ -60,6 +78,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               </main>
             </div>
             <NotificationDetailModal />
+            <ChangelogDialog />
           </div>
         </NotificationProvider>
       </UserProfileProvider>
