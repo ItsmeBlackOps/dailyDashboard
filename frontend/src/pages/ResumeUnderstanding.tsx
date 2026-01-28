@@ -16,6 +16,17 @@ import { SOCKET_URL, useAuth } from "@/hooks/useAuth";
 import { ResumeDiscussionDrawer } from "@/components/resume/ResumeDiscussionDrawer";
 
 
+
+function formatEmailDisplay(value: string): string {
+  if (!value) return '';
+  const local = value.includes('@') ? value.split('@')[0] : value;
+  return local
+    .split(/[._\s-]+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+    .join(' ');
+}
+
 type QueueStatus = "pending" | "done";
 
 interface CandidateRecord {
@@ -401,7 +412,7 @@ export default function ResumeUnderstanding() {
                               <TableCell>{DOMPurify.sanitize(candidate.name || '')}</TableCell>
                               {/* [HAR-86] Expert Name Cell */}
                               {role !== 'user' && (
-                                <TableCell>{DOMPurify.sanitize(candidate.expert || '')}</TableCell>
+                                <TableCell>{formatEmailDisplay(candidate.expertRaw || candidate.expert || '')}</TableCell>
                               )}
                               <TableCell>{DOMPurify.sanitize(candidate.technology || '')}</TableCell>
                               <TableCell>{DOMPurify.sanitize(candidate.recruiter || '')}</TableCell>
