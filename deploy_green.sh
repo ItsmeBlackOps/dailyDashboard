@@ -2,7 +2,7 @@
 set -e
 
 # 1. Build
-docker compose build backend-green frontend-green
+# docker compose build backend-green frontend-green
 
 # 2. Update Config to Green (Before starting Gateway to avoid crashes)
 cp nginx/conf.d/upstreams/backend.green.conf  nginx/conf.d/upstreams/backend.active.conf

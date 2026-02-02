@@ -16,6 +16,17 @@ import { SOCKET_URL, useAuth } from "@/hooks/useAuth";
 import { ResumeDiscussionDrawer } from "@/components/resume/ResumeDiscussionDrawer";
 
 
+
+function formatEmailDisplay(value: string): string {
+  if (!value) return '';
+  const local = value.includes('@') ? value.split('@')[0] : value;
+  return local
+    .split(/[._\s-]+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+    .join(' ');
+}
+
 type QueueStatus = "pending" | "done";
 
 interface CandidateRecord {
@@ -371,6 +382,8 @@ export default function ResumeUnderstanding() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Candidate</TableHead>
+                          {/* [HAR-86] Expert Name Column */}
+                          {role !== 'user' && <TableHead>Expert Name</TableHead>}
                           <TableHead>Technology</TableHead>
                           <TableHead>Recruiter</TableHead>
                           <TableHead>Branch</TableHead>
@@ -397,6 +410,10 @@ export default function ResumeUnderstanding() {
                           return (
                             <TableRow key={candidate.id}>
                               <TableCell>{DOMPurify.sanitize(candidate.name || '')}</TableCell>
+                              {/* [HAR-86] Expert Name Cell */}
+                              {role !== 'user' && (
+                                <TableCell>{formatEmailDisplay(candidate.expertRaw || candidate.expert || '')}</TableCell>
+                              )}
                               <TableCell>{DOMPurify.sanitize(candidate.technology || '')}</TableCell>
                               <TableCell>{DOMPurify.sanitize(candidate.recruiter || '')}</TableCell>
                               <TableCell>{DOMPurify.sanitize(candidate.branch || '')}</TableCell>
@@ -437,7 +454,7 @@ export default function ResumeUnderstanding() {
                                   >
                                     <MessageSquare className="h-4 w-4" />
                                   </Button>
-                                  {(role === 'admin' || (role === 'expert' || role === 'user') && candidate.expertRaw === userEmail) && (
+                                  {(role === 'admin' || ((role === 'lead' || role === 'user') && (candidate.expertRaw || '').toLowerCase() === userEmail.toLowerCase())) && (
                                     activeStatus === 'pending' ? (
                                       <Button
                                         size="sm"

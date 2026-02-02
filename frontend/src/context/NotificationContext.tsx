@@ -40,6 +40,7 @@ interface NotificationEvent {
     changeDetails?: ChangeDetails;
     actor?: Actor;
     batchData?: any[];
+    resumeUnderstandingStatus?: string;
 }
 
 interface NotificationContextType {
@@ -175,7 +176,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                 timestamp: new Date().toISOString(),
                 read: false,
                 candidateId: candidate?.id,
-                commentId: comment.id
+                commentId: comment.id,
+                resumeUnderstandingStatus: candidate?.resumeUnderstandingStatus
             };
 
             setNotifications(prev => [newNotif, ...prev]);

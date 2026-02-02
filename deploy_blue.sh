@@ -4,6 +4,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "Starting blue deploy"
+
 # Stop containers that already bind the host ports (3004, 8180), except the gateway.
 for p in 3004 8180; do
   clash="$(docker ps --format '{{.Names}} {{.Ports}}' | grep -E "0\.0\.0\.0:${p}->" || true)"
@@ -15,6 +17,8 @@ for p in 3004 8180; do
 done
 
 docker compose up -d backend-blue frontend-blue gateway
+
+echo "Reloading nginx"
 
 # Switch traffic to BLUE
 if [ -f nginx/conf.d/upstreams/backend.blue.conf ] && [ -f nginx/conf.d/upstreams/frontend.blue.conf ]; then
