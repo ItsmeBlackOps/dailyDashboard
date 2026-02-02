@@ -46,6 +46,7 @@ interface NavItemProps {
 }
 
 import { usePostHog } from 'posthog-js/react';
+import { useNotifications } from "@/context/NotificationContext";
 
 function NavItem({ icon: Icon, label, href, badge, isOpen, tourId }: NavItemProps) {
   const location = useLocation();
@@ -113,6 +114,16 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
     () => !["lead", "am", "recruiter", "manager", "admin", "mlead", "mam", "mm"].includes(normalizedRole),
     [normalizedRole]
   );
+
+  const { notifications } = useNotifications();
+  const hasResumeUnread = useMemo(() => {
+    return notifications.some(n =>
+      !n.read &&
+      n.type === 'comment' &&
+      n.resumeUnderstandingStatus === 'pending'
+    );
+  }, [notifications]);
+
   const [isUpdateLogOpen, setIsUpdateLogOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [passwordValue, setPasswordValue] = useState('');
@@ -381,7 +392,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
               <NavItem
                 icon={LayoutDashboard}
                 label="Dashboard"
-                href={['admin', 'recruiter', 'manager', 'mlead', 'lead', 'mam', 'am', 'mm', 'user', 'expert'].includes(normalizedRole) ? "/dashboard-v2" : "/"}
+                href="/"
                 isOpen={isOpen}
               />
               <NavItem
@@ -414,7 +425,11 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   label="Resume Understanding"
                   href="/resume-understanding"
                   isOpen={isOpen}
-                  badge={resumeCount > 0 ? String(resumeCount) : undefined}
+                  badge={
+                    resumeCount > 0
+                      ? (hasResumeUnread ? `${resumeCount} •` : String(resumeCount))
+                      : (hasResumeUnread ? "•" : undefined)
+                  }
                 />
               )}
             </nav>

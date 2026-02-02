@@ -8,6 +8,8 @@ const TIMEZONE = 'America/New_York';
 const RECEIVED_DATE_FIELD_ROLES = new Set(['admin', 'mm', 'mam', 'mlead', 'recruiter']);
 // const TOP_PERFORMER_LIMIT = 25;
 
+const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export class TaskService {
   constructor() {
     this.taskModel = taskModel;
@@ -832,11 +834,21 @@ export class TaskService {
     if (userRole === 'MAM' || userRole === 'MM') {
       const managerLocal = manager.toLowerCase().split(' ').join('.');
       const ccVal = userRole === 'MM' ? lowerEmail.split('@')[0] : managerLocal;
+      const selfLocal = lowerEmail.split('@')[0];
+      const selfName = this.taskModel.deriveDisplayNameFromEmail(lowerEmail);
+      const selfPatterns = [
+        { assignedTo: { $regex: `^${escapeRegex(selfLocal)}$`, $options: 'i' } },
+        { assignedTo: { $regex: `^${escapeRegex(lowerEmail)}$`, $options: 'i' } }
+      ];
+      if (selfName) {
+        selfPatterns.push({ assignedTo: { $regex: `^${escapeRegex(selfName)}$`, $options: 'i' } });
+      }
 
       return {
         $or: [
           { cc: { $regex: ccVal, $options: 'i' } },
-          { sender: ccVal }
+          { sender: { $regex: ccVal, $options: 'i' } },
+          ...selfPatterns
         ]
       };
     }

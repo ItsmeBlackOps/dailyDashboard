@@ -242,6 +242,11 @@ The stack consumes values from `.env` (or `.env.example` as a starting point) an
 - Tooltips and responsive layout are preserved. Bars use gradient fills and rounded corners.
 - Tests added for both chart components under `frontend/src/components/dashboard/__tests__`.
 
+## Dashboard V2 Access
+
+- Dashboard V2 tab visibility is role-gated in `frontend/src/pages/DashboardV2.tsx`.
+- See `docs/WALKTHROUGH-dashboard-v2-role-visibility.md` for the current allow-lists and backend guardrails.
+
 Security and hygiene:
 - Frontend sanitizes user-provided HTML via `dompurify` where applicable.
 - All Node.js code uses ESM `import` syntax (no `require`).

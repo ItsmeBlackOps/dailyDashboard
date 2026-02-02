@@ -95,8 +95,8 @@ class Application {
 
   setupExpress() {
     this.app.use(cors(config.cors));
-    this.app.use(express.json({ limit: '10mb' }));
-    this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+    this.app.use(express.json({ limit: '50mb' }));
+    this.app.use(express.urlencoded({ extended: true, limit: '50mb' }));
     this.app.use(morgan(config.logging.format));
 
     // Security headers

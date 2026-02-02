@@ -32,7 +32,7 @@ import { GRAPH_MAIL_SCOPES } from "@/constants";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToastAction } from "@/components/ui/toast";
 import { StatusBadge } from "@/components/candidates/StatusBadge";
-import { Loader2 } from "lucide-react";
+import { Loader2, BookOpen } from "lucide-react";
 
 interface BranchCandidatesProps {
   role: string;
@@ -2003,6 +2003,29 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     });
   }, [selectedIds, toast, posthog]);
 
+  const handleResumeUnderstandingTrigger = (candidateId: string) => {
+    if (!socket) return;
+
+    socket.emit('updateResumeUnderstanding', { candidateId, status: 'pending' }, (response: any) => {
+      if (response?.success) {
+        toast({
+          title: "Sent to Resume Understanding",
+          description: "Candidate has been moved to the Resume Understanding queue.",
+        });
+        // Optimistically update local state if needed, though socket listener usually handles it
+        setCandidates((prev) => prev.map((c) =>
+          c.id === candidateId ? { ...c, resumeUnderstandingStatus: 'pending' } : c
+        ));
+      } else {
+        toast({
+          title: "Failed to update",
+          description: response?.error || "Could not move candidate.",
+          variant: "destructive"
+        });
+      }
+    });
+  };
+
 
 
 
@@ -2894,22 +2917,37 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const isIndeterminate = selectedIds.size > 0 && selectedIds.size < filteredCandidates.length;
 
   // Scroll Observer for Lazy Loading
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
   useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    const target = observerTarget.current;
+    if (!target) {
+      return;
+    }
+
+    observerRef.current?.disconnect();
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => prev + 20);
+          setVisibleCount((prev) => {
+            const next = prev + 20;
+            return next >= filteredCandidates.length ? filteredCandidates.length : next;
+          });
         }
       },
       { threshold: 0.1 }
     );
 
-    if (observerTarget.current) {
-      observer.observe(observerTarget.current);
-    }
+    observer.observe(target);
+    observerRef.current = observer;
 
     return () => observer.disconnect();
-  }, []);
+  }, [filteredCandidates.length, loading]);
 
   // Reset visible count when filters change
   useEffect(() => {
@@ -3163,6 +3201,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
                             <Button variant="ghost" size="sm">View</Button>
+
                             {canEdit && (
                               <Button
                                 variant="ghost"
@@ -3392,7 +3431,20 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
               {/* Resume Section */}
               <div className="space-y-3">
-                <h4 className="text-sm font-semibold">Resume</h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold">Resume</h4>
+                  {['mm', 'mam', 'mlead', 'recruiter', 'admin'].includes(normalizedRole) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1.5"
+                      onClick={() => handleResumeUnderstandingTrigger(selectedSheetCandidate.id)}
+                    >
+                      <BookOpen className="h-3.5 w-3.5" />
+                      Send to Resume Understanding
+                    </Button>
+                  )}
+                </div>
                 {selectedSheetCandidate.resumeLink ? (
                   <a
                     href={selectedSheetCandidate.resumeLink}
@@ -3434,14 +3486,20 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                         Send Assessment
                       </Button>
                     )}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="secondary" className="w-full sm:w-auto">
-                          Resume Understanding
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Go to Tasks to start process</TooltipContent>
-                    </Tooltip>
+                    {['recruiter', 'mlead', 'mam', 'mm', 'admin'].includes(normalizedRole) && (
+                      <Button
+                        variant="secondary"
+                        className="w-full sm:w-auto"
+                        onClick={() => {
+                          if (selectedSheetCandidate?.id) {
+                            handleResumeUnderstandingTrigger(selectedSheetCandidate.id);
+                            navigate(`/resume-understanding?discussion=${encodeURIComponent(selectedSheetCandidate.email)}`);
+                          }
+                        }}
+                      >
+                        Resume Understanding
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}

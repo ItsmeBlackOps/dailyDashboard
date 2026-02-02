@@ -25,7 +25,8 @@ const App = () => (
         <Routes>
           {/* Protected dashboard for admin only */}
           <Route element={<AuthorizedRoute />}>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<DashboardV2 />} />
+            <Route path="/legacy-dashboard" element={<Index />} />
             <Route path="/tasks" element={<TasksToday />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/reports/assistant" element={<ReportAssistant />} />

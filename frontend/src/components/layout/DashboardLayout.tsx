@@ -45,6 +45,23 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   }, [toast]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const seen = window.localStorage.getItem('resumeUnderstandingUpdateSeen_20260128');
+      if (!seen) {
+        toast({
+          title: 'Resume Understanding Update',
+          description: 'If you want to send resume understanding for a candidate again, you can click the button and it will be sent.',
+          duration: 8000,
+        });
+        window.localStorage.setItem('resumeUnderstandingUpdateSeen_20260128', 'true');
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, [toast]);
+
   return (
     <ThemeProvider>
       <UserProfileProvider>
