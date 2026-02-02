@@ -10,6 +10,11 @@ import moment from 'moment-timezone';
 /**
  * Get configuration safely (fallback for early initialization)
  */
+import { posthogLogger } from './posthogLogger.js';
+
+/**
+ * Get configuration safely (fallback for early initialization)
+ */
 function getLogConfig() {
   try {
     // Try to get config, but provide fallbacks for early initialization
@@ -132,6 +137,33 @@ class Logger {
   log(level, message, meta = {}) {
     if (this.levels[level] <= this.currentLevel) {
       console.log(this.formatMessage(level, message, meta));
+
+      // Send to PostHog via OpenTelemetry
+      // Mapped severityText to match standard OTEL/PostHog expectations
+      const severityMap = {
+        error: 'ERROR',
+        warn: 'WARN',
+        info: 'INFO',
+        debug: 'DEBUG',
+        verbose: 'TRACE'
+      };
+
+      if (posthogLogger) {
+        const sanitizedMeta = this.sanitizeObject({
+          ...meta,
+          ...(this.context && { context: this.context }),
+          ...(this.requestId && { requestId: this.requestId })
+        });
+
+        posthogLogger.emit({
+          severityText: severityMap[level] || 'INFO',
+          body: message,
+          attributes: {
+            ...sanitizedMeta,
+            level
+          }
+        });
+      }
     }
   }
 
@@ -281,8 +313,8 @@ export function requestLogger() {
   return (req, res, next) => {
     const startTime = Date.now();
     const requestId = req.headers['x-request-id'] ||
-                     req.headers['request-id'] ||
-                     Math.random().toString(36).substr(2, 9);
+      req.headers['request-id'] ||
+      Math.random().toString(36).substr(2, 9);
 
     // Add request ID to request object
     req.requestId = requestId;
@@ -300,7 +332,7 @@ export function requestLogger() {
 
     // Override res.end to log response
     const originalEnd = res.end;
-    res.end = function(chunk, encoding) {
+    res.end = function (chunk, encoding) {
       const responseTime = Date.now() - startTime;
 
       req.logger.http(

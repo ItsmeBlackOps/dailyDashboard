@@ -2917,22 +2917,37 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const isIndeterminate = selectedIds.size > 0 && selectedIds.size < filteredCandidates.length;
 
   // Scroll Observer for Lazy Loading
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
   useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    const target = observerTarget.current;
+    if (!target) {
+      return;
+    }
+
+    observerRef.current?.disconnect();
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => prev + 20);
+          setVisibleCount((prev) => {
+            const next = prev + 20;
+            return next >= filteredCandidates.length ? filteredCandidates.length : next;
+          });
         }
       },
       { threshold: 0.1 }
     );
 
-    if (observerTarget.current) {
-      observer.observe(observerTarget.current);
-    }
+    observer.observe(target);
+    observerRef.current = observer;
 
     return () => observer.disconnect();
-  }, []);
+  }, [filteredCandidates.length, loading]);
 
   // Reset visible count when filters change
   useEffect(() => {

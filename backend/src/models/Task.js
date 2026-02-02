@@ -90,6 +90,8 @@ export class TaskModel {
         }
       }
 
+      const recruiterName = this.deriveDisplayNameFromEmail(doc.sender || '');
+
       return {
         ...doc,
         assignedExpert,
@@ -99,6 +101,7 @@ export class TaskModel {
         endTime: endMoment,
         candidateExpertDisplay,
         suggestions,
+        recruiterName: recruiterName || null
       };
     } catch (error) {
       logger.error('Error formatting task', { error: error.message, taskId: doc._id });
@@ -254,11 +257,21 @@ export class TaskModel {
     if (userRole === "MAM" || userRole === "MM") {
       const mngr = manager.toLowerCase().split(" ").join(".");
       const ccVal = userRole === "MM" ? lowerEmail.split("@")[0] : mngr;
+      const selfLocal = lowerEmail.split("@")[0];
+      const selfName = this.deriveDisplayNameFromEmail(lowerEmail);
+      const selfPatterns = [
+        { assignedTo: { $regex: `^${escapeRegex(selfLocal)}$`, $options: "i" } },
+        { assignedTo: { $regex: `^${escapeRegex(lowerEmail)}$`, $options: "i" } }
+      ];
+      if (selfName) {
+        selfPatterns.push({ assignedTo: { $regex: `^${escapeRegex(selfName)}$`, $options: "i" } });
+      }
 
       return {
         $or: [
           { cc: { $regex: ccVal, $options: "i" } },
-          { sender: { $regex: ccVal, $options: "i" } }
+          { sender: { $regex: ccVal, $options: "i" } },
+          ...selfPatterns
         ]
       };
     } else if (userRole === "mlead") {
@@ -418,17 +431,7 @@ export class TaskModel {
       };
 
       if (['mam', 'mm', 'mlead'].includes(normalizedRole)) {
-        const localPart = (doc.sender || '').toLowerCase().split('@')[0] || '';
-        const parts = localPart.split('.');
-
-        let recruiterName;
-        if (parts.length >= 2) {
-          const [first, last] = parts;
-          recruiterName = `${first[0].toUpperCase()}${first.slice(1)} ${last[0].toUpperCase()}${last.slice(1)}`;
-        } else if (parts[0]) {
-          const only = parts[0];
-          recruiterName = `${only[0].toUpperCase()}${only.slice(1)}`;
-        }
+        const recruiterName = task.recruiterName || this.deriveDisplayNameFromEmail(doc.sender || '');
 
         logSuggestionDebug('TasksToday manager visibility applied', {
           ...baseMeta,
@@ -436,7 +439,7 @@ export class TaskModel {
           recruiterName: recruiterName || null
         });
 
-        tasks.push({ ...task, recruiterName });
+        tasks.push({ ...task, recruiterName: recruiterName || null });
         continue;
       }
 
@@ -899,11 +902,20 @@ export class TaskModel {
     if (normalizedRole === 'mm' || normalizedRole === 'mam') {
       const managerLocal = (manager || '').toLowerCase().split(' ').join('.');
       const ccVal = normalizedRole === 'mm' ? emailLocal : managerLocal;
+      const selfName = this.deriveDisplayNameFromEmail(lowerEmail);
+      const selfPatterns = [
+        { assignedTo: { $regex: `^${escapeRegex(emailLocal)}$`, $options: 'i' } },
+        { assignedTo: { $regex: `^${escapeRegex(lowerEmail)}$`, $options: 'i' } }
+      ];
+      if (selfName) {
+        selfPatterns.push({ assignedTo: { $regex: `^${escapeRegex(selfName)}$`, $options: 'i' } });
+      }
 
       return {
         $or: [
           { cc: { $regex: escapeRegex(ccVal), $options: 'i' } },
           { sender: { $regex: escapeRegex(ccVal), $options: 'i' } },
+          ...selfPatterns
         ],
       };
     }

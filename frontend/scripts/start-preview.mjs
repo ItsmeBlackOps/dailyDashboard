@@ -36,11 +36,28 @@ const openSetting =
     ? false
     : process.env.FRONTEND_OPEN === "true";
 
+const allowedHosts = (() => {
+  const rawHosts = process.env.FRONTEND_ALLOWED_HOSTS;
+  if (!rawHosts) {
+    return ["dailydf.silverspace.tech", "dailydf.tunn.dev"];
+  }
+
+  if (rawHosts === "true" || rawHosts === "*") {
+    return true;
+  }
+
+  return rawHosts
+    .split(",")
+    .map((hostName) => hostName.trim())
+    .filter(Boolean);
+})();
+
 const server = await preview({
   preview: {
     port,
     host,
     open: openSetting,
+    allowedHosts,
   },
 });
 

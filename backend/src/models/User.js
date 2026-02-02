@@ -325,7 +325,7 @@ export class UserModel {
       return Array.from(experts);
     }
 
-    if (normalizedRole !== 'lead') {
+    if (normalizedRole !== 'lead' && normalizedRole !== 'mlead') {
       return [lowerEmail];
     }
 

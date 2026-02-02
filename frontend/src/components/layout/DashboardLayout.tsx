@@ -6,7 +6,6 @@ import { UserProfileProvider } from '@/contexts/UserProfileContext';
 import { useToast } from '@/hooks/use-toast';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { NotificationDetailModal } from '@/components/ui/notification-modal';
-import { ChangelogDialog } from '@/components/dashboard/ChangelogDialog';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -78,7 +77,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               </main>
             </div>
             <NotificationDetailModal />
-            <ChangelogDialog />
           </div>
         </NotificationProvider>
       </UserProfileProvider>
