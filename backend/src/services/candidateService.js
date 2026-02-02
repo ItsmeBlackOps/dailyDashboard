@@ -811,21 +811,26 @@ class CandidateService {
 
     // Marketing / Branch Roles (Visibility Logic)
     if (['mm', 'mam', 'mlead', 'recruiter'].includes(normalizedRole)) {
-      const workflowStatus = normalizedStatus === RESUME_UNDERSTANDING_STATUS.done
-        ? WORKFLOW_STATUS.completed
-        : WORKFLOW_STATUS.needsResumeUnderstanding;
+      // STRICT FILTER: Only filter by resumeUnderstandingStatus
+      const query = {
+        resumeUnderstandingStatus: normalizedStatus
+      };
 
       if (normalizedRole === ROLE_MM) {
         const branch = this.resolveBranchForMm(user.email, user.role);
         if (!branch) return [];
 
+        // Add branch scope
         const candidates = await candidateModel.getCandidatesByBranch(branch, {
           limit: options?.limit,
-          workflowStatus,
-          resumeUnderstandingStatus: normalizedStatus
+          ...query // spread query to override or add to standard branch query
+          // Note: getCandidatesByBranch usually takes specific named args.
+          // We might need to pass custom query or ensure model supports it.
+          // Let's rely on model's flexible filter support if available, or fall back to standard args if model is strict.
+          // Checking model usage: getCandidatesByBranch(branch, { limit, workflowStatus, resumeUnderstandingStatus })
+          // So passing resumeUnderstandingStatus matches model expectation.
         });
-        return candidates; // already formatted by model? No, model returns formatted objects? Yes in modified model code above I kept mapping.
-        // Wait, model returns doc mapped candidates? Yes.
+        return candidates;
       }
 
       if (normalizedRole === ROLE_MAM || normalizedRole === ROLE_MLEAD) {
@@ -851,9 +856,9 @@ class CandidateService {
           Array.from(recruiterEmails),
           {
             limit: options?.limit,
-            workflowStatus,
             resumeUnderstandingStatus: normalizedStatus,
-            visibility: this.buildRecruiterVisibility(Array.from(recruiterEmails), user) // Ensure visibility aliases
+            // DO NOT PASS workflowStatus here to unblock visibility
+            visibility: this.buildRecruiterVisibility(Array.from(recruiterEmails), user)
           }
         );
         return candidates;
@@ -865,7 +870,6 @@ class CandidateService {
           [recruiterEmail],
           {
             limit: options?.limit,
-            workflowStatus,
             resumeUnderstandingStatus: normalizedStatus,
             visibility: this.buildRecruiterVisibility([recruiterEmail], user)
           }

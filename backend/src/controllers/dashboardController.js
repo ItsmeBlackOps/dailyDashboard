@@ -67,11 +67,20 @@ export class DashboardController {
         };
     }
 
+    deriveDisplayNameFromEmail(email) {
+        const local = (email || '').split('@')[0];
+        const parts = local.split(/[._\s-]+/).filter(Boolean);
+        if (parts.length === 0) return email || '';
+        return parts
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+            .join(' ');
+    }
+
     /**
      * Scoping for TASK queries (taskBody collection)
      * Expects normalized fields: senderRecruiterLower, assignedExpertLower, effectiveBranch
      */
-    async getScopedMatchForTasks(user, baseMatch = {}) {
+    async getScopedMatchForTasks(user, baseMatch = {}, options = {}) {
         if (!user) return baseMatch;
         const role = (user.role || '').toLowerCase();
         const email = (user.email || '').toLowerCase();
@@ -113,7 +122,9 @@ export class DashboardController {
                 teamEmails = userModel.getTeamEmails(email, role, user.teamLead);
             }
 
-            teamEmails.push(email);
+            if (!options.excludeSelf) {
+                teamEmails.push(email);
+            }
 
             return {
                 ...baseMatch,
@@ -235,18 +246,54 @@ export class DashboardController {
             let { start, end } = this.calculateDateRange(period, startDate, endDate);
             const user = req.user;
 
-            // Fix: Use correct field path for receivedDateTime (not source.receivedDateTime)
-            const dateField = dateBasis === 'received' ? 'receivedDateTime' : 'Date of Interview';
+            logger.info('Dashboard: getRecruiterStats - Request Started', {
+                endpoint: 'getRecruiterStats',
+                userEmail: user?.email,
+                userRole: user?.role,
+                queryParams: { period, startDate, endDate, branch, recruiterEmail, dateBasis },
+                dateRange: { start: start.toISOString(), end: end.toISOString() }
+            });
+
             const isReceivedDate = dateBasis === 'received';
 
-            let pipeline = [
+            // Build base pipeline (mimicking taskService pattern)
+            let pipeline = [];
+
+            // Stage 1: Initial date match (before lookup for performance)
+            const dateMatch = {};
+            if (isReceivedDate) {
+                dateMatch.receivedDateTime = {
+                    $gte: start.toISOString(),
+                    $lte: end.toISOString()
+                };
+            } else {
+                // Use $expr for Date of Interview filtering
+                const dateExpr = {
+                    $dateFromString: {
+                        dateString: "$Date of Interview",
+                        format: "%m/%d/%Y",
+                        timezone: "America/New_York",
+                        onError: null,
+                        onNull: null
+                    }
+                };
+                dateMatch.$expr = {
+                    $and: [
+                        { $gte: [dateExpr, start] },
+                        { $lte: [dateExpr, end] }
+                    ]
+                };
+            }
+            pipeline.push({ $match: dateMatch });
+
+            // Stage 2: Lookup candidateDetails
+            pipeline.push(
                 {
                     $lookup: {
                         from: 'candidateDetails',
                         let: { emailId: '$Email ID' },
                         pipeline: [
                             { $match: { $expr: { $eq: ['$Email ID', '$$emailId'] } } },
-                            // Fix: Deduplicate - only get candidate docs, pick latest
                             { $match: { docType: { $in: [null, 'candidate'] } } },
                             { $sort: { updatedAt: -1 } },
                             { $limit: 1 }
@@ -254,199 +301,282 @@ export class DashboardController {
                         as: 'candidateInfo'
                     }
                 },
-                { $unwind: { path: '$candidateInfo', preserveNullAndEmptyArrays: true } },
-                {
-                    $addFields: {
-                        // Fix: Normalize all identity fields to lowercase
-                        senderRecruiterLower: { $toLower: { $ifNull: ['$sender', ''] } },
-                        recruiterEmailLower: { $toLower: { $ifNull: ['$candidateInfo.Recruiter', ''] } },
-                        assignedExpertLower: {
-                            $toLower: {
-                                $cond: {
-                                    if: { $ne: [{ $ifNull: ['$assignedTo', ''] }, ''] },
-                                    then: '$assignedTo',
-                                    else: { $ifNull: ['$candidateInfo.Expert', ''] }
-                                }
-                            }
-                        },
-                        effectiveBranch: { $toUpper: { $ifNull: ['$candidateInfo.Branch', 'UNKNOWN'] } },
-                        normalizedRound: this.getRoundNormalizationLogic(),
+                { $unwind: { path: '$candidateInfo', preserveNullAndEmptyArrays: true } }
+            );
 
-                        // Fix: Convert Date of Interview to proper Date type
-                        interviewDate: {
-                            $dateFromString: {
-                                dateString: '$Date of Interview',
-                                format: '%m/%d/%Y',
-                                onError: null
-                            }
-                        },
-
-                        // Fix: Improved notDone logic with proper datetime handling
-                        // Parse interview end time to get full datetime
-                        isNotDone: {
-                            $let: {
-                                vars: {
-                                    interviewDate: {
-                                        $dateFromString: {
-                                            dateString: '$Date of Interview',
-                                            format: '%m/%d/%Y',
-                                            timezone: EST_TIMEZONE,
-                                            onError: null
-                                        }
-                                    },
-                                    // Parse end time (format: "HH:mm" or "HH:mm AM/PM")
-                                    endTimeStr: { $ifNull: ['$End Time Of Interview', '23:59'] }
-                                },
-                                in: {
-                                    $cond: {
-                                        if: { $eq: ['$$interviewDate', null] },
-                                        then: false,
-                                        else: {
-                                            $and: [
-                                                // Interview date+time is in the past
-                                                {
-                                                    $lt: [
-                                                        '$$interviewDate',
-                                                        moment.tz(EST_TIMEZONE).toDate()
-                                                    ]
-                                                },
-                                                // Status is not completed/done/cancelled/rescheduled
-                                                {
-                                                    $not: {
-                                                        $in: [
-                                                            { $toLower: { $ifNull: ['$status', ''] } },
-                                                            ['completed', 'done', 'cancelled', 'rescheduled']
-                                                        ]
-                                                    }
-                                                }
-                                            ]
-                                        }
-                                    }
-                                }
+            // Stage 3: Normalize fields
+            pipeline.push({
+                $addFields: {
+                    senderRecruiterLower: { $toLower: { $ifNull: ['$sender', ''] } },
+                    recruiterEmailLower: { $toLower: { $ifNull: ['$candidateInfo.Recruiter', ''] } },
+                    assignedExpertLower: {
+                        $toLower: {
+                            $cond: {
+                                if: { $ne: [{ $ifNull: ['$assignedTo', ''] }, ''] },
+                                then: '$assignedTo',
+                                else: { $ifNull: ['$candidateInfo.Expert', ''] }
                             }
                         }
-                    }
+                    },
+                    effectiveBranch: { $toUpper: { $ifNull: ['$candidateInfo.Branch', 'UNKNOWN'] } },
+                    statusLower: { $toLower: { $ifNull: ['$status', ''] } },
+                    normalizedRound: this.getRoundNormalizationLogic()
                 }
-            ];
+            });
 
-            // Fix: Apply proper date filtering with Date type comparison
-            const dateMatch = {};
-            if (isReceivedDate) {
-                // For receivedDateTime, use ISO date comparison
-                dateMatch.receivedDateTime = {
-                    $gte: start.toISOString(),
-                    $lte: end.toISOString()
-                };
-            } else {
-                // For Date of Interview, use converted Date field
-                dateMatch.interviewDate = {
-                    $gte: start,
-                    $lte: end
-                };
-            }
-            pipeline.push({ $match: dateMatch });
-
-            // Fix: Use new task scoping helper with normalized fields
+            // Stage 4: Apply scoping (visibility)
             const scopedMatch = await this.getScopedMatchForTasks(user, {
                 ...(branch ? { effectiveBranch: branch.toUpperCase() } : {}),
                 ...(recruiterEmail ? { senderRecruiterLower: recruiterEmail.toLowerCase() } : {})
+            }, {
+                excludeSelf: (user.role || '').toLowerCase() === 'mam'
             });
             pipeline.push({ $match: scopedMatch });
 
-            // Exclude .co.uk emails
+            logger.info('Dashboard: getRecruiterStats - After Scoped Match', {
+                endpoint: 'getRecruiterStats',
+                userEmail: user?.email,
+                scopedMatch: JSON.stringify(scopedMatch)
+            });
+
+            // Stage 5: Facet for dual grouping (bySender and byOwner)
             pipeline.push({
-                $match: {
-                    senderRecruiterLower: { $not: { $regex: /\.co\.uk$/i } }
+                $facet: {
+                    bySender: [
+                        // Exclude .co.uk senders
+                        { $match: { senderRecruiterLower: { $not: { $regex: /\\.co\\.uk$/i } } } },
+                        {
+                            $group: {
+                                _id: '$senderRecruiterLower',
+                                totalInterviewsSent: { $sum: 1 },
+                                completed: {
+                                    $sum: { $cond: [{ $in: ['$statusLower', ['completed', 'done']] }, 1, 0] }
+                                },
+                                cancelled: {
+                                    $sum: { $cond: [{ $eq: ['$statusLower', 'cancelled'] }, 1, 0] }
+                                },
+                                rescheduled: {
+                                    $sum: { $cond: [{ $eq: ['$statusLower', 'rescheduled'] }, 1, 0] }
+                                },
+                                assigned: {
+                                    $sum: { $cond: [{ $eq: ['$statusLower', 'assigned'] }, 1, 0] }
+                                },
+                                acknowledged: {
+                                    $sum: { $cond: [{ $eq: ['$statusLower', 'acknowledged'] }, 1, 0] }
+                                },
+                                pending: {
+                                    $sum: { $cond: [{ $eq: ['$statusLower', 'pending'] }, 1, 0] }
+                                },
+                                notDone: {
+                                    $sum: { $cond: [{ $eq: ['$statusLower', 'not done'] }, 1, 0] }
+                                },
+                                rounds: { $push: '$normalizedRound' }
+                            }
+                        },
+                        {
+                            $project: {
+                                recruiter: '$_id',
+                                totalInterviewsSent: 1,
+                                completed: 1,
+                                cancelled: 1,
+                                rescheduled: 1,
+                                assigned: 1,
+                                acknowledged: 1,
+                                pending: 1,
+                                notDone: 1,
+                                roundsDetail: '$rounds',
+                                qualityScore: {
+                                    $subtract: [
+                                        { $multiply: ['$completed', 1.0] },
+                                        {
+                                            $add: [
+                                                { $multiply: ['$cancelled', 0.5] },
+                                                { $multiply: ['$rescheduled', 0.3] },
+                                                { $multiply: ['$notDone', 1.0] }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        { $sort: { totalInterviewsSent: -1 } }
+                    ],
+                    byOwner: [
+                        // Exclude .co.uk owners AND umang.pandya@silverspaceinc.com
+                        {
+                            $match: {
+                                recruiterEmailLower: {
+                                    $not: { $regex: /\\.co\\.uk$/i }
+                                },
+                                recruiterEmailLower: { $ne: 'umang.pandya@silverspaceinc.com' }
+                            }
+                        },
+                        {
+                            $group: {
+                                _id: '$recruiterEmailLower',
+                                totalInterviewsSent: { $sum: 1 },
+                                completed: {
+                                    $sum: { $cond: [{ $in: ['$statusLower', ['completed', 'done']] }, 1, 0] }
+                                },
+                                cancelled: {
+                                    $sum: { $cond: [{ $eq: ['$statusLower', 'cancelled'] }, 1, 0] }
+                                },
+                                rescheduled: {
+                                    $sum: { $cond: [{ $eq: ['$statusLower', 'rescheduled'] }, 1, 0] }
+                                },
+                                assigned: {
+                                    $sum: { $cond: [{ $eq: ['$statusLower', 'assigned'] }, 1, 0] }
+                                },
+                                acknowledged: {
+                                    $sum: { $cond: [{ $eq: ['$statusLower', 'acknowledged'] }, 1, 0] }
+                                },
+                                pending: {
+                                    $sum: { $cond: [{ $eq: ['$statusLower', 'pending'] }, 1, 0] }
+                                },
+                                notDone: {
+                                    $sum: { $cond: [{ $eq: ['$statusLower', 'not done'] }, 1, 0] }
+                                },
+                                rounds: { $push: '$normalizedRound' }
+                            }
+                        },
+                        {
+                            $project: {
+                                recruiter: '$_id',
+                                totalInterviewsSent: 1,
+                                completed: 1,
+                                cancelled: 1,
+                                rescheduled: 1,
+                                assigned: 1,
+                                acknowledged: 1,
+                                pending: 1,
+                                notDone: 1,
+                                roundsDetail: '$rounds',
+                                qualityScore: {
+                                    $subtract: [
+                                        { $multiply: ['$completed', 1.0] },
+                                        {
+                                            $add: [
+                                                { $multiply: ['$cancelled', 0.5] },
+                                                { $multiply: ['$rescheduled', 0.3] },
+                                                { $multiply: ['$notDone', 1.0] }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        { $sort: { totalInterviewsSent: -1 } }
+                    ]
                 }
             });
 
-            pipeline.push(
-                {
-                    $group: {
-                        _id: '$senderRecruiterLower',
-                        totalInterviewsSent: { $sum: 1 },
-                        completed: {
-                            $sum: { $cond: [{ $in: [{ $toLower: { $ifNull: ['$status', ''] } }, ['completed', 'done']] }, 1, 0] }
-                        },
-                        cancelled: {
-                            $sum: { $cond: [{ $eq: [{ $toLower: { $ifNull: ['$status', ''] } }, 'cancelled'] }, 1, 0] }
-                        },
-                        rescheduled: {
-                            $sum: { $cond: [{ $eq: [{ $toLower: { $ifNull: ['$status', ''] } }, 'rescheduled'] }, 1, 0] }
-                        },
-                        notDone: {
-                            $sum: { $cond: ['$isNotDone', 1, 0] }
-                        },
-                        rounds: { $push: '$normalizedRound' }
-                    }
-                },
-                {
-                    $project: {
-                        recruiter: '$_id',
-                        totalInterviewsSent: 1,
-                        completed: 1,
-                        cancelled: 1,
-                        rescheduled: 1,
-                        notDone: 1,
-                        roundsDetail: '$rounds',
-                        qualityScore: {
-                            $subtract: [
-                                { $multiply: ['$completed', 1.0] },
-                                {
-                                    $add: [
-                                        { $multiply: ['$cancelled', 0.5] },
-                                        { $multiply: ['$rescheduled', 0.3] },
-                                        { $multiply: ['$notDone', 1.0] }
-                                    ]
-                                }
-                            ]
-                        }
-                    }
-                },
-                { $sort: { totalInterviewsSent: -1 } }
-            );
+            logger.info('Dashboard: getRecruiterStats - Pipeline Before Execution', {
+                endpoint: 'getRecruiterStats',
+                userEmail: user?.email,
+                pipelineStages: pipeline.length,
+                fullPipeline: JSON.stringify(pipeline)
+            });
 
-            const stats = await this.taskCollection.aggregate(pipeline).toArray();
+            const results = await this.taskCollection.aggregate(pipeline).toArray();
+            const facetResult = results[0] || { bySender: [], byOwner: [] };
 
-            // Enrich with teamLead information
-            const processed = await Promise.all(stats.map(async stat => {
-                const roundCounts = {};
-                (stat.roundsDetail || []).forEach(r => {
-                    const key = r || 'Unknown';
-                    roundCounts[key] = (roundCounts[key] || 0) + 1;
-                });
-                delete stat.roundsDetail;
-
-                // Lookup teamLead for this recruiter
-                let teamLead = 'No Team';
-                try {
-                    const userRecord = await this.userCollection.findOne({
-                        email: { $regex: new RegExp(`^${stat._id}$`, 'i') }
+            // Enrich both arrays with teamLead and round counts
+            const enrichStats = async (stats) => {
+                return Promise.all(stats.map(async stat => {
+                    const roundCounts = {};
+                    (stat.roundsDetail || []).forEach(r => {
+                        const key = r || 'Unknown';
+                        roundCounts[key] = (roundCounts[key] || 0) + 1;
                     });
-                    if (userRecord && userRecord.teamLead) {
-                        teamLead = userRecord.teamLead;
+                    delete stat.roundsDetail;
+
+                    let teamLead = 'No Team';
+                    try {
+                        const userRecord = await this.userCollection.findOne({
+                            email: { $regex: new RegExp(`^${stat._id}$`, 'i') }
+                        });
+                        if (userRecord) {
+                            const role = (userRecord.role || '').toLowerCase();
+                            if (['mlead', 'mam'].includes(role)) {
+                                // MLead groups with themselves (their team)
+                                // Standardize the name to match what subordinates likely use (e.g. Satyam Gupta)
+                                teamLead = userRecord.name || userRecord.displayName || this.deriveDisplayNameFromEmail(userRecord.email);
+                            } else if (userRecord.teamLead) {
+                                // Others group with their assigned lead
+                                teamLead = userRecord.teamLead;
+                            }
+                        }
+                    } catch (err) {
+                        logger.error('Error looking up teamLead', { error: err.message, recruiter: stat._id });
                     }
-                } catch (err) {
-                    logger.error('Error looking up teamLead', { error: err.message, recruiter: stat._id });
-                }
 
-                return { ...stat, roundCounts, teamLead };
-            }));
+                    return { ...stat, roundCounts, teamLead };
+                }));
+            };
 
-            res.json({ success: true, data: processed, dateRange: { start, end } });
+            const bySender = await enrichStats(facetResult.bySender);
+            const byOwner = await enrichStats(facetResult.byOwner);
+
+            logger.info('Dashboard: getRecruiterStats - Response Sent', {
+                endpoint: 'getRecruiterStats',
+                userEmail: user?.email,
+                userRole: user?.role,
+                bySenderCount: bySender.length,
+                byOwnerCount: byOwner.length,
+                totalInterviewsBySender: bySender.reduce((sum, r) => sum + (r.totalInterviewsSent || 0), 0),
+                totalInterviewsByOwner: byOwner.reduce((sum, r) => sum + (r.totalInterviewsSent || 0), 0)
+            });
+
+            res.json({
+                success: true,
+                data: { bySender, byOwner },
+                dateRange: { start, end }
+            });
         } catch (error) {
-            logger.error('Error fetching recruiter stats', { error: error.message });
+            logger.error('Dashboard: getRecruiterStats - Error', {
+                endpoint: 'getRecruiterStats',
+                userEmail: req.user?.email,
+                userRole: req.user?.role,
+                errorMessage: error.message,
+                errorStack: error.stack
+            });
             res.status(500).json({ success: false, error: 'Failed to fetch recruiter stats' });
         }
     }
 
     async getExpertStats(req, res) {
         try {
-            const { period, startDate, endDate, expertEmail } = req.query;
+            const { period, startDate, endDate, expertEmail, dateBasis } = req.query;
             let { start, end } = this.calculateDateRange(period, startDate, endDate);
             const user = req.user;
 
-            const pipeline = [
+            // PostHog: Log request parameters
+            logger.info('Dashboard: getExpertStats - Request Started', {
+                endpoint: 'getExpertStats',
+                userEmail: user?.email,
+                userRole: user?.role,
+                queryParams: { period, startDate, endDate, expertEmail, dateBasis },
+                dateRange: { start: start.toISOString(), end: end.toISOString() }
+            });
+
+            const dateField = dateBasis === 'received' ? 'receivedDateTime' : 'Date of Interview';
+            const isReceivedDate = dateBasis === 'received';
+
+            let pipeline = [
+                // Stage 1: Initial date match
+                {
+                    $match: isReceivedDate
+                        ? { receivedDateTime: { $gte: start.toISOString(), $lte: end.toISOString() } }
+                        : {
+                            $expr: {
+                                $and: [
+                                    { $gte: [{ $dateFromString: { dateString: "$Date of Interview", format: "%m/%d/%Y", timezone: EST_TIMEZONE, onError: null, onNull: null } }, start] },
+                                    { $lte: [{ $dateFromString: { dateString: "$Date of Interview", format: "%m/%d/%Y", timezone: EST_TIMEZONE, onError: null, onNull: null } }, end] }
+                                ]
+                            }
+                        }
+                },
+                // Stage 2: Lookup and Unwind
                 {
                     $lookup: {
                         from: 'candidateDetails',
@@ -461,6 +591,7 @@ export class DashboardController {
                     }
                 },
                 { $unwind: { path: '$candidateDetails', preserveNullAndEmptyArrays: true } },
+                // Stage 3: Normalize Fields
                 {
                     $addFields: {
                         assignedExpertLower: {
@@ -475,68 +606,56 @@ export class DashboardController {
                         senderRecruiterLower: { $toLower: { $ifNull: ['$sender', ''] } },
                         recruiterEmailLower: { $toLower: { $ifNull: ['$candidateDetails.Recruiter', ''] } },
                         effectiveBranch: { $toUpper: { $ifNull: ['$candidateDetails.Branch', 'UNKNOWN'] } },
-                        normalizedRound: this.getRoundNormalizationLogic(),
-                        interviewDate: {
-                            $dateFromString: {
-                                dateString: '$Date of Interview',
-                                format: '%m/%d/%Y',
-                                onError: null
-                            }
-                        }
+                        statusLower: { $toLower: { $ifNull: ['$status', ''] } },
+                        normalizedRound: this.getRoundNormalizationLogic()
                     }
                 },
+                // Stage 4: Exclude .co.uk experts
                 {
                     $match: {
-                        interviewDate: {
-                            $gte: start,
-                            $lte: end
-                        }
+                        assignedExpertLower: { $not: { $regex: /\.co\.uk$/i } }
                     }
                 }
             ];
 
+            // Stage 5: Apply Scoping
             const scopedMatch = await this.getScopedMatchForTasks(user, {
                 ...(expertEmail ? { assignedExpertLower: expertEmail.toLowerCase() } : {})
             });
             pipeline.push({ $match: scopedMatch });
 
-            pipeline.push({
-                $lookup: {
-                    from: 'users',
-                    let: { expertEmail: '$assignedExpertLower' },
-                    pipeline: [
-                        { $match: { $expr: { $eq: [{ $toLower: '$email' }, '$$expertEmail'] } } },
-                        { $match: { role: 'user' } },
-                        { $limit: 1 }
-                    ],
-                    as: 'expertUserInfo'
-                }
-            });
-            pipeline.push({
-                $match: {
-                    expertUserInfo: { $ne: [] }
-                }
+            logger.info('Dashboard: getExpertStats - After Scoped Match', {
+                endpoint: 'getExpertStats',
+                userEmail: user?.email,
+                scopedMatch: JSON.stringify(scopedMatch)
             });
 
-            pipeline.push({
-                $match: {
-                    assignedExpertLower: { $not: { $regex: /\.co\.uk$/i } }
-                }
-            });
-
+            // Stage 6: Grouping and Metrics
             pipeline.push(
                 {
                     $group: {
                         _id: '$assignedExpertLower',
                         totalTasks: { $sum: 1 },
-                        completedTasks: {
-                            $sum: { $cond: [{ $in: [{ $toLower: { $ifNull: ['$status', ''] } }, ['completed', 'done']] }, 1, 0] }
+                        completed: {
+                            $sum: { $cond: [{ $in: ['$statusLower', ['completed', 'done']] }, 1, 0] }
                         },
-                        pendingTasks: {
-                            $sum: { $cond: [{ $in: [{ $toLower: { $ifNull: ['$status', ''] } }, ['pending', 'assigned', 'acknowledged']] }, 1, 0] }
+                        cancelled: {
+                            $sum: { $cond: [{ $eq: ['$statusLower', 'cancelled'] }, 1, 0] }
+                        },
+                        rescheduled: {
+                            $sum: { $cond: [{ $eq: ['$statusLower', 'rescheduled'] }, 1, 0] }
+                        },
+                        assigned: {
+                            $sum: { $cond: [{ $eq: ['$statusLower', 'assigned'] }, 1, 0] }
                         },
                         acknowledged: {
-                            $sum: { $cond: [{ $eq: ['$assignment.acknowledged', true] }, 1, 0] }
+                            $sum: { $cond: [{ $eq: ['$statusLower', 'acknowledged'] }, 1, 0] }
+                        },
+                        pending: {
+                            $sum: { $cond: [{ $eq: ['$statusLower', 'pending'] }, 1, 0] }
+                        },
+                        notDone: {
+                            $sum: { $cond: [{ $eq: ['$statusLower', 'not done'] }, 1, 0] }
                         },
                         roundsConducted: { $push: '$normalizedRound' }
                     }
@@ -545,22 +664,33 @@ export class DashboardController {
                     $project: {
                         expert: '$_id',
                         totalTasks: 1,
-                        completedTasks: 1,
-                        activeBucket: '$pendingTasks',
-                        acknowledgedShare: {
-                            $cond: [
-                                { $eq: ['$totalTasks', 0] },
-                                0,
-                                { $multiply: [{ $divide: ['$acknowledged', '$totalTasks'] }, 100] }
-                            ]
+                        completedTasks: '$completed',
+                        activeBucket: { $add: ['$pending', '$assigned', '$acknowledged'] },
+                        details: {
+                            completed: '$completed',
+                            cancelled: '$cancelled',
+                            rescheduled: '$rescheduled',
+                            assigned: '$assigned',
+                            acknowledged: '$acknowledged',
+                            pending: '$pending',
+                            notDone: '$notDone'
                         },
                         rounds: '$roundsConducted'
                     }
-                }
+                },
+                { $sort: { totalTasks: -1 } }
             );
+
+            logger.info('Dashboard: getExpertStats - Pipeline Before Execution', {
+                endpoint: 'getExpertStats',
+                userEmail: user?.email,
+                pipelineStages: pipeline.length,
+                fullPipeline: JSON.stringify(pipeline)
+            });
 
             const stats = await this.taskCollection.aggregate(pipeline).toArray();
 
+            // Enrich with round counts
             const processed = stats.map(stat => {
                 const roundCounts = {};
                 (stat.rounds || []).forEach(r => {
@@ -568,45 +698,152 @@ export class DashboardController {
                     roundCounts[key] = (roundCounts[key] || 0) + 1;
                 });
                 delete stat.rounds;
-                return { ...stat, roundCounts };
+                const totalTasks = stat.totalTasks || 0;
+                const acknowledged = stat.details?.acknowledged ?? 0;
+                const acknowledgedShare = totalTasks > 0 ? (acknowledged / totalTasks) * 100 : 0;
+                return { ...stat, acknowledgedShare, roundCounts };
+            });
+
+            logger.info('Dashboard: getExpertStats - Response Sent', {
+                endpoint: 'getExpertStats',
+                userEmail: user?.email,
+                totalExperts: processed.length,
+                totalTasks: processed.reduce((sum, e) => sum + (e.totalTasks || 0), 0)
             });
 
             res.json({ success: true, data: processed, dateRange: { start, end } });
+
         } catch (error) {
-            logger.error('Error fetching expert stats', error);
+            logger.error('Dashboard: getExpertStats - Error', {
+                endpoint: 'getExpertStats',
+                userEmail: req.user?.email,
+                userRole: req.user?.role,
+                errorMessage: error.message,
+                errorStack: error.stack
+            });
             res.status(500).json({ success: false });
         }
     }
 
     async getManagementStats(req, res) {
         try {
-            const { branch } = req.query;
             const user = req.user;
             const thirtyDaysAgo = moment().subtract(30, 'days').toDate();
 
-            let pipeline = [
+            logger.info('Dashboard: getManagementStats - Request Started', {
+                endpoint: 'getManagementStats',
+                userEmail: user?.email,
+                userRole: user?.role
+            });
+
+            // 1. Re-use "Branch Candidates" Scoping Logic
+            // The candidateService.getCandidatesForUser method encapsulates the complex RBAC 
+            // for "Who can see what candidate". We'll reuse the match stages it produces conceptually,
+            // or build a similar match here. To ensure exact match with Branch Candidates view,
+            // we should call the service method if it returns a query component, but it returns executed data.
+            // So we reconstruct the match logic here based on role, similar to getScopedMatchForCandidates but strictly
+            // following the "Branch Candidates" view visible in frontend.
+
+            let scopeMatch = {};
+            const role = (user.role || '').toLowerCase();
+            const email = (user.email || '').toLowerCase();
+            const normalizedEmail = email.trim().toLowerCase();
+
+            // Resolve Scope based on Role (Logic mirror of candidateService.getCandidatesForUser)
+            if (role === 'admin') {
+                scopeMatch = {}; // All
+            } else if (role === 'mm') {
+                // MM sees their branch
+                let branch = null;
+                if (email.includes('tushar.ahuja')) branch = 'GGR';
+                if (email.includes('aryan.mishra')) branch = 'LKN';
+                if (email.includes('akash.avasthi')) branch = 'AHM';
+
+                if (branch) {
+                    scopeMatch = { Branch: branch };
+                } else {
+                    // Fallback to "Recruiter Mode" for MM without branch map? 
+                    // Or keep empty if they should see nothing?
+                    // candidateService falls back to Recruiter search or nothing.
+                    // Let's assume they might act as recruiter if not mapped.
+                    scopeMatch = {
+                        $or: [
+                            { recruiterEmailLower: normalizedEmail },
+                            { 'Recruiter': { $regex: new RegExp(email, 'i') } } // Legacy match
+                        ]
+                    };
+                }
+            } else if (['mam', 'mlead', 'lead', 'am'].includes(role)) {
+                // Hierarchical View
+                const teamEmails = userModel.getTeamEmails(email, role, user.teamLead);
+                // Include Self
+                teamEmails.push(normalizedEmail);
+
+                // For Lead/AM (Experts), they see assignedExpert.
+                // For MAM/MLead (Recruitment), they see Recruiter.
+                // The "Branch Candidates" view typically shows Recruiting hierarchy. 
+                // However, Lead/AM also use this view.
+
+                if (role === 'lead' || role === 'am') {
+                    // EXPERT SIDE HIERARCHY
+                    // They see candidates assigned to them or their team.
+                    scopeMatch = {
+                        $or: [
+                            { expertEmailLower: { $in: teamEmails } },
+                            { assignedExpert: { $regex: new RegExp(teamEmails.join('|'), 'i') } }
+                        ]
+                    };
+                } else {
+                    // RECRUITER SIDE HIERARCHY (MAM/MLEAD)
+                    scopeMatch = {
+                        $or: [
+                            { recruiterEmailLower: { $in: teamEmails } },
+                            { Recruiter: { $regex: new RegExp(teamEmails.join('|'), 'i') } }
+                        ]
+                    };
+                }
+            } else if (role === 'recruiter') {
+                scopeMatch = {
+                    $or: [
+                        { recruiterEmailLower: normalizedEmail },
+                        { Recruiter: { $regex: new RegExp(email, 'i') } }
+                    ]
+                };
+            } else if (role === 'user' || role === 'expert') {
+                scopeMatch = {
+                    $or: [
+                        { expertEmailLower: normalizedEmail },
+                        { Expert: { $regex: new RegExp(email, 'i') } }
+                    ]
+                };
+            }
+
+            const pipeline = [
                 {
-                    $match: {
-                        status: { $regex: /^active$/i },
-                        docType: { $in: [null, 'candidate'] },
-                        ...(branch ? { Branch: branch } : {})
+                    $addFields: {
+                        recruiterEmailLower: { $toLower: { $ifNull: ['$Recruiter', ''] } },
+                        expertEmailLower: { $toLower: { $ifNull: ['$Expert', ''] } },
+                        candidateEmailLower: { $toLower: { $ifNull: ['$Email ID', ''] } },
+                        statusLower: { $toLower: { $ifNull: ['$status', ''] } }
                     }
                 },
                 {
-                    $addFields: {
-                        // Fix: Normalize fields for candidate scoping
-                        recruiterEmailLower: { $toLower: { $ifNull: ['$Recruiter', ''] } },
-                        expertEmailLower: { $toLower: { $ifNull: ['$Expert', ''] } },
-                        branchUpper: { $toUpper: { $ifNull: ['$Branch', 'UNKNOWN'] } }
+                    $match: {
+                        // 1. Status Active
+                        statusLower: 'active',
+                        // 2. Exclude specific emails
+                        candidateEmailLower: {
+                            $not: {
+                                $regex: /@.*\.co\.uk$|umang\.pandya@silverspaceinc\.com/i
+                            }
+                        },
+                        // 3. Apply Role Scope
+                        ...scopeMatch,
+                        // 4. Exclude specific Recruiter
+                        recruiterEmailLower: { $ne: 'umang.pandya@silverspaceinc.com' }
                     }
-                }
-            ];
-
-            // Fix: Use candidate-specific scoping instead of task scoping
-            const scopedMatch = await this.getScopedMatchForCandidates(user, {});
-            pipeline.push({ $match: scopedMatch });
-
-            pipeline.push(
+                },
+                // Lookup Interviews (TaskBody)
                 {
                     $lookup: {
                         from: 'taskBody',
@@ -617,7 +854,7 @@ export class DashboardController {
                 },
                 {
                     $addFields: {
-                        interviewsLast30Days: {
+                        recentInterviews: {
                             $filter: {
                                 input: '$interviews',
                                 as: 'interview',
@@ -631,14 +868,17 @@ export class DashboardController {
                         }
                     }
                 },
+                // Filter: "At Risk" definition
+                // 1. Last Interview > 30 days ago (or never)
+                // 2. Total Interviews <= 3
                 {
                     $project: {
                         'Candidate Name': 1,
+                        'Email ID': 1,
                         'Branch': 1,
                         'Recruiter': 1,
-                        'Email ID': 1,
                         totalInterviews: { $size: '$interviews' },
-                        recentInterviews: { $size: '$interviewsLast30Days' },
+                        recentInterviews: { $size: '$recentInterviews' }, // Keep for reference
                         lastInterviewDate: {
                             $max: {
                                 $map: {
@@ -650,15 +890,33 @@ export class DashboardController {
                         }
                     }
                 },
-                { $match: { recentInterviews: { $lte: 3 } } },
-                { $sort: { lastInterviewDate: 1 } },
+                {
+                    $match: {
+                        $and: [
+                            { totalInterviews: { $lte: 3 } },
+                            {
+                                $or: [
+                                    { lastInterviewDate: { $lt: thirtyDaysAgo } },
+                                    { lastInterviewDate: null }, // Never interviewed
+                                    { lastInterviewDate: { $eq: new Date(0) } } // Parse error fallback
+                                ]
+                            }
+                        ]
+                    }
+                },
+                { $sort: { lastInterviewDate: 1 } }, // Oldest activity first (or nulls)
                 { $limit: 100 }
-            );
+            ];
 
             const report = await this.candidateCollection.aggregate(pipeline).toArray();
+
             res.json({ success: true, data: report });
+
         } catch (error) {
-            logger.error('Error fetching management stats', error);
+            logger.error('Dashboard: getManagementStats - Error', {
+                endpoint: 'getManagementStats',
+                error: error.message
+            });
             res.status(500).json({ success: false, error: 'Failed to fetch management stats' });
         }
     }
@@ -667,6 +925,13 @@ export class DashboardController {
         try {
             const { type, email, period, dateBasis, startDate } = req.query;
             const user = req.user;
+
+            // PostHog: Log request
+            logger.info('Dashboard: getStatsDrilldown - Request Started', {
+                endpoint: 'getStatsDrilldown',
+                userEmail: user?.email,
+                queryParams: { type, email, period, dateBasis, startDate }
+            });
 
             // Re-use logic to scope access
             // For Recruiter drilldown: filter by ownerRecruiter or senderRecruiter = email?
@@ -760,7 +1025,25 @@ export class DashboardController {
             // Limit
             pipeline.push({ $limit: 100 });
 
+            // PostHog: Log the complete pipeline before execution
+            logger.info('Dashboard: getStatsDrilldown - Pipeline Before Execution', {
+                endpoint: 'getStatsDrilldown',
+                userEmail: user?.email,
+                fullPipeline: JSON.stringify(pipeline),
+                message: 'About to execute MongoDB aggregation'
+            });
+
             const tasks = await this.taskCollection.aggregate(pipeline).toArray();
+
+            // PostHog: Log response
+            logger.info('Dashboard: getStatsDrilldown - Response Sent', {
+                endpoint: 'getStatsDrilldown',
+                userEmail: user?.email,
+                recordCount: tasks.length,
+                type,
+                targetEmail: email
+            });
+
             res.json({ success: true, data: tasks });
 
         } catch (error) {
@@ -770,18 +1053,61 @@ export class DashboardController {
     }
     async getRecruiterDrilldown(req, res) {
         try {
-            const { period, startDate, endDate, recruiterEmail, status } = req.query;
+            const { period, startDate, endDate, recruiterEmail, status, interviewRound, actualRound, dateBasis, viewMode } = req.query;
             let { start, end } = this.calculateDateRange(period, startDate, endDate);
 
-            const matchStage = {
-                'Date of Interview': {
-                    $gte: moment(start).format('MM/DD/YYYY'),
-                    $lte: moment(end).format('MM/DD/YYYY')
+            // PostHog: Log request
+            logger.info('Dashboard: getRecruiterDrilldown - Request Started', {
+                endpoint: 'getRecruiterDrilldown',
+                userEmail: req.user?.email,
+                queryParams: { period, startDate, endDate, recruiterEmail, status, interviewRound, actualRound, dateBasis, viewMode }
+            });
+
+            const isReceivedDate = dateBasis === 'received';
+            const dateMatch = isReceivedDate
+                ? {
+                    receivedDateTime: {
+                        $gte: start.toISOString(),
+                        $lte: end.toISOString()
+                    }
                 }
-            };
+                : {
+                    $expr: {
+                        $and: [
+                            {
+                                $gte: [
+                                    {
+                                        $dateFromString: {
+                                            dateString: "$Date of Interview",
+                                            format: "%m/%d/%Y",
+                                            timezone: EST_TIMEZONE,
+                                            onError: null,
+                                            onNull: null
+                                        }
+                                    },
+                                    start
+                                ]
+                            },
+                            {
+                                $lte: [
+                                    {
+                                        $dateFromString: {
+                                            dateString: "$Date of Interview",
+                                            format: "%m/%d/%Y",
+                                            timezone: EST_TIMEZONE,
+                                            onError: null,
+                                            onNull: null
+                                        }
+                                    },
+                                    end
+                                ]
+                            }
+                        ]
+                    }
+                };
 
             const pipeline = [
-                { $match: matchStage },
+                { $match: dateMatch },
                 {
                     $lookup: {
                         from: 'candidateDetails',
@@ -793,8 +1119,19 @@ export class DashboardController {
                 { $unwind: { path: '$candidateInfo', preserveNullAndEmptyArrays: true } },
                 {
                     $addFields: {
-                        senderRecruiter: { $toLower: '$sender' },
-                        statusLower: { $toLower: '$status' },
+                        senderRecruiterLower: { $toLower: { $ifNull: ['$sender', ''] } },
+                        recruiterEmailLower: { $toLower: { $ifNull: ['$candidateInfo.Recruiter', ''] } },
+                        statusLower: { $toLower: { $ifNull: ['$status', ''] } },
+                        interviewRoundLower: { $toLower: { $ifNull: ['$Interview Round', ''] } },
+                        actualRoundResolved: { $ifNull: ['$actualRound', '$Actual Round'] },
+                        actualRoundLower: {
+                            $toLower: {
+                                $ifNull: [
+                                    { $ifNull: ['$actualRound', '$Actual Round'] },
+                                    ''
+                                ]
+                            }
+                        },
                         isNotDone: {
                             $and: [
                                 {
@@ -808,31 +1145,85 @@ export class DashboardController {
                         }
                     }
                 },
-                {
-                    $match: {
-                        senderRecruiter: { $regex: recruiterEmail, $options: 'i' } // Ensure exact match logic handling in frontend/request
-                    }
-                }
             ];
 
-            // Filter by status if provided
-            if (status) {
-                if (status === 'completed') {
-                    pipeline.push({ $match: { statusLower: { $in: ['completed', 'done'] } } });
-                } else if (status === 'cancelled') {
-                    pipeline.push({ $match: { statusLower: 'cancelled' } });
-                } else if (status === 'rescheduled') {
-                    pipeline.push({ $match: { statusLower: 'rescheduled' } });
-                } else if (status === 'notDone') {
-                    pipeline.push({ $match: { isNotDone: true } });
+            if (recruiterEmail) {
+                const normalizedRecruiter = recruiterEmail.toLowerCase().trim();
+                if (viewMode === 'owner') {
+                    pipeline.push({ $match: { recruiterEmailLower: normalizedRecruiter } });
+                } else if (viewMode === 'sender') {
+                    pipeline.push({ $match: { senderRecruiterLower: normalizedRecruiter } });
+                } else {
+                    pipeline.push({
+                        $match: {
+                            $or: [
+                                { senderRecruiterLower: normalizedRecruiter },
+                                { recruiterEmailLower: normalizedRecruiter }
+                            ]
+                        }
+                    });
                 }
             }
 
+            // Filter by status if provided
+            if (status) {
+                const normalizedStatus = status.toLowerCase();
+                if (normalizedStatus === 'completed') {
+                    pipeline.push({ $match: { statusLower: { $in: ['completed', 'done'] } } });
+                } else if (normalizedStatus === 'cancelled') {
+                    pipeline.push({ $match: { statusLower: 'cancelled' } });
+                } else if (normalizedStatus === 'rescheduled') {
+                    pipeline.push({ $match: { statusLower: 'rescheduled' } });
+                } else if (normalizedStatus === 'notdone' || normalizedStatus === 'not done') {
+                    pipeline.push({ $match: { isNotDone: true } });
+                } else {
+                    pipeline.push({ $match: { statusLower: normalizedStatus } });
+                }
+            }
+
+            if (interviewRound) {
+                pipeline.push({ $match: { interviewRoundLower: interviewRound.toLowerCase() } });
+            }
+
+            if (actualRound) {
+                pipeline.push({ $match: { actualRoundLower: actualRound.toLowerCase() } });
+            }
+
             pipeline.push({ $limit: 100 }); // Limit results
-            pipeline.push({ $project: { 'Candidate Name': 1, 'Date of Interview': 1, 'status': 1, 'Job Title': 1, 'End Client': 1, 'Interview Round': 1 } });
+            pipeline.push({
+                $project: {
+                    'Candidate Name': 1,
+                    'Date of Interview': 1,
+                    'Start Time Of Interview': 1,
+                    'status': 1,
+                    'Job Title': 1,
+                    'End Client': 1,
+                    'Interview Round': 1,
+                    'Actual Round': '$actualRoundResolved'
+                }
+            });
+
+            // PostHog: Log the complete pipeline before execution
+            logger.info('Dashboard: getRecruiterDrilldown - Pipeline Before Execution', {
+                endpoint: 'getRecruiterDrilldown',
+                userEmail: req.user?.email,
+                fullPipeline: JSON.stringify(pipeline),
+                message: 'About to execute MongoDB aggregation'
+            });
 
             const data = await this.taskCollection.aggregate(pipeline).toArray();
+
+            // PostHog: Log response
+            logger.info('Dashboard: getRecruiterDrilldown - Response Sent', {
+                endpoint: 'getRecruiterDrilldown',
+                userEmail: req.user?.email,
+                recordCount: data.length,
+                recruiterEmail,
+                status
+            });
+
             res.json({ success: true, data });
+
         } catch (error) {
             logger.error('Error fetching recruiter drilldown', error);
             res.status(500).json({ success: false, error: 'Failed to fetch drilldown' });
@@ -841,18 +1232,61 @@ export class DashboardController {
 
     async getExpertDrilldown(req, res) {
         try {
-            const { period, startDate, endDate, expertEmail, status } = req.query;
+            const { period, startDate, endDate, expertEmail, status, interviewRound, actualRound, dateBasis } = req.query;
             let { start, end } = this.calculateDateRange(period, startDate, endDate);
 
-            const matchStage = {
-                'Date of Interview': {
-                    $gte: moment(start).format('MM/DD/YYYY'),
-                    $lte: moment(end).format('MM/DD/YYYY')
+            // PostHog: Log request
+            logger.info('Dashboard: getExpertDrilldown - Request Started', {
+                endpoint: 'getExpertDrilldown',
+                userEmail: req.user?.email,
+                queryParams: { period, startDate, endDate, expertEmail, status, interviewRound, actualRound, dateBasis }
+            });
+
+            const isReceivedDate = dateBasis === 'received';
+            const dateMatch = isReceivedDate
+                ? {
+                    receivedDateTime: {
+                        $gte: start.toISOString(),
+                        $lte: end.toISOString()
+                    }
                 }
-            };
+                : {
+                    $expr: {
+                        $and: [
+                            {
+                                $gte: [
+                                    {
+                                        $dateFromString: {
+                                            dateString: "$Date of Interview",
+                                            format: "%m/%d/%Y",
+                                            timezone: EST_TIMEZONE,
+                                            onError: null,
+                                            onNull: null
+                                        }
+                                    },
+                                    start
+                                ]
+                            },
+                            {
+                                $lte: [
+                                    {
+                                        $dateFromString: {
+                                            dateString: "$Date of Interview",
+                                            format: "%m/%d/%Y",
+                                            timezone: EST_TIMEZONE,
+                                            onError: null,
+                                            onNull: null
+                                        }
+                                    },
+                                    end
+                                ]
+                            }
+                        ]
+                    }
+                };
 
             const pipeline = [
-                { $match: matchStage },
+                { $match: dateMatch },
                 {
                     $lookup: {
                         from: 'candidateDetails',
@@ -871,29 +1305,88 @@ export class DashboardController {
                                 else: "$candidateDetails.Expert"
                             }
                         },
-                        statusLower: { $toLower: '$status' }
+                        assignedExpertLower: {
+                            $toLower: {
+                                $cond: {
+                                    if: { $ne: [{ $ifNull: ["$assignedTo", ""] }, ""] },
+                                    then: "$assignedTo",
+                                    else: "$candidateDetails.Expert"
+                                }
+                            }
+                        },
+                        statusLower: { $toLower: { $ifNull: ['$status', ''] } },
+                        interviewRoundLower: { $toLower: { $ifNull: ['$Interview Round', ''] } },
+                        actualRoundResolved: { $ifNull: ['$actualRound', '$Actual Round'] },
+                        actualRoundLower: {
+                            $toLower: {
+                                $ifNull: [
+                                    { $ifNull: ['$actualRound', '$Actual Round'] },
+                                    ''
+                                ]
+                            }
+                        }
                     }
                 },
                 {
                     $match: {
-                        assignedExpert: { $regex: expertEmail, $options: 'i' }
+                        assignedExpertLower: (expertEmail || '').toLowerCase().trim()
                     }
                 }
             ];
 
             if (status) {
-                if (status === 'completed') {
+                const normalizedStatus = status.toLowerCase();
+                if (normalizedStatus === 'completed') {
                     pipeline.push({ $match: { statusLower: { $in: ['completed', 'done'] } } });
-                } else if (status === 'pending') {
-                    pipeline.push({ $match: { statusLower: { $in: ['pending', 'assigned', 'acknowledged'] } } });
+                } else {
+                    pipeline.push({ $match: { statusLower: normalizedStatus } });
                 }
             }
 
+            if (interviewRound) {
+                pipeline.push({ $match: { interviewRoundLower: interviewRound.toLowerCase() } });
+            }
+
+            if (actualRound) {
+                pipeline.push({ $match: { actualRoundLower: actualRound.toLowerCase() } });
+            }
+
             pipeline.push({ $limit: 100 });
-            pipeline.push({ $project: { 'Candidate Name': 1, 'Date of Interview': 1, 'status': 1, 'Job Title': 1, 'assignedTo': 1 } });
+            pipeline.push({
+                $project: {
+                    'Candidate Name': 1,
+                    'Date of Interview': 1,
+                    'Start Time Of Interview': 1,
+                    'status': 1,
+                    'Job Title': 1,
+                    'End Client': 1,
+                    'Interview Round': 1,
+                    'Actual Round': '$actualRoundResolved',
+                    'assignedTo': 1
+                }
+            });
+
+            // PostHog: Log the complete pipeline before execution
+            logger.info('Dashboard: getExpertDrilldown - Pipeline Before Execution', {
+                endpoint: 'getExpertDrilldown',
+                userEmail: req.user?.email,
+                fullPipeline: JSON.stringify(pipeline),
+                message: 'About to execute MongoDB aggregation'
+            });
 
             const data = await this.taskCollection.aggregate(pipeline).toArray();
+
+            // PostHog: Log response
+            logger.info('Dashboard: getExpertDrilldown - Response Sent', {
+                endpoint: 'getExpertDrilldown',
+                userEmail: req.user?.email,
+                recordCount: data.length,
+                expertEmail,
+                status
+            });
+
             res.json({ success: true, data });
+
         } catch (error) {
             logger.error('Error fetching expert drilldown', error);
             res.status(500).json({ success: false, error: 'Failed to fetch drilldown' });
@@ -905,6 +1398,15 @@ export class DashboardController {
             const { period, startDate, dateBasis } = req.query; // Added startDate/dateBasis
             const user = req.user;
             let { start, end } = this.calculateDateRange(period, startDate);
+
+            // PostHog: Log request parameters
+            logger.info('Dashboard: getOverviewStats - Request Started', {
+                endpoint: 'getOverviewStats',
+                userEmail: user?.email,
+                userRole: user?.role,
+                queryParams: { period, startDate, dateBasis },
+                dateRange: { start: start.toISOString(), end: end.toISOString() }
+            });
 
             // Scoped Candidate Counts (Total & Active)
             const candidatePipeline = [
@@ -929,6 +1431,15 @@ export class DashboardController {
 
             // Total candidates (scoped)
             const totalPipeline = [...candidatePipeline, { $count: "count" }];
+
+            // PostHog: Log candidate pipeline
+            logger.info('Dashboard: getOverviewStats - Candidate Pipeline', {
+                endpoint: 'getOverviewStats',
+                userEmail: user?.email,
+                fullPipeline: JSON.stringify(totalPipeline),
+                message: 'Candidate aggregation pipeline'
+            });
+
             const totalResult = await this.candidateCollection.aggregate(totalPipeline).toArray();
             const totalCandidates = totalResult[0]?.count || 0;
 
@@ -1006,6 +1517,15 @@ export class DashboardController {
 
             // Total interviews
             const totalInterviewsPipeline = [...taskBasePipeline, { $count: "count" }];
+
+            // PostHog: Log task pipeline
+            logger.info('Dashboard: getOverviewStats - Task Pipeline', {
+                endpoint: 'getOverviewStats',
+                userEmail: user?.email,
+                fullPipeline: JSON.stringify(totalInterviewsPipeline),
+                message: 'Task aggregation pipeline'
+            });
+
             const totalInterviewsResult = await this.taskCollection.aggregate(totalInterviewsPipeline).toArray();
             const totalInterviews = totalInterviewsResult[0]?.count || 0;
 
@@ -1027,6 +1547,22 @@ export class DashboardController {
             const pendingResult = await this.taskCollection.aggregate(pendingPipeline).toArray();
             const pendingTasks = pendingResult[0]?.count || 0;
 
+            // PostHog: Log final output
+            logger.info('Dashboard: getOverviewStats - Response Sent', {
+                endpoint: 'getOverviewStats',
+                userEmail: user?.email,
+                userRole: user?.role,
+                results: {
+                    totalCandidates,
+                    activeCandidates,
+                    totalInterviews,
+                    completedInterviews,
+                    pendingTasks
+                },
+                candidateScopedMatch: candidateScopedMatch,
+                taskScopedMatch: taskScopedMatch
+            });
+
             res.json({
                 success: true,
                 data: {
@@ -1038,7 +1574,13 @@ export class DashboardController {
                 }
             });
         } catch (error) {
-            logger.error('Error fetching overview stats', error);
+            logger.error('Dashboard: getOverviewStats - Error', {
+                endpoint: 'getOverviewStats',
+                userEmail: req.user?.email,
+                userRole: req.user?.role,
+                errorMessage: error.message,
+                errorStack: error.stack
+            });
             res.status(500).json({ success: false, error: 'Failed to fetch overview stats' });
         }
     }
@@ -1046,6 +1588,13 @@ export class DashboardController {
     async getManagementDrilldown(req, res) {
         try {
             const { candidateEmail } = req.query;
+
+            // PostHog: Log request
+            logger.info('Dashboard: getManagementDrilldown - Request Started', {
+                endpoint: 'getManagementDrilldown',
+                userEmail: req.user?.email,
+                queryParams: { candidateEmail }
+            });
 
             if (!candidateEmail) {
                 return res.status(400).json({ success: false, error: 'Candidate email required' });
@@ -1057,7 +1606,24 @@ export class DashboardController {
                 { $project: { 'Date of Interview': 1, 'Job Title': 1, 'End Client': 1, 'Interview Round': 1, 'status': 1 } }
             ];
 
+            // PostHog: Log the complete pipeline before execution
+            logger.info('Dashboard: getManagementDrilldown - Pipeline Before Execution', {
+                endpoint: 'getManagementDrilldown',
+                userEmail: req.user?.email,
+                fullPipeline: JSON.stringify(pipeline),
+                message: 'About to execute MongoDB aggregation'
+            });
+
             const data = await this.taskCollection.aggregate(pipeline).toArray();
+
+            // PostHog: Log response
+            logger.info('Dashboard: getManagementDrilldown - Response Sent', {
+                endpoint: 'getManagementDrilldown',
+                userEmail: req.user?.email,
+                recordCount: data.length,
+                candidateEmail
+            });
+
             res.json({ success: true, data });
         } catch (error) {
             logger.error('Error fetching management drilldown', error);
