@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
 import { userModel } from '../models/User.js';
+import { roleModel } from '../models/Role.js';
 import { logger } from '../utils/logger.js';
 
 export const authenticateSocket = (socket, next) => {
@@ -28,6 +29,8 @@ export const authenticateSocket = (socket, next) => {
       teamLead: user.teamLead,
       manager: user.manager,
       active: user.active !== undefined ? Boolean(user.active) : true,
+      permissions: roleModel.getRole(user.role)?.permissions || [],
+      scopes: roleModel.getRole(user.role)?.scopes || {}
     };
 
     logger.debug('Socket authenticated', { email, socketId: socket.id });
@@ -109,6 +112,8 @@ export const authenticateHTTP = (req, res, next) => {
       teamLead: user.teamLead,
       manager: user.manager,
       active: user.active !== undefined ? Boolean(user.active) : true,
+      permissions: roleModel.getRole(user.role)?.permissions || [],
+      scopes: roleModel.getRole(user.role)?.scopes || {}
     };
 
     logger.debug('HTTP request authenticated', { email, path: req.path });

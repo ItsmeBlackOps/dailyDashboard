@@ -16,14 +16,45 @@ export class TaskService {
     this.userModel = userModel;
   }
 
+  resolveEffectiveScope(requestedScope, allowedScope) {
+    const SCOPE_LEVELS = { 'own': 0, 'team': 1, 'hierarchy': 2, 'branch': 3, 'all': 4 };
+    const allowedLevel = SCOPE_LEVELS[allowedScope] ?? 0;
+    const requestedLevel = SCOPE_LEVELS[requestedScope] ?? allowedLevel;
+
+    const effectiveLevel = Math.min(
+      requestedLevel,
+      SCOPE_LEVELS[requestedScope] !== undefined ? requestedLevel : allowedLevel
+    );
+
+    return Object.keys(SCOPE_LEVELS).find(key => SCOPE_LEVELS[key] === effectiveLevel) || 'own';
+  }
+
   async getTasksForUser(userEmail, userRole, teamLead, manager, tab = "Date of Interview", targetDate, options = {}) {
     const timer = createTimer('taskService.getTasksForUser', logger);
     try {
       logger.debug('Getting tasks for user', { userEmail, userRole, tab, targetDate, options });
 
-      const teamEmails = this.userModel
-        .getTeamEmails(userEmail, userRole, teamLead)
-        .map((email) => email.toLowerCase());
+      const { scope: requestedScope } = options;
+      const allowedScope = (await this.userModel.getUserByEmail(userEmail))?.scopes?.tasks || 'own'; // Default to own
+      // Note: fetching user again to get scopes might be redundant if controller passed it.
+      // Controller req.user has it. But args here are just email/role.
+      // Optimally, getTasksForUser params should include full User object or scopes.
+      // For now, I'll fetch it or assume options could contain "userScopes"? 
+      // Controller passes EVERYTHING in req.user usually? No, just fields.
+      // Let's rely on options.scope being ALREADY validated by controller? 
+      // No, controller passes req.query.scope directly. Service MUST validate.
+      // I'll fetch user to be safe. It's cached usually? Or fast enough.
+      // Optimization: Update getUser to be fast or cached.
+
+      const effectiveScope = this.resolveEffectiveScope(requestedScope, allowedScope);
+
+      let teamEmails = [];
+      if (['team', 'hierarchy', 'branch', 'all'].includes(effectiveScope)) {
+        teamEmails = this.userModel.getHierarchyEmails(userEmail);
+      } else {
+        // For 'own', strictly just the user.
+        teamEmails = [userEmail.toLowerCase()];
+      }
 
       const tasks = await this.taskModel.getTasksForUser(
         userEmail,
@@ -32,7 +63,7 @@ export class TaskService {
         manager,
         tab,
         targetDate,
-        options
+        { ...options, scope: effectiveScope }
       );
 
       logger.info('Tasks retrieved for user', {

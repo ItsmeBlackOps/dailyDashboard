@@ -3,14 +3,13 @@ import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { AdminAwaitingExpert } from "@/components/candidates/AdminAwaitingExpert";
 
-const AdminAlertsPage = () => {
-  const [role, setRole] = useState("");
-  const normalizedRole = role.trim().toLowerCase();
-  const isAdmin = normalizedRole === "admin";
+import { useAuth } from "@/hooks/useAuth";
+import { PERMISSIONS } from "@/config/permissions";
 
-  useEffect(() => {
-    setRole(localStorage.getItem("role") || "");
-  }, []);
+const AdminAlertsPage = () => {
+  const { user, hasPermission } = useAuth();
+  const role = user.role || '';
+  const isAdmin = hasPermission(PERMISSIONS.VIEW_ADMIN_ALERTS);
 
   return (
     <DashboardLayout>

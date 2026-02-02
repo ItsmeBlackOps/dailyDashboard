@@ -58,13 +58,26 @@ export default function SignIn() {
         }
 
         const normalizedEmail = formData.email.trim().toLowerCase();
+        const user = response.user;
 
         // Persist credentials
         localStorage.setItem("accessToken", response.accessToken);
         localStorage.setItem("refreshToken", response.refreshToken);
-        localStorage.setItem("role", response.role);
-        localStorage.setItem("teamLead", response.teamLead);
-        localStorage.setItem("manager", response.manager);
+
+        // Handle nested user object
+        if (user) {
+          localStorage.setItem("role", user.role);
+          localStorage.setItem("teamLead", user.teamLead || "");
+          localStorage.setItem("manager", user.manager || "");
+          localStorage.setItem("permissions", JSON.stringify(user.permissions || []));
+          localStorage.setItem("scopes", JSON.stringify(user.scopes || {}));
+        } else {
+          // Fallback for legacy response if distinct
+          localStorage.setItem("role", response.role);
+          localStorage.setItem("teamLead", response.teamLead);
+          localStorage.setItem("manager", response.manager);
+        }
+
         localStorage.setItem("email", normalizedEmail);
         localStorage.setItem("displayName", deriveDisplayNameFromEmail(normalizedEmail));
         localStorage.setItem("supportAnnouncementPending", 'true');

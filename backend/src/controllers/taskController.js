@@ -11,7 +11,7 @@ export class TaskController {
 
   getTasks = asyncHandler(async (req, res) => {
     const user = req.user;
-    const { tab = "Date of Interview", limit, offset } = req.query;
+    const { tab = "Date of Interview", limit, offset, scope } = req.query;
 
     const result = await this.taskService.getTasksForUser(
       user.email,
@@ -22,7 +22,8 @@ export class TaskController {
       undefined,
       {
         limit: limit ? parseInt(limit, 10) : undefined,
-        offset: offset ? parseInt(offset, 10) : undefined
+        offset: offset ? parseInt(offset, 10) : undefined,
+        scope
       }
     );
 

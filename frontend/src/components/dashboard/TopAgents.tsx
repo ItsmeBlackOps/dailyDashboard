@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { usePostHog } from 'posthog-js/react';
 import { io, Socket } from "socket.io-client";
 import { useAuth, SOCKET_URL } from "@/hooks/useAuth";
+import { PERMISSIONS } from "@/config/permissions";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -49,7 +50,6 @@ type ViewMode = "expert" | "recruiter" | "candidate";
 
 type TopAgentsProps = {
   filters: DashboardFilterState;
-  role: string;
 };
 
 // Removed display mode (All/Top10/Top10+Others). Always show all with agent filter.
@@ -164,7 +164,7 @@ export function TopAgentsChart({
   );
 }
 
-export function TopAgents({ filters, role }: TopAgentsProps) {
+export function TopAgents({ filters }: TopAgentsProps) {
   const [leaders, setLeaders] = useState<LeadersPayload>({
     expert: [],
     recruiter: [],
@@ -172,17 +172,23 @@ export function TopAgents({ filters, role }: TopAgentsProps) {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const { refreshAccessToken } = useAuth();
+  const { refreshAccessToken, hasPermission, user } = useAuth();
+  const role = user.role || '';
   const posthog = usePostHog();
 
 
   // const [displayMode, setDisplayMode] = useState<DisplayMode>("all");
 
   const allowedViews: ViewMode[] = useMemo(() => {
-    if (role === "admin") return ["expert", "recruiter", "candidate"];
-    if (role === "MM" || role === "MAM" || role === "mlead") return ["recruiter", "candidate"];
-    if (role === "lead") return ["expert", "candidate"];
-    return ["candidate"];
+    const views: ViewMode[] = [];
+    if (hasPermission(PERMISSIONS.VIEW_EXPERT_STATS)) {
+      views.push('expert');
+    }
+    if (hasPermission(PERMISSIONS.VIEW_RECRUITER_STATS)) {
+      views.push('recruiter');
+    }
+    views.push('candidate');
+    return views;
   }, [role]);
 
   const [view, setView] = useState<ViewMode>(allowedViews[0]);

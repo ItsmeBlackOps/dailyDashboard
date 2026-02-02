@@ -1,3 +1,4 @@
+```
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import * as XLSX from 'xlsx';
@@ -14,7 +15,9 @@ import { useAuth, SOCKET_URL } from '@/hooks/useAuth';
 import { Send, Download, Paperclip, Smile } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const ALLOWED_ROLES = new Set(['admin', 'MM', 'MAM', 'mtl', 'MTL']);
+import { PERMISSIONS } from "@/config/permissions";
+
+// const ALLOWED_ROLES = new Set(['admin', 'MM', 'MAM', 'mtl', 'MTL']); // Replaced by config
 const PREVIEW_LIMIT = 50;
 
 interface AssistantMessage {
@@ -49,9 +52,8 @@ interface ReportDownloadResponse {
 }
 
 const ReportAssistant = () => {
-  const role = useMemo(() => localStorage.getItem('role') || '', []);
-  const canUseAssistant = ALLOWED_ROLES.has(role);
-  const { refreshAccessToken } = useAuth();
+  const { refreshAccessToken, hasPermission } = useAuth();
+  const canUseAssistant = hasPermission(PERMISSIONS.VIEW_REPORT_ASSISTANT);
   const { toast } = useToast();
 
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
@@ -230,7 +232,7 @@ const ReportAssistant = () => {
                   ) : (
                     messages.map((msg, idx) => (
                       <div
-                        key={`${msg.timestamp}-${idx}`}
+                        key={`${ msg.timestamp } -${ idx } `}
                         className={cn('flex gap-2', msg.role === 'user' ? 'justify-end' : 'justify-start')}
                       >
                         {msg.role === 'assistant' && (
@@ -338,7 +340,7 @@ const ReportAssistant = () => {
                     {rows.map((row) => (
                       <TableRow key={row.id}>
                         {columns.map((col) => (
-                          <TableCell key={`${row.id}-${col.key}`}>{row[col.key] ?? ''}</TableCell>
+                          <TableCell key={`${ row.id } -${ col.key } `}>{row[col.key] ?? ''}</TableCell>
                         ))}
                       </TableRow>
                     ))}

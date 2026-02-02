@@ -31,6 +31,7 @@ import { userModel } from './models/User.js';
 import { taskModel } from './models/Task.js';
 import { candidateModel } from './models/Candidate.js';
 import { refreshTokenModel } from './models/RefreshToken.js';
+import { roleModel } from './models/Role.js';
 
 // Import services
 import { authService } from './services/authService.js';
@@ -119,6 +120,7 @@ class Application {
     await taskModel.initialize();
     await candidateModel.initialize();
     await refreshTokenModel.initialize();
+    await roleModel.initialize();
 
     logger.info('✅ Models initialized');
   }

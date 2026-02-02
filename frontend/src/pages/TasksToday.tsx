@@ -1,5 +1,6 @@
 // src/components/TasksToday.tsx
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { PERMISSIONS } from "@/config/permissions";
 import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import DOMPurify from "dompurify";
 import moment, { Moment } from "moment-timezone";
@@ -350,33 +351,21 @@ export default function TasksToday() {
     }
   }, [filterStatus, authUser?.role, posthog]);
   const { selectedTab, setSelectedTab } = useTab();
-  const roleRaw = localStorage.getItem("role") || "";
-  const normalizedRole = roleRaw.trim().toLowerCase();
-  const user = roleRaw;
-  const allowReceivedDate = useMemo(() => {
-    return ["admin", "mm", "mam", "mlead", "recruiter"].includes(normalizedRole);
-  }, [normalizedRole]);
-  const canCloneSupport = useMemo(() => {
-    return !['user', 'lead', 'mam'].includes(normalizedRole);
-  }, [normalizedRole]);
-  const canRequestMock = useMemo(() => {
-    return ['recruiter', 'mlead', 'mam', 'mm'].includes(normalizedRole);
-  }, [normalizedRole]);
-  const canGenerateThanksMail = useMemo(() => {
-    return ['recruiter', 'mlead', 'mam', 'mm'].includes(normalizedRole);
-  }, [normalizedRole]);
+  const { user, hasPermission } = useAuth();
+  const normalizedRole = (user.role || '').trim().toLowerCase();
+
+  const allowReceivedDate = hasPermission(PERMISSIONS.USE_RECEIVED_DATE_FILTER);
+  const canCloneSupport = hasPermission(PERMISSIONS.CLONE_SUPPORT_TASK);
+  const canRequestMock = hasPermission(PERMISSIONS.REQUEST_MOCK);
+  const canGenerateThanksMail = hasPermission(PERMISSIONS.GENERATE_THANKS_MAIL);
   const { toast } = useToast();
   const meetingsEnabled = AZURE_CLIENT_ID.length > 0;
   const canManageMeetings = useMemo(() => {
     if (!meetingsEnabled) return false;
-    const allowedRoles = ['admin', 'user', 'lead', 'am'];
-    return allowedRoles.includes(normalizedRole);
-  }, [meetingsEnabled, normalizedRole]);
+    return hasPermission(PERMISSIONS.MANAGE_MEETINGS);
+  }, [meetingsEnabled, hasPermission]);
 
-  const hideGrantConsentBanner = useMemo(() => {
-    const restrictedRoles = ['recruiter', 'mlead', 'mam', 'mm'];
-    return restrictedRoles.includes(normalizedRole);
-  }, [normalizedRole]);
+  const hideGrantConsentBanner = !hasPermission(PERMISSIONS.VIEW_MEETING_CONSENT_BANNER);
   const { instance, accounts } = useMsal();
   const account = accounts[0];
   const {

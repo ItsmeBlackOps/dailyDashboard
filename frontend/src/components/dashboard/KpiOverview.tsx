@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePostHog } from 'posthog-js/react';
 import { io, Socket } from "socket.io-client";
 import { useAuth, SOCKET_URL } from "@/hooks/useAuth";
+import { PERMISSIONS } from "@/config/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -54,7 +55,6 @@ interface DashboardSummaryResponse {
 
 interface KpiOverviewProps {
   filters: DashboardFilterState;
-  role: string;
 }
 
 const shorthand = new Intl.NumberFormat("en-US", { notation: "compact" });
@@ -98,14 +98,15 @@ export function OverallInterviewsChart({
   );
 }
 
-export function KpiOverview({ filters, role }: KpiOverviewProps) {
+export function KpiOverview({ filters }: KpiOverviewProps) {
   const [kpi, setKpi] = useState<KpiPayload | null>(null);
   const [rangeLabel, setRangeLabel] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
   const [selectedRounds, setSelectedRounds] = useState<Set<string>>(new Set());
   const [selectedBranches, setSelectedBranches] = useState<Set<string>>(new Set());
-  const { refreshAccessToken } = useAuth();
+  const { refreshAccessToken, hasPermission, user } = useAuth();
+  const role = user.role || '';
   const posthog = usePostHog();
 
   useEffect(() => {
@@ -220,7 +221,8 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
   const effectiveByRound = useMemo(() => {
     const payload = kpi;
     if (!payload) return {} as Record<string, number>;
-    if (role === 'admin' && selectedBranches.size > 0 && payload.roundByBranch) {
+    const canSeeBranch = hasPermission(PERMISSIONS.CAN_SEE_BRANCH_BREAKDOWN);
+    if (canSeeBranch && selectedBranches.size > 0 && payload.roundByBranch) {
       const acc = new Map<string, number>();
       for (const [branch, rounds] of Object.entries(payload.roundByBranch)) {
         if (!selectedBranches.has(branch)) continue;
@@ -236,7 +238,7 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        {Array.from({ length: role === "admin" ? 5 : 4 }).map((_, idx) => (
+        {Array.from({ length: hasPermission(PERMISSIONS.CAN_SEE_BRANCH_BREAKDOWN) ? 5 : 4 }).map((_, idx) => (
           <Skeleton key={idx} className="h-32 w-full" />
         ))}
       </div>
@@ -270,7 +272,7 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
   }
 
   const roundEntries = Object.entries(effectiveByRound).sort((a, b) => b[1] - a[1]);
-  const branchEntries = role === "admin"
+  const branchEntries = hasPermission(PERMISSIONS.CAN_SEE_BRANCH_BREAKDOWN)
     ? Object.entries(kpi.branch || {}).sort((a, b) => b[1] - a[1])
     : [];
 
@@ -340,7 +342,7 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
             </Popover>
 
             {/* Branch multi-select (admin only) */}
-            {role === 'admin' && (
+            {hasPermission(PERMISSIONS.CAN_SEE_BRANCH_BREAKDOWN) && (
               <Popover>
                 <PopoverTrigger asChild>
                   <button className="inline-flex h-8 items-center justify-between whitespace-nowrap rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm hover:bg-accent hover:text-accent-foreground">
@@ -408,7 +410,7 @@ export function KpiOverview({ filters, role }: KpiOverviewProps) {
         </CardContent>
       </Card>
 
-      {role === "admin" && (
+      {hasPermission(PERMISSIONS.CAN_SEE_BRANCH_BREAKDOWN) && (
         <Card className="bg-muted/10 backdrop-blur border-border/60">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">

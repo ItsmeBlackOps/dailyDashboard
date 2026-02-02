@@ -30,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { PERMISSIONS } from "@/config/permissions";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -100,20 +101,15 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
   const role = useMemo(() => localStorage.getItem("role") || "", []);
   const normalizedRole = role.trim().toLowerCase();
   const navigate = useNavigate();
-  const { authFetch, refreshAccessToken } = useAuth();
+  const { authFetch, refreshAccessToken, hasPermission } = useAuth();
   const [resumeCount, setResumeCount] = useState<number>(0);
   const [adminAlertCount, setAdminAlertCount] = useState<number>(0);
   const resumeSocketRef = useRef<Socket | null>(null);
   const adminAlertSocketRef = useRef<Socket | null>(null);
   const currentUserEmail = useMemo(() => (localStorage.getItem("email") || "").trim().toLowerCase(), []);
-  const showResumeNav = useMemo(
-    () => ["expert", "user", "lead", "am", "recruiter", "manager", "admin", "mlead", "mam", "mm"].includes(normalizedRole),
-    [normalizedRole]
-  );
-  const shouldFilterResumeEvents = useMemo(
-    () => !["lead", "am", "recruiter", "manager", "admin", "mlead", "mam", "mm"].includes(normalizedRole),
-    [normalizedRole]
-  );
+
+  const showResumeNav = hasPermission(PERMISSIONS.VIEW_RESUME_UNDERSTANDING);
+  const shouldFilterResumeEvents = hasPermission(PERMISSIONS.FILTER_RESUME_EVENTS_BY_EXPERT);
 
   const { notifications } = useNotifications();
   const hasResumeUnread = useMemo(() => {
@@ -268,7 +264,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
   }, [showResumeNav, refreshAccessToken, currentUserEmail, shouldFilterResumeEvents]);
 
   useEffect(() => {
-    if (normalizedRole !== 'admin') {
+    if (!hasPermission(PERMISSIONS.VIEW_ADMIN_ALERTS)) {
       setAdminAlertCount(0);
       if (adminAlertSocketRef.current) {
         adminAlertSocketRef.current.disconnect();
@@ -325,7 +321,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
       socket.disconnect();
       adminAlertSocketRef.current = null;
     };
-  }, [normalizedRole, refreshAccessToken]);
+  }, [hasPermission, refreshAccessToken]);
 
   return (
     <>
@@ -402,7 +398,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 isOpen={isOpen}
                 tourId="tasks-link"
               />
-              {['admin', 'mm', 'mam', 'mlead', 'lead', 'user', 'am', 'recruiter', 'manager'].includes(normalizedRole) && (
+              {hasPermission(PERMISSIONS.VIEW_BRANCH_CANDIDATES) && (
                 <NavItem
                   icon={Database}
                   label="Branch Candidates"
@@ -410,7 +406,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   isOpen={isOpen}
                 />
               )}
-              {normalizedRole === 'admin' && (
+              {hasPermission(PERMISSIONS.VIEW_ADMIN_ALERTS) && (
                 <NavItem
                   icon={BellRing}
                   label="Admin Alerts"
@@ -437,7 +433,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
             <Separator className="my-4" />
 
             <nav className="grid gap-1">
-              {['MAM', 'MM', 'admin', 'mtl', 'MTL'].includes(role) && (
+              {hasPermission(PERMISSIONS.VIEW_REPORTS) && (
                 <>
                   <NavItem
                     icon={BarChart3}
@@ -445,12 +441,14 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                     href="/reports"
                     isOpen={isOpen}
                   />
-                  <NavItem
-                    icon={FileText}
-                    label="Report Assistant"
-                    href="/reports/assistant"
-                    isOpen={isOpen}
-                  />
+                  {hasPermission(PERMISSIONS.VIEW_REPORT_ASSISTANT) && (
+                    <NavItem
+                      icon={FileText}
+                      label="Report Assistant"
+                      href="/reports/assistant"
+                      isOpen={isOpen}
+                    />
+                  )}
                 </>
               )}
             </nav>
@@ -460,7 +458,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
         {/* Footer */}
         <div className="border-t border-border p-2 flex-shrink-0">
           <nav className="grid gap-1">
-            {['admin', 'manager', 'mm', 'mam', 'mlead', 'lead', 'am'].includes(normalizedRole) && (
+            {hasPermission(PERMISSIONS.VIEW_USER_MANAGEMENT) && (
               <NavItem
                 icon={UserPlus}
                 label="User Management"

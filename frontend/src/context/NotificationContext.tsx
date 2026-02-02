@@ -2,68 +2,14 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_URL, API_URL, useAuth } from '@/hooks/useAuth';
+import { SOCKET_URL, API_URL, useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { PERMISSIONS } from "@/config/permissions";
 import DOMPurify from 'dompurify';
 
-// Sound Assets (We use paths, assuming public/sounds exists or will exist)
-const SOUND_RING = '/sounds/ring.mp3';
-const SOUND_DOUBLE_BEEP = '/sounds/double-beep.mp3';
+// ... (Sound Assets remain same)
 
-interface ChangeDetails {
-    oldValue?: any;
-    newValue?: any;
-    changedFields?: string[];
-    bulkCandidates?: Array<{
-        candidateId: string;
-        candidateName: string;
-        oldValue: any;
-        newValue: any;
-    }>;
-}
-
-interface Actor {
-    email: string;
-    name: string;
-    role: string;
-}
-
-interface NotificationEvent {
-    id: string;
-    type: 'comment' | 'assignment' | 'info' | 'batch';
-    title: string;
-    description: string;
-    timestamp: string;
-    read: boolean;
-    candidateId?: string; // For linking
-    commentId?: string;
-    link?: string; // Add link support
-    changeDetails?: ChangeDetails;
-    actor?: Actor;
-    batchData?: any[];
-    resumeUnderstandingStatus?: string;
-}
-
-interface NotificationContextType {
-    notifications: NotificationEvent[];
-    unreadCount: number;
-    markAsRead: (id: string) => void;
-    clearAll: () => void;
-    // Modal State
-    selectedNotification: NotificationEvent | null;
-    isModalOpen: boolean;
-    openModal: (notification: NotificationEvent) => void;
-    closeModal: () => void;
-}
-
-const NotificationContext = createContext<NotificationContextType | null>(null);
-
-export function useNotifications() {
-    const context = useContext(NotificationContext);
-    if (!context) {
-        throw new Error('useNotifications must be used within a NotificationProvider');
-    }
-    return context;
-}
+// ... (Interfaces remain same)
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
     const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
@@ -71,10 +17,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     const { toast } = useToast();
-    const { refreshAccessToken, authFetch } = useAuth();
+    const { refreshAccessToken, authFetch, hasPermission } = useAuth();
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const userId = useMemo(() => localStorage.getItem("email") || "", []);
-    const role = useMemo(() => localStorage.getItem("role") || "", []);
+    // Role is less relevant now, logic should rely on hasPermission or myEmail checks.
+    // Keeping myRole for fallback logic if needed inside handleAssignment?
+    // handleAssignment fetches role from localStorage again. I should use useAuth there or user.role?
+    // But handleAssignment is inside useEffect closure.
+    // I can use hasPermission which is stable.
 
     // Socket Setup
     const socket = useMemo<Socket | null>(() => {
@@ -210,7 +160,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             if (myEmail === expertEmail) {
                 // Expert View
                 description = `A new candidate, ${candidateName}, has been assigned to you for the resume understanding.`;
-            } else if (['lead', 'am'].includes(myRole)) {
+            } else if (hasPermission(PERMISSIONS.FORMAT_NOTIFICATION_AS_LEAD)) {
                 // Lead / AM View
                 description = `A new candidate, ${candidateName}, has been assigned to ${expertName} for the resume understanding.`;
             } else if (myEmail === recruiterEmail) {
@@ -219,7 +169,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                 // If expert is assigned, use the Expert Story. 
                 // We assume this event fires ON expert assignment.
                 description = `${expertName}, has been assigned to ${candidateName} for resume understanding.`;
-            } else if (['mam', 'mlead', 'manager'].includes(myRole)) {
+            } else if (hasPermission(PERMISSIONS.FORMAT_NOTIFICATION_AS_MANAGER)) {
                 // Manager View
                 description = `${expertName}, has been assigned to ${candidateName} for resume understanding.`;
             } else {

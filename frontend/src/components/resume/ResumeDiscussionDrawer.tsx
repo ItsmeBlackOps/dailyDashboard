@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { io, Socket } from "socket.io-client";
-import { SOCKET_URL, useAuth } from "@/hooks/useAuth";
+import { SOCKET_URL, useAuth } from '@/hooks/useAuth';
+import { PERMISSIONS } from "@/config/permissions";
 import moment from 'moment-timezone';
 import DOMPurify from 'dompurify';
 
@@ -45,11 +46,11 @@ export function ResumeDiscussionDrawer({
     const [newMessage, setNewMessage] = useState('');
     const [isComplaint, setIsComplaint] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
-    const { refreshAccessToken } = useAuth();
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const { refreshAccessToken, hasPermission } = useAuth();
 
-    const role = useMemo(() => (localStorage.getItem("role") || "").trim().toLowerCase(), []);
-    const canSeeComplaints = useMemo(() => !['expert', 'user'].includes(role), [role]);
-    const canCreateComplaints = useMemo(() => ['recruiter', 'mlead', 'mam', 'mm', 'admin', 'manager'].includes(role), [role]);
+    const canSeeComplaints = hasPermission(PERMISSIONS.VIEW_COMPLAINTS);
+    const canCreateComplaints = hasPermission(PERMISSIONS.CREATE_COMPLAINTS);
 
     const socket = useMemo<Socket | null>(() => {
         if (!candidateId || !isOpen) return null;

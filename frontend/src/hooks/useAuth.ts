@@ -127,8 +127,27 @@ export function useAuth() {
     email: localStorage.getItem('email'),
     role: localStorage.getItem('role'),
     branch: localStorage.getItem('branch'), // Assuming branch is stored or derived
-    displayName: localStorage.getItem('displayName')
+    displayName: localStorage.getItem('displayName'),
+    teamLead: localStorage.getItem('teamLead'),
+    manager: localStorage.getItem('manager'),
+    permissions: [] as string[],
+    scopes: {} as Record<string, string>
   };
 
-  return { authFetch, logout, refreshAccessToken, user };
+  try {
+    const p = localStorage.getItem('permissions');
+    if (p) user.permissions = JSON.parse(p);
+    const s = localStorage.getItem('scopes');
+    if (s) user.scopes = JSON.parse(s);
+  } catch (e) {
+    console.error('Failed to parse auth permissions', e);
+  }
+
+  const hasPermission = useCallback((permission: string) => {
+    // If no permissions loaded (legacy or error), fallback to false or safe default?
+    // For now precise check.
+    return user.permissions.includes(permission);
+  }, [user.permissions]); // Re-create if permissions change (login/logout reload page anyway)
+
+  return { authFetch, logout, refreshAccessToken, user, hasPermission };
 }

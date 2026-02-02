@@ -150,7 +150,8 @@ export class TaskModel {
       const startOfDay = targetMoment.clone().startOf('day');
       const endOfDay = targetMoment.clone().endOf('day');
 
-      const roleFilter = this.buildUserQuery(userEmail, userRole, manager);
+      const { scope } = options;
+      const roleFilter = this.buildUserQuery(userEmail, userRole, manager, effectiveTeamEmails, scope);
       const dateField = tab === 'receivedDateTime' ? 'receivedDateTime' : 'Date of Interview';
 
       let dateFilter;
@@ -226,7 +227,7 @@ export class TaskModel {
         ])
         .toArray();
 
-      const tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails);
+      const tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails, scope);
 
       tasks.sort((a, b) => {
         const diff = a.startTime - b.startTime;
@@ -251,8 +252,31 @@ export class TaskModel {
     }
   }
 
-  buildUserQuery(userEmail, userRole, manager) {
+  buildUserQuery(userEmail, userRole, manager, teamEmails = [], scope = 'own') {
     const lowerEmail = userEmail.toLowerCase();
+
+    if (scope === 'all') {
+      return {};
+    }
+
+    if (scope === 'team' || scope === 'hierarchy' || scope === 'branch') {
+      // Broaden search to include team members
+      // If teamEmails is provided, match sender/cc/assignedTo against ANY team member
+      if (teamEmails.length > 0) {
+        const teamRegex = teamEmails.map(e => escapeRegex(e)).join('|');
+        const regexQuery = { $regex: teamRegex, $options: 'i' };
+
+        // Simplistic team query: Any task involving the team
+        return {
+          $or: [
+            { sender: regexQuery },
+            { cc: regexQuery },
+            { assignedTo: regexQuery },
+            { to: regexQuery }
+          ]
+        };
+      }
+    }
 
     if (userRole === "MAM" || userRole === "MM") {
       const mngr = manager.toLowerCase().split(" ").join(".");
@@ -304,7 +328,7 @@ export class TaskModel {
     }
   }
 
-  filterAndFormatTasks(docs, userEmail, userRole, teamEmails = []) {
+  filterAndFormatTasks(docs, userEmail, userRole, teamEmails = [], scope = 'own') {
     const toId = (value) => {
       if (!value) return '';
       if (typeof value === 'string') return value;
@@ -444,6 +468,20 @@ export class TaskModel {
       }
 
       if (normalizedRole === 'recruiter') {
+
+        // Scope Check: Team View for Recruiter
+        if (scope === 'team' || scope === 'hierarchy' || scope === 'branch' || scope === 'all') {
+          const senderLower = (doc.sender || '').toLowerCase();
+          const isSenderOnTeam = teamEmailSet.has(senderLower);
+          const isOnTeam = teamEmailSet.has(assignedEmailLower);
+
+          if (isOnTeam || isSenderOnTeam) {
+            logSuggestionDebug('TasksToday recruiter team visibility', { ...baseMeta, reason: 'recruiter_team_access' });
+            tasks.push(task);
+            continue;
+          }
+        }
+
         const senderLower = (doc.sender || '').toLowerCase();
         if (senderLower === userEmailLower) {
           logSuggestionDebug('TasksToday recruiter visibility via sender match', {
@@ -469,7 +507,7 @@ export class TaskModel {
         continue;
       }
 
-      const isAdmin = normalizedRole === 'admin';
+      const isAdmin = normalizedRole === 'admin' || scope === 'all';
       const isSelf = userEmailLower === assignedEmailLower;
       const isOnTeam = teamEmailSet.has(assignedEmailLower);
 

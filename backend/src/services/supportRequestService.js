@@ -451,6 +451,11 @@ class SupportRequestService {
     return `Interview Support - ${candidateName} - ${safeTechnology} - ${when.subjectFragment}`;
   }
 
+  validateSubject(subject, candidateName, technology, when) {
+    const expected = this.buildSubject(candidateName, technology, when);
+    return subject === expected;
+  }
+
   buildHtmlBody(data) {
     const rows = [
       { label: 'Candidate Name', value: data.candidateName },

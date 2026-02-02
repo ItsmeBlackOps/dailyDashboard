@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
+import { PERMISSIONS } from "@/config/permissions";
 import DOMPurify from "dompurify";
 import { io, Socket } from "socket.io-client";
 import { MessageSquare } from "lucide-react";
@@ -67,20 +68,14 @@ const STATUS_LABELS: Record<QueueStatus, string> = {
 export default function ResumeUnderstanding() {
   const posthog = usePostHog(); // [Harsh] Analytics
   const { toast } = useToast();
-  const { refreshAccessToken } = useAuth();
-  const role = useMemo(() => (localStorage.getItem("role") || "").trim().toLowerCase(), []);
-  const allowed = useMemo(
-    () => ["expert", "user", "lead", "am", "recruiter", "manager", "admin", "mlead", "mam", "mm"].includes(role),
-    [role]
-  );
-  const showCompletedTab = role !== 'user' && role !== 'expert';
-  // 'user' role is usually the Expert.
-  // We want Recruiters to see completed tab? Yes.
+  const { refreshAccessToken, hasPermission, user } = useAuth();
 
-  const shouldFilterByExpert = useMemo(
-    () => ["expert", "user"].includes(role),
-    [role]
-  );
+  // Use user.role if needed for event tracking or legacy logic
+  const role = user.role || '';
+
+  const allowed = hasPermission(PERMISSIONS.VIEW_RESUME_UNDERSTANDING);
+  const showCompletedTab = hasPermission(PERMISSIONS.VIEW_COMPLETED_TAB);
+  const shouldFilterByExpert = hasPermission(PERMISSIONS.FILTER_RESUME_EVENTS_BY_EXPERT);
 
   const [activeStatus, setActiveStatus] = useState<QueueStatus>("pending");
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateRecord | null>(null);
@@ -383,7 +378,7 @@ export default function ResumeUnderstanding() {
                         <TableRow>
                           <TableHead>Candidate</TableHead>
                           {/* [HAR-86] Expert Name Column */}
-                          {role !== 'user' && <TableHead>Expert Name</TableHead>}
+                          {!shouldFilterByExpert && <TableHead>Expert Name</TableHead>}
                           <TableHead>Technology</TableHead>
                           <TableHead>Recruiter</TableHead>
                           <TableHead>Branch</TableHead>
@@ -411,7 +406,7 @@ export default function ResumeUnderstanding() {
                             <TableRow key={candidate.id}>
                               <TableCell>{DOMPurify.sanitize(candidate.name || '')}</TableCell>
                               {/* [HAR-86] Expert Name Cell */}
-                              {role !== 'user' && (
+                              {!shouldFilterByExpert && (
                                 <TableCell>{formatEmailDisplay(candidate.expertRaw || candidate.expert || '')}</TableCell>
                               )}
                               <TableCell>{DOMPurify.sanitize(candidate.technology || '')}</TableCell>
@@ -454,7 +449,7 @@ export default function ResumeUnderstanding() {
                                   >
                                     <MessageSquare className="h-4 w-4" />
                                   </Button>
-                                  {(role === 'admin' || ((role === 'lead' || role === 'user') && (candidate.expertRaw || '').toLowerCase() === userEmail.toLowerCase())) && (
+                                  {(hasPermission(PERMISSIONS.UPDATE_RESUME_STATUS_ANY) || (hasPermission(PERMISSIONS.UPDATE_RESUME_STATUS_OWN) && (candidate.expertRaw || '').toLowerCase() === userEmail.toLowerCase())) && (
                                     activeStatus === 'pending' ? (
                                       <Button
                                         size="sm"

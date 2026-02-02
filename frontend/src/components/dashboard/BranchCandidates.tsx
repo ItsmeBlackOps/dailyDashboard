@@ -32,10 +32,11 @@ import { GRAPH_MAIL_SCOPES } from "@/constants";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToastAction } from "@/components/ui/toast";
 import { StatusBadge } from "@/components/candidates/StatusBadge";
+import { PERMISSIONS } from "@/config/permissions";
 import { Loader2, BookOpen } from "lucide-react";
 
 interface BranchCandidatesProps {
-  role: string;
+  // Role removed
 }
 
 interface CandidateRow {
@@ -265,21 +266,23 @@ function formatEmailDisplay(value: string): string {
     .join(' ');
 }
 
-export function BranchCandidates({ role }: BranchCandidatesProps) {
+export function BranchCandidates() {
+  const { user, hasPermission } = useAuth();
+  const role = user.role || '';
   const posthog = usePostHog();
   const [scope, setScope] = useState<{ type: 'branch' | 'hierarchy' | 'expert'; value: string | string[] } | null>(null);
   const [candidates, setCandidates] = useState<CandidateRow[]>([]);
   const [recentNotifications, setRecentNotifications] = useState<CandidateNotificationPayload[]>([]);
-  const normalizedRole = role.trim().toLowerCase();
-  const canView = ["admin", "mm", "mam", "mlead", "lead", "user", "am", "manager", "recruiter"].includes(normalizedRole);
-  const canEdit = ["mm", "mam", "mlead", "recruiter", "lead", "am", "admin", "manager"].includes(normalizedRole);
-  const canEditBasicFields = ["mm", "mam", "mlead", "recruiter", "admin"].includes(normalizedRole);
-  const canChangeRecruiterField = ['mm', 'mam', 'mlead', "admin"].includes(normalizedRole);
-  const canChangeContactField = ['mm', 'mam', 'mlead', 'recruiter', "admin"].includes(normalizedRole);
-  const canChangeExpertField = ['lead', 'am', "admin"].includes(normalizedRole);
-  const isManager = normalizedRole === 'manager';
-  const showCreateButton = isManager || normalizedRole === 'mm';
-  const tourEligible = TOUR_ROLES.some((roleKey) => roleKey === normalizedRole);
+  const [recentNotifications, setRecentNotifications] = useState<CandidateNotificationPayload[]>([]);
+
+  const canView = hasPermission(PERMISSIONS.VIEW_BRANCH_CANDIDATES);
+  const canEdit = hasPermission(PERMISSIONS.EDIT_CANDIDATE);
+  const canEditBasicFields = hasPermission(PERMISSIONS.EDIT_BASIC_FIELDS);
+  const canChangeRecruiterField = hasPermission(PERMISSIONS.CHANGE_RECRUITER);
+  const canChangeContactField = hasPermission(PERMISSIONS.CHANGE_CONTACT);
+  const canChangeExpertField = hasPermission(PERMISSIONS.CHANGE_EXPERT);
+  const showCreateButton = hasPermission(PERMISSIONS.VIEW_CREATE_BUTTON);
+  const tourEligible = hasPermission(PERMISSIONS.START_DRIVER_TOUR);
   const [visibleCount, setVisibleCount] = useState(20);
   const observerTarget = useRef<HTMLDivElement>(null);
   const normalizedScope = useMemo<NormalizedScope | null>(() => {
@@ -335,11 +338,11 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   }, [scope, role, posthog]);
 
   const CREATE_RESUME_MAX_BYTES = 5 * 1024 * 1024;
-  const canCloneFromTasks = useMemo(() => !['user', 'lead', 'mam'].includes(normalizedRole), [normalizedRole]);
+  const canCloneFromTasks = hasPermission(PERMISSIONS.CLONE_SUPPORT_TASK);
   const [loading, setLoading] = useState<boolean>(canView);
   const [error, setError] = useState<string>("");
   const [search, setSearch] = useState<string>("");
-  const { refreshAccessToken, authFetch } = useAuth();
+  // useAuth already destructured above
   const { toast } = useToast();
   const { profile } = useUserProfile();
   const location = useLocation();
@@ -381,7 +384,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState<string>('');
   const [bulkUpdating, setBulkUpdating] = useState(false);
-  const canSendSupport = ['recruiter', 'mlead', 'mam', 'mm'].includes(normalizedRole);
+  const canSendSupport = hasPermission(PERMISSIONS.SEND_SUPPORT_REQUEST);
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportCandidate, setSupportCandidate] = useState<CandidateRow | null>(null);
   const [supportForm, setSupportForm] = useState<SupportFormState>({

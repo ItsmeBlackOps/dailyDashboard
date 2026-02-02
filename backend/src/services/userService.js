@@ -1,4 +1,5 @@
 import { userModel } from '../models/User.js';
+import { roleModel } from '../models/Role.js';
 import { refreshTokenModel } from '../models/RefreshToken.js';
 import { logger } from '../utils/logger.js';
 
@@ -117,12 +118,12 @@ export class UserService {
             const user = await Promise.resolve(this.userModel.getUserByEmail(email));
             return user
               ? {
-                  email,
-                  role: user.role,
-                  teamLead: user.teamLead,
-                  manager: user.manager,
-                  active: user.active !== undefined ? Boolean(user.active) : true
-                }
+                email,
+                role: user.role,
+                teamLead: user.teamLead,
+                manager: user.manager,
+                active: user.active !== undefined ? Boolean(user.active) : true
+              }
               : null;
           })
         )
@@ -406,7 +407,9 @@ export class UserService {
           role: user.role,
           teamLead: user.teamLead,
           manager: user.manager,
-          active: user.active !== undefined ? Boolean(user.active) : true
+          active: user.active !== undefined ? Boolean(user.active) : true,
+          permissions: roleModel.getRole(user.role)?.permissions || [],
+          scopes: roleModel.getRole(user.role)?.scopes || {}
         }
       };
     } catch (error) {
@@ -671,12 +674,12 @@ export class UserService {
       return this.deriveDisplayNameFromEmail(requestingUser.email);
     }
 
-     if (requesterRole === 'am') {
-       const requesterManagerDisplay = this.formatNameValue(requesterRecord?.manager ?? '');
-       if (requesterManagerDisplay) {
-         return requesterManagerDisplay;
-       }
-     }
+    if (requesterRole === 'am') {
+      const requesterManagerDisplay = this.formatNameValue(requesterRecord?.manager ?? '');
+      if (requesterManagerDisplay) {
+        return requesterManagerDisplay;
+      }
+    }
 
     const requesterManager = this.formatNameValue(requesterRecord?.manager ?? '');
     if (requesterManager) {

@@ -95,7 +95,29 @@ class CandidateService {
     }
 
     const mappedBranch = MM_BRANCH_MAP.get(normalizeEmail(email));
+    const mappedBranch = MM_BRANCH_MAP.get(normalizeEmail(email));
     return mappedBranch || null;
+  }
+
+  resolveEffectiveScope(requestedScope, allowedScope) {
+    const SCOPE_LEVELS = { 'own': 0, 'team': 1, 'hierarchy': 2, 'branch': 3, 'all': 4 };
+    const allowedLevel = SCOPE_LEVELS[allowedScope] ?? 0;
+    const requestedLevel = SCOPE_LEVELS[requestedScope] ?? allowedLevel; // Default to allowed if not specified? Or default to own? Usually max available.
+
+    // If requested is missing, default to allowed (max view). 
+    // If requested is higher than allowed, cap at allowed.
+    // If requested is lower, use requested.
+
+    // Logic: 
+    // user has 'all', requests 'own' -> 'own' (OK)
+    // user has 'own', requests 'all' -> 'own' (Capped)
+
+    const effectiveLevel = Math.min(
+      requestedLevel,
+      SCOPE_LEVELS[requestedScope] !== undefined ? requestedLevel : allowedLevel
+    );
+
+    return Object.keys(SCOPE_LEVELS).find(key => SCOPE_LEVELS[key] === effectiveLevel) || 'own';
   }
 
   collectHierarchyEmails(user) {
@@ -1448,152 +1470,65 @@ class CandidateService {
       throw error;
     }
 
+    const { scope: requestedScope } = options;
+    const allowedScope = user.scopes?.candidates || 'own';
+    const effectiveScope = this.resolveEffectiveScope(requestedScope, allowedScope);
+
     const normalizedRole = user.role.trim().toLowerCase();
 
-    if (normalizedRole === 'admin') {
+    logger.info('getCandidatesForUser', {
+      email: user.email,
+      role: normalizedRole,
+      requestedStructure: requestedScope,
+      allowed: allowedScope,
+      effective: effectiveScope
+    });
+
+    // 1. Admin/Manager Perspective
+    if (['admin', 'manager'].includes(normalizedRole)) {
+      if (effectiveScope === 'all' || effectiveScope === 'branch' || effectiveScope === 'hierarchy') {
+        return this.fetchAllCandidates(user, options);
+      }
+      // If admin requests 'own' or 'team', technically they have none, but we can return empty or just filtered if they were mapped?
+      // Admin usually want to see everything.
       return this.fetchAllCandidates(user, options);
     }
 
-    if (normalizedRole === ROLE_MM) {
-      const branch = this.resolveBranchForMm(user.email, user.role);
-      if (!branch) {
-        const error = new Error('Branch mapping not configured for user');
-        error.statusCode = 403;
-        throw error;
+    // 2. Recruitment Perspective
+    if (['mm', 'mam', 'mlead', 'recruiter'].includes(normalizedRole)) {
+      if (effectiveScope === 'branch') {
+        const branch = this.resolveBranchForMm(user.email, user.role);
+        // Fallback: If no direct branch map, check if we can derive from hierarchy? 
+        // For now, strict: only if mapped.
+        if (branch) {
+          const result = await this.fetchCandidatesByBranch(user, branch, options);
+          result.options = {
+            recruiterChoices: this.buildAssignablePeople(user)
+          };
+          return result;
+        }
       }
-      const result = await this.fetchCandidatesByBranch(user, branch, options);
-      result.options = {
-        recruiterChoices: this.buildAssignablePeople(user)
-      };
-      return result;
-    }
 
-    if (normalizedRole === ROLE_MAM || normalizedRole === ROLE_MLEAD) {
+      // Hierarchy / Team / Own
+      let targetEmails = new Set();
       const hierarchy = this.collectHierarchyEmails(user);
       const normalizedEmail = normalizeEmail(user.email);
 
-      if (normalizedRole === ROLE_MAM) {
-        const recruiterEmails = new Set([
-          ...hierarchy.recruiterEmails,
-          ...hierarchy.allSubordinateEmails,
-          normalizedEmail
-        ]);
-        const result = await this.fetchCandidatesByRecruiters(
-          user,
-          Array.from(recruiterEmails),
-          { ...options, includeSelfPatterns: true }
-        );
-        result.options = {
-          recruiterChoices: this.buildAssignablePeople(user)
-        };
-        return result;
+      if (effectiveScope === 'hierarchy' || effectiveScope === 'branch' || effectiveScope === 'all') {
+        // Full hierarchy
+        targetEmails = new Set([normalizedEmail, ...hierarchy.allSubordinateEmails]);
+      } else if (effectiveScope === 'team') {
+        // "Team" for MLead is hierarchy. "Team" for MAM is hierarchy.
+        // Effectively same as hierarchy for these recursive roles currently.
+        targetEmails = new Set([normalizedEmail, ...hierarchy.allSubordinateEmails]);
+      } else {
+        // Own
+        targetEmails = new Set([normalizedEmail]);
       }
 
-      if (normalizedRole === ROLE_MLEAD) {
-        const recruiters = new Set([
-          ...hierarchy.recruiterEmails,
-          normalizedEmail
-        ]);
-        const result = await this.fetchCandidatesByRecruiters(
-          user,
-          Array.from(recruiters),
-          { ...options, includeSelfPatterns: true }
-        );
-        result.options = {
-          recruiterChoices: this.buildAssignablePeople(user)
-        };
-        return result;
-      }
-    }
-
-    if (normalizedRole === 'am') {
-      const experts = new Set();
-      experts.add(normalizeEmail(user.email));
-
-      const amName = normalizeName(formatDisplayName(user.email));
-      const allUsers = userModel.getAllUsers();
-
-      const leadNameToEmail = new Map();
-
-      for (const person of allUsers) {
-        const roleKey = (person.role || '').toLowerCase();
-        const normalizedEmailValue = normalizeEmail(person.email);
-        if (!normalizedEmailValue) continue;
-
-        if (roleKey === 'lead') {
-          const personTeamLeadName = normalizeName(person.teamLead || '');
-          if (personTeamLeadName === amName) {
-            experts.add(normalizedEmailValue);
-            const leadDisplayName = normalizeName(formatDisplayName(person.email));
-            if (leadDisplayName) {
-              leadNameToEmail.set(leadDisplayName, normalizedEmailValue);
-            }
-          }
-        }
-      }
-
-      for (const person of allUsers) {
-        const roleKey = (person.role || '').toLowerCase();
-        if (roleKey !== 'user') continue;
-        const personLeadName = normalizeName(person.teamLead || '');
-        if (!personLeadName) continue;
-        if (leadNameToEmail.has(personLeadName)) {
-          const normalizedUserEmail = normalizeEmail(person.email);
-          if (normalizedUserEmail) {
-            experts.add(normalizedUserEmail);
-          }
-        }
-      }
-
-      const expertList = Array.from(experts).filter(Boolean);
-      const result = await this.fetchCandidatesByExperts(user, expertList, options);
-      result.options = {
-        recruiterChoices: this.buildAssignablePeople(user),
-        expertChoices: this.buildExpertChoices(expertList)
-      };
-      return result;
-    }
-
-    if (normalizedRole === 'lead') {
-      const experts = new Set();
-      experts.add(normalizeEmail(user.email));
-
-      const leadName = normalizeName(formatDisplayName(user.email));
-      const allUsers = userModel.getAllUsers();
-
-      for (const person of allUsers) {
-        const roleKey = (person.role || '').toLowerCase();
-        if (roleKey !== 'user') continue;
-        const personLeadName = normalizeName(person.teamLead || '');
-        if (personLeadName === leadName) {
-          experts.add(normalizeEmail(person.email));
-        }
-      }
-
-      const expertList = Array.from(experts).filter(Boolean);
-      const result = await this.fetchCandidatesByExperts(user, expertList, options);
-      result.options = {
-        recruiterChoices: this.buildAssignablePeople(user),
-        expertChoices: this.buildExpertChoices(expertList)
-      };
-      return result;
-    }
-
-    if (normalizedRole === 'user') {
-      const expertEmail = normalizeEmail(user.email);
-      return this.fetchCandidatesByExperts(user, expertEmail ? [expertEmail] : [], options);
-    }
-
-    if (normalizedRole === 'recruiter') {
-      const recruiterEmail = normalizeEmail(user.email);
-      if (!recruiterEmail) {
-        const error = new Error('Recruiter email is required');
-        error.statusCode = 400;
-        throw error;
-      }
       const result = await this.fetchCandidatesByRecruiters(
         user,
-        [recruiterEmail],
+        Array.from(targetEmails),
         { ...options, includeSelfPatterns: true }
       );
       result.options = {
@@ -1602,130 +1537,159 @@ class CandidateService {
       return result;
     }
 
-    if (normalizedRole === 'manager') {
-      return {
-        scope: {
-          type: 'manager',
-          value: normalizeEmail(user.email)
-        },
-        candidates: [],
-        meta: {
-          count: 0,
-          hasSearch: false
-        },
-        options: {
-          recruiterChoices: this.buildAssignablePeople(user)
-        }
+    // 3. Expert Perspective
+    if (['am', 'lead', 'expert', 'user'].includes(normalizedRole)) {
+      let expertEmails = [];
+      if (effectiveScope === 'hierarchy' || effectiveScope === 'team' || effectiveScope === 'branch' || effectiveScope === 'all') {
+        // Reuse existing team resolution logic which handles AM/Lead hierarchy
+        // But wait, existing internal logic of getCandidatesForUser had explicit custom logic for AM/Lead vs 'resolveResumeQueueExpertEmails'.
+        // 'resolveResumeQueueExpertEmails' (line 151) uses 'userModel.getTeamEmails'.
+        // AND the logic inside getCandidatesForUser (lines 1509-1570) did MANUAL resolution.
+        // Why? Maybe 'userModel.getTeamEmails' wasn't enough?
+        // Actually 'userModel.getTeamEmails' is what we want.
+        // Let's use 'resolveResumeQueueExpertEmails' which calls 'getTeamEmails'.
+        expertEmails = this.resolveResumeQueueExpertEmails(user);
+      } else {
+        expertEmails = [formatEmail(user.email)];
+      }
+
+      const result = await this.fetchCandidatesByExperts(user, expertEmails, options);
+      result.options = {
+        recruiterChoices: this.buildAssignablePeople(user),
+        expertChoices: this.buildExpertChoices(expertEmails)
       };
+      return result;
     }
 
     const error = new Error('Access denied');
     error.statusCode = 403;
     throw error;
   }
-  async getComments(user, candidateId) {
-    if (!user?.email || !user?.role) {
-      const error = new Error('Authentication required');
-      error.statusCode = 401;
-      throw error;
+
+  if(normalizedRole === 'manager') {
+  return {
+    scope: {
+      type: 'manager',
+      value: normalizeEmail(user.email)
+    },
+    candidates: [],
+    meta: {
+      count: 0,
+      hasSearch: false
+    },
+    options: {
+      recruiterChoices: this.buildAssignablePeople(user)
     }
+  };
+}
 
-    const normalizedRole = user.role.trim().toLowerCase();
-    const query = { candidateId: new ObjectId(candidateId) };
-
-    // Experts cannot see complaints
-    if (normalizedRole === 'expert' || normalizedRole === 'user') {
-      query.type = { $ne: 'complaint' };
-    }
-
-    const comments = await database.getCollection('candidatecomments')
-      .find(query)
-      .sort({ createdAt: 1 })
-      .toArray();
-
-    return comments.map(c => ({
-      id: c._id,
-      author: c.author,
-      content: c.content,
-      type: c.type,
-      createdAt: c.createdAt
-    }));
+const error = new Error('Access denied');
+error.statusCode = 403;
+throw error;
   }
+  async getComments(user, candidateId) {
+  if (!user?.email || !user?.role) {
+    const error = new Error('Authentication required');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const normalizedRole = user.role.trim().toLowerCase();
+  const query = { candidateId: new ObjectId(candidateId) };
+
+  // Experts cannot see complaints
+  if (normalizedRole === 'expert' || normalizedRole === 'user') {
+    query.type = { $ne: 'complaint' };
+  }
+
+  const comments = await database.getCollection('candidatecomments')
+    .find(query)
+    .sort({ createdAt: 1 })
+    .toArray();
+
+  return comments.map(c => ({
+    id: c._id,
+    author: c.author,
+    content: c.content,
+    type: c.type,
+    createdAt: c.createdAt
+  }));
+}
 
   async getCandidateById(user, candidateId) {
-    if (!user?.email || !user?.role) {
-      const error = new Error('Authentication required');
-      error.statusCode = 401;
-      throw error;
-    }
-
-    if (!candidateId) {
-      const error = new Error('Candidate id is required');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    // Role check - similar to other read methods if needed, but for now we follow the pattern
-    // that general users can read candidates.
-    // If strict role check is needed, we can reuse logic from other methods.
-    // However, since the socket handler calls this for notifications, and notifications are triggered by an action
-    // allowed by the user, we assume read access is implicit or acceptable.
-
-    const candidate = await candidateModel.getCandidateById(candidateId);
-    if (!candidate) return null;
-
-    return this.formatCandidateRecord(candidate);
+  if (!user?.email || !user?.role) {
+    const error = new Error('Authentication required');
+    error.statusCode = 401;
+    throw error;
   }
+
+  if (!candidateId) {
+    const error = new Error('Candidate id is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Role check - similar to other read methods if needed, but for now we follow the pattern
+  // that general users can read candidates.
+  // If strict role check is needed, we can reuse logic from other methods.
+  // However, since the socket handler calls this for notifications, and notifications are triggered by an action
+  // allowed by the user, we assume read access is implicit or acceptable.
+
+  const candidate = await candidateModel.getCandidateById(candidateId);
+  if (!candidate) return null;
+
+  return this.formatCandidateRecord(candidate);
+}
 
   async addComment(user, candidateId, content, type = 'internal') {
-    if (!user?.email || !user?.role) {
-      const error = new Error('Authentication required');
-      error.statusCode = 401;
-      throw error;
-    }
-
-    if (!content || !content.trim()) {
-      const error = new Error('Comment content is required');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    const normalizedRole = user.role.trim().toLowerCase();
-
-    // Only Recruiter side or Admins/Managers can create complaints
-    const canCreateComplaint = ['recruiter', 'mlead', 'mam', 'mm', 'admin', 'manager'].includes(normalizedRole);
-
-    if (type === 'complaint' && !canCreateComplaint) {
-      // Ideally throw error, or force type to internal. Let's force to internal for safety? 
-      // Or throw 403. Let's throw error.
-      const error = new Error('You are not authorized to create complaint comments');
-      error.statusCode = 403;
-      throw error;
-    }
-
-    const newComment = {
-      candidateId: new ObjectId(candidateId),
-      author: {
-        email: user.email,
-        name: formatDisplayName(user.email),
-        role: user.role
-      },
-      content: content.trim(),
-      type: type,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    const result = await database.getCollection('candidatecomments').insertOne(newComment);
-
-    return {
-      id: result.insertedId,
-      author: newComment.author,
-      content: newComment.content,
-      type: newComment.type,
-      createdAt: newComment.createdAt
-    };
+  if (!user?.email || !user?.role) {
+    const error = new Error('Authentication required');
+    error.statusCode = 401;
+    throw error;
   }
+
+  if (!content || !content.trim()) {
+    const error = new Error('Comment content is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const normalizedRole = user.role.trim().toLowerCase();
+
+  // Only Recruiter side or Admins/Managers can create complaints
+  const canCreateComplaint = ['recruiter', 'mlead', 'mam', 'mm', 'admin', 'manager'].includes(normalizedRole);
+
+  if (type === 'complaint' && !canCreateComplaint) {
+    // Ideally throw error, or force type to internal. Let's force to internal for safety? 
+    // Or throw 403. Let's throw error.
+    const error = new Error('You are not authorized to create complaint comments');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const newComment = {
+    candidateId: new ObjectId(candidateId),
+    author: {
+      email: user.email,
+      name: formatDisplayName(user.email),
+      role: user.role
+    },
+    content: content.trim(),
+    type: type,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  };
+
+  const result = await database.getCollection('candidatecomments').insertOne(newComment);
+
+  return {
+    id: result.insertedId,
+    author: newComment.author,
+    content: newComment.content,
+    type: newComment.type,
+    createdAt: newComment.createdAt
+  };
+}
 }
 
 export const candidateService = new CandidateService();

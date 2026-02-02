@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 import { usePostHog } from 'posthog-js/react';
+import { PERMISSIONS } from '@/config/permissions';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { TopAgents } from '@/components/dashboard/TopAgents';
 import { KpiOverview } from '@/components/dashboard/KpiOverview';
@@ -7,37 +9,42 @@ import { KpiOverview } from '@/components/dashboard/KpiOverview';
 import { DashboardFilters, type DashboardFilterState } from '@/components/dashboard/DashboardFilters';
 import { computeDayRange } from '@/utils/dateRanges';
 
-const CAN_USE_RECEIVED_DATE = ['admin', 'MM', 'MAM', 'mlead'];
+
 
 const getStoredTab = () => {
   if (typeof window === 'undefined') return undefined;
   return localStorage.getItem('tab') ?? undefined;
 };
 
-const getStoredRole = () => {
-  if (typeof window === 'undefined') return '';
-  return localStorage.getItem('role') ?? '';
-};
-
-const resolveInitialDateField = (role: string) => {
+const resolveInitialDateField = (allowReceivedDate: boolean) => {
   const storedTab = getStoredTab();
-  if (storedTab === 'receivedDateTime' && CAN_USE_RECEIVED_DATE.includes(role)) {
+  if (storedTab === 'receivedDateTime' && allowReceivedDate) {
     return 'receivedDateTime' as const;
   }
   return 'Date of Interview' as const;
 };
 
 const Index = () => {
-  const [role, setRole] = useState(() => getStoredRole());
-  const allowReceivedDate = useMemo(() => CAN_USE_RECEIVED_DATE.includes(role), [role]);
+  const { user, hasPermission } = useAuth();
+  const role = user.role || '';
+  const allowReceivedDate = hasPermission(PERMISSIONS.USE_RECEIVED_DATE_FILTER);
 
   const [filters, setFilters] = useState<DashboardFilterState>(() => {
-    const initialRole = getStoredRole();
+    // Initial State might not have permissions loaded immediately if user just logged in?
+    // But page reload re-fetches permissions from localStorage in useAuth.
+    // So hasPermission should work.
+    // However, during FIRST RENDER, useAuth effect might not have populated if async?
+    // useAuth reads from localStorage SYNCHRONOUSLY. So it is fine.
+
+    // permissions check inside initial state
+    const allow = hasPermission(PERMISSIONS.USE_RECEIVED_DATE_FILTER);
+    // Wait, hasPermission depends on user.permissions.
+
     const dayRange = computeDayRange(new Date());
 
     return {
       range: 'day',
-      dateField: resolveInitialDateField(initialRole),
+      dateField: resolveInitialDateField(allow),
       dayDate: dayRange.dayIso,
       start: dayRange.startIso,
       end: dayRange.endIso,
@@ -47,9 +54,7 @@ const Index = () => {
 
   const posthog = usePostHog();
 
-  useEffect(() => {
-    setRole(getStoredRole());
-  }, []);
+  // Role effect removed as we depend on user.role from useAuth, which is stable or updates.
 
   useEffect(() => {
     if (role && typeof window !== 'undefined') {
@@ -62,7 +67,7 @@ const Index = () => {
   }, [role, posthog, filters.dateField]);
 
   useEffect(() => {
-    const desiredField = resolveInitialDateField(role);
+    const desiredField = resolveInitialDateField(allowReceivedDate);
     let changed = false;
     setFilters((prev) => {
       if (prev.dateField === desiredField) return prev;
@@ -76,7 +81,7 @@ const Index = () => {
         // Ignore storage failures
       }
     }
-  }, [role]);
+  }, [allowReceivedDate]);
 
   return (
     <DashboardLayout>
@@ -91,7 +96,8 @@ const Index = () => {
             <KpiOverview filters={filters} role={role} />
             <TopAgents filters={filters} role={role} />
           </div>
-          {/* {role === 'MM' && <BranchCandidates role={role} />} */}
+          {/* BranchCandidates handles its own permissions now */}
+          {/* <BranchCandidates /> */}
         </div>
       </div>
     </DashboardLayout>

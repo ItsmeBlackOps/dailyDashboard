@@ -343,6 +343,55 @@ export class UserModel {
       .map(([email]) => email);
   }
 
+  getHierarchyEmails(rootEmail) {
+    if (!rootEmail) return [];
+
+    const normalizedRoot = this.formatDisplayNameFromEmail(rootEmail).toLowerCase();
+    const rootEmailLower = rootEmail.toLowerCase();
+
+    const allUsers = this.getAllUsers();
+
+    // Map: Leader Name -> [Direct Reports]
+    const leadMap = new Map();
+
+    for (const user of allUsers) {
+      if (!user.teamLead) continue;
+      const leadName = (user.teamLead || '').trim().toLowerCase();
+      if (!leadMap.has(leadName)) {
+        leadMap.set(leadName, []);
+      }
+      leadMap.get(leadName).push(user);
+    }
+
+    const results = new Set([rootEmailLower]);
+    const queue = [normalizedRoot];
+
+    // Some users might have their email as team lead instead of name? 
+    // Usually name. But let's check both if needed. For now assume Name.
+
+    const visited = new Set([normalizedRoot]);
+
+    while (queue.length > 0) {
+      const currentLeadName = queue.shift();
+      const directReports = leadMap.get(currentLeadName) || [];
+
+      for (const report of directReports) {
+        const reportEmail = report.email.toLowerCase();
+        if (!results.has(reportEmail)) {
+          results.add(reportEmail);
+
+          const reportName = this.formatDisplayNameFromEmail(report.email).toLowerCase();
+          if (!visited.has(reportName)) {
+            visited.add(reportName);
+            queue.push(reportName);
+          }
+        }
+      }
+    }
+
+    return Array.from(results);
+  }
+
   formatDisplayNameFromEmail(email) {
     const local = (email || '').split('@')[0];
     const parts = local.split('.').filter(Boolean);

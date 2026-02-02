@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { API_URL, useAuth } from '@/hooks/useAuth';
 import { deriveDisplayNameFromEmail, formatNameInput } from '@/utils/userNames';
+import { PERMISSIONS, getCreatableRoles as getCreatableRolesConfig } from "@/config/permissions";
 
 interface ManageableUser {
   email: string;
@@ -83,30 +84,11 @@ function canonicalRole(role: string) {
   }
 }
 
+// Local logic replaced by config
 function getCreatableRoles(role: string): string[] {
-  const normalized = normalizeRole(role);
-  if (normalized === 'admin') {
-    return ['admin', 'manager', 'MM', 'MAM', 'AM', 'mlead', 'recruiter', 'lead', 'user', 'expert'];
-  }
-  if (normalized === 'manager') {
-    return ['MM', 'MAM', 'AM', 'mlead', 'recruiter', 'lead', 'user', 'expert'];
-  }
-  if (normalized === 'mm') {
-    return ['MAM'];
-  }
-  if (normalized === 'mam') {
-    return ['mlead', 'recruiter'];
-  }
-  if (normalized === 'am') {
-    return ['lead', 'user'];
-  }
-  if (normalized === 'lead') {
-    return ['user'];
-  }
-  if (normalized === 'mlead') {
-    return ['recruiter'];
-  }
-  return [];
+  // Use centralized logic but ensuring we might need to canonicalize the output for UI consistency if needed.
+  // The local canonicalRole function handles casing conversion.
+  return getCreatableRolesConfig(role);
 }
 
 const INITIAL_UPDATE_DRAFT: BulkUpdateDraft = {
@@ -121,10 +103,9 @@ const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const UserManagementPage = () => {
   const posthog = usePostHog(); // [Harsh] Analytics
-  const { authFetch } = useAuth();
+  const { authFetch, user, hasPermission } = useAuth();
   const { toast } = useToast();
 
-  const [role, setRole] = useState('');
   const [manageableUsers, setManageableUsers] = useState<ManageableUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [usersError, setUsersError] = useState('');
@@ -139,10 +120,11 @@ const UserManagementPage = () => {
   const [selfManagerName, setSelfManagerName] = useState('');
   const [selfDisplayNameOverride, setSelfDisplayNameOverride] = useState('');
 
+  const role = user.role || '';
   const normalizedRole = normalizeRole(role);
   const creatableRoles = useMemo(() => getCreatableRoles(role), [role]);
   const canCreate = creatableRoles.length > 0;
-  const canManage = ['admin', 'manager', 'mm', 'mam', 'mlead', 'lead', 'am'].includes(normalizedRole);
+  const canManage = hasPermission(PERMISSIONS.MANAGE_USERS);
   const selfDisplayName = useMemo(() => {
     const derived = deriveDisplayNameFromEmail(selfEmail);
     return derived || selfDisplayNameOverride;
@@ -245,15 +227,14 @@ const UserManagementPage = () => {
   }, [authFetch, canManage]);
 
   useEffect(() => {
-    setRole(localStorage.getItem('role') || '');
     setSelfEmail(localStorage.getItem('email') || '');
     setSelfManagerName(localStorage.getItem('manager') || '');
     setSelfDisplayNameOverride(formatNameInput(localStorage.getItem('displayName') ?? ''));
 
     posthog.capture('user_management_viewed', {
-      user_role: localStorage.getItem('role') || ''
+      user_role: role
     });
-  }, [posthog]);
+  }, [posthog, role]);
 
   useEffect(() => {
     if (canManage) {
