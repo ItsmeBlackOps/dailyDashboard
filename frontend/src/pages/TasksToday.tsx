@@ -2747,88 +2747,106 @@ export default function TasksToday() {
     fetchTasks(true, 0);
   }, [fetchTasks]);
 
-  useEffect(() => {
-    const onNew = (task: Task) => {
-      const isInit = firstLoad.current;
-      const map = readMap();
-      const isTodayView = filters.range === 'day' && !filters.upcoming && moment(filters.dayDate).isSame(moment.tz(TZ), 'day');
+  // === Buffered Socket Updates ===
+  // We store pending updates in a ref and flush them periodically to avoid rapid re-renders ("blinking")
+  const pendingUpdatesRef = useRef<Map<string, Task>>(new Map());
+  const flushTimeoutRef = useRef<number | null>(null);
 
-      if (!isInCurrentFilters(task)) {
-        if (map[task._id]) {
-          delete map[task._id];
-          writeMap(map);
+  const flushUpdates = useCallback(() => {
+    if (pendingUpdatesRef.current.size === 0) return;
+
+    // Clone the updates to apply
+    const updates = new Map(pendingUpdatesRef.current);
+    pendingUpdatesRef.current.clear();
+    flushTimeoutRef.current = null;
+
+    const map = readMap();
+    const isTodayView = filters.range === 'day' && !filters.upcoming && moment(filters.dayDate).isSame(moment.tz(TZ), 'day');
+    let shouldPlaySound = false;
+    let newTasksCount = 0;
+    let updatedTasksCount = 0;
+
+    // Update the map and track notifications
+    updates.forEach((task, taskId) => {
+      const alreadyTracked = map[taskId] !== undefined;
+      const wasSeen = seenTasksRef.current.has(taskId);
+      const previousStatus = map[taskId] || "";
+
+      // Update map tracking
+      if (isInCurrentFilters(task)) {
+        map[taskId] = task.status || "";
+        seenTasksRef.current.add(taskId);
+
+        // Notification logic
+        if (!firstLoad.current && isTodayView) {
+          if (!alreadyTracked && !wasSeen) {
+            newTasksCount++;
+            shouldPlaySound = true;
+          } else if (previousStatus !== (task.status || "")) {
+            updatedTasksCount++;
+            shouldPlaySound = true;
+          }
         }
-        setTasks((prev) => {
-          const filtered = prev.filter((t) => t._id !== task._id);
-          const sorted = sortByPrimaryStart(filtered);
-          if (isTodayView) reconcileReminders(sorted);
-          return sorted;
-        });
-        return;
+      } else {
+        // If task moved out of filters, remove from map
+        if (map[taskId]) {
+          delete map[taskId];
+        }
       }
+    });
 
-      const alreadyTracked = map[task._id] !== undefined;
-      const wasSeen = seenTasksRef.current.has(task._id);
-      map[task._id] = task.status || "";
-      seenTasksRef.current.add(task._id);
-      writeMap(map);
+    writeMap(map);
 
-      setTasks((prev) => {
-        const exists = prev.some((t) => t._id === task._id);
-        const next = exists ? prev.map((t) => (t._id === task._id ? task : t)) : [...prev, task];
-        const sorted = sortByPrimaryStart(next);
-        if (isTodayView) reconcileReminders(sorted);
-        return sorted;
+    // Batch update state
+    setTasks((prev) => {
+      let next = [...prev];
+      updates.forEach((task, taskId) => {
+        if (!isInCurrentFilters(task)) {
+          next = next.filter(t => t._id !== taskId);
+        } else {
+          const exists = next.some(t => t._id === taskId);
+          if (exists) {
+            next = next.map(t => t._id === taskId ? task : t);
+          } else {
+            next.push(task);
+          }
+        }
       });
 
-      if (!isInit && !alreadyTracked && !wasSeen && isTodayView) {
-        const desc = DOMPurify.sanitize(task.subject || "");
-        toast({ title: "New Task Added", description: desc });
-        sendNotification("New Task Added", desc);
-        playTune();
+      const sorted = sortByPrimaryStart(next);
+      if (isTodayView) reconcileReminders(sorted);
+      return sorted;
+    });
+
+    // Batch Notifications
+    if (shouldPlaySound) {
+      playTune();
+      if (newTasksCount > 0) {
+        const title = newTasksCount === 1 ? "New Task Added" : `${newTasksCount} New Tasks`;
+        toast({ title, description: "Dashboard updated" });
       }
+      if (updatedTasksCount > 0) {
+        const title = updatedTasksCount === 1 ? "Task Updated" : `${updatedTasksCount} Tasks Updated`;
+        toast({ title, description: "Statuses have changed" });
+      }
+    }
+
+  }, [filters, isInCurrentFilters, reconcileReminders, sortByPrimaryStart, toast, readMap, writeMap]);
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimeoutRef.current) return;
+    flushTimeoutRef.current = window.setTimeout(flushUpdates, 1000);
+  }, [flushUpdates]);
+
+  useEffect(() => {
+    const onNew = (task: Task) => {
+      pendingUpdatesRef.current.set(task._id, task);
+      scheduleFlush();
     };
 
     const onUpdate = (task: Task) => {
-      const map = readMap();
-      const previousStatus = map[task._id] || "";
-      const isTodayView = filters.range === 'day' && !filters.upcoming && moment(filters.dayDate).isSame(moment.tz(TZ), 'day');
-
-      if (!isInCurrentFilters(task)) {
-        if (map[task._id]) {
-          delete map[task._id];
-          writeMap(map);
-        }
-        setTasks((list) => {
-          const filtered = list.filter((t) => t._id !== task._id);
-          const sorted = sortByPrimaryStart(filtered);
-          if (isTodayView) reconcileReminders(sorted);
-          return sorted;
-        });
-        return;
-      }
-
-      map[task._id] = task.status || "";
-      seenTasksRef.current.add(task._id);
-      writeMap(map);
-
-      setTasks((list) => {
-        const next = list.map((t) => (t._id === task._id ? task : t));
-        const sorted = sortByPrimaryStart(next);
-        if (isTodayView) reconcileReminders(sorted);
-        return sorted;
-      });
-
-      if (isTodayView && previousStatus !== (task.status || "")) {
-        const desc = DOMPurify.sanitize(task.subject || "");
-        const statusDesc = DOMPurify.sanitize(task.status || "");
-        toast({
-          title: "Task Status Updated",
-          description: `${desc} is now ${statusDesc}`,
-        });
-        sendNotification("Task Status Updated", `${desc} is now ${statusDesc}`);
-        playTune();
-      }
+      pendingUpdatesRef.current.set(task._id, task);
+      scheduleFlush();
     };
 
     const onAuthError = async (err: Error) => {
@@ -2847,21 +2865,21 @@ export default function TasksToday() {
     socket.once("connect", () => fetchTasks(true, 0));
     socket.connect();
 
-    // Polling disabled in favor of real-time socket events
-    // const interval = setInterval(fetchTasks, 60_000);
-
     return () => {
       socket.off("taskCreated", onNew);
       socket.off("taskUpdated", onUpdate);
       socket.off("connect_error", onAuthError);
       socket.disconnect();
-      // clearInterval(interval);
+
+      if (flushTimeoutRef.current) {
+        window.clearTimeout(flushTimeoutRef.current);
+      }
 
       // Clean all timers
       for (const [, id] of timersRef.current.entries()) window.clearTimeout(id);
       timersRef.current.clear();
     };
-  }, [socket, toast, refreshAccessToken, fetchTasks, reconcileReminders, isTodayForCurrentTab, sortByPrimaryStart]);
+  }, [socket, toast, refreshAccessToken, fetchTasks, scheduleFlush]);
 
   // When filters change, refetch
   useEffect(() => {
@@ -3074,7 +3092,7 @@ export default function TasksToday() {
                 </TableHead>
                 {meetingsEnabled && <TableHead>Meeting</TableHead>}
                 <TableHead>Status</TableHead>
-                {(normalizedRole === 'admin' || normalizedRole === 'mam' || normalizedRole === 'mm' || normalizedRole === 'mlead') && (
+                {(normalizedRole === 'admin' || normalizedRole === 'mam' || normalizedRole === 'mm' || normalizedRole === 'mlead' || normalizedRole === 'recruiter') && (
                   <TableHead>Actions</TableHead>
                 )}
               </TableRow>
@@ -3179,7 +3197,7 @@ export default function TasksToday() {
                         <Badge className={getStatusBadge(task.status)}>{task.status}</Badge>
                       )}
                     </TableCell>
-                    {(normalizedRole === 'admin' || normalizedRole === 'mam' || normalizedRole === 'mm' || normalizedRole === 'mlead') && (
+                    {(normalizedRole === 'admin' || normalizedRole === 'mam' || normalizedRole === 'mm' || normalizedRole === 'mlead' || normalizedRole === 'recruiter') && (
                       <TableCell>
                         {canCloneSupport || canRequestMock || canGenerateThanksMail || user === 'admin' ? (
                           <DropdownMenu>
