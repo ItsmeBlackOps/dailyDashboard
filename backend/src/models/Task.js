@@ -314,32 +314,33 @@ export class TaskModel {
   }
 
   async enrichWithTranscriptStatus(tasks) {
+    // 1. Check if Appwrite is initialized
     if (!this.appwriteDatabases) {
-      if (config.appwrite?.endpoint) { // Only log if we tried to configure it
-        logger.warn('Appwrite database client not initialized, skipping transcript check');
-      }
-      return tasks.map(task => ({ ...task, transcription: false }));
+      logger.warn('Transcript check skipped: appwriteDatabases is null');
+      return (tasks || []).map(task => ({ ...task, transcription: false }));
     }
 
+    // 2. Check if tasks array is valid
     if (!Array.isArray(tasks) || tasks.length === 0) {
-      return tasks.map(task => ({ ...task, transcription: false }));
+      logger.info('Transcript check skipped: no tasks');
+      return (tasks || []).map(task => ({ ...task, transcription: false }));
     }
 
     const { databaseId, transcriptsCollectionId } = config.appwrite;
 
-    // Extract unique subjects
+    // 3. Extract unique subjects and check for emptiness
     const subjects = [...new Set(tasks
       .map(t => (t.subject || t.Subject || '').trim())
       .filter(Boolean))]; // Dedupe and filter empty
 
     if (subjects.length === 0) {
+      logger.warn('Transcript check skipped: no subjects on tasks', {
+        sampleTaskKeys: tasks[0] ? Object.keys(tasks[0]).slice(0, 10) : []
+      });
       return tasks.map(task => ({ ...task, transcription: false }));
     }
 
-    logger.debug('Checking transcript availability in Appwrite', {
-      taskCount: tasks.length,
-      subjectCount: subjects.length
-    });
+    logger.info('Transcript check starting', { subjectCount: subjects.length });
 
     const transcriptTitles = new Set();
     const BATCH_SIZE = 50;
@@ -375,7 +376,7 @@ export class TaskModel {
       const matchedSubjects = subjects.filter(s => transcriptTitles.has(s));
       const unmatchedSubjects = subjects.filter(s => !transcriptTitles.has(s));
 
-      logger.debug('Transcript check complete', {
+      logger.info('Transcript check complete', {
         foundCount: transcriptTitles.size,
         total: subjects.length
       });
