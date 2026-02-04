@@ -2816,787 +2816,772 @@ export default function TasksToday() {
       const sorted = sortByPrimaryStart(next);
       if (isTodayView) reconcileReminders(sorted);
       return sorted;
-    });
+    }, [filters, isInCurrentFilters, reconcileReminders, sortByPrimaryStart, toast, readMap, writeMap]);
 
-    // Batch Notifications
-    if (shouldPlaySound) {
-      playTune();
-      if (newTasksCount > 0) {
-        const title = newTasksCount === 1 ? "New Task Added" : `${newTasksCount} New Tasks`;
-        toast({ title, description: "Dashboard updated" });
-      }
-      if (updatedTasksCount > 0) {
-        const title = updatedTasksCount === 1 ? "Task Updated" : `${updatedTasksCount} Tasks Updated`;
-        toast({ title, description: "Statuses have changed" });
-      }
-    }
+    const scheduleFlush = useCallback(() => {
+      if (flushTimeoutRef.current) return;
+      flushTimeoutRef.current = window.setTimeout(flushUpdates, 1000);
+    }, [flushUpdates]);
 
-  }, [filters, isInCurrentFilters, reconcileReminders, sortByPrimaryStart, toast, readMap, writeMap]);
+    useEffect(() => {
+      const onNew = (task: Task) => {
+        pendingUpdatesRef.current.set(task._id, task);
+        scheduleFlush();
+      };
 
-  const scheduleFlush = useCallback(() => {
-    if (flushTimeoutRef.current) return;
-    flushTimeoutRef.current = window.setTimeout(flushUpdates, 1000);
-  }, [flushUpdates]);
+      const onUpdate = (task: Task) => {
+        pendingUpdatesRef.current.set(task._id, task);
+        scheduleFlush();
+      };
 
-  useEffect(() => {
-    const onNew = (task: Task) => {
-      pendingUpdatesRef.current.set(task._id, task);
-      scheduleFlush();
-    };
+      const onAuthError = async (err: Error) => {
+        if (err.message !== "Unauthorized") return;
+        const ok = await refreshAccessToken();
+        if (!ok) return socket.disconnect();
+        socket.auth = { token: localStorage.getItem("accessToken") || "" };
+        socket.once("connect", fetchTasks);
+        socket.connect();
+      };
 
-    const onUpdate = (task: Task) => {
-      pendingUpdatesRef.current.set(task._id, task);
-      scheduleFlush();
-    };
+      socket.on("taskCreated", onNew);
+      socket.on("taskUpdated", onUpdate);
+      socket.on("connect_error", onAuthError);
 
-    const onAuthError = async (err: Error) => {
-      if (err.message !== "Unauthorized") return;
-      const ok = await refreshAccessToken();
-      if (!ok) return socket.disconnect();
-      socket.auth = { token: localStorage.getItem("accessToken") || "" };
-      socket.once("connect", fetchTasks);
+      socket.once("connect", () => fetchTasks(true, 0));
       socket.connect();
-    };
 
-    socket.on("taskCreated", onNew);
-    socket.on("taskUpdated", onUpdate);
-    socket.on("connect_error", onAuthError);
+      return () => {
+        socket.off("taskCreated", onNew);
+        socket.off("taskUpdated", onUpdate);
+        socket.off("connect_error", onAuthError);
+        socket.disconnect();
 
-    socket.once("connect", () => fetchTasks(true, 0));
-    socket.connect();
+        if (flushTimeoutRef.current) {
+          window.clearTimeout(flushTimeoutRef.current);
+        }
 
-    return () => {
-      socket.off("taskCreated", onNew);
-      socket.off("taskUpdated", onUpdate);
-      socket.off("connect_error", onAuthError);
-      socket.disconnect();
+        // Clean all timers
+        for (const [, id] of timersRef.current.entries()) window.clearTimeout(id);
+        timersRef.current.clear();
+      };
+    }, [socket, toast, refreshAccessToken, fetchTasks, scheduleFlush]);
 
-      if (flushTimeoutRef.current) {
-        window.clearTimeout(flushTimeoutRef.current);
-      }
+    // When filters change, refetch
+    useEffect(() => {
+      if (socket.connected) fetchTasks();
+    }, [filters.range, filters.start, filters.end, filters.dateField, filters.upcoming, fetchTasks, socket]);
 
-      // Clean all timers
-      for (const [, id] of timersRef.current.entries()) window.clearTimeout(id);
-      timersRef.current.clear();
-    };
-  }, [socket, toast, refreshAccessToken, fetchTasks, scheduleFlush]);
+    // === Filtering / sorting ===
+    const teamLeadOptions = useMemo(() => {
+      const base = Object.entries(teamLeadData)
+        .map(([value, entry]) => ({ value, label: formatNameInput(entry.label) || entry.label }))
+        .filter((option) => option.label)
+        .sort((a, b) => a.label.localeCompare(b.label));
 
-  // When filters change, refetch
-  useEffect(() => {
-    if (socket.connected) fetchTasks();
-  }, [filters.range, filters.start, filters.end, filters.dateField, filters.upcoming, fetchTasks, socket]);
+      return [{ value: 'all', label: 'All Team Leads' }, ...base];
+    }, [teamLeadData]);
 
-  // === Filtering / sorting ===
-  const teamLeadOptions = useMemo(() => {
-    const base = Object.entries(teamLeadData)
-      .map(([value, entry]) => ({ value, label: formatNameInput(entry.label) || entry.label }))
-      .filter((option) => option.label)
-      .sort((a, b) => a.label.localeCompare(b.label));
+    const teamLeadRecruiterMap = useMemo(() => {
+      const map = new Map<string, Set<string>>();
 
-    return [{ value: 'all', label: 'All Team Leads' }, ...base];
-  }, [teamLeadData]);
+      const addNormalized = (target: Set<string>, name: string | null | undefined) => {
+        if (!name) return;
+        const normalized = formatNameInput(name).toLowerCase();
+        if (normalized) {
+          target.add(normalized);
+        }
+      };
 
-  const teamLeadRecruiterMap = useMemo(() => {
-    const map = new Map<string, Set<string>>();
+      Object.entries(teamLeadData).forEach(([key, entry]) => {
+        const set = new Set<string>();
 
-    const addNormalized = (target: Set<string>, name: string | null | undefined) => {
-      if (!name) return;
-      const normalized = formatNameInput(name).toLowerCase();
-      if (normalized) {
-        target.add(normalized);
-      }
-    };
-
-    Object.entries(teamLeadData).forEach(([key, entry]) => {
-      const set = new Set<string>();
-
-      addNormalized(set, entry.label);
-      set.add(key);
-
-      entry.recruiters.forEach((recruiter) => addNormalized(set, recruiter));
-      entry.mleadNames.forEach((lead) => addNormalized(set, lead));
-
-      if (entry.role === 'mam') {
-        // Ensure the MAM's own name is always present even if formatting differs
         addNormalized(set, entry.label);
-      }
+        set.add(key);
 
-      map.set(key, set);
-    });
+        entry.recruiters.forEach((recruiter) => addNormalized(set, recruiter));
+        entry.mleadNames.forEach((lead) => addNormalized(set, lead));
 
-    return map;
-  }, [teamLeadData]);
+        if (entry.role === 'mam') {
+          // Ensure the MAM's own name is always present even if formatting differs
+          addNormalized(set, entry.label);
+        }
 
-  const statuses = Array.from(new Set(tasks.map((t) => t.status).filter(Boolean)));
+        map.set(key, set);
+      });
 
-  const sortedTasks = useMemo(() => sortByPrimaryStart(tasks), [tasks, sortByPrimaryStart]);
+      return map;
+    }, [teamLeadData]);
 
-  const displayed = sortedTasks
-    .filter((t) => {
-      const s = primaryStart(t);
-      return !!s;
-    })
-    .filter((t) => filterStatus === "all" || t.status === filterStatus)
-    .filter((t) =>
-      (t["Candidate Name"] || "").toLowerCase().includes(candidateFilter.toLowerCase())
-    )
-    .filter((t) =>
-      (t.assignedExpert || "").toLowerCase().includes(expertFilter.toLowerCase())
-    )
-    .filter((t) => {
-      if (selectedTeamLead === 'all') return true;
-      const recruiters = teamLeadRecruiterMap.get(selectedTeamLead);
-      if (!recruiters || recruiters.size === 0) return false;
-      const recruiterDisplay = formatNameInput(t.recruiterName || '');
-      if (!recruiterDisplay) return false;
-      return recruiters.has(recruiterDisplay.toLowerCase());
-    })
-    .filter((t) =>
-      user !== 'user'
-        ? (t.recruiterName || "").toLowerCase().includes(recruiterFilter.toLowerCase())
-        : true
-    );
+    const statuses = Array.from(new Set(tasks.map((t) => t.status).filter(Boolean)));
 
+    const sortedTasks = useMemo(() => sortByPrimaryStart(tasks), [tasks, sortByPrimaryStart]);
 
-  return (
-    <DashboardLayout>
-      <Toaster />
-      <div className="p-4 space-y-4">
-        {error && <p className="text-red-500">{error}</p>}
+    const displayed = sortedTasks
+      .filter((t) => {
+        const s = primaryStart(t);
+        return !!s;
+      })
+      .filter((t) => filterStatus === "all" || t.status === filterStatus)
+      .filter((t) =>
+        (t["Candidate Name"] || "").toLowerCase().includes(candidateFilter.toLowerCase())
+      )
+      .filter((t) =>
+        (t.assignedExpert || "").toLowerCase().includes(expertFilter.toLowerCase())
+      )
+      .filter((t) => {
+        if (selectedTeamLead === 'all') return true;
+        const recruiters = teamLeadRecruiterMap.get(selectedTeamLead);
+        if (!recruiters || recruiters.size === 0) return false;
+        const recruiterDisplay = formatNameInput(t.recruiterName || '');
+        if (!recruiterDisplay) return false;
+        return recruiters.has(recruiterDisplay.toLowerCase());
+      })
+      .filter((t) =>
+        user !== 'user'
+          ? (t.recruiterName || "").toLowerCase().includes(recruiterFilter.toLowerCase())
+          : true
+      );
 
 
-        {canManageMeetings && account && needsConsent && !hideGrantConsentBanner && (
-          <OnlineMeetingConsentBanner
-            checking={consentChecking}
-            error={consentError}
-            onGrant={() => {
-              void grantConsent();
-            }}
-          />
-        )}
+    return (
+      <DashboardLayout>
+        <Toaster />
+        <div className="p-4 space-y-4">
+          {error && <p className="text-red-500">{error}</p>}
 
-        {/* Additional filters */}
-        <div className="flex flex-wrap gap-4 items-center">
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Filter status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              {statuses.map((s) => (
-                <SelectItem key={s} value={s!}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
 
-          <Input
-            placeholder="Filter candidate"
-            value={candidateFilter}
-            onChange={(e) => setCandidateFilter(e.target.value)}
-            className="w-40"
-          />
-          <Input
-            placeholder="Filter expert"
-            value={expertFilter}
-            onChange={(e) => setExpertFilter(e.target.value)}
-            className="w-40"
-          />
-          {(normalizedRole === 'mm' || normalizedRole === 'mam') && (
-            <Select
-              value={selectedTeamLead}
-              onValueChange={setSelectedTeamLead}
-              disabled={teamLeadLoading || teamLeadOptions.length <= 1}
-            >
-              <SelectTrigger className="w-52">
-                <SelectValue placeholder={teamLeadLoading ? "Loading team leads" : "All Team Leads"} />
+          {canManageMeetings && account && needsConsent && !hideGrantConsentBanner && (
+            <OnlineMeetingConsentBanner
+              checking={consentChecking}
+              error={consentError}
+              onGrant={() => {
+                void grantConsent();
+              }}
+            />
+          )}
+
+          {/* Additional filters */}
+          <div className="flex flex-wrap gap-4 items-center">
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Filter status" />
               </SelectTrigger>
               <SelectContent>
-                {teamLeadOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
+                <SelectItem value="all">All</SelectItem>
+                {statuses.map((s) => (
+                  <SelectItem key={s} value={s!}>
+                    {s}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          )}
-          {(user === "MAM" || user === "MM") && (
+
             <Input
-              placeholder="Filter recruiter"
-              value={recruiterFilter}
-              onChange={(e) => setRecruiterFilter(e.target.value)}
+              placeholder="Filter candidate"
+              value={candidateFilter}
+              onChange={(e) => setCandidateFilter(e.target.value)}
               className="w-40"
             />
+            <Input
+              placeholder="Filter expert"
+              value={expertFilter}
+              onChange={(e) => setExpertFilter(e.target.value)}
+              className="w-40"
+            />
+            {(normalizedRole === 'mm' || normalizedRole === 'mam') && (
+              <Select
+                value={selectedTeamLead}
+                onValueChange={setSelectedTeamLead}
+                disabled={teamLeadLoading || teamLeadOptions.length <= 1}
+              >
+                <SelectTrigger className="w-52">
+                  <SelectValue placeholder={teamLeadLoading ? "Loading team leads" : "All Team Leads"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {teamLeadOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {(user === "MAM" || user === "MM") && (
+              <Input
+                placeholder="Filter recruiter"
+                value={recruiterFilter}
+                onChange={(e) => setRecruiterFilter(e.target.value)}
+                className="w-40"
+              />
+            )}
+
+            {/* Toggle: Subject column visibility */}
+            <div className="flex items-center gap-2 ml-auto">
+              <Switch id="toggle-subject" checked={showSubject} onCheckedChange={setShowSubject} />
+              <label htmlFor="toggle-subject" className="text-sm text-muted-foreground select-none">
+                Show Subject
+              </label>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                onClick={() => setFiltersOpen((prev) => !prev)}
+                aria-label={filtersOpen ? 'Hide dashboard filters' : 'Show dashboard filters'}
+                aria-expanded={filtersOpen}
+              >
+                <Filter className="h-5 w-5" />
+                <span className="sr-only">Toggle filters</span>
+              </Button>
+            </div>
+          </div>
+
+          {filtersOpen && (
+            <DashboardFilters filters={filters} onChange={setFilters} allowReceivedDate={allowReceivedDate} />
           )}
 
-          {/* Toggle: Subject column visibility */}
-          <div className="flex items-center gap-2 ml-auto">
-            <Switch id="toggle-subject" checked={showSubject} onCheckedChange={setShowSubject} />
-            <label htmlFor="toggle-subject" className="text-sm text-muted-foreground select-none">
-              Show Subject
-            </label>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9"
-              onClick={() => setFiltersOpen((prev) => !prev)}
-              aria-label={filtersOpen ? 'Hide dashboard filters' : 'Show dashboard filters'}
-              aria-expanded={filtersOpen}
-            >
-              <Filter className="h-5 w-5" />
-              <span className="sr-only">Toggle filters</span>
-            </Button>
-          </div>
-        </div>
+          {teamLeadError && (normalizedRole === 'mm' || normalizedRole === 'mam') && (
+            <p className="text-sm text-red-500">{teamLeadError}</p>
+          )}
 
-        {filtersOpen && (
-          <DashboardFilters filters={filters} onChange={setFilters} allowReceivedDate={allowReceivedDate} />
-        )}
-
-        {teamLeadError && (normalizedRole === 'mm' || normalizedRole === 'mam') && (
-          <p className="text-sm text-red-500">{teamLeadError}</p>
-        )}
-
-        {isLoadingInitial ? (
-          <div className="flex justify-center p-8">
-            <p className="text-muted-foreground animate-pulse">Loading tasks...</p>
-          </div>
-        ) : displayed.length === 0 ? (
-          <p>No tasks found for the selected filters.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {showSubject && <TableHead>Subject</TableHead>}
-                <TableHead>Candidate</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Start</TableHead>
-                <TableHead>End</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Round</TableHead>
-                <TableHead>Expert</TableHead>
-                {(user !== "user") && <TableHead>Suggestions</TableHead>}
-                {(user === "MAM" || user === "MM" || user === "mlead") && <TableHead>Recruiter</TableHead>}
-                <TableHead>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex cursor-help select-none font-semibold text-sm tracking-wide">
-                        TxAv
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Green when a transcript is available; red when missing.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TableHead>
-                {meetingsEnabled && <TableHead>Meeting</TableHead>}
-                <TableHead>Status</TableHead>
-                {(normalizedRole === 'admin' || normalizedRole === 'mam' || normalizedRole === 'mm' || normalizedRole === 'mlead' || normalizedRole === 'recruiter') && (
-                  <TableHead>Actions</TableHead>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {displayed.map((task) => {
-                const start = parseStart(task);
-                const end = parseEnd(task);
-                const isMeetingBusy = Boolean(meetingBusy[task._id]);
-                const joinLink = extractJoinLink(task);
-                const storedThanksDraft = loadThanksMailFromStorage(task._id);
-                const storedQuestionsEntry = loadQuestionsFromStorage(task._id);
-                const canOpenThanksMail = Boolean(task.transcription || storedThanksDraft);
-                const canOpenQuestions = Boolean(
-                  task.transcription || (storedQuestionsEntry?.questions?.length || 0) > 0
-                );
-                return (
-                  <TableRow key={task._id} className={getRowClasses(task.status)}>
-                    {showSubject && (
-                      <TableCell>
-                        {DOMPurify.sanitize(task.subject || "")}
-                        <SubjectValidationBadge task={task} />
-                      </TableCell>
-                    )}
-                    <TableCell>{DOMPurify.sanitize(task["Candidate Name"] || "")}</TableCell>
-                    <TableCell>{formatDate(start)}</TableCell>
-                    <TableCell>{formatTime(start)}</TableCell>
-                    <TableCell>{formatTime(end)}</TableCell>
-                    <TableCell>{DOMPurify.sanitize(task["End Client"] || "")}</TableCell>
-                    <TableCell>{DOMPurify.sanitize(task["Interview Round"] || "")}</TableCell>
-                    <TableCell>{DOMPurify.sanitize(task.assignedExpert || "")}</TableCell>
-                    {(user !== "user") && (<TableCell>
-                      {DOMPurify.sanitize(
-                        (task.suggestions && task.suggestions.length > 0
-                          ? task.suggestions.join(", ")
-                          : task.candidateExpertDisplay || "Not available")
+          {isLoadingInitial ? (
+            <div className="flex justify-center p-8">
+              <p className="text-muted-foreground animate-pulse">Loading tasks...</p>
+            </div>
+          ) : displayed.length === 0 ? (
+            <p>No tasks found for the selected filters.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {showSubject && <TableHead>Subject</TableHead>}
+                  <TableHead>Candidate</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Start</TableHead>
+                  <TableHead>End</TableHead>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Round</TableHead>
+                  <TableHead>Expert</TableHead>
+                  {(user !== "user") && <TableHead>Suggestions</TableHead>}
+                  {(user === "MAM" || user === "MM" || user === "mlead") && <TableHead>Recruiter</TableHead>}
+                  <TableHead>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex cursor-help select-none font-semibold text-sm tracking-wide">
+                          TxAv
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Green when a transcript is available; red when missing.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TableHead>
+                  {meetingsEnabled && <TableHead>Meeting</TableHead>}
+                  <TableHead>Status</TableHead>
+                  {(normalizedRole === 'admin' || normalizedRole === 'mam' || normalizedRole === 'mm' || normalizedRole === 'mlead' || normalizedRole === 'recruiter') && (
+                    <TableHead>Actions</TableHead>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {displayed.map((task) => {
+                  const start = parseStart(task);
+                  const end = parseEnd(task);
+                  const isMeetingBusy = Boolean(meetingBusy[task._id]);
+                  const joinLink = extractJoinLink(task);
+                  const storedThanksDraft = loadThanksMailFromStorage(task._id);
+                  const storedQuestionsEntry = loadQuestionsFromStorage(task._id);
+                  const canOpenThanksMail = Boolean(task.transcription || storedThanksDraft);
+                  const canOpenQuestions = Boolean(
+                    task.transcription || (storedQuestionsEntry?.questions?.length || 0) > 0
+                  );
+                  return (
+                    <TableRow key={task._id} className={getRowClasses(task.status)}>
+                      {showSubject && (
+                        <TableCell>
+                          {DOMPurify.sanitize(task.subject || "")}
+                          <SubjectValidationBadge task={task} />
+                        </TableCell>
                       )}
-                    </TableCell>)}
-                    {(user === "MAM" || user === "MM" || user === "mlead") && (
-                      <TableCell>{DOMPurify.sanitize(task.recruiterName || "")}</TableCell>
-                    )}
-                    <TableCell>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span
-                            className={`inline-flex h-3 w-3 rounded-full border border-border ${task.transcription ? 'bg-green-500' : 'bg-red-500'
-                              }`}
-                            role="img"
-                            aria-label={
-                              task.transcription
-                                ? 'Transcription available'
-                                : 'Transcription not available'
-                            }
-                          />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>
-                            {task.transcription ? 'Transcription available' : 'Transcription not available'}
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TableCell>
-                    {meetingsEnabled && (
+                      <TableCell>{DOMPurify.sanitize(task["Candidate Name"] || "")}</TableCell>
+                      <TableCell>{formatDate(start)}</TableCell>
+                      <TableCell>{formatTime(start)}</TableCell>
+                      <TableCell>{formatTime(end)}</TableCell>
+                      <TableCell>{DOMPurify.sanitize(task["End Client"] || "")}</TableCell>
+                      <TableCell>{DOMPurify.sanitize(task["Interview Round"] || "")}</TableCell>
+                      <TableCell>{DOMPurify.sanitize(task.assignedExpert || "")}</TableCell>
+                      {(user !== "user") && (<TableCell>
+                        {DOMPurify.sanitize(
+                          (task.suggestions && task.suggestions.length > 0
+                            ? task.suggestions.join(", ")
+                            : task.candidateExpertDisplay || "Not available")
+                        )}
+                      </TableCell>)}
+                      {(user === "MAM" || user === "MM" || user === "mlead") && (
+                        <TableCell>{DOMPurify.sanitize(task.recruiterName || "")}</TableCell>
+                      )}
                       <TableCell>
-                        {joinLink ? (
-                          <div className="flex flex-nowrap items-center gap-2">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span
+                              className={`inline-flex h-3 w-3 rounded-full border border-border ${task.transcription ? 'bg-green-500' : 'bg-red-500'
+                                }`}
+                              role="img"
+                              aria-label={
+                                task.transcription
+                                  ? 'Transcription available'
+                                  : 'Transcription not available'
+                              }
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>
+                              {task.transcription ? 'Transcription available' : 'Transcription not available'}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableCell>
+                      {meetingsEnabled && (
+                        <TableCell>
+                          {joinLink ? (
+                            <div className="flex flex-nowrap items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenMeeting(joinLink)}
+                              >
+                                Join
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  void handleCopyMeeting(joinLink);
+                                }}
+                                aria-label="Copy link"
+                              >
+                                <Copy className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">Copy link</span>
+                              </Button>
+                            </div>
+                          ) : canManageMeetings ? (
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleOpenMeeting(joinLink)}
-                            >
-                              Join
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              size="sm"
+                              disabled={isMeetingBusy || consentChecking}
                               onClick={() => {
-                                void handleCopyMeeting(joinLink);
+                                void handleCreateMeeting(task);
                               }}
-                              aria-label="Copy link"
                             >
-                              <Copy className="h-4 w-4" aria-hidden="true" />
-                              <span className="sr-only">Copy link</span>
+                              {isMeetingBusy ? 'Creating…' : 'Create meeting'}
                             </Button>
-                          </div>
-                        ) : canManageMeetings ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={isMeetingBusy || consentChecking}
-                            onClick={() => {
-                              void handleCreateMeeting(task);
-                            }}
-                          >
-                            {isMeetingBusy ? 'Creating…' : 'Create meeting'}
-                          </Button>
-                        ) : null}
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      {task.status && (
-                        <Badge className={getStatusBadge(task.status)}>{task.status}</Badge>
+                          ) : null}
+                        </TableCell>
                       )}
-                    </TableCell>
-                    {(normalizedRole === 'admin' || normalizedRole === 'mam' || normalizedRole === 'mm' || normalizedRole === 'mlead' || normalizedRole === 'recruiter') && (
                       <TableCell>
-                        {canCloneSupport || canRequestMock || canGenerateThanksMail || user === 'admin' ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button size="sm" variant="outline">
-                                Actions
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              {user === "admin" && (
-                                <>
-                                  <DropdownMenuItem
-                                    className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                                    onClick={() => setDeleteTaskDialog({ open: true, task })}
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Delete Task
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                </>
-                              )}
-                              {canGenerateThanksMail && (
-                                <>
-                                  <DropdownMenuItem
-                                    onClick={() => handleOpenThanksMailDialog(task, storedThanksDraft)}
-                                    disabled={!canOpenThanksMail}
-                                  >
-                                    Generate Thanks Mail
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleOpenQuestionsDialog(task, storedQuestionsEntry)}
-                                    disabled={!canOpenQuestions}
-                                  >
-                                    Extract Interviewer Questions
-                                  </DropdownMenuItem>
-                                </>
-                              )}
-                              {canGenerateThanksMail && (canRequestMock || canCloneSupport) && (
-                                <DropdownMenuSeparator />
-                              )}
-                              {canRequestMock && (
-                                <DropdownMenuItem onClick={() => handleOpenMockDialog(task)}>
-                                  Request Mock
-                                </DropdownMenuItem>
-                              )}
-                              {canCloneSupport && (
-                                <DropdownMenuItem onClick={() => handleCloneSupport(task)}>
-                                  Clone Support Request
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">No access</span>
+                        {task.status && (
+                          <Badge className={getStatusBadge(task.status)}>{task.status}</Badge>
                         )}
                       </TableCell>
-                    )}
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-
-          </Table>
-        )}
-        {isLoadingMore && (
-          <div className="py-2 text-center text-xs text-muted-foreground animate-pulse border-t">
-            Loading more tasks...
-          </div>
-        )}
-      </div>
-      <Dialog open={Boolean(mockDialogTask)} onOpenChange={(open) => !open && closeMockDialog()}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Request Mock Interview</DialogTitle>
-          </DialogHeader>
-          {mockPreview ? (
-            <div className="space-y-4">
-              <p className="text-sm font-semibold text-red-600">
-                Complete the mock before the day of interview.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Interview Round{" "}
-                <span className="font-medium text-foreground">
-                  {mockPreview.interviewRound || "Not specified"}
-                </span>{" "}
-                is scheduled at{" "}
-                <span className="font-medium text-foreground">
-                  {mockPreview.interviewDisplay}
-                </span>
-                .
-              </p>
-              <div className="rounded-md border bg-card">
-                <div className="border-b px-4 py-2">
-                  <p className="text-sm font-medium text-foreground">Email Subject</p>
-                  <p className="text-sm text-muted-foreground break-words">{mockSubject}</p>
-                </div>
-                <table className="w-full text-sm">
-                  <tbody>
-                    {[
-                      { label: "Candidate Name", value: mockPreview.candidateName },
-                      { label: "Email", value: mockPreview.candidateEmail },
-                      { label: "Technology", value: mockPreview.technology || "Not specified" },
-                      { label: "Phone Number", value: mockPreview.contactNumber || "Not specified" },
-                      { label: "End Client", value: mockPreview.endClient || "Not specified" }
-                    ].map(({ label, value }) => (
-                      <tr key={label} className="border-b last:border-b-0">
-                        <th className="w-48 bg-muted px-4 py-2 text-left font-semibold text-muted-foreground">
-                          {label}
-                        </th>
-                        <td className="px-4 py-2 text-foreground">{value || "Not available"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-foreground">Cached Attachments</p>
-                {mockPreview.storedAttachments.length > 0 ? (
-                  <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                    {mockPreview.storedAttachments.map((attachment, index) => {
-                      const category = (attachment?.category || '').toString();
-                      const hasData = Boolean(attachment?.data && attachment.data.trim());
-                      return (
-                        <li key={`${attachment?.name || 'attachment'}-${index}`}>
-                          {attachment?.name || 'Attachment'}
-                          {category ? ` (${category})` : ''}
-                          {hasData ? ' — ready to attach' : ' — data unavailable'}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No cached resume or job description found for this task.
-                  </p>
-                )}
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="mock-resume">Resume (PDF)</Label>
-                  <Input
-                    id="mock-resume"
-                    type="file"
-                    accept="application/pdf"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null;
-                      setMockResumeUpload(file);
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {mockResumeUpload
-                      ? `Selected: ${mockResumeUpload.name}`
-                      : storedResumeAvailable
-                        ? 'Using cached resume.'
-                        : 'Upload a resume PDF (max 2 MB).'}
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="mock-jd">Job Description (PDF)</Label>
-                  <Input
-                    id="mock-jd"
-                    type="file"
-                    accept="application/pdf"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null;
-                      setMockJdUpload(file);
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {mockJdUpload
-                      ? `Selected: ${mockJdUpload.name}`
-                      : storedJdAvailable
-                        ? 'Using cached job description.'
-                        : 'Upload the job description PDF (max 2 MB).'}
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mock-jd-text">Job Description Notes (optional)</Label>
-                <Textarea
-                  id="mock-jd-text"
-                  rows={4}
-                  value={mockJobDescription}
-                  onChange={(event) => setMockJobDescription(event.target.value)}
-                  placeholder="Paste any relevant JD text to include in the email."
-                />
-              </div>
-              {mockError && <p className="text-sm text-red-600">{mockError}</p>}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Select a task to prepare the mock request.</p>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={closeMockDialog} disabled={mockSending}>
-              Cancel
-            </Button>
-            <Button onClick={handleMockSend} disabled={mockSending || !mockPreview}>
-              {mockSending ? 'Sending…' : 'Send Mock Email'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={Boolean(questionsDialogTask)} onOpenChange={(open) => !open && closeQuestionsDialog()}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Extract Interviewer Questions</DialogTitle>
-          </DialogHeader>
-          {questionsDialogTask ? (
-            <div className="space-y-4">
-              <Alert>
-                <AlertTitle>GPT-5 usage is limited</AlertTitle>
-                <AlertDescription className="text-sm text-muted-foreground">
-                  You can extract up to {QUESTIONS_LIMIT} question lists every {QUESTIONS_WINDOW_HOURS} hours. Results are cached locally for{' '}
-                  {questionsDialogTask["Candidate Name"] || 'this candidate'}.
-                </AlertDescription>
-              </Alert>
-              {!questionsDialogTask.transcription && (
-                <Alert variant="destructive">
-                  <AlertTitle>Transcript missing</AlertTitle>
-                  <AlertDescription>
-                    TxAv is unavailable. You can review saved questions below, but extracting a fresh list requires the recorded transcript.
-                  </AlertDescription>
-                </Alert>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Extraction can take up to a minute. Continue working— you&apos;ll get a toast once the list is ready.
-              </p>
-              {questionsGeneratedAt && (
-                <p className="text-xs text-muted-foreground">
-                  Last extracted on {new Date(questionsGeneratedAt).toLocaleString()}
-                </p>
-              )}
-              <div className="rounded-md border bg-card/30 p-4">
-                {questionsList.length > 0 ? (
-                  <ol className="space-y-3 text-sm text-foreground">
-                    {questionsList.map((entry, index) => (
-                      <li key={`${entry.question}-${index}`} className="rounded-md border bg-card/60 p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <Badge variant="secondary" className="text-xs font-semibold uppercase tracking-wide">
-                            {formatQuestionType(entry.type)}
-                          </Badge>
-                          {entry.paraphrased && (
-                            <span className="text-xs font-medium text-muted-foreground">Paraphrased</span>
+                      {(normalizedRole === 'admin' || normalizedRole === 'mam' || normalizedRole === 'mm' || normalizedRole === 'mlead' || normalizedRole === 'recruiter') && (
+                        <TableCell>
+                          {canCloneSupport || canRequestMock || canGenerateThanksMail || user === 'admin' ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="outline">
+                                  Actions
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {user === "admin" && (
+                                  <>
+                                    <DropdownMenuItem
+                                      className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                      onClick={() => setDeleteTaskDialog({ open: true, task })}
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Delete Task
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                  </>
+                                )}
+                                {canGenerateThanksMail && (
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() => handleOpenThanksMailDialog(task, storedThanksDraft)}
+                                      disabled={!canOpenThanksMail}
+                                    >
+                                      Generate Thanks Mail
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => handleOpenQuestionsDialog(task, storedQuestionsEntry)}
+                                      disabled={!canOpenQuestions}
+                                    >
+                                      Extract Interviewer Questions
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                                {canGenerateThanksMail && (canRequestMock || canCloneSupport) && (
+                                  <DropdownMenuSeparator />
+                                )}
+                                {canRequestMock && (
+                                  <DropdownMenuItem onClick={() => handleOpenMockDialog(task)}>
+                                    Request Mock
+                                  </DropdownMenuItem>
+                                )}
+                                {canCloneSupport && (
+                                  <DropdownMenuItem onClick={() => handleCloneSupport(task)}>
+                                    Clone Support Request
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">No access</span>
                           )}
-                        </div>
-                        <p className="mt-2 text-sm leading-5 text-foreground">{entry.question}</p>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No questions extracted yet. Run the extractor to populate this list.
-                  </p>
-                )}
-              </div>
-              {questionsRateInfo && (
-                <p className="text-xs text-muted-foreground">
-                  {questionsRateInfo.remaining} of {QUESTIONS_LIMIT} requests remaining. Resets around{' '}
-                  {questionsRateInfo.resetAt
-                    ? new Date(questionsRateInfo.resetAt).toLocaleTimeString()
-                    : 'the next window'}.
-                </p>
-              )}
-              {questionsError && <p className="text-sm text-red-600">{questionsError}</p>}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Select a task with TxAv to extract interviewer questions.
-            </p>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+
+            </Table>
           )}
-          <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex w-full flex-col gap-1 sm:flex-row sm:items-center">
-              <Button
-                type="button"
-                variant="outline"
-                className="sm:w-auto"
-                onClick={closeQuestionsDialog}
-                disabled={questionsLoading}
-              >
-                Close
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                className="sm:w-auto"
-                onClick={handleCopyQuestions}
-                disabled={questionsList.length === 0}
-              >
-                Copy questions
-              </Button>
+          {isLoadingMore && (
+            <div className="py-2 text-center text-xs text-muted-foreground animate-pulse border-t">
+              Loading more tasks...
             </div>
-            <Button
-              type="button"
-              onClick={handleFetchInterviewerQuestions}
-              disabled={questionsLoading || !questionsDialogTask?.transcription}
-              className="sm:w-auto"
-            >
-              {questionsLoading ? 'Extracting… (takes up to a minute)' : 'Extract with GPT-5'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={Boolean(thanksDialogTask)} onOpenChange={(open) => !open && closeThanksDialog()}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Generate Thank-You Email</DialogTitle>
-          </DialogHeader>
-          {thanksDialogTask ? (
-            <div className="space-y-4">
-              <Alert>
-                <AlertTitle>GPT-5 usage is limited</AlertTitle>
-                <AlertDescription className="text-sm text-muted-foreground">
-                  You can generate up to {THANKS_MAIL_LIMIT} drafts every {THANKS_MAIL_WINDOW_HOURS} hours. The draft is stored locally for {thanksDialogTask["Candidate Name"] || 'this candidate'} so you can reuse or tweak it without another API call.
-                </AlertDescription>
-              </Alert>
-              {!thanksDialogTask.transcription && (
-                <Alert variant="destructive">
-                  <AlertTitle>Transcript missing</AlertTitle>
-                  <AlertDescription>
-                    TxAv is unavailable. You can review saved drafts below, but generating a new email requires the recorded transcript.
+          )}
+        </div>
+        <Dialog open={Boolean(mockDialogTask)} onOpenChange={(open) => !open && closeMockDialog()}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Request Mock Interview</DialogTitle>
+            </DialogHeader>
+            {mockPreview ? (
+              <div className="space-y-4">
+                <p className="text-sm font-semibold text-red-600">
+                  Complete the mock before the day of interview.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Interview Round{" "}
+                  <span className="font-medium text-foreground">
+                    {mockPreview.interviewRound || "Not specified"}
+                  </span>{" "}
+                  is scheduled at{" "}
+                  <span className="font-medium text-foreground">
+                    {mockPreview.interviewDisplay}
+                  </span>
+                  .
+                </p>
+                <div className="rounded-md border bg-card">
+                  <div className="border-b px-4 py-2">
+                    <p className="text-sm font-medium text-foreground">Email Subject</p>
+                    <p className="text-sm text-muted-foreground break-words">{mockSubject}</p>
+                  </div>
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {[
+                        { label: "Candidate Name", value: mockPreview.candidateName },
+                        { label: "Email", value: mockPreview.candidateEmail },
+                        { label: "Technology", value: mockPreview.technology || "Not specified" },
+                        { label: "Phone Number", value: mockPreview.contactNumber || "Not specified" },
+                        { label: "End Client", value: mockPreview.endClient || "Not specified" }
+                      ].map(({ label, value }) => (
+                        <tr key={label} className="border-b last:border-b-0">
+                          <th className="w-48 bg-muted px-4 py-2 text-left font-semibold text-muted-foreground">
+                            {label}
+                          </th>
+                          <td className="px-4 py-2 text-foreground">{value || "Not available"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-foreground">Cached Attachments</p>
+                  {mockPreview.storedAttachments.length > 0 ? (
+                    <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                      {mockPreview.storedAttachments.map((attachment, index) => {
+                        const category = (attachment?.category || '').toString();
+                        const hasData = Boolean(attachment?.data && attachment.data.trim());
+                        return (
+                          <li key={`${attachment?.name || 'attachment'}-${index}`}>
+                            {attachment?.name || 'Attachment'}
+                            {category ? ` (${category})` : ''}
+                            {hasData ? ' — ready to attach' : ' — data unavailable'}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No cached resume or job description found for this task.
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="mock-resume">Resume (PDF)</Label>
+                    <Input
+                      id="mock-resume"
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        setMockResumeUpload(file);
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {mockResumeUpload
+                        ? `Selected: ${mockResumeUpload.name}`
+                        : storedResumeAvailable
+                          ? 'Using cached resume.'
+                          : 'Upload a resume PDF (max 2 MB).'}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="mock-jd">Job Description (PDF)</Label>
+                    <Input
+                      id="mock-jd"
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        setMockJdUpload(file);
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {mockJdUpload
+                        ? `Selected: ${mockJdUpload.name}`
+                        : storedJdAvailable
+                          ? 'Using cached job description.'
+                          : 'Upload the job description PDF (max 2 MB).'}
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mock-jd-text">Job Description Notes (optional)</Label>
+                  <Textarea
+                    id="mock-jd-text"
+                    rows={4}
+                    value={mockJobDescription}
+                    onChange={(event) => setMockJobDescription(event.target.value)}
+                    placeholder="Paste any relevant JD text to include in the email."
+                  />
+                </div>
+                {mockError && <p className="text-sm text-red-600">{mockError}</p>}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Select a task to prepare the mock request.</p>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={closeMockDialog} disabled={mockSending}>
+                Cancel
+              </Button>
+              <Button onClick={handleMockSend} disabled={mockSending || !mockPreview}>
+                {mockSending ? 'Sending…' : 'Send Mock Email'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={Boolean(questionsDialogTask)} onOpenChange={(open) => !open && closeQuestionsDialog()}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Extract Interviewer Questions</DialogTitle>
+            </DialogHeader>
+            {questionsDialogTask ? (
+              <div className="space-y-4">
+                <Alert>
+                  <AlertTitle>GPT-5 usage is limited</AlertTitle>
+                  <AlertDescription className="text-sm text-muted-foreground">
+                    You can extract up to {QUESTIONS_LIMIT} question lists every {QUESTIONS_WINDOW_HOURS} hours. Results are cached locally for{' '}
+                    {questionsDialogTask["Candidate Name"] || 'this candidate'}.
                   </AlertDescription>
                 </Alert>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Generating a draft can take up to a minute. Feel free to keep working—the app will notify you when the email is ready.
-              </p>
-              {thanksMailGeneratedAt && (
+                {!questionsDialogTask.transcription && (
+                  <Alert variant="destructive">
+                    <AlertTitle>Transcript missing</AlertTitle>
+                    <AlertDescription>
+                      TxAv is unavailable. You can review saved questions below, but extracting a fresh list requires the recorded transcript.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <p className="text-xs text-muted-foreground">
-                  Last generated on {new Date(thanksMailGeneratedAt).toLocaleString()}
+                  Extraction can take up to a minute. Continue working— you&apos;ll get a toast once the list is ready.
                 </p>
-              )}
-              <div className="rounded-md border bg-card/30 p-4">
-                {sanitizedThanksMailHtml ? (
-                  <div
-                    className="space-y-2 text-sm leading-6 text-foreground"
-                    dangerouslySetInnerHTML={{ __html: sanitizedThanksMailHtml }}
-                  />
-                ) : thanksMailContent ? (
-                  <pre className="whitespace-pre-wrap text-sm text-foreground">
-                    {thanksMailContent}
-                  </pre>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No draft yet. Generate a thank-you email to see it here.
+                {questionsGeneratedAt && (
+                  <p className="text-xs text-muted-foreground">
+                    Last extracted on {new Date(questionsGeneratedAt).toLocaleString()}
                   </p>
                 )}
+                <div className="rounded-md border bg-card/30 p-4">
+                  {questionsList.length > 0 ? (
+                    <ol className="space-y-3 text-sm text-foreground">
+                      {questionsList.map((entry, index) => (
+                        <li key={`${entry.question}-${index}`} className="rounded-md border bg-card/60 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <Badge variant="secondary" className="text-xs font-semibold uppercase tracking-wide">
+                              {formatQuestionType(entry.type)}
+                            </Badge>
+                            {entry.paraphrased && (
+                              <span className="text-xs font-medium text-muted-foreground">Paraphrased</span>
+                            )}
+                          </div>
+                          <p className="mt-2 text-sm leading-5 text-foreground">{entry.question}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No questions extracted yet. Run the extractor to populate this list.
+                    </p>
+                  )}
+                </div>
+                {questionsRateInfo && (
+                  <p className="text-xs text-muted-foreground">
+                    {questionsRateInfo.remaining} of {QUESTIONS_LIMIT} requests remaining. Resets around{' '}
+                    {questionsRateInfo.resetAt
+                      ? new Date(questionsRateInfo.resetAt).toLocaleTimeString()
+                      : 'the next window'}.
+                  </p>
+                )}
+                {questionsError && <p className="text-sm text-red-600">{questionsError}</p>}
               </div>
-              {thanksMailRateInfo && (
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Select a task with TxAv to extract interviewer questions.
+              </p>
+            )}
+            <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex w-full flex-col gap-1 sm:flex-row sm:items-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="sm:w-auto"
+                  onClick={closeQuestionsDialog}
+                  disabled={questionsLoading}
+                >
+                  Close
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="sm:w-auto"
+                  onClick={handleCopyQuestions}
+                  disabled={questionsList.length === 0}
+                >
+                  Copy questions
+                </Button>
+              </div>
+              <Button
+                type="button"
+                onClick={handleFetchInterviewerQuestions}
+                disabled={questionsLoading || !questionsDialogTask?.transcription}
+                className="sm:w-auto"
+              >
+                {questionsLoading ? 'Extracting… (takes up to a minute)' : 'Extract with GPT-5'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={Boolean(thanksDialogTask)} onOpenChange={(open) => !open && closeThanksDialog()}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Generate Thank-You Email</DialogTitle>
+            </DialogHeader>
+            {thanksDialogTask ? (
+              <div className="space-y-4">
+                <Alert>
+                  <AlertTitle>GPT-5 usage is limited</AlertTitle>
+                  <AlertDescription className="text-sm text-muted-foreground">
+                    You can generate up to {THANKS_MAIL_LIMIT} drafts every {THANKS_MAIL_WINDOW_HOURS} hours. The draft is stored locally for {thanksDialogTask["Candidate Name"] || 'this candidate'} so you can reuse or tweak it without another API call.
+                  </AlertDescription>
+                </Alert>
+                {!thanksDialogTask.transcription && (
+                  <Alert variant="destructive">
+                    <AlertTitle>Transcript missing</AlertTitle>
+                    <AlertDescription>
+                      TxAv is unavailable. You can review saved drafts below, but generating a new email requires the recorded transcript.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <p className="text-xs text-muted-foreground">
-                  {thanksMailRateInfo.remaining} of {THANKS_MAIL_LIMIT} requests remaining. Resets around{' '}
-                  {thanksMailRateInfo.resetAt
-                    ? new Date(thanksMailRateInfo.resetAt).toLocaleTimeString()
-                    : 'the next window'}.
+                  Generating a draft can take up to a minute. Feel free to keep working—the app will notify you when the email is ready.
                 </p>
-              )}
-              {thanksMailError && <p className="text-sm text-red-600">{thanksMailError}</p>}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Select a task with TxAv to generate a thank-you email.</p>
-          )}
-          <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex w-full flex-col gap-1 sm:flex-row sm:items-center">
+                {thanksMailGeneratedAt && (
+                  <p className="text-xs text-muted-foreground">
+                    Last generated on {new Date(thanksMailGeneratedAt).toLocaleString()}
+                  </p>
+                )}
+                <div className="rounded-md border bg-card/30 p-4">
+                  {sanitizedThanksMailHtml ? (
+                    <div
+                      className="space-y-2 text-sm leading-6 text-foreground"
+                      dangerouslySetInnerHTML={{ __html: sanitizedThanksMailHtml }}
+                    />
+                  ) : thanksMailContent ? (
+                    <pre className="whitespace-pre-wrap text-sm text-foreground">
+                      {thanksMailContent}
+                    </pre>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No draft yet. Generate a thank-you email to see it here.
+                    </p>
+                  )}
+                </div>
+                {thanksMailRateInfo && (
+                  <p className="text-xs text-muted-foreground">
+                    {thanksMailRateInfo.remaining} of {THANKS_MAIL_LIMIT} requests remaining. Resets around{' '}
+                    {thanksMailRateInfo.resetAt
+                      ? new Date(thanksMailRateInfo.resetAt).toLocaleTimeString()
+                      : 'the next window'}.
+                  </p>
+                )}
+                {thanksMailError && <p className="text-sm text-red-600">{thanksMailError}</p>}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Select a task with TxAv to generate a thank-you email.</p>
+            )}
+            <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex w-full flex-col gap-1 sm:flex-row sm:items-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="sm:w-auto"
+                  onClick={closeThanksDialog}
+                  disabled={thanksMailLoading}
+                >
+                  Close
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="sm:w-auto"
+                  onClick={handleCopyThanksMail}
+                  disabled={!thanksMailContent}
+                >
+                  Copy email
+                </Button>
+              </div>
               <Button
                 type="button"
-                variant="outline"
+                onClick={handleGenerateThanksMail}
+                disabled={thanksMailLoading || !thanksDialogTask?.transcription}
                 className="sm:w-auto"
-                onClick={closeThanksDialog}
-                disabled={thanksMailLoading}
               >
-                Close
+                {thanksMailLoading ? 'Generating… (takes up to a minute)' : 'Generate with GPT-5'}
               </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                className="sm:w-auto"
-                onClick={handleCopyThanksMail}
-                disabled={!thanksMailContent}
-              >
-                Copy email
-              </Button>
-            </div>
-            <Button
-              type="button"
-              onClick={handleGenerateThanksMail}
-              disabled={thanksMailLoading || !thanksDialogTask?.transcription}
-              className="sm:w-auto"
-            >
-              {thanksMailLoading ? 'Generating… (takes up to a minute)' : 'Generate with GPT-5'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {/* Delete Task Dialog */}
-      <DeleteTaskDialog
-        open={deleteTaskDialog.open}
-        onOpenChange={(open) => setDeleteTaskDialog(prev => ({ ...prev, open }))}
-        task={deleteTaskDialog.task}
-        onConfirm={handleDeleteTask}
-      />
-    </DashboardLayout >
-  );
-}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        {/* Delete Task Dialog */}
+        <DeleteTaskDialog
+          open={deleteTaskDialog.open}
+          onOpenChange={(open) => setDeleteTaskDialog(prev => ({ ...prev, open }))}
+          task={deleteTaskDialog.task}
+          onConfirm={handleDeleteTask}
+        />
+      </DashboardLayout >
+    );
+  }
