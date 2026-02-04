@@ -187,12 +187,23 @@ class ThanksMailService {
       );
 
       if (response && response.documents.length > 0) {
+        const doc = response.documents[0];
         logger.debug('Transcript found', {
           title,
-          documentId: response.documents[0].$id,
-          documentsCount: response.documents.length
+          documentId: doc.$id,
+          hasSentences: Array.isArray(doc.sentences),
+          hasSentencesJson: !!doc.sentences_json
         });
-        return response.documents[0];
+
+        if (doc.sentences_json && typeof doc.sentences_json === 'string') {
+          try {
+            doc.sentences = JSON.parse(doc.sentences_json);
+          } catch (err) {
+            logger.warn('Failed to parse sentences_json', { documentId: doc.$id, error: err.message });
+          }
+        }
+
+        return doc;
       }
 
       logger.debug('No transcript found', { title });
@@ -204,6 +215,59 @@ class ThanksMailService {
     }
 
     return null;
+  }
+
+  async getCachedContent(taskId, type) {
+    if (!config.appwrite.generatedContentCollectionId || !this.databases) return null;
+
+    try {
+      const response = await this.databases.listDocuments(
+        config.appwrite.databaseId,
+        config.appwrite.generatedContentCollectionId,
+        [
+          Query.equal('taskId', taskId),
+          Query.equal('type', type),
+          Query.limit(1)
+        ]
+      );
+
+      if (response.documents.length > 0) {
+        const doc = response.documents[0];
+        return {
+          content: doc.content,
+          createdAt: doc.$createdAt || doc.createdAt
+        };
+      }
+    } catch (error) {
+      logger.warn('Failed to fetch cached content', { taskId, type, error: error.message });
+    }
+    return null;
+  }
+
+  async saveGeneratedContent(taskId, type, content) {
+    if (!config.appwrite.generatedContentCollectionId || !this.databases) return;
+
+    try {
+      // Check if exists to update or create (upsert logic via list first or just create if we assume unique)
+      // Since we checked cache before, likely creating. But concurrency might race.
+      // We'll just try create for now. If ID is unique index on taskId+type, it fails.
+      // Ideally we use a unique document ID generated from hashing taskId+type, or just random.
+      // Let's rely on list check we did earlier.
+
+      await this.databases.createDocument(
+        config.appwrite.databaseId,
+        config.appwrite.generatedContentCollectionId,
+        'unique()', // Document ID
+        {
+          taskId,
+          type,
+          content,
+          createdAt: new Date().toISOString()
+        }
+      );
+    } catch (error) {
+      logger.warn('Failed to save generated content', { taskId, type, error: error.message });
+    }
   }
 
   buildTranscriptScript(sentences = []) {
@@ -356,6 +420,19 @@ class ThanksMailService {
     this.ensureFeatureEnabled();
     this.ensureRoleAllowed(user.role);
 
+    // 1. Check Cache
+    const cached = await this.getCachedContent(taskId, 'thanks_mail');
+    if (cached) {
+      logger.info('Returning cached thank-you mail', { taskId, userEmail: user.email });
+      return {
+        markdown: cached.content,
+        html: this.renderMarkdownToHtml(cached.content),
+        generatedAt: cached.createdAt,
+        rateLimit: { remaining: 999, resetAt: new Date().toISOString() } // Mock rate limit for cache
+      };
+    }
+
+    // 2. Load Task
     const taskResult = await taskService.getTaskById(taskId, user.email, user.role, user.teamLead);
     const task = taskResult?.task;
     if (!task) {
@@ -364,6 +441,7 @@ class ThanksMailService {
       throw error;
     }
 
+    // 3. Load Transcript
     const transcriptDoc = await this.fetchTranscript(task);
     if (!transcriptDoc || !Array.isArray(transcriptDoc.sentences) || transcriptDoc.sentences.length === 0) {
       const error = new Error('Transcript not found for this task.');
@@ -378,6 +456,7 @@ class ThanksMailService {
       throw error;
     }
 
+    // 4. Rate Limit (only if generating)
     const rateLimit = this.enforceRateLimit(user.email);
     const prompt = this.buildPrompt(script, task);
     logger.info('Generating thanks mail via OpenAI', {
@@ -386,8 +465,13 @@ class ThanksMailService {
       transcriptLength: script.length
     });
 
+    // 5. Generate
     const markdown = await this.callOpenAI(prompt);
     const html = this.renderMarkdownToHtml(markdown);
+
+    // 6. Save to Cache
+    await this.saveGeneratedContent(taskId, 'thanks_mail', markdown);
+
     return {
       markdown,
       html,

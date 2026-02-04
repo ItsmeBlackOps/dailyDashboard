@@ -168,7 +168,8 @@ const config = {
     projectId: process.env.APPWRITE_PROJECT_ID,
     apiKey: process.env.APPWRITE_API_KEY,
     databaseId: process.env.APPWRITE_DATABASE_ID,
-    transcriptsCollectionId: process.env.APPWRITE_COLLECTION_ID_TRANSCRIPTS
+    transcriptsCollectionId: process.env.APPWRITE_COLLECTION_ID_TRANSCRIPTS,
+    generatedContentCollectionId: process.env.APPWRITE_COLLECTION_ID_GENERATED_CONTENT
   }
 };
 
