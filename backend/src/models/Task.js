@@ -190,15 +190,6 @@ export class TaskModel {
         .aggregate([
           ...pipeline,
           { $match: {} }, // just to continue chain cleanly if pipeline was empty (it's not)
-          // Join transcripts to flag availability
-          {
-            $lookup: {
-              from: 'transcripts',
-              localField: 'subject',
-              foreignField: 'title',
-              as: 'transcripts'
-            }
-          },
           // Join candidate details to extract Expert for suggestions
           {
             $lookup: {
@@ -213,7 +204,6 @@ export class TaskModel {
           },
           {
             $addFields: {
-              transcription: { $gt: [{ $size: '$transcripts' }, 0] },
               candidateExpertRaw: {
                 $let: {
                   vars: { item: { $first: '$candidateDetails' } },
@@ -222,7 +212,7 @@ export class TaskModel {
               }
             }
           },
-          { $unset: ['replies', 'body', 'transcripts', 'candidateDetails'] }
+          { $unset: ['replies', 'body', 'candidateDetails'] }
         ])
         .toArray();
 
@@ -749,14 +739,6 @@ export class TaskModel {
           { $match: {} }, // Pass-through checks
           {
             $lookup: {
-              from: 'transcripts',
-              localField: 'subject',
-              foreignField: 'title',
-              as: 'transcripts'
-            }
-          },
-          {
-            $lookup: {
               from: 'candidateDetails',
               localField: 'Candidate Name',
               foreignField: 'Candidate Name',
@@ -768,7 +750,6 @@ export class TaskModel {
           },
           {
             $addFields: {
-              transcription: { $gt: [{ $size: '$transcripts' }, 0] },
               candidateExpertRaw: {
                 $let: {
                   vars: { item: { $first: '$candidateDetails' } },
@@ -777,7 +758,7 @@ export class TaskModel {
               }
             }
           },
-          { $unset: ['replies', 'body', 'transcripts', 'candidateDetails'] }
+          { $unset: ['replies', 'body', 'candidateDetails'] }
         ])
         .toArray();
 

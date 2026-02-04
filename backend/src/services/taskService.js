@@ -160,14 +160,6 @@ export class TaskService {
       pipeline.push(
         {
           $lookup: {
-            from: 'transcripts',
-            localField: 'subject',
-            foreignField: 'title',
-            as: 'transcripts'
-          }
-        },
-        {
-          $lookup: {
             from: 'candidateDetails',
             localField: 'Candidate Name',
             foreignField: 'Candidate Name',
@@ -179,7 +171,6 @@ export class TaskService {
         },
         {
           $addFields: {
-            transcription: { $gt: [{ $size: '$transcripts' }, 0] },
             candidateExpertRaw: {
               $let: {
                 vars: { item: { $first: '$candidateDetails' } },
@@ -188,7 +179,7 @@ export class TaskService {
             }
           }
         },
-        { $unset: ['replies', 'body', 'transcripts', 'candidateDetails'] }
+        { $unset: ['replies', 'body', 'candidateDetails'] }
       );
 
       // 4. Access Control (Visibility Filter) -- SAME AS SEARCH
@@ -680,16 +671,8 @@ export class TaskService {
       ];
 
       // 3. Lookups (Access Control Dependencies)
-      // We need these for "Suggested" checks and Transcripts
+      // We need these for "Suggested" checks
       pipeline.push(
-        {
-          $lookup: {
-            from: 'transcripts',
-            localField: 'subject',
-            foreignField: 'title',
-            as: 'transcripts'
-          }
-        },
         {
           $lookup: {
             from: 'candidateDetails',
@@ -703,7 +686,6 @@ export class TaskService {
         },
         {
           $addFields: {
-            transcription: { $gt: [{ $size: '$transcripts' }, 0] },
             candidateExpertRaw: {
               $let: {
                 vars: { item: { $first: '$candidateDetails' } },
@@ -712,7 +694,7 @@ export class TaskService {
             }
           }
         },
-        { $unset: ['replies', 'body', 'transcripts', 'candidateDetails'] }
+        { $unset: ['replies', 'body', 'candidateDetails'] }
       );
 
       // 4. Access Control (Visibility Filter)
