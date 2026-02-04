@@ -240,9 +240,12 @@ export class TaskService {
 
       const docs = await this.taskModel.collection.aggregate(pipeline, { collation }).toArray();
 
-      const tasks = docs
+      let tasks = docs
         .map(task => this.taskModel.formatTask(task))
         .filter(Boolean);
+
+      // Enrich with Appwrite transcript status
+      tasks = await this.taskModel.enrichWithTranscriptStatus(tasks);
 
       logger.info('Tasks by range retrieved (Aggregated)', {
         userEmail,

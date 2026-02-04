@@ -250,7 +250,7 @@ export class TaskModel {
         totalDocs: docs.length
       });
 
-      return tasks;
+      return this.enrichWithTranscriptStatus(tasks);
     } catch (error) {
       logger.error('Failed to get tasks for user', {
         error: error.message,
