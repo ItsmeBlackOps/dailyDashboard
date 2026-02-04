@@ -11,6 +11,12 @@ function escapeRegex(value = '') {
 export class TaskModel {
   constructor() {
     this.collection = null;
+    this.appwriteDatabases = null;
+  }
+
+  async initialize() {
+    this.collection = database.getCollection('taskBody');
+
     // Initialize Appwrite for transcript checks
     if (config.appwrite?.endpoint && config.appwrite?.projectId && config.appwrite?.apiKey) {
       this.appwriteClient = new Client()
@@ -22,10 +28,6 @@ export class TaskModel {
       logger.warn('Appwrite not configured. Transcript status checks will be skipped.');
       this.appwriteDatabases = null;
     }
-  }
-
-  async initialize() {
-    this.collection = database.getCollection('taskBody');
   }
 
   formatTask(doc) {
