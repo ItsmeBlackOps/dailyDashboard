@@ -3,6 +3,8 @@ import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import { logSuggestionDebug } from '../utils/logflare.js';
 import moment from 'moment-timezone';
+import { Client, Databases, Query } from 'node-appwrite';
+import { config } from '../config/index.js';
 
 function escapeRegex(value = '') {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
