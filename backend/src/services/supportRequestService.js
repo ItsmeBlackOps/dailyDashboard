@@ -132,7 +132,7 @@ function formatDateTimeForEmail(input, options = {}) {
     tzMoment = tzMoment.tz(timezone);
   }
 
-  const formatted = tzMoment.format('MMM DD, YYYY [at] hh:mm A');
+  const formatted = tzMoment.format('MMM D, YYYY [at] hh:mm A');
 
   let zoneLabel = trimmedCustomLabel;
   if (!zoneLabel) {

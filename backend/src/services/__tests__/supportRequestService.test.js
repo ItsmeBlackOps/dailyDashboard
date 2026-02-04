@@ -499,7 +499,7 @@ describe('supportRequestService.sendAssessmentSupportRequest', () => {
       .subtract(1, 'day')
       .set({ hour: 10, minute: 15, second: 0, millisecond: 0 });
     const payloadTimestamp = pastKolkata.format();
-    const expectedDisplay = pastKolkata.format('MMM DD, YYYY [at] hh:mm A');
+    const expectedDisplay = pastKolkata.format('MMM D, YYYY [at] hh:mm A');
     const expectedLabel = `UTC${pastKolkata.format('Z')}`;
 
     const payload = {
@@ -536,7 +536,7 @@ describe('supportRequestService.sendAssessmentSupportRequest', () => {
       .subtract(1, 'day')
       .set({ hour: 10, minute: 15, second: 0, millisecond: 0 });
     const payloadTimestamp = pastEst.format('YYYY-MM-DDTHH:mm');
-    const expectedDisplay = pastEst.format('MMM DD, YYYY [at] hh:mm A');
+    const expectedDisplay = pastEst.format('MMM D, YYYY [at] hh:mm A');
 
     const payload = {
       candidateId: 'cand-assess-1',
@@ -570,7 +570,7 @@ describe('supportRequestService.sendAssessmentSupportRequest', () => {
       .subtract(1, 'day')
       .set({ hour: 10, minute: 15, second: 0, millisecond: 0 });
     const payloadTimestamp = pastUtc.toISOString();
-    const expectedDisplay = pastUtc.format('MMM DD, YYYY [at] hh:mm A');
+    const expectedDisplay = pastUtc.format('MMM D, YYYY [at] hh:mm A');
 
     const payload = {
       candidateId: 'cand-assess-1',

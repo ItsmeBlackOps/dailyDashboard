@@ -8,6 +8,7 @@ import supportRoutes from './supportRequests.js';
 import profileRoutes from './profile.js';
 import candidateRoutes from './candidates.js';
 import notificationRoutes from './notificationRoutes.js';
+import permissionRoutes from './permissionRoutes.js';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
@@ -24,6 +25,7 @@ router.use('/support', supportRoutes);
 router.use('/profile', profileRoutes);
 router.use('/candidates', candidateRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/permissions', permissionRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/', docsRoutes);
 
