@@ -5,7 +5,6 @@ import { logSuggestionDebug } from '../utils/logflare.js';
 import moment from 'moment-timezone';
 import { Client, Databases, Query } from 'node-appwrite';
 import { config } from '../config/index.js';
-import { posthogLogger } from '../utils/posthogLogger.js';
 
 function escapeRegex(value = '') {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -336,20 +335,16 @@ export class TaskModel {
         subjectCount: subjects.length
       });
 
-      // Log to PostHog: Query being sent
-      posthogLogger.emit({
-        severityText: 'INFO',
-        body: 'Appwrite Transcript Query',
-        attributes: {
-          event: 'transcript_query',
-          databaseId,
-          collectionId: transcriptsCollectionId,
-          queryType: 'Query.equal',
-          queryField: 'title',
-          queryValues: subjects,
-          subjectCount: subjects.length,
-          taskCount: tasks.length
-        }
+      // Log Query being sent
+      logger.info('Appwrite Transcript Query', {
+        event: 'transcript_query',
+        databaseId,
+        collectionId: transcriptsCollectionId,
+        queryType: 'Query.equal',
+        queryField: 'title',
+        subjectCount: subjects.length,
+        taskCount: tasks.length
+        // omitting queryValues to avoid log bloating if many subjects
       });
 
       // Query Appwrite for all subjects (batch query with OR)
@@ -374,19 +369,14 @@ export class TaskModel {
         total: subjects.length
       });
 
-      // Log to PostHog: Query results
-      posthogLogger.emit({
-        severityText: 'INFO',
-        body: 'Appwrite Transcript Query Results',
-        attributes: {
-          event: 'transcript_query_result',
-          totalSubjects: subjects.length,
-          foundCount: transcriptTitles.size,
-          matchedSubjects,
-          unmatchedSubjects,
-          matchRate: `${((transcriptTitles.size / subjects.length) * 100).toFixed(1)}%`,
-          transcriptTitles: Array.from(transcriptTitles)
-        }
+      // Log Query results
+      logger.info('Appwrite Transcript Query Results', {
+        event: 'transcript_query_result',
+        totalSubjects: subjects.length,
+        foundCount: transcriptTitles.size,
+        matchRate: `${((transcriptTitles.size / subjects.length) * 100).toFixed(1)}%`,
+        matchedSubjects,
+        unmatchedSubjects
       });
 
       // Enrich tasks with transcription status
