@@ -76,7 +76,7 @@ const config = {
   openai: {
     apiKey: process.env.OPENAI_API_KEY || '',
     baseUrl: process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE_URL || 'https://api.openai.com/v1',
-    model: process.env.OPENAI_REPORTING_MODEL || 'gpt-5',
+    model: process.env.OPENAI_REPORTING_MODEL || 'gpt-4o',
     timeoutMs: Number.parseInt(process.env.OPENAI_TIMEOUT_MS || '300000', 10)
   },
 

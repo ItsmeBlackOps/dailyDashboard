@@ -269,7 +269,7 @@ class ThanksMailService {
             Authorization: `Bearer ${apiKey}`
           },
           body: JSON.stringify({
-            model: model || 'gpt-5',
+            model: model || 'gpt-4o',
             messages: [
               {
                 role: 'system',
