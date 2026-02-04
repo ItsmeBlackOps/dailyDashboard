@@ -5,6 +5,7 @@ import { logSuggestionDebug } from '../utils/logflare.js';
 import moment from 'moment-timezone';
 import { Client, Databases, Query } from 'node-appwrite';
 import { config } from '../config/index.js';
+import { posthogLogger } from '../utils/posthogLogger.js';
 
 function escapeRegex(value = '') {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -335,6 +336,22 @@ export class TaskModel {
         subjectCount: subjects.length
       });
 
+      // Log to PostHog: Query being sent
+      posthogLogger.emit({
+        severityText: 'INFO',
+        body: 'Appwrite Transcript Query',
+        attributes: {
+          event: 'transcript_query',
+          databaseId,
+          collectionId: transcriptsCollectionId,
+          queryType: 'Query.equal',
+          queryField: 'title',
+          queryValues: subjects,
+          subjectCount: subjects.length,
+          taskCount: tasks.length
+        }
+      });
+
       // Query Appwrite for all subjects (batch query with OR)
       const queries = [Query.equal('title', subjects)];
       const response = await this.appwriteDatabases.listDocuments(
@@ -348,9 +365,28 @@ export class TaskModel {
         response.documents.map(doc => doc.title)
       );
 
+      // Identify matched and unmatched
+      const matchedSubjects = subjects.filter(s => transcriptTitles.has(s));
+      const unmatchedSubjects = subjects.filter(s => !transcriptTitles.has(s));
+
       logger.debug('Transcript check complete', {
         foundCount: transcriptTitles.size,
         total: subjects.length
+      });
+
+      // Log to PostHog: Query results
+      posthogLogger.emit({
+        severityText: 'INFO',
+        body: 'Appwrite Transcript Query Results',
+        attributes: {
+          event: 'transcript_query_result',
+          totalSubjects: subjects.length,
+          foundCount: transcriptTitles.size,
+          matchedSubjects,
+          unmatchedSubjects,
+          matchRate: `${((transcriptTitles.size / subjects.length) * 100).toFixed(1)}%`,
+          transcriptTitles: Array.from(transcriptTitles)
+        }
       });
 
       // Enrich tasks with transcription status
