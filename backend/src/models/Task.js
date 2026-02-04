@@ -11,6 +11,17 @@ function escapeRegex(value = '') {
 export class TaskModel {
   constructor() {
     this.collection = null;
+    // Initialize Appwrite for transcript checks
+    if (config.appwrite?.endpoint && config.appwrite?.projectId && config.appwrite?.apiKey) {
+      this.appwriteClient = new Client()
+        .setEndpoint(config.appwrite.endpoint)
+        .setProject(config.appwrite.projectId)
+        .setKey(config.appwrite.apiKey);
+      this.appwriteDatabases = new Databases(this.appwriteClient);
+    } else {
+      logger.warn('Appwrite not configured. Transcript status checks will be skipped.');
+      this.appwriteDatabases = null;
+    }
   }
 
   async initialize() {
@@ -216,7 +227,10 @@ export class TaskModel {
         ])
         .toArray();
 
-      const tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails);
+      let tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails);
+
+      // Enrich with Appwrite transcript status
+      tasks = await this.enrichWithTranscriptStatus(tasks);
 
       tasks.sort((a, b) => {
         const diff = a.startTime - b.startTime;
@@ -291,6 +305,64 @@ export class TaskModel {
       };
     } else {
       return {};
+    }
+  }
+
+  async enrichWithTranscriptStatus(tasks) {
+    if (!this.appwriteDatabases || !Array.isArray(tasks) || tasks.length === 0) {
+      // If Appwrite not configured or no tasks, return as-is with transcription=false
+      return tasks.map(task => ({ ...task, transcription: false }));
+    }
+
+    try {
+      const { databaseId, transcriptsCollectionId } = config.appwrite;
+
+      // Extract unique subjects
+      const subjects = tasks
+        .map(t => (t.subject || t.Subject || '').trim())
+        .filter(Boolean);
+
+      if (subjects.length === 0) {
+        return tasks.map(task => ({ ...task, transcription: false }));
+      }
+
+      logger.debug('Checking transcript availability in Appwrite', {
+        taskCount: tasks.length,
+        subjectCount: subjects.length
+      });
+
+      // Query Appwrite for all subjects (batch query with OR)
+      const queries = [Query.equal('title', subjects)];
+      const response = await this.appwriteDatabases.listDocuments(
+        databaseId,
+        transcriptsCollectionId,
+        queries
+      );
+
+      // Create a Set of titles that have transcripts
+      const transcriptTitles = new Set(
+        response.documents.map(doc => doc.title)
+      );
+
+      logger.debug('Transcript check complete', {
+        foundCount: transcriptTitles.size,
+        total: subjects.length
+      });
+
+      // Enrich tasks with transcription status
+      return tasks.map(task => {
+        const subject = (task.subject || task.Subject || '').trim();
+        return {
+          ...task,
+          transcription: transcriptTitles.has(subject)
+        };
+      });
+    } catch (error) {
+      logger.error('Failed to check transcript status from Appwrite', {
+        error: error.message
+      });
+      // On error, return tasks with transcription=false
+      return tasks.map(task => ({ ...task, transcription: false }));
     }
   }
 
@@ -762,7 +834,10 @@ export class TaskModel {
         ])
         .toArray();
 
-      const tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails);
+      let tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails);
+
+      // Enrich with Appwrite transcript status
+      tasks = await this.enrichWithTranscriptStatus(tasks);
 
       tasks.sort((a, b) => {
         const aS = (a.startTime ? new Date(a.startTime) : new Date(0)).getTime();
