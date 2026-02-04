@@ -2659,10 +2659,18 @@ export default function TasksToday() {
   }, [currentUserEmail, toast]);
 
   // === Fetch & socket wiring ===
-  const readMap = (): Record<string, string> =>
-    JSON.parse(localStorage.getItem(TASK_STATUS_MAP) || "{}");
-  const writeMap = (m: Record<string, string>) =>
+  // Stable helpers (no dependencies)
+  const readMap = useCallback((): Record<string, string> => {
+    try {
+      return JSON.parse(localStorage.getItem(TASK_STATUS_MAP) || "{}");
+    } catch {
+      return {};
+    }
+  }, []);
+
+  const writeMap = useCallback((m: Record<string, string>) => {
     localStorage.setItem(TASK_STATUS_MAP, JSON.stringify(m));
+  }, []);
 
   const fetchTasks = useCallback((isInitial = true, offset = 0) => {
     const BATCH_SIZE = isInitial ? 30 : 20;
@@ -2747,122 +2755,110 @@ export default function TasksToday() {
     fetchTasks(true, 0);
   }, [fetchTasks]);
 
-  // === Realtime Signal -> Fetch -> Upsert ===
+  // === Realtime Signal -> Fetch -> Upsert (RAF batching) ===
 
-  // Queue for Task IDs that need to be fetched (Signal received, need Canonical Data)
-  const invalidationQueueRef = useRef<Set<string>>(new Set());
-  const processingRef = useRef(false);
+  // Stable ref to latest fetchTasks to avoid re-binding socket listeners
+  const fetchTasksRef = useRef<(isInitial?: boolean, offset?: number) => void>(() => { });
+  useEffect(() => {
+    fetchTasksRef.current = fetchTasks;
+  }, [fetchTasks]);
 
-  // Helper to fetch single task canonically
-  const fetchCanonicalTask = useCallback((taskId: string): Promise<Task | null> => {
+  // Queue for Task IDs that need canonical fetch
+  const pendingIdsRef = useRef<Set<string>>(new Set());
+  const flushRafRef = useRef<number | null>(null);
+
+  // Fetch single task by ID
+  const fetchTaskById = useCallback((taskId: string): Promise<Task | null> => {
     return new Promise((resolve) => {
       if (!socket.connected) return resolve(null);
-      socket.emit("getTaskById", { taskId }, (resp: { success: boolean, task?: Task }) => {
-        if (resp.success && resp.task) {
-          resolve(resp.task);
-        } else {
-          resolve(null);
-        }
+      socket.emit("getTaskById", { taskId }, (resp: any) => {
+        if (!resp?.success) return resolve(null);
+        resolve(resp.task || resp.data?.task || null);
       });
     });
   }, [socket]);
 
-  // Process the Invalidation Queue
-  const processInvalidationQueue = useCallback(async () => {
-    if (processingRef.current || invalidationQueueRef.current.size === 0) return;
-    processingRef.current = true;
+  // Schedule flush on next animation frame (batching)
+  const scheduleFlush = useCallback(() => {
+    if (flushRafRef.current) return;
 
-    // Snapshot current queue
-    const idsToFetch = Array.from(invalidationQueueRef.current);
-    invalidationQueueRef.current.clear();
+    flushRafRef.current = window.requestAnimationFrame(async () => {
+      flushRafRef.current = null;
 
-    const fetchedTasks: Task[] = [];
+      const ids = Array.from(pendingIdsRef.current);
+      pendingIdsRef.current.clear();
+      if (ids.length === 0) return;
 
-    // Concurrently fetch all canonical task data
-    await Promise.all(idsToFetch.map(async (id) => {
-      const t = await fetchCanonicalTask(id);
-      if (t) fetchedTasks.push(t);
-    }));
-
-    if (fetchedTasks.length === 0) {
-      processingRef.current = false;
-      return;
-    }
-
-    // Single State Mutation (Upsert)
-    setTasks((prev) => {
-      let next = [...prev];
-      let shouldPlaySound = false;
-      let notificationMsg = "";
+      // Fetch all canonical tasks concurrently
+      const tasksById = await Promise.all(ids.map(fetchTaskById));
 
       const map = readMap();
       const isTodayView = filters.range === 'day' && !filters.upcoming && moment(filters.dayDate).isSame(moment.tz(TZ), 'day');
+      let shouldPlaySound = false;
+      let notificationMsg = "";
 
-      fetchedTasks.forEach(task => {
-        // Filter check (client-side)
-        if (!isInCurrentFilters(task)) {
-          // Remove if exists
-          next = next.filter(t => t._id !== task._id);
-          if (map[task._id]) delete map[task._id];
-          return;
-        }
+      setTasks((prev) => {
+        let next = prev;
 
-        // Upsert
-        const idx = next.findIndex(t => t._id === task._id);
-        const isNew = idx === -1;
-        const previousStatus = map[task._id] || "";
+        for (let i = 0; i < ids.length; i++) {
+          const id = ids[i];
+          const task = tasksById[i];
 
-        if (isNew) {
-          next.push(task);
-        } else {
-          next[idx] = task;
-        }
+          // If not visible / deleted / unauthorized => remove
+          if (!task || !isInCurrentFilters(task)) {
+            if (next.some(t => t._id === id)) {
+              next = next.filter(t => t._id !== id);
+              if (map[id]) delete map[id];
+            }
+            continue;
+          }
 
-        // Track Status for Notifications
-        seenTasksRef.current.add(task._id);
-        map[task._id] = task.status || "";
+          // Upsert
+          const idx = next.findIndex((t) => t._id === id);
+          const isNew = idx < 0;
+          const previousStatus = map[id] || "";
 
-        // Determine Notifications
-        if (isTodayView && !firstLoad.current) {
           if (isNew) {
-            shouldPlaySound = true;
-            notificationMsg = "New Task Added";
-          } else if (previousStatus !== (task.status || "")) {
-            shouldPlaySound = true;
-            notificationMsg = "Task Updated";
+            next = [...next, task];
+          } else {
+            const copy = next.slice();
+            copy[idx] = task;
+            next = copy;
+          }
+
+          // Track for notifications
+          seenTasksRef.current.add(id);
+          map[id] = task.status || "";
+
+          // Determine notifications
+          if (isTodayView && !firstLoad.current) {
+            if (isNew) {
+              shouldPlaySound = true;
+              notificationMsg = "New Task Added";
+            } else if (previousStatus !== (task.status || "")) {
+              shouldPlaySound = true;
+              notificationMsg = "Task Updated";
+            }
           }
         }
-      });
 
-      writeMap(map);
+        writeMap(map);
 
-      // Stable Sort
-      const sorted = sortByPrimaryStart(next);
-      if (isTodayView) reconcileReminders(sorted);
+        // Sort
+        const sorted = sortByPrimaryStart(next);
+        if (isTodayView) reconcileReminders(sorted);
 
-      if (shouldPlaySound) {
-        playTune();
-        if (notificationMsg) {
-          toast({ title: notificationMsg, description: "Dashboard updated" });
+        if (shouldPlaySound) {
+          playTune();
+          if (notificationMsg) {
+            toast({ title: notificationMsg, description: "Dashboard updated" });
+          }
         }
-      }
 
-      return sorted;
+        return sorted;
+      });
     });
-
-    processingRef.current = false;
-
-    // Check if more items arrived while processing
-    if (invalidationQueueRef.current.size > 0) {
-      processInvalidationQueue();
-    }
-
-  }, [fetchCanonicalTask, isInCurrentFilters, filters, reconcileReminders, sortByPrimaryStart, toast, readMap, writeMap]);
-
-  // Debounced trigger for queue processing (micro-batching)
-  const scheduleQueueProcess = useCallback(() => {
-    setTimeout(processInvalidationQueue, 50);
-  }, [processInvalidationQueue]);
+  }, [fetchTaskById, isInCurrentFilters, filters, reconcileReminders, sortByPrimaryStart, readMap, writeMap, toast]);
 
 
   useEffect(() => {
@@ -2884,12 +2880,14 @@ export default function TasksToday() {
     };
 
     // 2. Task Signal Events (Created / Updated)
-    const onSignal = (taskOrId: Task | { _id: string }) => {
-      const id = taskOrId._id;
-      if (id) {
-        invalidationQueueRef.current.add(id);
-        scheduleQueueProcess();
-      }
+    const onCreated = (t: Task) => {
+      pendingIdsRef.current.add(t._id);
+      scheduleFlush();
+    };
+
+    const onUpdated = (t: Task) => {
+      pendingIdsRef.current.add(t._id);
+      scheduleFlush();
     };
 
     const onAuthError = async (err: Error) => {
@@ -2897,30 +2895,32 @@ export default function TasksToday() {
       const ok = await refreshAccessToken();
       if (!ok) return socket.disconnect();
       socket.auth = { token: localStorage.getItem("accessToken") || "" };
-      socket.once("connect", fetchTasks);
+      socket.once("connect", () => fetchTasksRef.current(true, 0));
       socket.connect();
     };
 
-    socket.on("taskCreated", onSignal);
-    socket.on("taskUpdated", onSignal);
+    socket.on("taskCreated", onCreated);
+    socket.on("taskUpdated", onUpdated);
     socket.on("taskRemoved", onRemove);
     socket.on("connect_error", onAuthError);
 
-    socket.once("connect", () => fetchTasks(true, 0));
+    socket.once("connect", () => fetchTasksRef.current(true, 0));
     socket.connect();
 
     return () => {
-      socket.off("taskCreated", onSignal);
-      socket.off("taskUpdated", onSignal);
+      socket.off("taskCreated", onCreated);
+      socket.off("taskUpdated", onUpdated);
       socket.off("taskRemoved", onRemove);
       socket.off("connect_error", onAuthError);
       socket.disconnect();
+
+      if (flushRafRef.current) cancelAnimationFrame(flushRafRef.current);
 
       // Clean all timers
       for (const [, id] of timersRef.current.entries()) window.clearTimeout(id);
       timersRef.current.clear();
     };
-  }, [socket, toast, refreshAccessToken, fetchTasks, scheduleQueueProcess, readMap, writeMap]);
+  }, [socket, scheduleFlush, readMap, writeMap, refreshAccessToken]);
 
   // When filters change, refetch
   useEffect(() => {
