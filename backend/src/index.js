@@ -118,6 +118,7 @@ class Application {
   async initializeModels() {
     await userModel.initialize();
     await taskModel.initialize();
+    logger.warn('SANITY: taskModel.init completed', { hasAppwrite: !!taskModel.appwriteDatabases });
     await candidateModel.initialize();
     await refreshTokenModel.initialize();
     await rolePermissionModel.initialize();
