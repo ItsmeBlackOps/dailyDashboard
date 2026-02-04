@@ -58,6 +58,10 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const PROMPT_TEMPLATE = `You are a recruiter-grade email drafter. Use ONLY the transcript to write a concise, specific thank-you email.
 
 INPUT
+Candidate Name: {{CANDIDATE_NAME}}
+End Client: {{END_CLIENT}}
+
+TRANSCRIPT:
 {{TRANSCRIPT}}
 
 TASK
@@ -235,8 +239,14 @@ class ThanksMailService {
     return script;
   }
 
-  buildPrompt(transcript) {
-    return PROMPT_TEMPLATE.replace('{{TRANSCRIPT}}', transcript);
+  buildPrompt(transcript, task) {
+    const candidateName = task['Candidate Name'] || task.candidateName || 'N/A';
+    const endClient = task['End Client'] || task.endClient || 'N/A';
+
+    return PROMPT_TEMPLATE
+      .replace('{{TRANSCRIPT}}', transcript)
+      .replace('{{CANDIDATE_NAME}}', candidateName)
+      .replace('{{END_CLIENT}}', endClient);
   }
 
   async callOpenAI(prompt) {
@@ -369,7 +379,7 @@ class ThanksMailService {
     }
 
     const rateLimit = this.enforceRateLimit(user.email);
-    const prompt = this.buildPrompt(script);
+    const prompt = this.buildPrompt(script, task);
     logger.info('Generating thanks mail via OpenAI', {
       userEmail: user.email,
       taskId,
