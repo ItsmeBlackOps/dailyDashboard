@@ -144,12 +144,23 @@ class InterviewerQuestionService {
       );
 
       if (response && response.documents.length > 0) {
+        const doc = response.documents[0];
         logger.debug('Transcript found', {
           title,
-          documentId: response.documents[0].$id,
-          documentsCount: response.documents.length
+          documentId: doc.$id,
+          hasSentences: Array.isArray(doc.sentences),
+          hasSentencesJson: !!doc.sentences_json
         });
-        return response.documents[0];
+
+        if (doc.sentences_json && typeof doc.sentences_json === 'string') {
+          try {
+            doc.sentences = JSON.parse(doc.sentences_json);
+          } catch (err) {
+            logger.warn('Failed to parse sentences_json', { documentId: doc.$id, error: err.message });
+          }
+        }
+
+        return doc;
       }
 
       logger.debug('No transcript found', { title });
@@ -161,6 +172,62 @@ class InterviewerQuestionService {
     }
 
     return null;
+  }
+
+  async getCachedContent(taskId, type) {
+    if (!config.appwrite.generatedContentCollectionId || !this.databases) return null;
+
+    try {
+      const response = await this.databases.listDocuments(
+        config.appwrite.databaseId,
+        config.appwrite.generatedContentCollectionId,
+        [
+          Query.equal('taskId', taskId),
+          Query.equal('type', type),
+          Query.limit(1)
+        ]
+      );
+
+      if (response.documents.length > 0) {
+        const doc = response.documents[0];
+        let content = doc.content;
+        try {
+          if (typeof content === 'string' && (content.startsWith('[') || content.startsWith('{'))) {
+            content = JSON.parse(content);
+          }
+        } catch (e) {
+          // ignore, keep as string
+        }
+        return {
+          content,
+          createdAt: doc.$createdAt || doc.createdAt
+        };
+      }
+    } catch (error) {
+      logger.warn('Failed to fetch cached content', { taskId, type, error: error.message });
+    }
+    return null;
+  }
+
+  async saveGeneratedContent(taskId, type, content) {
+    if (!config.appwrite.generatedContentCollectionId || !this.databases) return;
+
+    try {
+      const stringContent = typeof content === 'object' ? JSON.stringify(content) : content;
+      await this.databases.createDocument(
+        config.appwrite.databaseId,
+        config.appwrite.generatedContentCollectionId,
+        'unique()',
+        {
+          taskId,
+          type,
+          content: stringContent,
+          createdAt: new Date().toISOString()
+        }
+      );
+    } catch (error) {
+      logger.warn('Failed to save generated content', { taskId, type, error: error.message });
+    }
   }
 
   buildTranscriptScript(sentences = []) {
@@ -342,6 +409,18 @@ class InterviewerQuestionService {
     this.ensureFeatureEnabled();
     this.ensureRoleAllowed(user.role);
 
+    // 1. Check Cache
+    const cached = await this.getCachedContent(taskId, 'questions');
+    if (cached) {
+      logger.info('Returning cached interviewer questions', { taskId, userEmail: user.email });
+      return {
+        questions: cached.content, // Expecting array/object here
+        generatedAt: cached.createdAt,
+        rateLimit: { remaining: 999, resetAt: new Date().toISOString() }
+      };
+    }
+
+    // 2. Load Task
     const taskResult = await taskService.getTaskById(taskId, user.email, user.role, user.teamLead);
     const task = taskResult?.task;
     if (!task) {
@@ -350,6 +429,7 @@ class InterviewerQuestionService {
       throw error;
     }
 
+    // 3. Load & Parse Transcript
     const transcriptDoc = await this.fetchTranscript(task);
     if (!transcriptDoc || !Array.isArray(transcriptDoc.sentences) || transcriptDoc.sentences.length === 0) {
       const error = new Error('Transcript not found for this task.');
@@ -364,6 +444,7 @@ class InterviewerQuestionService {
       throw error;
     }
 
+    // 4. Rate Limit
     const rateLimit = this.enforceRateLimit(user.email);
     logger.info('Extracting interviewer questions via OpenAI', {
       userEmail: user.email,
@@ -371,8 +452,12 @@ class InterviewerQuestionService {
       transcriptLength: script.length
     });
 
+    // 5. Generate
     const payload = await this.callOpenAI(script);
     const questions = this.normalizeQuestions(payload);
+
+    // 6. Save to Cache
+    await this.saveGeneratedContent(taskId, 'questions', questions);
 
     return {
       questions,
