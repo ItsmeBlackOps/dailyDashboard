@@ -129,6 +129,14 @@ class InterviewerQuestionService {
 
     try {
       const { databaseId, transcriptsCollectionId } = config.appwrite;
+
+      logger.debug('Querying Appwrite for transcript', {
+        databaseId,
+        collectionId: transcriptsCollectionId,
+        query: { title },
+        queryType: 'Query.equal'
+      });
+
       const response = await this.databases.listDocuments(
         databaseId,
         transcriptsCollectionId,
@@ -136,8 +144,15 @@ class InterviewerQuestionService {
       );
 
       if (response && response.documents.length > 0) {
+        logger.debug('Transcript found', {
+          title,
+          documentId: response.documents[0].$id,
+          documentsCount: response.documents.length
+        });
         return response.documents[0];
       }
+
+      logger.debug('No transcript found', { title });
     } catch (error) {
       logger.error('Failed to fetch transcript from Appwrite', {
         error: error.message,
