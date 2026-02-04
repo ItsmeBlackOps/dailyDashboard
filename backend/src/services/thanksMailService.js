@@ -348,8 +348,6 @@ class ThanksMailService {
             response_format: {
               type: 'text'
             },
-            verbosity: 'medium',
-            reasoning_effort: 'medium',
             store: true
           }),
           signal: controller.signal
