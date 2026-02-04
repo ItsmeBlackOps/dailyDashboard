@@ -75,7 +75,7 @@ export const SubjectValidationBadge: React.FC<{ task: Task }> = ({ task }) => {
             if (!dateMoment.isValid()) {
                 errors.push("Invalid 'Date of Interview' format (Expected MM/DD/YYYY)");
             } else {
-                const formattedDate = dateMoment.format('MMM DD, YYYY'); // Jan 26, 2026
+                const formattedDate = dateMoment.format('MMM D, YYYY'); // Feb 4, 2026
                 // Note: The user example is "Jan 26, 2026". Moment 'MMM DD, YYYY' produces "Jan 26, 2026".
 
                 // Construct Expected Subject

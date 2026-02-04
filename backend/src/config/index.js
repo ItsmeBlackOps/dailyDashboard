@@ -161,7 +161,15 @@ const config = {
         ? maxResumeBytes
         : 5 * 1024 * 1024
     };
-  })()
+  })(),
+
+  appwrite: {
+    endpoint: process.env.APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1',
+    projectId: process.env.APPWRITE_PROJECT_ID,
+    apiKey: process.env.APPWRITE_API_KEY,
+    databaseId: process.env.APPWRITE_DATABASE_ID,
+    transcriptsCollectionId: process.env.APPWRITE_COLLECTION_ID_TRANSCRIPTS
+  }
 };
 
 // Validate required configuration

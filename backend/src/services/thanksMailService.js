@@ -1,5 +1,6 @@
 import { config } from '../config/index.js';
 import { database } from '../config/database.js';
+import { Client, Databases, Query } from 'node-appwrite';
 import { taskService } from './taskService.js';
 import { logger } from '../utils/logger.js';
 import { marked } from 'marked';
@@ -92,7 +93,17 @@ Best,
 class ThanksMailService {
   constructor() {
     this.usage = new Map();
-    this.transcriptsCollection = null;
+    // Appwrite Initialization
+    if (config.appwrite.endpoint && config.appwrite.projectId && config.appwrite.apiKey) {
+      this.client = new Client()
+        .setEndpoint(config.appwrite.endpoint)
+        .setProject(config.appwrite.projectId)
+        .setKey(config.appwrite.apiKey);
+      this.databases = new Databases(this.client);
+    } else {
+      logger.warn('Appwrite not configured. Transcript fetching will fail if attempted.');
+      this.databases = null;
+    }
   }
 
   ensureFeatureEnabled() {
@@ -144,34 +155,33 @@ class ThanksMailService {
     };
   }
 
-  getTranscriptsCollection() {
-    if (!this.transcriptsCollection) {
-      this.transcriptsCollection = database.getCollection('transcripts');
-    }
-    return this.transcriptsCollection;
-  }
-
   async fetchTranscript(task) {
-    const transcriptsCol = this.getTranscriptsCollection();
-    const subject = (task.subject || task.Subject || task.title || '').trim();
-    if (!subject) {
+    if (!this.databases) {
+      logger.error('Appwrite database client not initialized');
       return null;
     }
 
-    const query = [{ title: subject }];
-
-    if (task._id) {
-      query.push({ taskId: task._id });
-    }
-    if (task.id) {
-      query.push({ taskId: task.id });
+    const title = (task.subject || task.Subject || task.title || '').trim();
+    if (!title) {
+      return null;
     }
 
-    for (const filter of query) {
-      const doc = await transcriptsCol.findOne(filter);
-      if (doc) {
-        return doc;
+    try {
+      const { databaseId, transcriptsCollectionId } = config.appwrite;
+      const response = await this.databases.listDocuments(
+        databaseId,
+        transcriptsCollectionId,
+        [Query.equal('title', title)]
+      );
+
+      if (response && response.documents.length > 0) {
+        return response.documents[0];
       }
+    } catch (error) {
+      logger.error('Failed to fetch transcript from Appwrite', {
+        error: error.message,
+        title
+      });
     }
 
     return null;

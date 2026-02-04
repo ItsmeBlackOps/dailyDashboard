@@ -15,6 +15,7 @@ import AdminAlertsPage from './pages/AdminAlerts';
 import UserManagementPage from './pages/UserManagement';
 import ResumeUnderstanding from './pages/ResumeUnderstanding';
 import DashboardV2 from './pages/DashboardV2';
+import PermissionsManagement from './pages/PermissionsManagement';
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/admin-alerts" element={<AdminAlertsPage />} />
             <Route path="/resume-understanding" element={<ResumeUnderstanding />} />
             <Route path="/user-management" element={<UserManagementPage />} />
+            <Route path="/permissions" element={<PermissionsManagement />} />
             <Route path="/dashboard-v2" element={<DashboardV2 />} />
             {/* Add any other protected routes here */}
           </Route>
