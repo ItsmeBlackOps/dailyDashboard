@@ -18,6 +18,7 @@ export class TaskModel {
   }
 
   async initialize() {
+    logger.warn('LOGGER_SANITY_CHECK: TaskModel.initialize() started');
     this.collection = database.getCollection('taskBody');
 
     // Initialize Appwrite for transcript checks
