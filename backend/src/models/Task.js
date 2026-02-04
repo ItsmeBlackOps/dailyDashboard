@@ -5,6 +5,7 @@ import { logSuggestionDebug } from '../utils/logflare.js';
 import moment from 'moment-timezone';
 import { Client, Databases, Query } from 'node-appwrite';
 import { config } from '../config/index.js';
+import { posthogLogger } from '../utils/posthogLogger.js';
 
 function escapeRegex(value = '') {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -313,52 +314,62 @@ export class TaskModel {
   }
 
   async enrichWithTranscriptStatus(tasks) {
-    if (!this.appwriteDatabases || !Array.isArray(tasks) || tasks.length === 0) {
-      // If Appwrite not configured or no tasks, return as-is with transcription=false
+    if (!this.appwriteDatabases) {
+      if (config.appwrite?.endpoint) { // Only log if we tried to configure it
+        logger.warn('Appwrite database client not initialized, skipping transcript check');
+      }
       return tasks.map(task => ({ ...task, transcription: false }));
     }
 
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+      return tasks.map(task => ({ ...task, transcription: false }));
+    }
+
+    const { databaseId, transcriptsCollectionId } = config.appwrite;
+
+    // Extract unique subjects
+    const subjects = [...new Set(tasks
+      .map(t => (t.subject || t.Subject || '').trim())
+      .filter(Boolean))]; // Dedupe and filter empty
+
+    if (subjects.length === 0) {
+      return tasks.map(task => ({ ...task, transcription: false }));
+    }
+
+    logger.debug('Checking transcript availability in Appwrite', {
+      taskCount: tasks.length,
+      subjectCount: subjects.length
+    });
+
+    const transcriptTitles = new Set();
+    const BATCH_SIZE = 50;
+
     try {
-      const { databaseId, transcriptsCollectionId } = config.appwrite;
+      // Process in batches
+      for (let i = 0; i < subjects.length; i += BATCH_SIZE) {
+        const batch = subjects.slice(i, i + BATCH_SIZE);
 
-      // Extract unique subjects
-      const subjects = tasks
-        .map(t => (t.subject || t.Subject || '').trim())
-        .filter(Boolean);
+        posthogLogger.emit({
+          severityText: 'INFO',
+          body: 'Appwrite Transcript Query Batch',
+          attributes: {
+            event: 'transcript_query_batch',
+            batchIndex: i / BATCH_SIZE,
+            batchSize: batch.length,
+            totalSubjects: subjects.length,
+            queryValues: batch
+          }
+        });
 
-      if (subjects.length === 0) {
-        return tasks.map(task => ({ ...task, transcription: false }));
+        const queries = [Query.equal('title', batch)];
+        const response = await this.appwriteDatabases.listDocuments(
+          databaseId,
+          transcriptsCollectionId,
+          queries
+        );
+
+        response.documents.forEach(doc => transcriptTitles.add(doc.title));
       }
-
-      logger.debug('Checking transcript availability in Appwrite', {
-        taskCount: tasks.length,
-        subjectCount: subjects.length
-      });
-
-      // Log Query being sent
-      logger.info('Appwrite Transcript Query', {
-        event: 'transcript_query',
-        databaseId,
-        collectionId: transcriptsCollectionId,
-        queryType: 'Query.equal',
-        queryField: 'title',
-        subjectCount: subjects.length,
-        taskCount: tasks.length
-        // omitting queryValues to avoid log bloating if many subjects
-      });
-
-      // Query Appwrite for all subjects (batch query with OR)
-      const queries = [Query.equal('title', subjects)];
-      const response = await this.appwriteDatabases.listDocuments(
-        databaseId,
-        transcriptsCollectionId,
-        queries
-      );
-
-      // Create a Set of titles that have transcripts
-      const transcriptTitles = new Set(
-        response.documents.map(doc => doc.title)
-      );
 
       // Identify matched and unmatched
       const matchedSubjects = subjects.filter(s => transcriptTitles.has(s));
@@ -369,14 +380,19 @@ export class TaskModel {
         total: subjects.length
       });
 
-      // Log Query results
-      logger.info('Appwrite Transcript Query Results', {
-        event: 'transcript_query_result',
-        totalSubjects: subjects.length,
-        foundCount: transcriptTitles.size,
-        matchRate: `${((transcriptTitles.size / subjects.length) * 100).toFixed(1)}%`,
-        matchedSubjects,
-        unmatchedSubjects
+      // Log to PostHog: Final Query results
+      posthogLogger.emit({
+        severityText: 'INFO',
+        body: 'Appwrite Transcript Query Results',
+        attributes: {
+          event: 'transcript_query_result',
+          totalSubjects: subjects.length,
+          foundCount: transcriptTitles.size,
+          matchedSubjects,
+          unmatchedSubjects,
+          matchRate: `${subjects.length > 0 ? ((transcriptTitles.size / subjects.length) * 100).toFixed(1) : '0'}%`,
+          transcriptTitles: Array.from(transcriptTitles)
+        }
       });
 
       // Enrich tasks with transcription status
@@ -389,7 +405,8 @@ export class TaskModel {
       });
     } catch (error) {
       logger.error('Failed to check transcript status from Appwrite', {
-        error: error.message
+        error: error.message,
+        stack: error.stack
       });
       // On error, return tasks with transcription=false
       return tasks.map(task => ({ ...task, transcription: false }));
