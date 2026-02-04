@@ -471,7 +471,7 @@ export class TaskModel {
 
       const isAdmin = normalizedRole === 'admin';
       const isSelf = userEmailLower === assignedEmailLower;
-      const isOnTeam = teamEmailSet.has(assignedEmailLower);
+      const isOnTeam = teamEmailSet.has(assignedEmailLower) || teamEmailSet.has(candidateExpertRaw);
 
       if (isAdmin || isSelf || isOnTeam) {
         logSuggestionDebug('TasksToday base visibility satisfied', {
@@ -1029,30 +1029,75 @@ export class TaskModel {
 
   setupChangeStream(io, userModel) {
     try {
-      const changeStream = this.collection.watch([
-        { $match: { operationType: { $in: ["insert", "update"] } } },
-      ]);
+      const changeStream = this.collection.watch(
+        [
+          { $match: { operationType: { $in: ["insert", "update", "replace"] } } },
+        ],
+        { fullDocument: "updateLookup", fullDocumentBeforeChange: "required" }
+      );
 
       changeStream.on("change", async (change) => {
         try {
-          const doc = change.operationType === "insert"
-            ? change.fullDocument
-            : await this.collection.findOne({ _id: change.documentKey._id });
+          // 1. Prepare New State
+          let docNew = null;
+          if (["insert", "update", "replace"].includes(change.operationType)) {
+            docNew = change.fullDocument;
+          }
 
-          const formatted = this.formatTask(doc);
-          if (!formatted) return;
+          // 2. Prepare Old State (Pre-Image)
+          let docOld = null;
+          if (["update", "replace"].includes(change.operationType)) {
+            docOld = change.fullDocumentBeforeChange;
+          }
 
-          const event = change.operationType === "insert" ? "taskCreated" : "taskUpdated";
+          // Format both to ensure derived fields (like assignedEmail) are available for permission checks
+          const taskNew = docNew ? this.formatTask(docNew) : null;
+          const taskOld = docOld ? this.formatTask(docOld) : null;
 
-          logger.debug('Task change detected', {
-            event,
-            taskId: formatted._id,
-            assignedEmail: formatted.assignedEmail
+          // If current state is invalid/null (e.g. deleted or formatting error), we can't show it.
+          // But if it was an update that made it invalid, we might need to send removals.
+          // For simplicity, if taskNew is null but taskOld was valid, we treat as removal.
+
+          const eventType = change.operationType === "insert" ? "taskCreated" : "taskUpdated";
+          const taskId = (taskNew && taskNew._id) || (taskOld && taskOld._id) || change.documentKey._id;
+
+          logger.debug('Task change detected (Diffing)', {
+            eventType,
+            taskId,
+            operation: change.operationType
           });
 
-          this.emitToRelevantUsers(io, userModel, event, formatted);
+          // 3. Iterate Sockets & Diff Persistence
+          const sockets = io.of("/").sockets;
+          if (!sockets || sockets.size === 0) return;
+
+          for (const socket of sockets.values()) {
+            const user = socket.data.user;
+            if (!user) continue;
+
+            const visibleBefore = taskOld ? this.shouldSendTaskToUser(user, taskOld, userModel) : false;
+            const visibleAfter = taskNew ? this.shouldSendTaskToUser(user, taskNew, userModel) : false;
+
+            if (visibleBefore && !visibleAfter) {
+              // CASE: User lost access (or task deleted/invalidated)
+              socket.emit("taskRemoved", { _id: taskId });
+              logger.debug('Emitted taskRemoved', { userEmail: user.email, taskId });
+            } else if (visibleAfter) {
+              // CASE: User has access now (New or Kept)
+              // We send the FULL payload. The client will treat this as a signal to re-fetch canonical
+              // if it follows the "Signal -> Fetch" pattern, or upsert directly if it trusts this.
+              // To support "Signal Only", sending the full task is still fine (contains _id).
+              socket.emit(eventType, taskNew);
+
+              // Debug logging only for interesting transitions
+              if (!visibleBefore) {
+                logger.debug('Emitted task access GAINED', { userEmail: user.email, taskId, event: eventType });
+              }
+            }
+          }
+
         } catch (error) {
-          logger.error('Change stream processing error', { error: error.message });
+          logger.error('Change stream processing error', { error: error.message, stack: error.stack });
         }
       });
 
@@ -1060,24 +1105,9 @@ export class TaskModel {
         logger.error('Task change stream error', { error: error.message });
       });
 
+      logger.info('Task realtime updates configured with Visibility Diffing');
     } catch (error) {
       logger.error('Failed to setup task change stream', { error: error.message });
-    }
-  }
-
-  emitToRelevantUsers(io, userModel, event, task) {
-    for (const socket of io.of("/").sockets.values()) {
-      const user = socket.data.user;
-      if (!user) continue;
-
-      if (this.shouldSendTaskToUser(user, task, userModel)) {
-        socket.emit(event, task);
-        logger.debug('Task emitted to user', {
-          event,
-          userEmail: user.email,
-          taskId: task._id
-        });
-      }
     }
   }
 
