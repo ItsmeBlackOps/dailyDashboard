@@ -469,31 +469,11 @@ export class TaskService {
   }
 
   checkTaskAccess(task, userEmail, userRole, teamLead) {
-    if (userRole === 'admin') {
-      return true;
-    }
-
-    if (userRole === 'MAM' || userRole === 'MM' || userRole === 'mlead') {
-      return true;
-    }
-
-    const userEmailLower = userEmail.toLowerCase();
-    const assignedEmailLower = task.assignedEmail?.toLowerCase() || '';
-
-    if (userEmailLower === assignedEmailLower) {
-      return true;
-    }
-
-    const normalizedRole = (userRole || '').toLowerCase();
-
-    if (normalizedRole === 'lead' || normalizedRole === 'am') {
-      const teamEmails = this.userModel
-        .getTeamEmails(userEmail, userRole, teamLead)
-        .map((email) => email.toLowerCase());
-      return teamEmails.includes(assignedEmailLower);
-    }
-
-    return false;
+    return this.taskModel.shouldSendTaskToUser(
+      { email: userEmail, role: userRole, teamLead },
+      task,
+      this.userModel
+    );
   }
 
   async getTaskStatistics(userEmail, userRole, teamLead, manager, startDate, endDate) {
