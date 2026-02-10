@@ -795,36 +795,25 @@ export class TaskService {
     }
 
     const lowerEmail = userEmail.toLowerCase();
+    const normalizedRole = userRole.toLowerCase();
 
-    if (userRole === 'MAM' || userRole === 'MM') {
-      const managerLocal = manager.toLowerCase().split(' ').join('.');
-      const ccVal = userRole === 'MM' ? lowerEmail.split('@')[0] : managerLocal;
-      const selfLocal = lowerEmail.split('@')[0];
-      const selfName = this.taskModel.deriveDisplayNameFromEmail(lowerEmail);
-      const selfPatterns = [
-        { assignedTo: { $regex: `^${escapeRegex(selfLocal)}$`, $options: 'i' } },
-        { assignedTo: { $regex: `^${escapeRegex(lowerEmail)}$`, $options: 'i' } }
+    if (['mlead', 'mam', 'mm'].includes(normalizedRole)) {
+      const patterns = [
+        { sender: { $regex: lowerEmail, $options: 'i' } },
+        { cc: { $regex: lowerEmail, $options: 'i' } }
       ];
-      if (selfName) {
-        selfPatterns.push({ assignedTo: { $regex: `^${escapeRegex(selfName)}$`, $options: 'i' } });
+
+      if (teamEmails && teamEmails.length > 0) {
+        const teamRegex = teamEmails
+          .map(e => escapeRegex(e))
+          .join('|');
+
+        patterns.push({ sender: { $regex: teamRegex, $options: 'i' } });
+        patterns.push({ cc: { $regex: teamRegex, $options: 'i' } });
+        patterns.push({ assignedTo: { $regex: teamRegex, $options: 'i' } });
       }
 
-      return {
-        $or: [
-          { cc: { $regex: ccVal, $options: 'i' } },
-          { sender: { $regex: ccVal, $options: 'i' } },
-          ...selfPatterns
-        ]
-      };
-    }
-
-    if (userRole === 'mlead') {
-      return {
-        $or: [
-          { cc: { $regex: lowerEmail, $options: 'i' } },
-          { sender: lowerEmail }
-        ]
-      };
+      return { $or: patterns };
     }
 
     if (userRole === 'lead') {
