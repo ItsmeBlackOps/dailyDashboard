@@ -371,10 +371,12 @@ class CandidateSocketHandler {
   async handleUpdateStatus(socket, data, callback) {
     if (!callback) return;
     const user = socket.data.user;
+
+    const role = (user.role || '').toString().trim().toLowerCase();
     if (!user) return callback({ success: false, error: 'Auth required' });
 
     // RBAC
-    if (!['recruiter', 'mlead', 'mam', 'mm', 'admin'].includes(user.role)) {
+    if (!['recruiter', 'mlead', 'mam', 'mm', 'admin'].includes(role)) {
       return callback({ success: false, error: 'Unauthorized' });
     }
 
@@ -440,9 +442,11 @@ class CandidateSocketHandler {
   async handleBulkUpdateStatus(socket, data, callback) {
     if (!callback) return;
     const user = socket.data.user;
+    const role = (user.role || '').toString().trim().toLowerCase();
+
     if (!user) return callback({ success: false, error: 'Auth required' });
 
-    if (!['recruiter', 'mlead', 'mam', 'mm', 'admin'].includes(user.role)) {
+    if (!['recruiter', 'mlead', 'mam', 'mm', 'admin'].includes(role)) {
       return callback({ success: false, error: 'Unauthorized' });
     }
 
