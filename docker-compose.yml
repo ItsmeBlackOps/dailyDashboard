@@ -38,7 +38,7 @@ services:
     environment:
       VITE_PUBLIC_POSTHOG_KEY: ${VITE_PUBLIC_POSTHOG_KEY}
       VITE_PUBLIC_POSTHOG_HOST: ${VITE_PUBLIC_POSTHOG_HOST}
-      API_URL: ${API_URL}
+      # API_URL removed to allow relative path fallback
       FRONTEND_PORT: ${FRONTEND_PORT}
       NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY}
       NEW_RELIC_APP_NAME: ${NEW_RELIC_APP_NAME}
@@ -72,7 +72,7 @@ services:
     environment:
       VITE_PUBLIC_POSTHOG_KEY: ${VITE_PUBLIC_POSTHOG_KEY}
       VITE_PUBLIC_POSTHOG_HOST: ${VITE_PUBLIC_POSTHOG_HOST}
-      API_URL: ${API_URL}
+      # API_URL removed to allow relative path fallback
       FRONTEND_PORT: ${FRONTEND_PORT}
       NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY}
       NEW_RELIC_APP_NAME: ${NEW_RELIC_APP_NAME}
@@ -81,6 +81,3 @@ services:
     restart: unless-stopped
     depends_on:
       - backend-green
-
-
- 

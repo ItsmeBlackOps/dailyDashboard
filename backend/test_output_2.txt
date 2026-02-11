@@ -1,0 +1,15 @@
+
+> backend@1.0.0 test:dedup
+> node --experimental-vm-modules node_modules/jest/bin/jest.js test/notifications/dedup.test.js
+
+(node:29236) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS test/notifications/dedup.test.js
+  Notification Deduplication
+    ΓêÜ should only create one notification when duplicates are sent (13 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       1 passed, 1 total
+Snapshots:   0 total
+Time:        1.949 s
+Ran all test suites matching test/notifications/dedup.test.js.

@@ -12,6 +12,8 @@ import { io, Socket } from "socket.io-client";
 import { SOCKET_URL, useAuth } from "@/hooks/useAuth";
 import moment from 'moment-timezone';
 import DOMPurify from 'dompurify';
+import { usePostHog } from 'posthog-js/react';
+import { useNotifications } from "@/context/NotificationContext";
 
 interface Comment {
     id: string;
@@ -50,6 +52,19 @@ export function ResumeDiscussionDrawer({
     const role = useMemo(() => (localStorage.getItem("role") || "").trim().toLowerCase(), []);
     const canSeeComplaints = useMemo(() => !['expert', 'user'].includes(role), [role]);
     const canCreateComplaints = useMemo(() => ['recruiter', 'mlead', 'mam', 'mm', 'admin', 'manager'].includes(role), [role]);
+    const { notifications, markAsRead } = useNotifications();
+    const posthog = usePostHog();
+
+    // Mark as read when drawer is open
+    useEffect(() => {
+        if (isOpen && candidateId) {
+            notifications.forEach(n => {
+                if (n.candidateId === candidateId && n.type === 'comment' && !n.read) {
+                    markAsRead(n.id);
+                }
+            });
+        }
+    }, [isOpen, candidateId, notifications, markAsRead]);
 
     const socket = useMemo<Socket | null>(() => {
         if (!candidateId || !isOpen) return null;
@@ -154,6 +169,11 @@ export function ResumeDiscussionDrawer({
                 setNewMessage('');
                 setIsComplaint(false);
                 setComments(prev => [...prev, response.data]);
+
+                posthog.capture('discussion_comment_posted', {
+                    candidate_id: candidateId,
+                    type: isComplaint ? 'complaint' : 'internal',
+                });
             } else {
                 setError(response?.error || 'Failed to send message');
                 // toast({ title: "Error", description: response?.error || "Could not send message", variant: "destructive" });

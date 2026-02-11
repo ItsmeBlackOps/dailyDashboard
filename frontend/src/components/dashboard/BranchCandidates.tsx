@@ -33,6 +33,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ToastAction } from "@/components/ui/toast";
 import { StatusBadge } from "@/components/candidates/StatusBadge";
 import { Loader2, BookOpen } from "lucide-react";
+import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
+import { useNotifications } from "@/hooks/useNotifications";
 
 interface BranchCandidatesProps {
   role: string;
@@ -140,6 +142,23 @@ const SUPPORT_CLONE_STORAGE_KEY = 'supportCloneDraft';
 const SUPPORT_MOCK_STORAGE_KEY = 'supportMockMaterials';
 const MAX_STORED_MOCK_ENTRIES = 5;
 
+interface MockFormState {
+  candidateName: string;
+  candidateEmail: string;
+  contactNumber: string;
+  technology: string;
+  endClient: string;
+  interviewRound: string;
+  interviewDateTime: string;
+  jobDescriptionText: string;
+  attachments: {
+    name: string;
+    type: string;
+    data: string; // base64
+    category: 'resume' | 'jobDescription' | 'additional';
+  }[];
+}
+
 interface LoopSlotForm {
   id: string;
   date: Date | null;
@@ -217,6 +236,13 @@ const SUPPORT_ROUNDS = [
   "Final Round"
 ] as const;
 
+const MOCK_ROUNDS = [
+  "Mock 1",
+  "Mock 2",
+  "Technical Mock",
+  "Managerial Mock"
+] as const;
+
 const EST_TIMEZONE = "America/New_York";
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5 MB default limit mirrored with backend
 const TOUR_ROLES = ["recruiter", "mlead", "mam", "mm"] as const;
@@ -266,7 +292,6 @@ function formatEmailDisplay(value: string): string {
 }
 
 export function BranchCandidates({ role }: BranchCandidatesProps) {
-  const posthog = usePostHog();
   const [scope, setScope] = useState<{ type: 'branch' | 'hierarchy' | 'expert'; value: string | string[] } | null>(null);
   const [candidates, setCandidates] = useState<CandidateRow[]>([]);
   const [recentNotifications, setRecentNotifications] = useState<CandidateNotificationPayload[]>([]);
@@ -341,6 +366,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [search, setSearch] = useState<string>("");
   const { refreshAccessToken, authFetch } = useAuth();
   const { toast } = useToast();
+  const posthog = usePostHog();
+  const { notifications } = useNotifications();
   const { profile } = useUserProfile();
   const location = useLocation();
   const navigate = useNavigate();
@@ -438,6 +465,28 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [assessmentAdditionalFiles, setAssessmentAdditionalFiles] = useState<File[]>([]);
   const [assessmentError, setAssessmentError] = useState('');
   const [assessmentSubmitting, setAssessmentSubmitting] = useState(false);
+
+  // Mock Support State
+  const [mockOpen, setMockOpen] = useState(false);
+  const [mockCandidate, setMockCandidate] = useState<CandidateRow | null>(null);
+  const [mockForm, setMockForm] = useState<MockFormState>({
+    candidateName: '',
+    candidateEmail: '',
+    contactNumber: '',
+    technology: '',
+    endClient: '',
+    interviewRound: 'Mock 1',
+    interviewDateTime: '',
+    jobDescriptionText: '',
+    attachments: []
+  });
+  const [mockDate, setMockDate] = useState<Date | null>(null);
+  const [mockTime, setMockTime] = useState('');
+  const [mockDatePickerOpen, setMockDatePickerOpen] = useState(false);
+  const [mockSubmitting, setMockSubmitting] = useState(false);
+  const [mockError, setMockError] = useState('');
+  const [mockResumeFile, setMockResumeFile] = useState<File | null>(null);
+  const [mockJdFile, setMockJdFile] = useState<File | null>(null);
   const acquireGraphAccessToken = useCallback(async (): Promise<string> => {
     let activeAccount = instance.getActiveAccount() ?? account ?? null;
     let graphToken = '';
@@ -1848,6 +1897,203 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     pendingCloneDraft,
     persistSupportMockMaterials,
     acquireGraphAccessToken
+  ]);
+
+
+  const resetMockState = useCallback(() => {
+    setMockOpen(false);
+    setMockCandidate(null);
+    setMockForm({
+      candidateName: '',
+      candidateEmail: '',
+      contactNumber: '',
+      technology: '',
+      endClient: '',
+      interviewRound: 'Mock 1',
+      interviewDateTime: '',
+      jobDescriptionText: '',
+      attachments: []
+    });
+    setMockDate(null);
+    setMockTime('');
+    setMockError('');
+    setMockSubmitting(false);
+    setMockResumeFile(null);
+    setMockJdFile(null);
+  }, []);
+
+  const openMockDialog = useCallback((candidate: CandidateRow) => {
+    setMockCandidate(candidate);
+    setMockForm(prev => ({
+      ...prev,
+      candidateName: candidate.name,
+      candidateEmail: candidate.email,
+      contactNumber: candidate.contact,
+      technology: candidate.technology,
+      endClient: '',
+      interviewRound: 'Mock 1'
+    }));
+    setMockOpen(true);
+    posthog.capture('mock_dialog_opened', {
+      candidate_id: candidate.id,
+      candidate_name: candidate.name,
+      recruiter_email: candidate.recruiter
+    });
+  }, [posthog]);
+
+  const handleMockSubmit = useCallback(async () => {
+    if (!mockCandidate) {
+      setMockError('No candidate selected.');
+      return;
+    }
+
+    if (!mockForm.endClient.trim()) {
+      setMockError('End client is required.');
+      return;
+    }
+
+    if (!mockDate || !mockTime) {
+      setMockError('Interview date and time is required.');
+      return;
+    }
+
+    const isoLocal = computeInterviewDateTimeValue(mockDate, mockTime);
+    if (!isoLocal) {
+      setMockError('Invalid interview date or time.');
+      return;
+    }
+
+    const interviewMoment = moment.tz(isoLocal, 'YYYY-MM-DDTHH:mm', EST_TIMEZONE);
+    if (!interviewMoment.isValid()) {
+      setMockError('Invalid interview date/time.');
+      return;
+    }
+
+    const now = moment().tz(EST_TIMEZONE);
+    if (interviewMoment.isBefore(now)) {
+      setMockError('Interview date and time must be in the future.');
+      return;
+    }
+
+    if (!mockForm.contactNumber.trim()) {
+      setMockError('Contact number is required.');
+      return;
+    }
+
+    let graphToken = '';
+    try {
+      graphToken = await acquireGraphAccessToken();
+    } catch (tokenError) {
+      setMockError('Authorize Microsoft access and try again.');
+      return;
+    }
+
+    try {
+      setMockSubmitting(true);
+      setMockError('');
+
+      const attachments: { name: string; type: string; data: string; category: 'resume' | 'jobDescription' | 'additional' }[] = [];
+
+      if (mockResumeFile) {
+        try {
+          const dataUrl = await readFileAsDataUrl(mockResumeFile);
+          if (dataUrl) {
+            const commaIndex = dataUrl.indexOf(',');
+            const b64 = commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl;
+            attachments.push({
+              name: mockResumeFile.name,
+              type: mockResumeFile.type || 'application/pdf',
+              data: b64,
+              category: 'resume'
+            });
+          }
+        } catch (e) {
+          console.error("Error reading resume file", e);
+        }
+      }
+
+      if (mockJdFile) {
+        try {
+          const dataUrl = await readFileAsDataUrl(mockJdFile);
+          if (dataUrl) {
+            const commaIndex = dataUrl.indexOf(',');
+            const b64 = commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl;
+            attachments.push({
+              name: mockJdFile.name,
+              type: mockJdFile.type || 'application/pdf',
+              data: b64,
+              category: 'jobDescription'
+            });
+          }
+        } catch (e) {
+          console.error("Error reading JD file", e);
+        }
+      }
+
+      const payload = {
+        candidateName: mockForm.candidateName,
+        candidateEmail: mockForm.candidateEmail,
+        contactNumber: mockForm.contactNumber,
+        technology: mockForm.technology,
+        endClient: titleCasePreserveSpacing(mockForm.endClient).replace(/\s+/g, ' ').trim(),
+        interviewRound: mockForm.interviewRound,
+        interviewDateTime: interviewMoment.format('YYYY-MM-DDTHH:mm'),
+        jobDescriptionText: mockForm.jobDescriptionText,
+        attachments
+      };
+
+      const response = await authFetch(`${API_URL}/api/support/mock`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-graph-access-token': graphToken
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const resData = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const message = typeof resData?.error === 'string' ? resData.error : 'Unable to send mock request';
+        setMockError(message);
+        return;
+      }
+
+      toast({
+        title: 'Mock request sent',
+        description: typeof resData?.message === 'string' ? resData.message : 'Mock interview request sent successfully.'
+      });
+
+      resetMockState();
+
+      posthog.capture('mock_request_submitted', {
+        candidate_name: mockForm.candidateName,
+        end_client: mockForm.endClient,
+        round: mockForm.interviewRound,
+        has_resume: !!mockResumeFile,
+        has_jd: !!mockJdFile
+      });
+
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to send mock request';
+      setMockError(message);
+    } finally {
+      setMockSubmitting(false);
+    }
+  }, [
+    mockCandidate,
+    mockForm,
+    mockDate,
+    mockTime,
+    mockResumeFile,
+    mockJdFile,
+    acquireGraphAccessToken,
+    authFetch,
+    toast,
+    readFileAsDataUrl,
+    titleCasePreserveSpacing,
+    resetMockState,
+    computeInterviewDateTimeValue
   ]);
 
   const combinedExpertOptions = useMemo(() => {
@@ -3479,6 +3725,15 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                     )}
                     {canSendSupport && (
                       <Button
+                        variant="secondary"
+                        onClick={() => openMockDialog(selectedSheetCandidate)}
+                        className="flex-1"
+                      >
+                        Request Mock
+                      </Button>
+                    )}
+                    {canSendSupport && (
+                      <Button
                         variant="outline"
                         onClick={() => openAssessmentDialog(selectedSheetCandidate)}
                         className="flex-1"
@@ -4212,6 +4467,164 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               </Button>
               <Button onClick={handleSupportSubmit} disabled={supportSubmitting}>
                 {supportSubmitting ? 'Sending…' : 'Send Request'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+      {canSendSupport && (
+        <Dialog open={mockOpen} onOpenChange={(open) => (!open ? resetMockState() : setMockOpen(true))}>
+          <DialogContent className="w-full max-h-[90vh] sm:max-h-[85vh] overflow-y-auto scroll-area sm:max-w-[680px]">
+            <DialogHeader>
+              <DialogTitle>Request Mock Interview</DialogTitle>
+              <DialogDescription>
+                Schedule a mock interview for the candidate.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Candidate Name</Label>
+                  <Input value={mockForm.candidateName} disabled />
+                </div>
+                <div className="space-y-2">
+                  <Label>Technology</Label>
+                  <Input value={mockForm.technology} disabled />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input value={mockForm.candidateEmail} disabled />
+                </div>
+                <div className="space-y-2">
+                  <Label>Contact Number</Label>
+                  <Input value={mockForm.contactNumber} disabled />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>End Client</Label>
+                  <Input
+                    value={mockForm.endClient}
+                    onChange={(e) => setMockForm(prev => ({ ...prev, endClient: e.target.value }))}
+                    placeholder="Client Name"
+                    disabled={mockSubmitting}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Mock Round</Label>
+                  <Select
+                    value={mockForm.interviewRound}
+                    onValueChange={(value) => setMockForm(prev => ({ ...prev, interviewRound: value }))}
+                    disabled={mockSubmitting}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select round" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MOCK_ROUNDS.map((round) => (
+                        <SelectItem key={round} value={round}>
+                          {round}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Proposed Date (EST)</Label>
+                  <Popover open={mockDatePickerOpen} onOpenChange={setMockDatePickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant={"outline"}
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !mockDate && "text-muted-foreground"
+                        )}
+                        disabled={mockSubmitting}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {mockDate ? moment(mockDate).format("MMM D, YYYY") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={mockDate ?? undefined}
+                        onSelect={(date) => {
+                          setMockDate(date ?? null);
+                          setMockDatePickerOpen(false);
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="space-y-2">
+                  <Label>Proposed Time (EST)</Label>
+                  <Select
+                    value={mockTime}
+                    onValueChange={setMockTime}
+                    disabled={mockSubmitting}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pick a time" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {DISPLAY_TIME_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Attach Resume (Optional if already on profile)</Label>
+                <Input
+                  type="file"
+                  onChange={(e) => setMockResumeFile(e.target.files?.[0] || null)}
+                  disabled={mockSubmitting}
+                />
+                {mockResumeFile && <p className="text-xs text-muted-foreground">{mockResumeFile.name}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Attach Job Description (PDF) - Optional</Label>
+                <Input
+                  type="file"
+                  onChange={(e) => setMockJdFile(e.target.files?.[0] || null)}
+                  disabled={mockSubmitting}
+                />
+                {mockJdFile && <p className="text-xs text-muted-foreground">{mockJdFile.name}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Job Description (Text)</Label>
+                <textarea
+                  value={mockForm.jobDescriptionText}
+                  onChange={(e) => setMockForm(prev => ({ ...prev, jobDescriptionText: e.target.value }))}
+                  className="w-full rounded border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  rows={5}
+                  placeholder="Paste JD text here..."
+                  disabled={mockSubmitting}
+                />
+              </div>
+
+              {mockError && <p className="text-sm text-destructive">{mockError}</p>}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={resetMockState} disabled={mockSubmitting}>
+                Cancel
+              </Button>
+              <Button onClick={handleMockSubmit} disabled={mockSubmitting}>
+                {mockSubmitting ? 'Sending...' : 'Request Mock'}
               </Button>
             </DialogFooter>
           </DialogContent>
