@@ -14,6 +14,8 @@ import {
 import { socketAsyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 import { userService } from '../services/userService.js';
+import { DomainEvents } from '../events/eventTypes.js';
+import { deriveTagsFromCandidate } from '../notifications/tags.js';
 
 class CandidateSocketHandler {
   handleConnection(socket) {
@@ -855,7 +857,25 @@ class CandidateSocketHandler {
 
       if (candidate) {
         logger.info('DEBUG: Candidate found. Triggering emitCommentNotifications');
-        this.emitCommentNotifications(socket, candidate, comment, user);
+        this.emitCommentNotifications(socket, candidate, comment, user)
+          .then(recipients => {
+            if (recipients && recipients.length > 0) {
+              logger.info(`DEBUG: Persisting notifications for ${recipients.length} recipients`);
+              return notificationService.broadcastToWatchers(recipients, {
+                type: 'comment',
+                candidateId: candidate.id || candidate._id,
+                commentId: comment.id || comment._id,
+                resumeUnderstandingStatus: candidate.resumeUnderstandingStatus,
+                title: 'New Discussion Message',
+                description: `${commentAuthorName}: ${comment.content.substring(0, 50)}${comment.content.length > 50 ? '...' : ''}`,
+                isRead: false,
+                createdAt: new Date()
+              });
+            }
+          })
+          .catch(err => {
+            logger.error('Failed to persist comment notifications', err);
+          });
       } else {
         logger.warn('DEBUG: Candidate NOT found for notification', { candidateId });
       }
@@ -871,21 +891,25 @@ class CandidateSocketHandler {
     return callback({ success: true, data: comment });
   }
 
-  emitCommentNotifications(socket, candidate, comment, sender) {
-    if (!candidate) return;
+  async emitCommentNotifications(socket, candidate, comment, sender) {
+    if (!candidate) return [];
 
     const senderEmail = sender.email.toLowerCase();
     const senderRole = sender.role.toLowerCase();
+    const recipients = new Set();
 
     // Helpers
     const addUser = (email) => {
       if (email && email.toLowerCase() !== senderEmail) {
         this.emitToUser(socket, email, 'newCommentNotification', { candidate, comment });
+        recipients.add(email.toLowerCase());
       }
     };
 
     // 1. Notify Admin (Always safety net)
     this.emitToRoles(socket, ['admin'], 'newCommentNotification', { candidate, comment });
+    // Note: We are not persisting for admins generically yet unless they are in hierarchy, 
+    // to avoid fetching all admins. If admins are resolved in hierarchy, they get it.
 
     // 2. Resolve Hierarchy (Recruiter -> MLead -> MAM -> MM)
     const hierarchyEmails = candidateService.resolveHierarchyWatchers
@@ -911,6 +935,8 @@ class CandidateSocketHandler {
         addUser(email);
       });
     }
+
+    return Array.from(recipients);
   }
 
   emitToCandidateRoom(socket, candidateId, event, payload) {

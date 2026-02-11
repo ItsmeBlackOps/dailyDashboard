@@ -29,6 +29,9 @@ class NotificationModel {
 
         // Create index for fetching by recipient
         await collection.createIndex({ recipient: 1, createdAt: -1 });
+
+        // Create unique index to prevent duplicate notifications for same event
+        await collection.createIndex({ recipient: 1, eventId: 1 }, { unique: true, sparse: true });
     }
 
     async createNotification(data) {
@@ -47,6 +50,7 @@ class NotificationModel {
             link: data.link || null,
             isRead: false,
             candidateId: data.candidateId ? new ObjectId(data.candidateId) : null,
+            eventId: data.eventId || null, // Ensure eventId is stored
             createdAt: now,
             expiresAt: data.expiresAt || expiresAt,
             batchData: data.batchData || null,
@@ -54,8 +58,42 @@ class NotificationModel {
             actor: data.actor || null
         };
 
-        const result = await collection.insertOne(notification);
-        return { ...notification, id: result.insertedId };
+        // Use updateOne with upsert to prevent duplicates
+        // If (recipient + eventId) exists, do nothing (or update if needed, but here we just want to ensure existance)
+        // actually, if it exists we might want to keep the old one or overwrite. 
+        // User requested: "First insert succeeds, Second insert does nothing".
+        // So $setOnInsert is correct for all fields.
+
+        const filter = {
+            recipient: data.recipient,
+            eventId: data.eventId
+        };
+
+        // If eventId is missing, we fall back to standard insert behavior (or generate one?)
+        // For now, if no eventId, we can't dedup by eventId. 
+        // We will assume eventId is passed. If not, maybe use a random fallback or just insert.
+
+        if (!data.eventId) {
+            const result = await collection.insertOne(notification);
+            return { ...notification, id: result.insertedId };
+        }
+
+        const result = await collection.updateOne(
+            filter,
+            { $setOnInsert: notification },
+            { upsert: true }
+        );
+
+        // If upserted, result.upsertedId is the new ID.
+        // If matched (duplicate), result.upsertedId is null.
+        // We need to return the doc. If duplicate, we might need to fetch it or just return the passed object with a placeholder ID?
+        // The original method returned { ...notification, id: result.insertedId }.
+        // Let's try to return the ID.
+
+        return {
+            ...notification,
+            id: result.upsertedId || null // null implies it was a duplicate and we didn't create a new one
+        };
     }
 
     async createManyNotifications(notifications) {

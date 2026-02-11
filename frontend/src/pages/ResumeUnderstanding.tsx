@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { SOCKET_URL, useAuth } from "@/hooks/useAuth";
 import { ResumeDiscussionDrawer } from "@/components/resume/ResumeDiscussionDrawer";
+import { useNotifications } from "@/context/NotificationContext";
 
 
 
@@ -67,6 +68,7 @@ const STATUS_LABELS: Record<QueueStatus, string> = {
 export default function ResumeUnderstanding() {
   const posthog = usePostHog(); // [Harsh] Analytics
   const { toast } = useToast();
+  const { notifications } = useNotifications();
   const { refreshAccessToken } = useAuth();
   const role = useMemo(() => (localStorage.getItem("role") || "").trim().toLowerCase(), []);
   const allowed = useMemo(
@@ -83,7 +85,8 @@ export default function ResumeUnderstanding() {
   );
 
   const [activeStatus, setActiveStatus] = useState<QueueStatus>("pending");
-  const [selectedCandidate, setSelectedCandidate] = useState<CandidateRecord | null>(null);
+  // [Refactor] State is now derived from URL
+  // const [selectedCandidate, setSelectedCandidate] = useState<CandidateRecord | null>(null);
 
   const [queues, setQueues] = useState<Record<QueueStatus, CandidateRecord[]>>({
     pending: [],
@@ -105,6 +108,30 @@ export default function ResumeUnderstanding() {
 
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const [searchParams, setSearchParams] = useSearchParams();
+
+  const discussionCandidateId = searchParams.get('discussionCandidateId');
+  const selectedCandidate = useMemo(() => {
+    if (!discussionCandidateId) return null;
+    const all = [...queues.pending, ...queues.done];
+    return all.find(c => c.id === discussionCandidateId) || null;
+  }, [discussionCandidateId, queues]);
+
+  const openDiscussion = (candidateId: string) => {
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev);
+      newParams.set('discussionCandidateId', candidateId);
+      return newParams;
+    });
+  };
+
+  const closeDiscussion = () => {
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev);
+      newParams.delete('discussionCandidateId');
+      return newParams;
+    });
+  };
+
 
   const socket = useMemo<Socket | null>(() => {
     if (!allowed) {
@@ -254,19 +281,8 @@ export default function ResumeUnderstanding() {
     });
   }, [activeStatus, role, posthog]);
 
-  // Handle Deep Linking for Discussion
-  useEffect(() => {
-    const discussionId = searchParams.get('discussionCandidateId');
-    if (discussionId && !selectedCandidate) {
-      // Check if we have it in current queues
-      const allCandidates = [...queues.pending, ...queues.done];
-      const found = allCandidates.find(c => c.id === discussionId);
-      if (found) {
-        setSelectedCandidate(found);
-      }
-      // Optional: If not found, we might need to fetch it individually or wait for queue fetch
-    }
-  }, [searchParams, queues, selectedCandidate]);
+  // [Refactor] Deep link handling is now reactive via selectedCandidate useMemo
+  // Old useEffect removed.
 
   const updateResumeStatus = (candidateId: string, status: QueueStatus) => {
     if (!socket) return;
@@ -446,14 +462,23 @@ export default function ResumeUnderstanding() {
                               </TableCell>
                               <TableCell className="text-right space-y-2">
                                 <div className="flex justify-end gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => setSelectedCandidate(candidate)}
-                                    title="Discussion"
-                                  >
-                                    <MessageSquare className="h-4 w-4" />
-                                  </Button>
+                                  <div className="relative inline-block">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => openDiscussion(candidate.id)}
+                                      title="Discussion"
+                                    >
+                                      <MessageSquare className="h-4 w-4" />
+                                    </Button>
+                                    {notifications.some(n =>
+                                      n.candidateId === candidate.id &&
+                                      n.type === 'comment' &&
+                                      !n.read
+                                    ) && (
+                                        <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-red-500 ring-2 ring-background" />
+                                      )}
+                                  </div>
                                   {(role === 'admin' || ((role === 'lead' || role === 'user') && (candidate.expertRaw || '').toLowerCase() === userEmail.toLowerCase())) && (
                                     activeStatus === 'pending' ? (
                                       <Button
@@ -494,7 +519,7 @@ export default function ResumeUnderstanding() {
       {selectedCandidate && (
         <ResumeDiscussionDrawer
           isOpen={!!selectedCandidate}
-          onClose={() => setSelectedCandidate(null)}
+          onClose={closeDiscussion}
           candidateId={selectedCandidate.id}
           candidateName={selectedCandidate.name}
         />

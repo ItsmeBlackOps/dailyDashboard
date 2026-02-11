@@ -4,7 +4,7 @@ import { io } from 'socket.io-client';
 
 const DEFAULT_HTTP_URL = import.meta.env.DEV
   ? 'http://localhost:3004'
-  : 'https://dailydb.silverspace.tech';
+  : '';
 
 const normalizeHttpUrl = (value: string) => {
   const trimmed = value.trim();
