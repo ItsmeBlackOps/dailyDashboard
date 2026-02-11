@@ -931,7 +931,7 @@ class CandidateService {
       const workflowStatus = normalizedStatus === RESUME_UNDERSTANDING_STATUS.done
         ? WORKFLOW_STATUS.completed
         : WORKFLOW_STATUS.needsResumeUnderstanding;
-      const candidates = await candidateModel.getCandidatesByWorkflowStatus(workflowStatus);
+      const candidates = await candidateModel.getCandidatesByWorkflowStatus([workflowStatus]);
       return candidates.length;
     }
 
