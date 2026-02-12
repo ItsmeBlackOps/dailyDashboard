@@ -1230,6 +1230,18 @@ export class TaskModel {
 
     const normalizedRole = (user.role || '').toLowerCase();
 
+    console.log('[shouldSendTaskToUser]', {
+      rawRole: user.role,
+      normalizedRole,
+      email: lowerEmail,
+      assignedEmail: assignedEmail || null,
+      teamLead: user.teamLead || null
+    });
+
+    if (normalizedRole === 'mam' || normalizedRole === 'mm' || normalizedRole === 'mlead') {
+      return true;
+    }
+
     if (normalizedRole === 'lead' || normalizedRole === 'am') {
       const teamEmails = userModel
         .getTeamEmails(user.email, user.role, user.teamLead)

@@ -1,5 +1,6 @@
 // src/routes/AuthorizedRoute.tsx
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { NotificationProvider } from '@/context/NotificationContext';
 
 const isAuthed = () => Boolean(localStorage.getItem('accessToken'));
 const isAdmin = () => localStorage.getItem('role') === 'admin';
@@ -15,5 +16,9 @@ export default function AuthorizedRoute() {
   if (!isAuthed()) {
     return <Navigate to="/auth/signin" replace state={{ from: location }} />;
   }
-  return <Outlet />;
+  return (
+    <NotificationProvider>
+      <Outlet />
+    </NotificationProvider>
+  );
 }

@@ -813,6 +813,7 @@ export class UserService {
     }
 
     const requesterRecord = this.userModel.getUserByEmail(requestingUser.email) || null;
+    const adminHash = requesterRecord?.passwordHash || null;
 
     const created = [];
     const failures = [];
@@ -852,6 +853,7 @@ export class UserService {
         await this.userModel.createUser({
           email,
           password: entry.password,
+          adminHash,
           role: canonicalRole,
           teamLead,
           manager,

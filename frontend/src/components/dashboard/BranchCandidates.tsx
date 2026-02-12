@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import DOMPurify from "dompurify";
 import moment from "moment-timezone";
 import { io, Socket } from "socket.io-client";
@@ -34,7 +33,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { StatusBadge } from "@/components/candidates/StatusBadge";
 import { Loader2, BookOpen } from "lucide-react";
 import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
-import { useNotifications } from "@/hooks/useNotifications";
+import { useNotifications } from "@/context/NotificationContext";
 
 interface BranchCandidatesProps {
   role: string;
@@ -237,10 +236,8 @@ const SUPPORT_ROUNDS = [
 ] as const;
 
 const MOCK_ROUNDS = [
-  "Mock 1",
-  "Mock 2",
-  "Technical Mock",
-  "Managerial Mock"
+  "Training",
+  "Evaluation"
 ] as const;
 
 const EST_TIMEZONE = "America/New_York";
@@ -341,6 +338,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     return `${normalizedScope.type}:${normalizedScope.value.join('|')}`;
   }, [normalizedScope]);
 
+  const posthog = usePostHog();
+
   // Track Page View
   useEffect(() => {
     posthog.capture('branch_candidates_viewed', {
@@ -366,7 +365,6 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [search, setSearch] = useState<string>("");
   const { refreshAccessToken, authFetch } = useAuth();
   const { toast } = useToast();
-  const posthog = usePostHog();
   const { notifications } = useNotifications();
   const { profile } = useUserProfile();
   const location = useLocation();

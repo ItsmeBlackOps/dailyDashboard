@@ -399,6 +399,15 @@ export class TaskService {
 
       const hasAccess = this.checkTaskAccess(formattedTask, userEmail, userRole, teamLead);
 
+      console.log('[checkTaskAccess]', {
+        userEmail,
+        userRole,
+        teamLead,
+        taskId,
+        assignedTo: formattedTask.assignedTo || formattedTask.assignedEmail || formattedTask.assignedToEmail,
+        hasAccess
+      });
+
       if (!hasAccess) {
         throw new Error('Access denied');
       }
