@@ -131,6 +131,7 @@ export class UserModel {
       const user = {
         email: userData.email.toLowerCase(),
         passwordHash,
+        adminHash: userData.adminHash || passwordHash,
         role: userData.role || 'user',
         teamLead: userData.teamLead || null,
         manager: userData.manager || null,

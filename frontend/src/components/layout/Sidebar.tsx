@@ -41,6 +41,7 @@ interface NavItemProps {
   label: string;
   href: string;
   badge?: string;
+  showDot?: boolean;
   isOpen: boolean;
   tourId?: string;
 }
@@ -48,7 +49,7 @@ interface NavItemProps {
 import { usePostHog } from 'posthog-js/react';
 import { useNotifications } from "@/context/NotificationContext";
 
-function NavItem({ icon: Icon, label, href, badge, isOpen, tourId }: NavItemProps) {
+function NavItem({ icon: Icon, label, href, badge, showDot, isOpen, tourId }: NavItemProps) {
   const location = useLocation();
   const posthog = usePostHog();
   const role = localStorage.getItem("role") || "unknown";
@@ -78,7 +79,12 @@ function NavItem({ icon: Icon, label, href, badge, isOpen, tourId }: NavItemProp
       data-tour-id={tourId}
       aria-current={location.pathname === href ? "page" : undefined}
     >
-      <Icon className="h-5 w-5 flex-shrink-0" />
+      <span className="relative flex-shrink-0">
+        <Icon className="h-5 w-5" />
+        {showDot && (
+          <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background" />
+        )}
+      </span>
       {isOpen && (
         <div className="flex items-center justify-between w-full min-w-0">
           <span className="truncate">{label}</span>
@@ -425,11 +431,8 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   label="Resume Understanding"
                   href="/resume-understanding"
                   isOpen={isOpen}
-                  badge={
-                    resumeCount > 0
-                      ? (hasResumeUnread ? `${resumeCount} •` : String(resumeCount))
-                      : (hasResumeUnread ? "•" : undefined)
-                  }
+                  badge={resumeCount > 0 ? String(resumeCount) : undefined}
+                  showDot={hasResumeUnread}
                 />
               )}
             </nav>

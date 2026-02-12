@@ -4,7 +4,6 @@ import { ThemeProvider } from '@/hooks/useTheme';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { UserProfileProvider } from '@/contexts/UserProfileContext';
 import { useToast } from '@/hooks/use-toast';
-import { NotificationProvider } from '@/context/NotificationContext';
 import { NotificationDetailModal } from '@/components/ui/notification-modal';
 
 interface DashboardLayoutProps {
@@ -65,20 +64,18 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <ThemeProvider>
       <UserProfileProvider>
-        <NotificationProvider>
-          <div className="h-screen flex flex-col bg-gradient-to-br from-background via-background to-primary/5 text-foreground">
-            <Header toggleSidebar={toggleSidebar} openSettings={openSettings} />
+        <div className="h-screen flex flex-col bg-gradient-to-br from-background via-background to-primary/5 text-foreground">
+          <Header toggleSidebar={toggleSidebar} openSettings={openSettings} />
 
-            {/* Keep sidebar beside main, not under header */}
-            <div className="flex flex-1 overflow-hidden">
-              <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
-              <main className="flex-1 overflow-auto p-4 md:p-6 relative">
-                {children}
-              </main>
-            </div>
-            <NotificationDetailModal />
+          {/* Keep sidebar beside main, not under header */}
+          <div className="flex flex-1 overflow-hidden">
+            <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
+            <main className="flex-1 overflow-auto p-4 md:p-6 relative">
+              {children}
+            </main>
           </div>
-        </NotificationProvider>
+          <NotificationDetailModal />
+        </div>
       </UserProfileProvider>
     </ThemeProvider>
   );
