@@ -2795,12 +2795,12 @@ export default function TasksToday() {
       // Fetch all canonical tasks concurrently
       const tasksById = await Promise.all(ids.map(fetchTaskById));
 
-      const map = readMap();
-      const isTodayView = filters.range === 'day' && !filters.upcoming && moment(filters.dayDate).isSame(moment.tz(TZ), 'day');
-      let shouldPlaySound = false;
-      let notificationMsg = "";
-
       setTasks((prev) => {
+        const isTodayView = filters.range === 'day' && !filters.upcoming && moment(filters.dayDate).isSame(moment.tz(TZ), 'day');
+        // Read map inside updater to ensure fresh state for every invocation (fixes Strict Mode double-invoke issue)
+        const map = readMap();
+        let shouldPlaySound = false;
+        let notificationMsg = "";
         let next = prev;
 
         for (let i = 0; i < ids.length; i++) {
@@ -2888,6 +2888,22 @@ export default function TasksToday() {
       });
     };
 
+    // 2. Transcript Enrichment (Deferred)
+    const onTranscriptsEnriched = (data: { transcriptMap: Record<string, boolean> }) => {
+      setTasks((prev) => {
+        let hasChanges = false;
+        const next = prev.map((t) => {
+          const newVal = data.transcriptMap[t._id];
+          if (newVal !== undefined && t.transcription !== newVal) {
+            hasChanges = true;
+            return { ...t, transcription: newVal };
+          }
+          return t;
+        });
+        return hasChanges ? next : prev;
+      });
+    };
+
     // 2. Task Signal Events (Created / Updated) — use ref so this effect
     //    doesn't re-run (and disconnect the socket) when filters change
     const onCreated = (t: Task) => {
@@ -2912,6 +2928,7 @@ export default function TasksToday() {
     socket.on("taskCreated", onCreated);
     socket.on("taskUpdated", onUpdated);
     socket.on("taskRemoved", onRemove);
+    socket.on("transcriptsEnriched", onTranscriptsEnriched);
     socket.on("connect_error", onAuthError);
 
     socket.once("connect", () => fetchTasksRef.current(true, 0));
@@ -2921,6 +2938,7 @@ export default function TasksToday() {
       socket.off("taskCreated", onCreated);
       socket.off("taskUpdated", onUpdated);
       socket.off("taskRemoved", onRemove);
+      socket.off("transcriptsEnriched", onTranscriptsEnriched);
       socket.off("connect_error", onAuthError);
       socket.disconnect();
 
@@ -3014,7 +3032,7 @@ export default function TasksToday() {
 
   return (
     <DashboardLayout>
-      <Toaster />
+
       <div className="p-4 space-y-4">
         {error && <p className="text-red-500">{error}</p>}
 
