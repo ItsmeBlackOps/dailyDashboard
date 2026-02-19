@@ -292,6 +292,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [scope, setScope] = useState<{ type: 'branch' | 'hierarchy' | 'expert'; value: string | string[] } | null>(null);
   const [candidates, setCandidates] = useState<CandidateRow[]>([]);
   const [recentNotifications, setRecentNotifications] = useState<CandidateNotificationPayload[]>([]);
+  const [editResumeFile, setEditResumeFile] = useState<File | null>(null);
+  const [editResumeError, setEditResumeError] = useState<string>('');
   const normalizedRole = role.trim().toLowerCase();
   const canView = ["admin", "mm", "mam", "mlead", "lead", "user", "am", "manager", "recruiter"].includes(normalizedRole);
   const canEdit = ["mm", "mam", "mlead", "recruiter", "lead", "am", "admin", "manager"].includes(normalizedRole);
@@ -2778,6 +2780,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setIsEditOpen(false);
     setEditCandidateId(null);
     setFormState({ name: '', email: '', technology: '', recruiter: '', contact: '', expert: '' });
+    setEditResumeFile(null);
+    setEditResumeError('');
     setUpdating(false);
     setUpdateError('');
   };
@@ -2980,7 +2984,32 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     });
   };
 
-  const handleUpdateCandidate = () => {
+  const handleEditResumeChange = (files: FileList | null) => {
+    const file = files?.[0] ?? null;
+
+    if (!file) {
+      setEditResumeFile(null);
+      setEditResumeError('');
+      return;
+    }
+
+    if (file.type !== 'application/pdf') {
+      setEditResumeFile(null);
+      setEditResumeError('Resume must be a PDF file');
+      return;
+    }
+
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setEditResumeFile(null);
+      setEditResumeError('Resume must be 5MB or smaller');
+      return;
+    }
+
+    setEditResumeFile(file);
+    setEditResumeError('');
+  };
+
+  const handleUpdateCandidate = async () => {
     if (!socket || !editCandidateId) return;
 
     setUpdating(true);
@@ -3041,6 +3070,34 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           return;
         }
         payload.expert = trimmedExpert;
+      }
+    }
+
+    // Handle Resume Update
+    if (editResumeFile) {
+      try {
+        const formData = new FormData();
+        formData.append('resume', editResumeFile);
+        const response = await authFetch(`${API_URL}/api/candidates/resume`, {
+          method: 'POST',
+          body: formData
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result?.success || !result?.resumeLink) {
+          const message = result?.error || 'Unable to upload resume';
+          setUpdateError(message);
+          setUpdating(false);
+          return;
+        }
+
+        payload.resumeLink = String(result.resumeLink);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to upload resume';
+        setUpdateError(message);
+        setUpdating(false);
+        return;
       }
     }
 
@@ -3603,6 +3660,21 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   <div className="space-y-2">
                     <Label>Contact</Label>
                     <Input value={formState.contact || ''} disabled />
+                  </div>
+                )}
+                {canEditBasicFields && (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-resume">Update Resume (PDF)</Label>
+                    <Input
+                      id="edit-resume"
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(event) => handleEditResumeChange(event.target.files)}
+                    />
+                    {editResumeFile && (
+                      <p className="text-xs text-muted-foreground">{editResumeFile.name}</p>
+                    )}
+                    {editResumeError && <p className="text-xs text-destructive">{editResumeError}</p>}
                   </div>
                 )}
                 {updateError && <p className="text-sm text-destructive">{updateError}</p>}

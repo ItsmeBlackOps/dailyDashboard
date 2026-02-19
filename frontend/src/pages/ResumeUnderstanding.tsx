@@ -447,9 +447,9 @@ export default function ResumeUnderstanding() {
                                       >
                                         View resume
                                       </a>
-                                      <span className="text-xs text-muted-foreground break-all">
+                                      {/* <span className="text-xs text-muted-foreground break-all">
                                         {sanitizedResumeLink}
-                                      </span>
+                                      </span> */}
                                     </div>
                                   ) : (
                                     <span className="text-sm break-all text-muted-foreground">

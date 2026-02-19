@@ -1418,7 +1418,9 @@ class CandidateService {
     const candidateExpert = formatEmail(candidate.expert || '');
     const requester = formatEmail(user.email);
 
-    if (normalizedRole !== 'admin' && requester !== candidateExpert) {
+    const recruitmentRoles = ['mm', 'mam', 'mlead', 'recruiter'];
+
+    if (normalizedRole !== 'admin' && requester !== candidateExpert && !recruitmentRoles.includes(normalizedRole)) {
       const error = new Error('Access denied');
       error.statusCode = 403;
       throw error;
