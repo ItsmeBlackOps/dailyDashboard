@@ -1138,7 +1138,7 @@ class CandidateService {
     }
 
     if (normalizedRole === 'recruiter') {
-      const allowedKeys = ['name', 'email', 'contact', 'technology'];
+      const allowedKeys = ['name', 'email', 'contact', 'technology', 'resumeLink'];
       for (const key of Object.keys(sanitizedPayload)) {
         if (!allowedKeys.includes(key)) {
           delete sanitizedPayload[key];
