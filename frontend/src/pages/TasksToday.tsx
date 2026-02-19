@@ -2763,6 +2763,9 @@ export default function TasksToday() {
     fetchTasksRef.current = fetchTasks;
   }, [fetchTasks]);
 
+  // Stable ref to scheduleFlush to avoid re-binding socket listeners on filter change
+  const scheduleFlushRef = useRef<() => void>(() => { });
+
   // Queue for Task IDs that need canonical fetch
   const pendingIdsRef = useRef<Set<string>>(new Set());
   const flushRafRef = useRef<number | null>(null);
@@ -2860,6 +2863,12 @@ export default function TasksToday() {
     });
   }, [fetchTaskById, isInCurrentFilters, filters, reconcileReminders, sortByPrimaryStart, readMap, writeMap, toast]);
 
+  // Keep scheduleFlushRef in sync with the latest scheduleFlush so the socket
+  // useEffect below never needs scheduleFlush in its deps (prevents disconnect/reconnect on filter change)
+  useEffect(() => {
+    scheduleFlushRef.current = scheduleFlush;
+  }, [scheduleFlush]);
+
 
   useEffect(() => {
     // 1. Task Removed Event
@@ -2879,15 +2888,16 @@ export default function TasksToday() {
       });
     };
 
-    // 2. Task Signal Events (Created / Updated)
+    // 2. Task Signal Events (Created / Updated) — use ref so this effect
+    //    doesn't re-run (and disconnect the socket) when filters change
     const onCreated = (t: Task) => {
       pendingIdsRef.current.add(t._id);
-      scheduleFlush();
+      scheduleFlushRef.current();
     };
 
     const onUpdated = (t: Task) => {
       pendingIdsRef.current.add(t._id);
-      scheduleFlush();
+      scheduleFlushRef.current();
     };
 
     const onAuthError = async (err: Error) => {
@@ -2920,7 +2930,10 @@ export default function TasksToday() {
       for (const [, id] of timersRef.current.entries()) window.clearTimeout(id);
       timersRef.current.clear();
     };
-  }, [socket, scheduleFlush, readMap, writeMap, refreshAccessToken]);
+    // Intentionally minimal deps: socket is stable (useMemo with []).
+    // scheduleFlush/fetchTasks are accessed via refs so no reconnect on filter change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, readMap, writeMap, refreshAccessToken]);
 
   // When filters change, refetch
   useEffect(() => {

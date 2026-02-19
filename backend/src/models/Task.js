@@ -28,7 +28,10 @@ export class TaskModel {
         .setProject(config.appwrite.projectId)
         .setKey(config.appwrite.apiKey);
       this.appwriteDatabases = new Databases(this.appwriteClient);
+      console.log('[APPWRITE INITIATED] TaskModel: Connected to', config.appwrite.endpoint, '| project:', config.appwrite.projectId);
     } else {
+      const missing = ['endpoint', 'projectId', 'apiKey'].filter(k => !config.appwrite?.[k]);
+      console.log(`[APPWRITE NOT INITIATED] TaskModel: Missing config keys: ${missing.join(', ')}`);
       logger.warn('Appwrite not configured. Transcript status checks will be skipped.');
       this.appwriteDatabases = null;
     }

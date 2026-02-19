@@ -167,20 +167,29 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             const candidateName = candidate?.name || 'Candidate';
             const commentText = comment?.text || comment?.content || 'New comment'; // Handle content field
             // console.log(candidate);
+
+            // Use commentId as the stable dedup key
+            const notifId = comment.id || comment._id;
+            if (!notifId) return; // Cannot dedup without stable ID — skip ephemeral notifications
+
             // Notification List Item (Persistent)
             const newNotif: NotificationEvent = {
-                id: comment.id || Date.now().toString(),
+                id: notifId,
                 type: 'comment',
                 title: 'New Message',
                 description: `New message from ${authorName} regarding ${candidateName}`,
                 timestamp: new Date().toISOString(),
                 read: false,
                 candidateId: candidate?.id,
-                commentId: comment.id,
+                commentId: notifId,
                 resumeUnderstandingStatus: candidate?.resumeUnderstandingStatus
             };
 
-            setNotifications(prev => [newNotif, ...prev]);
+            // Guard: skip if already present (initial fetch + socket event race)
+            setNotifications(prev => {
+                if (prev.some(n => n.id === newNotif.id)) return prev;
+                return [newNotif, ...prev];
+            });
 
             // Toast Alert (Ephemeral - Specific Format)
             console.log('🔔 Discussion Notification Triggered:', { authorName, commentText });

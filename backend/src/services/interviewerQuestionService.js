@@ -61,7 +61,10 @@ class InterviewerQuestionService {
         .setProject(config.appwrite.projectId)
         .setKey(config.appwrite.apiKey);
       this.databases = new Databases(this.client);
+      console.log('[APPWRITE INITIATED] InterviewerQuestionService: Connected to', config.appwrite.endpoint, '| project:', config.appwrite.projectId);
     } else {
+      const missing = ['endpoint', 'projectId', 'apiKey'].filter(k => !config.appwrite?.[k]);
+      console.log(`[APPWRITE NOT INITIATED] InterviewerQuestionService: Missing config keys: ${missing.join(', ')}`);
       logger.warn('Appwrite not configured. Transcript fetching will fail if attempted.');
       this.databases = null;
     }
