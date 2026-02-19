@@ -68,7 +68,7 @@ const STATUS_LABELS: Record<QueueStatus, string> = {
 export default function ResumeUnderstanding() {
   const posthog = usePostHog(); // [Harsh] Analytics
   const { toast } = useToast();
-  const { notifications } = useNotifications();
+  const { notifications, markAsRead } = useNotifications();
   const { refreshAccessToken } = useAuth();
   const role = useMemo(() => (localStorage.getItem("role") || "").trim().toLowerCase(), []);
   const allowed = useMemo(
@@ -117,6 +117,11 @@ export default function ResumeUnderstanding() {
   }, [discussionCandidateId, queues]);
 
   const openDiscussion = (candidateId: string) => {
+    // Mark all unread comment notifications for this candidate as read — clears the red dot
+    notifications
+      .filter(n => n.candidateId === candidateId && n.type === 'comment' && !n.read)
+      .forEach(n => markAsRead(n.id));
+
     setSearchParams(prev => {
       const newParams = new URLSearchParams(prev);
       newParams.set('discussionCandidateId', candidateId);

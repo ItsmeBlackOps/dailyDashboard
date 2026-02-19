@@ -31,9 +31,10 @@ import { GRAPH_MAIL_SCOPES } from "@/constants";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToastAction } from "@/components/ui/toast";
 import { StatusBadge } from "@/components/candidates/StatusBadge";
-import { Loader2, BookOpen } from "lucide-react";
+import { Loader2, BookOpen, MessageSquare } from "lucide-react";
 import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import { useNotifications } from "@/context/NotificationContext";
+import { ResumeDiscussionDrawer } from "@/components/resume/ResumeDiscussionDrawer";
 
 interface BranchCandidatesProps {
   role: string;
@@ -367,7 +368,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [search, setSearch] = useState<string>("");
   const { refreshAccessToken, authFetch } = useAuth();
   const { toast } = useToast();
-  const { notifications } = useNotifications();
+  const { notifications, markAsRead } = useNotifications();
   const { profile } = useUserProfile();
   const location = useLocation();
   const navigate = useNavigate();
@@ -487,6 +488,20 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [mockError, setMockError] = useState('');
   const [mockResumeFile, setMockResumeFile] = useState<File | null>(null);
   const [mockJdFile, setMockJdFile] = useState<File | null>(null);
+
+  // Discussion Drawer State
+  const [discussionOpen, setDiscussionOpen] = useState(false);
+  const [discussionCandidate, setDiscussionCandidate] = useState<CandidateRow | null>(null);
+
+  const openDiscussionDrawer = useCallback((candidate: CandidateRow) => {
+    // Mark all unread comment notifications for this candidate as read
+    notifications
+      .filter(n => n.candidateId === candidate.id && n.type === 'comment' && !n.read)
+      .forEach(n => markAsRead(n.id));
+    setDiscussionCandidate(candidate);
+    setDiscussionOpen(true);
+  }, [notifications, markAsRead]);
+
   const acquireGraphAccessToken = useCallback(async (): Promise<string> => {
     let activeAccount = instance.getActiveAccount() ?? account ?? null;
     let graphToken = '';
@@ -3499,31 +3514,68 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                             />
                           </div>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="sm">View</Button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="relative"
+                                  onClick={(e) => { e.stopPropagation(); openDiscussionDrawer(candidate); }}
+                                >
+                                  <MessageSquare className="h-4 w-4" />
+                                  {notifications.some(n => n.candidateId === candidate.id && n.type === 'comment' && !n.read) && (
+                                    <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
+                                  )}
+                                  <span className="sr-only">Discussion</span>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Discussion</TooltipContent>
+                            </Tooltip>
+
+                            {canSendSupport && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={(e) => { e.stopPropagation(); openMockDialog(candidate); }}
+                                  >
+                                    <BookOpen className="h-4 w-4" />
+                                    <span className="sr-only">Mock Interview</span>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Request Mock Interview</TooltipContent>
+                              </Tooltip>
+                            )}
 
                             {canEdit && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditCandidateId(candidate.id);
-                                  setFormState({
-                                    name: candidate.name,
-                                    email: candidate.email,
-                                    technology: candidate.technology,
-                                    recruiter: candidate.recruiterRaw || '',
-                                    contact: candidate.contact,
-                                    expert: candidate.expertRaw || ''
-                                  });
-                                  setIsEditOpen(true);
-                                }}
-                              >
-                                <span className="sr-only">Edit</span>
-                                <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11.8536 1.14645C11.6583 0.951184 11.3417 0.951184 11.1465 1.14645L3.71455 8.57836C3.62459 8.66832 3.55263 8.77461 3.50251 8.89291L2.09545 12.213C1.98939 12.4633 2.05284 12.7508 2.25752 12.9372C2.4622 13.1235 2.77259 13.1613 3.01633 13.0298L6.28913 11.2678C6.39803 11.2092 6.49479 11.1278 6.57469 11.0292L13.8536 3.85355C14.0488 3.65829 14.0488 3.34171 13.8536 3.14645L11.8536 1.14645ZM4.42166 9.28547L11.5 2.20711L12.7929 3.5L5.71455 10.5784L4.21924 11.3831L4.42166 9.28547Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path></svg>
-                              </Button>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditCandidateId(candidate.id);
+                                      setFormState({
+                                        name: candidate.name,
+                                        email: candidate.email,
+                                        technology: candidate.technology,
+                                        recruiter: candidate.recruiterRaw || '',
+                                        contact: candidate.contact,
+                                        expert: candidate.expertRaw || ''
+                                      });
+                                      setIsEditOpen(true);
+                                    }}
+                                  >
+                                    <span className="sr-only">Edit</span>
+                                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11.8536 1.14645C11.6583 0.951184 11.3417 0.951184 11.1465 1.14645L3.71455 8.57836C3.62459 8.66832 3.55263 8.77461 3.50251 8.89291L2.09545 12.213C1.98939 12.4633 2.05284 12.7508 2.25752 12.9372C2.4622 13.1235 2.77259 13.1613 3.01633 13.0298L6.28913 11.2678C6.39803 11.2092 6.49479 11.1278 6.57469 11.0292L13.8536 3.85355C14.0488 3.65829 14.0488 3.34171 13.8536 3.14645L11.8536 1.14645ZM4.42166 9.28547L11.5 2.20711L12.7929 3.5L5.71455 10.5784L4.21924 11.3831L4.42166 9.28547Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path></svg>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Edit Candidate</TooltipContent>
+                              </Tooltip>
                             )}
                           </div>
                         </TableCell>
@@ -4699,6 +4751,16 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Discussion Drawer */}
+      {discussionCandidate && (
+        <ResumeDiscussionDrawer
+          isOpen={discussionOpen}
+          onClose={() => { setDiscussionOpen(false); setDiscussionCandidate(null); }}
+          candidateId={discussionCandidate.id}
+          candidateName={discussionCandidate.name}
+        />
       )}
     </>
   );
