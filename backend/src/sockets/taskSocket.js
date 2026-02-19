@@ -20,6 +20,7 @@ export class TaskSocketHandler {
     socket.on('getTaskStatistics', socketAsyncHandler(this.handleGetTaskStatistics.bind(this)));
     socket.on('reportBotQuery', socketAsyncHandler(this.handleReportBotQuery.bind(this)));
     socket.on('reportBotDownload', socketAsyncHandler(this.handleReportBotDownload.bind(this)));
+    socket.on('enrichTranscripts', socketAsyncHandler(this.handleEnrichTranscripts.bind(this)));
   }
 
   async handleGetTasksToday(socket, data, callback) {
@@ -230,6 +231,14 @@ export class TaskSocketHandler {
       });
 
       callback(result);
+
+      // Deferred: run Appwrite transcript enrichment in the background and push
+      // the result back without blocking the initial render.
+      if (result.success && result.tasks?.length > 0) {
+        this._pushTranscriptEnrichment(socket, result.tasks).catch(err => {
+          logger.warn('Deferred transcript enrichment failed', { error: err.message, socketId: socket.id });
+        });
+      }
     } catch (error) {
       logger.error('Socket getTasksByRange failed', {
         error: error.message,
@@ -549,6 +558,53 @@ export class TaskSocketHandler {
         : error.message || 'Unable to prepare the download.';
 
       callback({ success: false, error: message });
+    }
+  }
+
+  /**
+   * Run transcript enrichment in background and push result to the socket.
+   * Emits 'transcriptsEnriched' with a { taskId => boolean } map so the
+   * frontend can patch its local state without a full reload.
+   */
+  async _pushTranscriptEnrichment(socket, tasks) {
+    const enriched = await this.taskService.enrichTranscriptsForTasks(tasks);
+    const transcriptMap = {};
+    for (const t of enriched) {
+      if (t._id) transcriptMap[String(t._id)] = Boolean(t.transcription);
+    }
+    if (Object.keys(transcriptMap).length > 0) {
+      socket.emit('transcriptsEnriched', { transcriptMap });
+      logger.debug('Pushed transcript enrichment', {
+        count: Object.keys(transcriptMap).length,
+        socketId: socket.id
+      });
+    }
+  }
+
+  /**
+   * On-demand enrichment for a specific set of task subjects.
+   * Frontend emits { tasks: [{ _id, subject }] } and gets back a transcript map.
+   */
+  async handleEnrichTranscripts(socket, data, callback) {
+    if (!callback || typeof callback !== 'function') return;
+
+    const user = socket.data.user;
+    if (!user) return callback({ success: false, error: 'Authentication required' });
+
+    try {
+      const tasks = Array.isArray(data?.tasks) ? data.tasks : [];
+      if (tasks.length === 0) return callback({ success: true, transcriptMap: {} });
+
+      const enriched = await this.taskService.enrichTranscriptsForTasks(tasks);
+      const transcriptMap = {};
+      for (const t of enriched) {
+        if (t._id) transcriptMap[String(t._id)] = Boolean(t.transcription);
+      }
+
+      callback({ success: true, transcriptMap });
+    } catch (error) {
+      logger.error('Socket enrichTranscripts failed', { error: error.message, socketId: socket.id });
+      callback({ success: false, error: error.message });
     }
   }
 }
