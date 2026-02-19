@@ -240,12 +240,11 @@ export class TaskService {
 
       const docs = await this.taskModel.collection.aggregate(pipeline, { collation }).toArray();
 
-      let tasks = docs
+      const tasks = docs
         .map(task => this.taskModel.formatTask(task))
         .filter(Boolean);
 
-      // Enrich with Appwrite transcript status
-      tasks = await this.taskModel.enrichWithTranscriptStatus(tasks);
+      // NOTE: Transcript enrichment is deferred — call enrichTranscriptsForTasks() separately.
 
       logger.info('Tasks by range retrieved (Aggregated)', {
         userEmail,
@@ -275,6 +274,15 @@ export class TaskService {
     } finally {
       timer.end({ userEmail, userRole, options });
     }
+  }
+
+  /**
+   * Enrich an array of already-formatted tasks with Appwrite transcript status.
+   * Call this AFTER returning the initial task list to the client so it doesn't
+   * block the first paint.
+   */
+  async enrichTranscriptsForTasks(tasks) {
+    return this.taskModel.enrichWithTranscriptStatus(tasks);
   }
 
   async getDashboardSummary(userEmail, userRole, teamLead, manager, options = {}) {

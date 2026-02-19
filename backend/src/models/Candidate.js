@@ -53,7 +53,8 @@ export class CandidateModel {
         this.collection.createIndex({ Recruiter: 1 }),
         this.collection.createIndex({ Expert: 1 }),
         this.collection.createIndex({ workflowStatus: 1 }),
-        this.collection.createIndex({ resumeUnderstandingStatus: 1 })
+        this.collection.createIndex({ resumeUnderstandingStatus: 1 }),
+        this.collection.createIndex({ 'Candidate Name': 1 })
       ]);
       logger.info('CandidateModel initialized and indexes verified');
     } catch (error) {
