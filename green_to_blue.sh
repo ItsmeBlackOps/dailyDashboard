@@ -5,8 +5,41 @@ set -euo pipefail
 
 echo "Merging green images into blue"
 
+wait_for_healthy() {
+  local container="$1"
+  local timeout_seconds="${2:-180}"
+  local elapsed=0
+
+  while [ "$elapsed" -lt "$timeout_seconds" ]; do
+    local status
+    status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{if .State.Running}}running{{else}}stopped{{end}}{{end}}' "$container" 2>/dev/null || true)"
+
+    case "$status" in
+      healthy|running)
+        echo "${container} is ${status}"
+        return 0
+        ;;
+      unhealthy|stopped|exited|dead)
+        echo "${container} entered ${status} state."
+        docker logs --tail 120 "$container" || true
+        return 1
+        ;;
+    esac
+
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+
+  echo "Timed out waiting for ${container} to become healthy."
+  docker logs --tail 120 "$container" || true
+  return 1
+}
+
 # Ensure green stack and gateway are running.
 docker compose up -d backend-green frontend-green gateway
+wait_for_healthy dailydb-backend-green
+wait_for_healthy dailydb-frontend-green
+wait_for_healthy dailydb-gateway 60
 
 # Switch traffic to GREEN first.
 cp nginx/conf.d/upstreams/backend.green.conf  nginx/conf.d/upstreams/backend.active.conf
@@ -28,6 +61,8 @@ docker tag "$GREEN_FRONTEND_ID" "$BLUE_FRONTEND_IMAGE"
 
 # Recreate BLUE containers from updated tags.
 docker compose up -d --no-build --force-recreate backend-blue frontend-blue
+wait_for_healthy dailydb-backend-blue
+wait_for_healthy dailydb-frontend-blue
 
 # Switch traffic back to BLUE.
 cp nginx/conf.d/upstreams/backend.blue.conf  nginx/conf.d/upstreams/backend.active.conf

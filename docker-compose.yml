@@ -21,6 +21,16 @@ services:
     expose:
       - "${PORT}" # Internal only
     restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:' + (process.env.PORT || '3004') + '/api/health').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
 
   frontend-blue:
     build:
@@ -43,6 +53,16 @@ services:
     restart: unless-stopped
     depends_on:
       - backend-blue
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:' + (process.env.FRONTEND_PORT || '8180') + '/').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
 
   # --- GREEN STACK ---
   backend-green:
@@ -55,6 +75,16 @@ services:
     expose:
       - "${PORT}" # Internal only
     restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:' + (process.env.PORT || '3004') + '/api/health').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
   
   frontend-green:
     build:
@@ -77,3 +107,13 @@ services:
     restart: unless-stopped
     depends_on:
       - backend-green
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:' + (process.env.FRONTEND_PORT || '8180') + '/').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
