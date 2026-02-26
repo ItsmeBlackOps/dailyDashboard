@@ -97,6 +97,7 @@
 - The backend exposes `POST /api/support/interview` (multipart form) to validate the payload, enforce role-based access, and deliver the formatted email via Microsoft Graph with optional resume and job description PDFs.
 - Configure the Graph mail environment variables (`AZURE_GRAPH_MAIL_SCOPES`, `SUPPORT_REQUEST_*`, and optionally `AZURE_GRAPH_MAIL_SENDER`) so the backend can deliver the formatted email through Microsoft Graph. Attachments are limited to PDFs under the configured size cap.
 - A success response returns `{ success: true, message: 'Support request sent successfully' }`; validation errors surface 400 responses that the frontend surfaces inline.
+- Duplicate protection is enforced before sending interview support emails: if any generated subject already exists in `taskBody` (case-insensitive exact match), the API returns `409` with guidance to reply on the same email thread and request task deletion first, then retry.
 
 ### Microsoft Graph Mail
 - `POST /api/graph/mail/send` forwards a Graph-compatible payload (see sample below) to `me/sendMail` using the caller’s delegated token.
