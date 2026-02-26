@@ -1,7 +1,37 @@
-const fallbackApiBase =
-  import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'https://dailydb.silverspace.tech' : 'https://dailydb.silverspace.tech');
+type ApiEnv = {
+  VITE_API_BASE?: string;
+  VITE_API_URL?: string;
+  DEV?: boolean;
+};
 
-export const API_BASE = import.meta.env.VITE_API_BASE || fallbackApiBase;
+export const normalizeApiBase = (value?: string): string => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  // Prevent "/api/api/..." when callers append "/api/...".
+  return trimmed.replace(/\/+$/g, '').replace(/\/api$/i, '');
+};
+
+export const resolveApiBase = (env: ApiEnv): string => {
+  const configuredBase = normalizeApiBase(env.VITE_API_BASE);
+  if (configuredBase) {
+    return configuredBase;
+  }
+
+  const fallbackApiUrl = normalizeApiBase(env.VITE_API_URL);
+  if (fallbackApiUrl) {
+    return fallbackApiUrl;
+  }
+
+  return env.DEV ? 'http://localhost:3004' : '';
+};
+
+export const API_BASE = resolveApiBase(import.meta.env);
 export const API_SCOPE = (import.meta.env.VITE_API_SCOPE || 'api://4fc9e095-61df-4a55-9b0c-2419747b96d0/User.Read').trim();
 export const LOGIN_SCOPES = (
   import.meta.env.VITE_LOGIN_SCOPES ||
