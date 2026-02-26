@@ -8,6 +8,7 @@ import { logger } from '../utils/logger.js';
 import { candidateService } from './candidateService.js';
 import { profileService } from './profileService.js';
 import { buildEmailSignatureHtml } from '../utils/emailSignature.js';
+import { database } from '../config/database.js';
 
 const ALLOWED_ROLES = new Set(['recruiter', 'mlead', 'mam', 'mm']);
 const INTERVIEW_ROUNDS = new Set([
@@ -25,6 +26,7 @@ const INTERVIEW_ROUNDS = new Set([
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_TIMEZONE = 'America/New_York';
 const SAME_DAY_LEAD_MINUTES = 4 * 60;
+const DUPLICATE_SUBJECT_GUIDANCE = 'A task with this interview subject already exists. Reply on the same email thread and request deletion from Tasks first. After deletion, submit this request again.';
 
 function normalizeWhitespace(value = '') {
   return value.toString().trim().replace(/\s+/g, ' ');
@@ -454,6 +456,64 @@ class SupportRequestService {
     return `Interview Support - ${candidateName} - ${safeTechnology} - ${when.subjectFragment}`;
   }
 
+  buildInterviewSupportSubjects(candidateName, technology, resolvedSlots = []) {
+    if (!Array.isArray(resolvedSlots) || resolvedSlots.length === 0) {
+      return [];
+    }
+
+    return Array.from(
+      new Set(
+        resolvedSlots
+          .map((slot) => {
+            const interviewMomentDetails = formatDateTimeForEmail(slot.interviewDateTime);
+            return this.buildSubject(candidateName, technology, interviewMomentDetails);
+          })
+          .filter((value) => typeof value === 'string' && value.trim().length > 0)
+      )
+    );
+  }
+
+  async getDuplicateInterviewSupportSubjects(subjects = []) {
+    if (!Array.isArray(subjects) || subjects.length === 0) {
+      return [];
+    }
+
+    const taskCollection = database.getCollection('taskBody');
+    const query = {
+      $or: [
+        { subject: { $in: subjects } },
+        { Subject: { $in: subjects } }
+      ]
+    };
+
+    const records = await taskCollection
+      .find(query, {
+        projection: { _id: 0, subject: 1, Subject: 1 },
+        collation: { locale: 'en', strength: 2 }
+      })
+      .toArray();
+
+    const desiredSubjects = new Set(
+      subjects
+        .map((subject) => (typeof subject === 'string' ? subject.trim().toLowerCase() : ''))
+        .filter(Boolean)
+    );
+
+    const duplicates = new Set();
+    for (const record of records) {
+      const candidates = [record?.subject, record?.Subject];
+      for (const candidate of candidates) {
+        const normalized = typeof candidate === 'string' ? candidate.trim() : '';
+        if (!normalized) continue;
+        if (desiredSubjects.has(normalized.toLowerCase())) {
+          duplicates.add(normalized);
+        }
+      }
+    }
+
+    return Array.from(duplicates);
+  }
+
   buildHtmlBody(data) {
     const rows = [
       { label: 'Candidate Name', value: data.candidateName },
@@ -737,6 +797,20 @@ class SupportRequestService {
       formattedCandidate.email || candidateRecord.email || '',
       'Candidate email'
     );
+
+    const prospectiveSubjects = this.buildInterviewSupportSubjects(candidateName, technology, resolvedSlots);
+    const conflictingSubjects = await this.getDuplicateInterviewSupportSubjects(prospectiveSubjects);
+    if (conflictingSubjects.length > 0) {
+      logger.warn('Interview support request blocked due to duplicate subject', {
+        requestedBy: user.email,
+        candidateId,
+        attemptedSubjects: prospectiveSubjects,
+        conflictingSubjects
+      });
+      const duplicateError = new Error(DUPLICATE_SUBJECT_GUIDANCE);
+      duplicateError.statusCode = 409;
+      throw duplicateError;
+    }
 
     const requesterDisplay = deriveDisplayNameFromEmail(user.email);
 

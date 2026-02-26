@@ -35,6 +35,7 @@ import { Loader2, BookOpen, MessageSquare } from "lucide-react";
 import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import { useNotifications } from "@/context/NotificationContext";
 import { ResumeDiscussionDrawer } from "@/components/resume/ResumeDiscussionDrawer";
+import { handleSupportInterviewSubmitError } from "@/components/dashboard/supportInterviewSubmitError";
 
 interface BranchCandidatesProps {
   role: string;
@@ -1821,8 +1822,16 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        const message = typeof payload?.error === 'string' ? payload.error : 'Unable to send support request';
-        setSupportError(message);
+        handleSupportInterviewSubmitError({
+          responseStatus: response.status,
+          backendMessage: typeof payload?.error === 'string' ? payload.error : null,
+          setSupportError,
+          toast,
+          posthog,
+          candidateName: supportForm.candidateName,
+          interviewRound: supportForm.interviewRound,
+          isLoopRound
+        });
         return;
       }
 

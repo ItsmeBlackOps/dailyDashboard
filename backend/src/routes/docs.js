@@ -61,7 +61,8 @@ const openapi = {
             }
           },
           '400': { description: 'Validation failed' },
-          '403': { description: 'Insufficient permissions' }
+          '403': { description: 'Insufficient permissions' },
+          '409': { description: 'Duplicate interview support subject already exists in tasks' }
         }
       }
     },

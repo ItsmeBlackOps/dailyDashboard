@@ -20,6 +20,7 @@ export class TaskModel {
   async initialize() {
     logger.warn('LOGGER_SANITY_CHECK: TaskModel.initialize() started');
     this.collection = database.getCollection('taskBody');
+    await this.ensureSupportSubjectIndexes();
 
     // Initialize Appwrite for transcript checks
     if (config.appwrite?.endpoint && config.appwrite?.projectId && config.appwrite?.apiKey) {
@@ -34,6 +35,44 @@ export class TaskModel {
       console.log(`[APPWRITE NOT INITIATED] TaskModel: Missing config keys: ${missing.join(', ')}`);
       logger.warn('Appwrite not configured. Transcript status checks will be skipped.');
       this.appwriteDatabases = null;
+    }
+  }
+
+  async ensureSupportSubjectIndexes() {
+    if (!this.collection || typeof this.collection.createIndex !== 'function') {
+      logger.warn('Task subject index setup skipped: collection is unavailable');
+      return;
+    }
+
+    const indexDefinitions = [
+      {
+        key: { subject: 1 },
+        options: {
+          name: 'task_subject_ci_idx',
+          collation: { locale: 'en', strength: 2 },
+          partialFilterExpression: { subject: { $type: 'string' } }
+        }
+      },
+      {
+        key: { Subject: 1 },
+        options: {
+          name: 'task_Subject_ci_idx',
+          collation: { locale: 'en', strength: 2 },
+          partialFilterExpression: { Subject: { $type: 'string' } }
+        }
+      }
+    ];
+
+    for (const definition of indexDefinitions) {
+      try {
+        await this.collection.createIndex(definition.key, definition.options);
+        logger.info('Task subject index ensured', { index: definition.options.name });
+      } catch (error) {
+        logger.warn('Failed to ensure task subject index', {
+          index: definition.options.name,
+          error: error.message
+        });
+      }
     }
   }
 
