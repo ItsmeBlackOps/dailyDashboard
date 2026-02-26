@@ -6,13 +6,9 @@ services:
     container_name: dailydb-gateway
     restart: unless-stopped
     ports:
-      - "${PORT}:${PORT}"           # Backend Port
       - "${FRONTEND_PORT}:${FRONTEND_PORT}" # Frontend Port
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-    depends_on:
-      - backend-blue
-      - frontend-blue
 
   # --- BLUE STACK ---
   backend-blue:
