@@ -15,6 +15,12 @@ export class TaskModel {
   constructor() {
     this.collection = null;
     this.appwriteDatabases = null;
+    this.changeStream = null;
+    this.changeStreamContext = null;
+    this.changeStreamRetryTimer = null;
+    this.changeStreamRestartAttempts = 0;
+    this.maxChangeStreamRestartAttempts = 5;
+    this.changeStreamBaseRetryMs = 1000;
   }
 
   async initialize() {
@@ -1175,86 +1181,243 @@ export class TaskModel {
   }
 
   setupChangeStream(io, userModel) {
+    this.changeStreamContext = { io, userModel };
+    this.changeStreamRestartAttempts = 0;
+    this.startTaskChangeStream();
+  }
+
+  getTaskChangeStreamPipeline() {
+    return [
+      { $match: { operationType: { $in: ['insert', 'update', 'replace', 'delete'] } } }
+    ];
+  }
+
+  getTaskChangeStreamOptions() {
+    return {
+      fullDocument: 'updateLookup',
+      fullDocumentBeforeChange: 'whenAvailable'
+    };
+  }
+
+  normalizeTaskId(taskId) {
+    if (!taskId) return '';
+    if (typeof taskId === 'string') return taskId;
+    if (typeof taskId === 'object' && typeof taskId.toHexString === 'function') {
+      try {
+        return taskId.toHexString();
+      } catch {
+        return String(taskId);
+      }
+    }
+    return String(taskId);
+  }
+
+  clearChangeStreamRetryTimer() {
+    if (this.changeStreamRetryTimer) {
+      clearTimeout(this.changeStreamRetryTimer);
+      this.changeStreamRetryTimer = null;
+    }
+  }
+
+  async teardownTaskChangeStream() {
+    this.clearChangeStreamRetryTimer();
+    if (!this.changeStream) return;
+
+    const stream = this.changeStream;
+    this.changeStream = null;
+
     try {
-      const changeStream = this.collection.watch(
-        [
-          { $match: { operationType: { $in: ["insert", "update", "replace"] } } },
-        ],
-        { fullDocument: "updateLookup", fullDocumentBeforeChange: "required" }
-      );
+      stream.removeAllListeners();
+      await stream.close();
+    } catch (error) {
+      logger.warn('Failed to close task change stream cleanly', { error: error.message });
+    }
+  }
 
-      changeStream.on("change", async (change) => {
+  scheduleTaskChangeStreamRestart(error) {
+    if (this.changeStreamRetryTimer) return;
+
+    if (this.changeStreamRestartAttempts >= this.maxChangeStreamRestartAttempts) {
+      logger.error('Task change stream restart limit reached', {
+        attempts: this.changeStreamRestartAttempts,
+        maxAttempts: this.maxChangeStreamRestartAttempts,
+        error: error?.message
+      });
+      return;
+    }
+
+    this.changeStreamRestartAttempts += 1;
+    const delayMs = Math.min(
+      this.changeStreamBaseRetryMs * (2 ** (this.changeStreamRestartAttempts - 1)),
+      30000
+    );
+
+    logger.warn('Scheduling task change stream restart', {
+      attempt: this.changeStreamRestartAttempts,
+      delayMs,
+      error: error?.message
+    });
+
+    this.changeStreamRetryTimer = setTimeout(() => {
+      this.changeStreamRetryTimer = null;
+      this.startTaskChangeStream();
+    }, delayMs);
+  }
+
+  handleDeleteTaskChange(io, taskId) {
+    const sockets = io.of('/').sockets;
+    if (!sockets || sockets.size === 0) {
+      return { taskRemoved: 0 };
+    }
+
+    const normalizedTaskId = this.normalizeTaskId(taskId);
+    let removedCount = 0;
+
+    for (const socket of sockets.values()) {
+      const user = socket.data.user;
+      if (!user) continue;
+
+      socket.emit('taskRemoved', { _id: normalizedTaskId });
+      removedCount += 1;
+    }
+
+    logger.info('Task realtime event emitted', {
+      operation: 'delete',
+      taskId: normalizedTaskId,
+      counts: {
+        taskCreated: 0,
+        taskUpdated: 0,
+        taskRemoved: removedCount
+      },
+      connectedSockets: sockets.size
+    });
+
+    return { taskRemoved: removedCount };
+  }
+
+  handleUpsertTaskChange(change, io, userModel) {
+    // 1. Prepare New State
+    let docNew = null;
+    if (['insert', 'update', 'replace'].includes(change.operationType)) {
+      docNew = change.fullDocument;
+    }
+
+    // 2. Prepare Old State (Pre-Image)
+    let docOld = null;
+    if (['update', 'replace'].includes(change.operationType)) {
+      docOld = change.fullDocumentBeforeChange || null;
+    }
+
+    // Format both to ensure derived fields (like assignedEmail) are available for permission checks
+    const taskNew = docNew ? this.formatTask(docNew) : null;
+    const taskOld = docOld ? this.formatTask(docOld) : null;
+    const eventType = change.operationType === 'insert' ? 'taskCreated' : 'taskUpdated';
+    const taskId = this.normalizeTaskId(
+      (taskNew && taskNew._id) || (taskOld && taskOld._id) || change.documentKey?._id
+    );
+
+    logger.debug('Task change detected (Diffing)', {
+      eventType,
+      taskId,
+      operation: change.operationType
+    });
+
+    const sockets = io.of('/').sockets;
+    if (!sockets || sockets.size === 0) {
+      return;
+    }
+
+    const counts = {
+      taskCreated: 0,
+      taskUpdated: 0,
+      taskRemoved: 0
+    };
+
+    for (const socket of sockets.values()) {
+      const user = socket.data.user;
+      if (!user) continue;
+
+      const visibleBefore = taskOld ? this.shouldSendTaskToUser(user, taskOld, userModel) : false;
+      const visibleAfter = taskNew ? this.shouldSendTaskToUser(user, taskNew, userModel) : false;
+
+      if (visibleBefore && !visibleAfter) {
+        socket.emit('taskRemoved', { _id: taskId });
+        counts.taskRemoved += 1;
+      } else if (visibleAfter && taskNew) {
+        socket.emit(eventType, taskNew);
+        if (eventType === 'taskCreated') {
+          counts.taskCreated += 1;
+        } else {
+          counts.taskUpdated += 1;
+        }
+      }
+    }
+
+    logger.info('Task realtime event emitted', {
+      operation: change.operationType,
+      taskId,
+      counts,
+      connectedSockets: sockets.size
+    });
+  }
+
+  startTaskChangeStream() {
+    try {
+      if (!this.collection) {
+        throw new Error('Task collection is not initialized');
+      }
+      if (!this.changeStreamContext?.io || !this.changeStreamContext?.userModel) {
+        throw new Error('Task change stream context missing');
+      }
+
+      if (this.changeStream) {
+        void this.teardownTaskChangeStream();
+      }
+
+      const pipeline = this.getTaskChangeStreamPipeline();
+      const options = this.getTaskChangeStreamOptions();
+      const { io, userModel } = this.changeStreamContext;
+
+      const changeStream = this.collection.watch(pipeline, options);
+      this.changeStream = changeStream;
+
+      logger.info('Task change stream started', {
+        pipeline,
+        options,
+        restartAttempts: this.changeStreamRestartAttempts
+      });
+
+      changeStream.on('change', async (change) => {
         try {
-          // 1. Prepare New State
-          let docNew = null;
-          if (["insert", "update", "replace"].includes(change.operationType)) {
-            docNew = change.fullDocument;
+          this.changeStreamRestartAttempts = 0;
+
+          if (change.operationType === 'delete') {
+            this.handleDeleteTaskChange(io, change.documentKey?._id);
+            return;
           }
 
-          // 2. Prepare Old State (Pre-Image)
-          let docOld = null;
-          if (["update", "replace"].includes(change.operationType)) {
-            docOld = change.fullDocumentBeforeChange;
-          }
-
-          // Format both to ensure derived fields (like assignedEmail) are available for permission checks
-          const taskNew = docNew ? this.formatTask(docNew) : null;
-          const taskOld = docOld ? this.formatTask(docOld) : null;
-
-          // If current state is invalid/null (e.g. deleted or formatting error), we can't show it.
-          // But if it was an update that made it invalid, we might need to send removals.
-          // For simplicity, if taskNew is null but taskOld was valid, we treat as removal.
-
-          const eventType = change.operationType === "insert" ? "taskCreated" : "taskUpdated";
-          const taskId = (taskNew && taskNew._id) || (taskOld && taskOld._id) || change.documentKey._id;
-
-          logger.debug('Task change detected (Diffing)', {
-            eventType,
-            taskId,
-            operation: change.operationType
-          });
-
-          // 3. Iterate Sockets & Diff Persistence
-          const sockets = io.of("/").sockets;
-          if (!sockets || sockets.size === 0) return;
-
-          for (const socket of sockets.values()) {
-            const user = socket.data.user;
-            if (!user) continue;
-
-            const visibleBefore = taskOld ? this.shouldSendTaskToUser(user, taskOld, userModel) : false;
-            const visibleAfter = taskNew ? this.shouldSendTaskToUser(user, taskNew, userModel) : false;
-
-            if (visibleBefore && !visibleAfter) {
-              // CASE: User lost access (or task deleted/invalidated)
-              socket.emit("taskRemoved", { _id: taskId });
-              logger.debug('Emitted taskRemoved', { userEmail: user.email, taskId });
-            } else if (visibleAfter) {
-              // CASE: User has access now (New or Kept)
-              // We send the FULL payload. The client will treat this as a signal to re-fetch canonical
-              // if it follows the "Signal -> Fetch" pattern, or upsert directly if it trusts this.
-              // To support "Signal Only", sending the full task is still fine (contains _id).
-              socket.emit(eventType, taskNew);
-
-              // Debug logging only for interesting transitions
-              if (!visibleBefore) {
-                logger.debug('Emitted task access GAINED', { userEmail: user.email, taskId, event: eventType });
-              }
-            }
-          }
-
+          this.handleUpsertTaskChange(change, io, userModel);
         } catch (error) {
           logger.error('Change stream processing error', { error: error.message, stack: error.stack });
         }
       });
 
-      changeStream.on("error", (error) => {
-        logger.error('Task change stream error', { error: error.message });
+      changeStream.on('error', (error) => {
+        logger.error('Task change stream error', {
+          error: error.message,
+          code: error.code,
+          restartAttempts: this.changeStreamRestartAttempts
+        });
+
+        void this.teardownTaskChangeStream().then(() => {
+          this.scheduleTaskChangeStreamRestart(error);
+        });
       });
 
       logger.info('Task realtime updates configured with Visibility Diffing');
     } catch (error) {
       logger.error('Failed to setup task change stream', { error: error.message });
+      this.scheduleTaskChangeStreamRestart(error);
     }
   }
 

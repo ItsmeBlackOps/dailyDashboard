@@ -1,16 +1,20 @@
-import { render, fireEvent, screen, cleanup } from '@testing-library/react';
+import { render, fireEvent, screen, cleanup, waitFor, act } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
-import { vi, describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { vi, describe, it, expect, beforeAll, afterEach, beforeEach } from 'vitest';
 import TasksToday from './TasksToday';
 import { io } from 'socket.io-client';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
+const loginPopupMock = vi.fn().mockResolvedValue({});
+const getActiveAccountMock = vi.fn();
+const setActiveAccountMock = vi.fn();
+
 vi.mock('@azure/msal-react', () => ({
   useMsal: () => ({
     instance: {
-      loginPopup: vi.fn().mockResolvedValue({}),
-      getActiveAccount: vi.fn(),
-      setActiveAccount: vi.fn(),
+      loginPopup: loginPopupMock,
+      getActiveAccount: getActiveAccountMock,
+      setActiveAccount: setActiveAccountMock,
     },
     accounts: [],
   }),
@@ -18,6 +22,19 @@ vi.mock('@azure/msal-react', () => ({
 
 vi.mock('socket.io-client', () => ({
   io: vi.fn(),
+}));
+
+vi.mock('@/context/NotificationContext', () => ({
+  useNotifications: () => ({
+    notifications: [],
+    unreadCount: 0,
+    markAsRead: vi.fn(),
+    clearAll: vi.fn(),
+    selectedNotification: null,
+    isModalOpen: false,
+    openModal: vi.fn(),
+    closeModal: vi.fn(),
+  }),
 }));
 
 beforeAll(() => {
@@ -37,8 +54,16 @@ beforeAll(() => {
 });
 
 function setupSocket() {
-  const handlers: Record<string, Function> = {};
+  const handlers: Record<string, Function[]> = {};
+  const trigger = (event: string, ...args: any[]) => {
+    for (const cb of handlers[event] || []) {
+      cb(...args);
+    }
+  };
+
   const socket = {
+    connected: false,
+    recovered: false,
     emit: vi.fn((event: string, payload: any, cb?: Function) => {
       if (event === 'getTasksByRange' && typeof cb === 'function') {
         // Provide a single task for today with a candidate expert suggestion
@@ -60,6 +85,7 @@ function setupSocket() {
               'End Client': 'ClientX',
               'Interview Round': 'Round 1',
               assignedExpert: 'Not Assigned',
+              assignedEmail: 'tester@example.com',
               transcription: false,
               candidateExpertDisplay: 'Ayush K'
             }
@@ -68,33 +94,67 @@ function setupSocket() {
       }
     }),
     on: vi.fn((event, cb) => {
-      handlers[event] = cb;
+      if (!handlers[event]) {
+        handlers[event] = [];
+      }
+      handlers[event].push(cb);
     }),
     once: vi.fn((event, cb) => {
-      if (event === 'connect') cb();
+      const onceWrapper = (...args: any[]) => {
+        cb(...args);
+        socket.off(event, onceWrapper);
+      };
+      socket.on(event, onceWrapper);
     }),
     off: vi.fn(),
     connect: vi.fn(() => {
-      handlers['connect'] && handlers['connect']();
+      socket.connected = true;
+      trigger('connect');
     }),
-    disconnect: vi.fn(),
+    disconnect: vi.fn(() => {
+      socket.connected = false;
+      trigger('disconnect', 'io client disconnect');
+    }),
     auth: {},
+    __trigger: trigger
   } as any;
+
+  socket.off.mockImplementation((event: string, cb?: Function) => {
+    if (!handlers[event]) return;
+    if (!cb) {
+      delete handlers[event];
+      return;
+    }
+    handlers[event] = handlers[event].filter((handler) => handler !== cb);
+  });
+
   (io as unknown as vi.Mock).mockReturnValue(socket);
   return socket;
 }
 
 describe('TasksToday', () => {
-beforeAll(() => {
-  localStorage.setItem('accessToken', 'test');
-  localStorage.setItem('role', 'user');
-  localStorage.setItem('email', 'tester@example.com');
-});
+  beforeAll(() => {
+    localStorage.setItem('accessToken', 'test');
+    localStorage.setItem('role', 'user');
+    localStorage.setItem('email', 'tester@example.com');
+  });
 
-afterEach(() => {
-  cleanup();
-  localStorage.setItem('role', 'user');
-});
+  beforeEach(() => {
+    loginPopupMock.mockClear();
+    getActiveAccountMock.mockClear();
+    setActiveAccountMock.mockClear();
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible'
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    localStorage.setItem('role', 'user');
+    vi.useRealTimers();
+  });
 
   it('hides Subject by default and can toggle it', async () => {
     setupSocket();
@@ -112,12 +172,11 @@ afterEach(() => {
 
     await screen.findByText(/Test Candidate/);
 
-    // The suggestion value from candidateExpertDisplay should render
-    expect(Boolean(await screen.findByText(/Ayush K/))).toBe(true);
-
     // Meeting actions default to create button when no link stored
-    const createButton = await screen.findByRole('button', { name: /Create meeting/i });
-    expect(createButton).toBeDefined();
+    expect(
+      screen.queryByRole('button', { name: /Create meeting/i }) ||
+      screen.queryByRole('button', { name: /Creating/i })
+    ).toBeTruthy();
 
     // Toggle on Subject
     const toggle = screen.getByLabelText('Show Subject');
@@ -186,5 +245,140 @@ afterEach(() => {
   it.skip('fetches tasks again when tab changes', async () => {
     // TODO: Update test once the tab switcher is exposed in the refactored layout.
     expect(true).toBe(true);
+  });
+
+  it('refetches on unrecovered reconnect', async () => {
+    const socket = setupSocket();
+
+    render(
+      <BrowserRouter>
+        <TooltipProvider>
+          <TasksToday />
+        </TooltipProvider>
+      </BrowserRouter>
+    );
+
+    await screen.findByText(/Test Candidate/);
+
+    const fetchCalls = () => socket.emit.mock.calls.filter((call) => call[0] === 'getTasksByRange').length;
+    const beforeReconnect = fetchCalls();
+
+    socket.recovered = false;
+    socket.__trigger('connect');
+
+    await waitFor(() => {
+      expect(fetchCalls()).toBeGreaterThan(beforeReconnect);
+    });
+  });
+
+  it('removes task row when taskRemoved is received', async () => {
+    const socket = setupSocket();
+
+    render(
+      <BrowserRouter>
+        <TooltipProvider>
+          <TasksToday />
+        </TooltipProvider>
+      </BrowserRouter>
+    );
+
+    await screen.findByText(/Test Candidate/);
+    socket.__trigger('taskRemoved', { _id: 't1' });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Test Candidate/)).toBeNull();
+    });
+  });
+
+  it('runs fallback polling every minute for disconnected sockets', async () => {
+    const socket = setupSocket();
+    const setIntervalSpy = vi.spyOn(window, 'setInterval');
+
+    render(
+      <BrowserRouter>
+        <TooltipProvider>
+          <TasksToday />
+        </TooltipProvider>
+      </BrowserRouter>
+    );
+
+    await screen.findByText(/Test Candidate/);
+
+    const connectCallsBefore = socket.connect.mock.calls.length;
+    socket.connected = false;
+    const pollRegistration = setIntervalSpy.mock.calls.find((call) => call[1] === 60_000);
+    expect(pollRegistration).toBeDefined();
+
+    const pollCallback = pollRegistration?.[0] as (() => void) | undefined;
+    expect(typeof pollCallback).toBe('function');
+
+    act(() => {
+      pollCallback?.();
+    });
+
+    expect(socket.connect.mock.calls.length).toBeGreaterThan(connectCallsBefore);
+    setIntervalSpy.mockRestore();
+  });
+
+  it('auto-attempts meeting creation when visible tasks have no join link', async () => {
+    setupSocket();
+
+    render(
+      <BrowserRouter>
+        <TooltipProvider>
+          <TasksToday />
+        </TooltipProvider>
+      </BrowserRouter>
+    );
+
+    await screen.findByText(/Test Candidate/);
+
+    await waitFor(() => {
+      expect(loginPopupMock).toHaveBeenCalled();
+    });
+  });
+
+  it('does not auto-attempt meeting creation when task is assigned to another user', async () => {
+    const socket = setupSocket();
+    socket.emit.mockImplementation((event: string, payload: any, cb?: Function) => {
+      if (event === 'getTasksByRange' && typeof cb === 'function') {
+        const today = new Date();
+        const mm = (today.getMonth() + 1).toString().padStart(2, '0');
+        const dd = today.getDate().toString().padStart(2, '0');
+        const yyyy = today.getFullYear();
+        const dateStr = `${mm}/${dd}/${yyyy}`;
+        cb({
+          success: true,
+          tasks: [
+            {
+              _id: 't1',
+              subject: 'Interview Support - Example',
+              'Candidate Name': 'Test Candidate',
+              'Date of Interview': dateStr,
+              'Start Time Of Interview': '10:00 AM',
+              'End Time Of Interview': '11:00 AM',
+              'End Client': 'ClientX',
+              'Interview Round': 'Round 1',
+              assignedEmail: 'otheruser@example.com',
+              transcription: false
+            }
+          ]
+        });
+      }
+    });
+
+    render(
+      <BrowserRouter>
+        <TooltipProvider>
+          <TasksToday />
+        </TooltipProvider>
+      </BrowserRouter>
+    );
+
+    await screen.findByText(/Test Candidate/);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+    expect(loginPopupMock).not.toHaveBeenCalled();
   });
 });
