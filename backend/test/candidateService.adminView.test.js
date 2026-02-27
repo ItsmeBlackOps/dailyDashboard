@@ -77,5 +77,12 @@ describe('candidateService admin visibility', () => {
         expect.objectContaining({ value: 'lead@example.com' })
       ])
     );
+
+    expect(result.options?.createPolicy).toEqual(
+      expect.objectContaining({
+        allowedBranches: expect.arrayContaining(['GGR', 'LKN', 'AHM']),
+        canCreate: true
+      })
+    );
   });
 });

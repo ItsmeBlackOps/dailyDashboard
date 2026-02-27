@@ -5,6 +5,7 @@ import { taskService } from './taskService.js';
 import { logger } from '../utils/logger.js';
 import { marked } from 'marked';
 import sanitizeHtml from 'sanitize-html';
+import { createHash } from 'node:crypto';
 
 const ALLOWED_ROLES = new Set(['recruiter', 'mlead', 'mam', 'mm']);
 const WINDOW_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -54,6 +55,13 @@ const SANITIZE_OPTIONS = {
 };
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const buildCacheDocumentId = (taskId = '', type = '') => {
+  const normalizedType = (type || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10) || 'cache';
+  const taskToken = (taskId || '').toString().trim() || 'task';
+  const hash = createHash('sha1').update(`${normalizedType}:${taskToken}`).digest('hex').slice(0, 24);
+  return `${normalizedType}_${hash}`;
+};
 
 const PROMPT_TEMPLATE = `You are a recruiter-grade email drafter. Use ONLY the transcript to write a concise, specific thank-you email.
 
@@ -221,24 +229,23 @@ class ThanksMailService {
     if (!config.appwrite.generatedContentCollectionId || !this.databases) return null;
 
     try {
-      const response = await this.databases.listDocuments(
+      const documentId = buildCacheDocumentId(taskId, type);
+      const doc = await this.databases.getDocument(
         config.appwrite.databaseId,
         config.appwrite.generatedContentCollectionId,
-        [
-          Query.equal('taskId', taskId),
-          Query.equal('type', type),
-          Query.limit(1)
-        ]
+        documentId
       );
 
-      if (response.documents.length > 0) {
-        const doc = response.documents[0];
+      if (doc?.content) {
         return {
           content: doc.content,
           createdAt: doc.$createdAt || doc.createdAt
         };
       }
     } catch (error) {
+      if (error?.code === 404 || error?.type === 'document_not_found') {
+        return null;
+      }
       logger.warn('Failed to fetch cached content', { taskId, type, error: error.message });
     }
     return null;
@@ -248,24 +255,46 @@ class ThanksMailService {
     if (!config.appwrite.generatedContentCollectionId || !this.databases) return;
 
     try {
-      // Check if exists to update or create (upsert logic via list first or just create if we assume unique)
-      // Since we checked cache before, likely creating. But concurrency might race.
-      // We'll just try create for now. If ID is unique index on taskId+type, it fails.
-      // Ideally we use a unique document ID generated from hashing taskId+type, or just random.
-      // Let's rely on list check we did earlier.
+      const documentId = buildCacheDocumentId(taskId, type);
+      const payload = {
+        taskId,
+        type,
+        content,
+        createdAt: new Date().toISOString()
+      };
 
-      await this.databases.createDocument(
+      await this.databases.updateDocument(
         config.appwrite.databaseId,
         config.appwrite.generatedContentCollectionId,
-        'unique()', // Document ID
-        {
+        documentId,
+        payload
+      );
+    } catch (error) {
+      if (error?.code === 404 || error?.type === 'document_not_found') {
+        const documentId = buildCacheDocumentId(taskId, type);
+        const payload = {
           taskId,
           type,
           content,
           createdAt: new Date().toISOString()
+        };
+        try {
+          await this.databases.createDocument(
+            config.appwrite.databaseId,
+            config.appwrite.generatedContentCollectionId,
+            documentId,
+            payload
+          );
+          return;
+        } catch (createError) {
+          logger.warn('Failed to create generated content cache document', {
+            taskId,
+            type,
+            error: createError.message
+          });
+          return;
         }
-      );
-    } catch (error) {
+      }
       logger.warn('Failed to save generated content', { taskId, type, error: error.message });
     }
   }

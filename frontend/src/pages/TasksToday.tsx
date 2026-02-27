@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +34,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, API_URL, SOCKET_URL } from "@/hooks/useAuth";
@@ -207,6 +209,88 @@ interface InterviewerQuestionCacheEntry {
   generatedAt: string;
 }
 
+interface InterviewDebriefResult {
+  markdown: string;
+  html: string;
+  generatedAt: string;
+}
+
+type InterviewDebriefJobStatus = 'ready' | 'queued' | 'processing' | 'failed';
+
+interface InterviewDebriefRequestResult {
+  status: InterviewDebriefJobStatus;
+  result?: InterviewDebriefResult;
+  message?: string;
+  error?: string;
+}
+
+interface InterviewDebriefSection {
+  id: string;
+  title: string;
+  lines: string[];
+}
+
+const DEBRIEF_SECTION_PATTERNS: Array<{ title: string; pattern: RegExp }> = [
+  { title: "Overall Score", pattern: /^(?:1[\).]?\s*)?overall score\b/i },
+  { title: "Quality of Answers", pattern: /^(?:2[\).]?\s*)?quality of the candidate[’']?s answers\b/i },
+  { title: "Strong Points", pattern: /^(?:3[\).]?\s*)?strong points\b/i },
+  { title: "Weak Points / Mistakes", pattern: /^(?:4[\).]?\s*)?weak points\b/i },
+  { title: "Next Steps Told By Interviewer", pattern: /^(?:5[\).]?\s*)?next steps told by interviewer\b/i },
+  { title: "What to Prepare Next", pattern: /^(?:6[\).]?\s*)?what the candidate should prepare next\b/i },
+  { title: "Immediate Actions (24-48 hours)", pattern: /^6\.1\b.*immediate actions\b/i },
+  { title: "Coding Assessment Preparation", pattern: /^6\.2\b.*coding assessment preparation\b/i },
+  { title: "Post-Assessment Interview Prep", pattern: /^6\.3\b.*(interview prep|post-assessment)\b/i }
+];
+
+const parseInterviewDebriefSections = (rawContent: string): InterviewDebriefSection[] => {
+  if (typeof rawContent !== "string" || !rawContent.trim()) {
+    return [];
+  }
+
+  const lines = rawContent.split(/\r?\n/).map((line) => line.trimEnd());
+  const sections: InterviewDebriefSection[] = [];
+  let currentSection: InterviewDebriefSection | null = null;
+
+  const pushSection = () => {
+    if (!currentSection) return;
+    const cleanedLines = currentSection.lines.map((line) => line.trim()).filter(Boolean);
+    if (cleanedLines.length === 0) return;
+    sections.push({ ...currentSection, lines: cleanedLines });
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (currentSection) currentSection.lines.push("");
+      continue;
+    }
+
+    const headingCandidate = trimmed.replace(/^#{1,6}\s+/, "").trim();
+    const matched = DEBRIEF_SECTION_PATTERNS.find((entry) => entry.pattern.test(headingCandidate));
+    if (matched) {
+      pushSection();
+      currentSection = {
+        id: `${matched.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${sections.length}`,
+        title: matched.title,
+        lines: []
+      };
+      continue;
+    }
+
+    if (!currentSection) {
+      currentSection = {
+        id: "summary-0",
+        title: "Summary",
+        lines: []
+      };
+    }
+    currentSection.lines.push(trimmed);
+  }
+
+  pushSection();
+  return sections;
+};
+
 const normalizeQuestionType = (value: unknown): InterviewerQuestionType => {
   if (typeof value !== 'string') {
     return 'other';
@@ -329,6 +413,8 @@ export default function TasksToday() {
   const autoMeetingAttemptedRef = useRef<Set<string>>(new Set());
   const autoMeetingInFlightRef = useRef<Set<string>>(new Set());
   const autoMeetingWorkerActiveRef = useRef(false);
+  const debriefPrefetchAttemptedRef = useRef<Set<string>>(new Set());
+  const debriefPrefetchInFlightRef = useRef<Set<string>>(new Set());
 
   // timersRef keeps active active per reminder key
   const timersRef = useRef<Map<string, number>>(new Map());
@@ -362,7 +448,7 @@ export default function TasksToday() {
     return ["admin", "mm", "mam", "mlead", "recruiter"].includes(normalizedRole);
   }, [normalizedRole]);
   const canCloneSupport = useMemo(() => {
-    return !['user', 'lead', 'mam'].includes(normalizedRole);
+    return !['user', 'lead'].includes(normalizedRole);
   }, [normalizedRole]);
   const canRequestMock = useMemo(() => {
     return ['recruiter', 'mlead', 'mam', 'mm'].includes(normalizedRole);
@@ -370,6 +456,10 @@ export default function TasksToday() {
   const canGenerateThanksMail = useMemo(() => {
     return ['recruiter', 'mlead', 'mam', 'mm'].includes(normalizedRole);
   }, [normalizedRole]);
+  const canGenerateInterviewDebrief = true;
+  const showActionsColumn = useMemo(() => {
+    return canGenerateInterviewDebrief || canCloneSupport || canRequestMock || canGenerateThanksMail || user === 'admin';
+  }, [canCloneSupport, canGenerateInterviewDebrief, canGenerateThanksMail, canRequestMock, user]);
   const { toast } = useToast();
   const meetingsEnabled = AZURE_CLIENT_ID.length > 0;
   const canManageMeetings = useMemo(() => {
@@ -442,6 +532,13 @@ export default function TasksToday() {
   const [questionsError, setQuestionsError] = useState('');
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questionsRateInfo, setQuestionsRateInfo] = useState<{ remaining: number; resetAt?: string } | null>(null);
+  const [debriefDialogTask, setDebriefDialogTask] = useState<Task | null>(null);
+  const [debriefContent, setDebriefContent] = useState('');
+  const [debriefHtml, setDebriefHtml] = useState('');
+  const [debriefGeneratedAt, setDebriefGeneratedAt] = useState<string | null>(null);
+  const [debriefError, setDebriefError] = useState('');
+  const [debriefLoading, setDebriefLoading] = useState(false);
+  const [debriefStatusMessage, setDebriefStatusMessage] = useState('');
 
   // Delete Dialog State
   const [deleteTaskDialog, setDeleteTaskDialog] = useState<{ open: boolean; task: Task | null }>({
@@ -470,6 +567,16 @@ export default function TasksToday() {
     }
     return DOMPurify.sanitize(thanksMailHtml, { USE_PROFILES: { html: true } });
   }, [thanksMailHtml]);
+  const sanitizedDebriefHtml = useMemo(() => {
+    if (!debriefHtml) {
+      return '';
+    }
+    return DOMPurify.sanitize(debriefHtml, { USE_PROFILES: { html: true } });
+  }, [debriefHtml]);
+  const debriefSections = useMemo(
+    () => parseInterviewDebriefSections(debriefContent),
+    [debriefContent]
+  );
   const mockSubject = useMemo(() => {
     if (!mockPreview) return '';
     const subjectTechnology = mockPreview.technology || 'General';
@@ -933,7 +1040,7 @@ export default function TasksToday() {
   }, [showSubject]);
 
   useEffect(() => {
-    if (!['mm', 'mam'].includes(normalizedRole)) {
+    if (!['mm', 'mam', 'mlead'].includes(normalizedRole)) {
       setTeamLeadData({});
       setSelectedTeamLead('all');
       setTeamLeadError('');
@@ -947,7 +1054,17 @@ export default function TasksToday() {
       try {
         const response = await authFetch(`${API_URL}/api/users/manageable`);
         if (!response.ok) {
-          throw new Error('Failed to load team leads');
+          let errorMessage = 'Failed to load team leads';
+          try {
+            const payload = await response.json();
+            if (typeof payload?.error === 'string' && payload.error.trim()) {
+              errorMessage = payload.error.trim();
+            }
+          } catch {
+            // Keep default message when response body is not JSON.
+            void 0;
+          }
+          throw new Error(errorMessage);
         }
 
         const payload = await response.json();
@@ -2025,6 +2142,306 @@ export default function TasksToday() {
     }
   }, [questionsList, toast]);
 
+  const closeDebriefDialog = useCallback(() => {
+    setDebriefDialogTask(null);
+    setDebriefContent('');
+    setDebriefHtml('');
+    setDebriefGeneratedAt(null);
+    setDebriefError('');
+    setDebriefStatusMessage('');
+    setDebriefLoading(false);
+  }, []);
+
+  const parseDebriefResult = useCallback((payload: any): InterviewDebriefResult => {
+    const markdown = typeof payload?.markdown === 'string' ? payload.markdown : '';
+    const html = typeof payload?.html === 'string'
+      ? DOMPurify.sanitize(payload.html, { USE_PROFILES: { html: true } })
+      : '';
+    const generatedAt = typeof payload?.generatedAt === 'string'
+      ? payload.generatedAt
+      : new Date().toISOString();
+
+    return {
+      markdown,
+      html,
+      generatedAt
+    };
+  }, []);
+
+  const requestInterviewDebrief = useCallback(async (
+    taskId: string,
+    options: { force?: boolean } = {}
+  ): Promise<InterviewDebriefRequestResult> => {
+    const response = await authFetch(`${API_URL}/api/tasks/${taskId}/interview-debrief`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        force: options.force === true
+      })
+    });
+
+    const payload = await response.json().catch(() => ({}));
+
+    if (response.status === 200 && payload?.status === 'ready') {
+      return {
+        status: 'ready',
+        result: parseDebriefResult(payload)
+      };
+    }
+
+    if (response.status === 202) {
+      const status: InterviewDebriefJobStatus = payload?.status === 'processing' ? 'processing' : 'queued';
+      return {
+        status,
+        message: typeof payload?.message === 'string' ? payload.message : 'Interview debrief is running in background.'
+      };
+    }
+
+    if (!response.ok) {
+      const message = typeof payload?.error === 'string'
+        ? payload.error
+        : 'Unable to generate interview debrief.';
+      throw new Error(message);
+    }
+
+    return {
+      status: 'queued',
+      message: 'Interview debrief has been queued.'
+    };
+  }, [API_URL, authFetch, parseDebriefResult]);
+
+  const getInterviewDebriefStatus = useCallback(async (taskId: string): Promise<InterviewDebriefRequestResult> => {
+    const response = await authFetch(`${API_URL}/api/tasks/${taskId}/interview-debrief`);
+    const payload = await response.json().catch(() => ({}));
+
+    if (response.status === 200 && payload?.status === 'ready') {
+      return {
+        status: 'ready',
+        result: parseDebriefResult(payload)
+      };
+    }
+
+    if (response.status === 202 || payload?.status === 'failed') {
+      const status: InterviewDebriefJobStatus = payload?.status === 'processing'
+        ? 'processing'
+        : payload?.status === 'failed'
+          ? 'failed'
+          : 'queued';
+      return {
+        status,
+        message: typeof payload?.message === 'string' ? payload.message : '',
+        error: typeof payload?.error === 'string' ? payload.error : ''
+      };
+    }
+
+    if (!response.ok) {
+      const message = typeof payload?.error === 'string'
+        ? payload.error
+        : 'Unable to fetch interview debrief status.';
+      throw new Error(message);
+    }
+
+    return {
+      status: 'queued',
+      message: 'Interview debrief is running in background.'
+    };
+  }, [API_URL, authFetch, parseDebriefResult]);
+
+  const startDebriefGeneration = useCallback(async (
+    taskId: string,
+    options: { force?: boolean; showQueuedToast?: boolean } = {}
+  ) => {
+    setDebriefLoading(true);
+    setDebriefError('');
+    setDebriefStatusMessage('');
+
+    const response = await requestInterviewDebrief(taskId, { force: options.force === true });
+    if (response.status === 'ready' && response.result) {
+      setDebriefContent(response.result.markdown);
+      setDebriefHtml(response.result.html);
+      setDebriefGeneratedAt(response.result.generatedAt);
+      setDebriefStatusMessage('');
+      setDebriefLoading(false);
+      return;
+    }
+
+    if (response.status === 'failed') {
+      setDebriefLoading(false);
+      setDebriefError(response.error || response.message || 'Interview debrief generation failed.');
+      return;
+    }
+
+    setDebriefStatusMessage(response.message || 'Interview debrief is being generated in background.');
+    if (options.showQueuedToast) {
+      toast({
+        title: 'Interview debrief queued',
+        description: 'Generation will continue in background. This popup will auto-refresh when ready.'
+      });
+    }
+  }, [requestInterviewDebrief, toast]);
+
+  const handleGenerateInterviewDebrief = useCallback(async () => {
+    if (!debriefDialogTask) {
+      return;
+    }
+
+    if (!debriefDialogTask.transcription) {
+      setDebriefError('Transcript not available for this task.');
+      return;
+    }
+
+    setDebriefLoading(true);
+    setDebriefError('');
+    setDebriefStatusMessage('');
+    const pendingToast = toast({
+      title: 'Preparing interview debrief...',
+      description: 'Generation is running in background. We will refresh this popup automatically.',
+      duration: 4000
+    });
+
+    try {
+      await startDebriefGeneration(debriefDialogTask._id, {
+        force: true,
+        showQueuedToast: true
+      });
+      pendingToast.dismiss();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to generate interview debrief.';
+      setDebriefError(message);
+      pendingToast.dismiss();
+    } finally {
+      pendingToast.dismiss();
+    }
+  }, [debriefDialogTask, startDebriefGeneration, toast]);
+
+  const handleOpenDebriefDialog = useCallback((task: Task) => {
+    if (!task.transcription) {
+      toast({
+        title: 'Transcript unavailable',
+        description: 'TxAv is missing for this task. Debrief can run only after transcript is available.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setDebriefDialogTask(task);
+    setDebriefContent('');
+    setDebriefHtml('');
+    setDebriefGeneratedAt(null);
+    setDebriefError('');
+    setDebriefStatusMessage('');
+    setDebriefLoading(false);
+  }, [toast]);
+
+  const handleCopyDebrief = useCallback(async () => {
+    if (!debriefContent) {
+      return;
+    }
+
+    try {
+      if (!navigator?.clipboard?.writeText) {
+        setDebriefError('Clipboard access is unavailable in this environment. Copy the debrief manually.');
+        return;
+      }
+      await navigator.clipboard.writeText(debriefContent);
+      toast({
+        title: 'Copied to clipboard',
+        description: 'Interview debrief copied as plain text.'
+      });
+    } catch (error) {
+      setDebriefError('Unable to copy the debrief. Copy it manually instead.');
+      console.error('Failed to copy interview debrief', error);
+    }
+  }, [debriefContent, toast]);
+
+  useEffect(() => {
+    if (!debriefDialogTask?._id) {
+      return;
+    }
+
+    let active = true;
+
+    const initialize = async () => {
+      try {
+        await startDebriefGeneration(debriefDialogTask._id, { force: false });
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : 'Unable to load interview debrief.';
+        setDebriefError(message);
+        setDebriefLoading(false);
+      }
+    };
+
+    void initialize();
+
+    return () => {
+      active = false;
+    };
+  }, [debriefDialogTask?._id, startDebriefGeneration]);
+
+  useEffect(() => {
+    if (!debriefDialogTask?._id || !debriefLoading) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const statusResult = await getInterviewDebriefStatus(debriefDialogTask._id);
+        if (cancelled) {
+          return;
+        }
+
+        if (statusResult.status === 'ready' && statusResult.result) {
+          setDebriefContent(statusResult.result.markdown);
+          setDebriefHtml(statusResult.result.html);
+          setDebriefGeneratedAt(statusResult.result.generatedAt);
+          setDebriefStatusMessage('');
+          setDebriefLoading(false);
+          toast({
+            title: 'Interview debrief ready',
+            description: 'Background generation completed for this task.',
+            className: 'bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 text-white shadow-lg',
+            duration: 4000
+          });
+          return;
+        }
+
+        if (statusResult.status === 'failed') {
+          setDebriefError(statusResult.error || statusResult.message || 'Interview debrief generation failed.');
+          setDebriefStatusMessage('');
+          setDebriefLoading(false);
+          return;
+        }
+
+        setDebriefStatusMessage(
+          statusResult.message || 'Interview debrief is still processing in background...'
+        );
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : 'Unable to poll interview debrief status.';
+        setDebriefStatusMessage(message);
+      }
+    };
+
+    void poll();
+    const timerId = window.setInterval(() => {
+      void poll();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timerId);
+    };
+  }, [debriefDialogTask?._id, debriefLoading, getInterviewDebriefStatus, toast]);
+
   const createOutlookEvent = useCallback(
     async (
       task: Task,
@@ -2696,7 +3113,13 @@ export default function TasksToday() {
     localStorage.setItem(TASK_STATUS_MAP, JSON.stringify(m));
   }, []);
 
-  const fetchTasks = useCallback((isInitial = true, offset = 0) => {
+  const fetchTasks = useCallback((
+    isInitial = true,
+    offset = 0,
+    options: { silent?: boolean; replace?: boolean } = {}
+  ) => {
+    const silent = options.silent === true;
+    const shouldReplace = options.replace ?? isInitial;
     const BATCH_SIZE = isInitial ? 30 : 20;
     const payload = {
       ...buildDashboardPayload({ ...filters, dateField: selectedTabRef.current as any }),
@@ -2704,11 +3127,13 @@ export default function TasksToday() {
       offset
     };
 
-    if (isInitial) {
-      setIsLoadingInitial(true);
-      setError("");
-    } else {
-      setIsLoadingMore(true);
+    if (!silent) {
+      if (isInitial) {
+        setIsLoadingInitial(true);
+        setError("");
+      } else {
+        setIsLoadingMore(true);
+      }
     }
 
     socket.emit(
@@ -2716,17 +3141,19 @@ export default function TasksToday() {
       payload,
       (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
         if (!resp.success) {
-          if (isInitial) {
-            setError(resp.error || "Failed to load tasks");
-            setIsLoadingInitial(false);
-          } else {
-            setIsLoadingMore(false);
+          if (!silent) {
+            if (isInitial) {
+              setError(resp.error || "Failed to load tasks");
+              setIsLoadingInitial(false);
+            } else {
+              setIsLoadingMore(false);
+            }
+            toast({
+              title: "Error",
+              description: resp.error || "Failed to load tasks",
+              variant: "destructive",
+            });
           }
-          toast({
-            title: "Error",
-            description: resp.error || "Failed to load tasks",
-            variant: "destructive",
-          });
           return;
         }
 
@@ -2735,7 +3162,7 @@ export default function TasksToday() {
 
         setTasks((prev) => {
           let nextTasks: Task[];
-          if (isInitial) {
+          if (shouldReplace && offset === 0) {
             nextTasks = incoming;
           } else {
             // Merge and de-dupe
@@ -2759,16 +3186,21 @@ export default function TasksToday() {
           writeMap(newMap);
         }
 
-        if (isInitial) {
+        if (!silent && isInitial) {
           setIsLoadingInitial(false);
+          firstLoad.current = false;
+        } else if (isInitial) {
+          // Keep first-load semantics for reminder/noise suppression even on silent catch-up.
           firstLoad.current = false;
         }
 
         // Progressive load: if we got a full batch, try next
         if (incoming.length === BATCH_SIZE) {
-          fetchTasks(false, offset + BATCH_SIZE);
+          fetchTasks(false, offset + BATCH_SIZE, { silent, replace: shouldReplace });
         } else {
-          setIsLoadingMore(false);
+          if (!silent) {
+            setIsLoadingMore(false);
+          }
         }
       }
     );
@@ -2782,7 +3214,11 @@ export default function TasksToday() {
   // === Realtime Signal -> Fetch -> Upsert (RAF batching) ===
 
   // Stable ref to latest fetchTasks to avoid re-binding socket listeners
-  const fetchTasksRef = useRef<(isInitial?: boolean, offset?: number) => void>(() => { });
+  const fetchTasksRef = useRef<(
+    isInitial?: boolean,
+    offset?: number,
+    options?: { silent?: boolean; replace?: boolean }
+  ) => void>(() => { });
   useEffect(() => {
     fetchTasksRef.current = fetchTasks;
   }, [fetchTasks]);
@@ -2828,7 +3264,8 @@ export default function TasksToday() {
         // Read map inside updater to ensure fresh state for every invocation (fixes Strict Mode double-invoke issue)
         const map = readMap();
         let shouldPlaySound = false;
-        let notificationMsg = "";
+        let notificationTitle = "";
+        let notificationDescription = "";
         let next = prev;
 
         for (let i = 0; i < ids.length; i++) {
@@ -2848,6 +3285,7 @@ export default function TasksToday() {
           const idx = next.findIndex((t) => t._id === id);
           const isNew = idx < 0;
           const previousStatus = map[id] || "";
+          const previousTask = idx >= 0 ? next[idx] : null;
 
           if (isNew) {
             next = [...next, task];
@@ -2865,10 +3303,38 @@ export default function TasksToday() {
           if (isTodayView && !firstLoad.current) {
             if (isNew) {
               shouldPlaySound = true;
-              notificationMsg = "New Task Added";
+              const candidate = task["Candidate Name"] || task.subject || "Candidate";
+              const statusLabel = task.status ? `Status: ${task.status}` : "New task received";
+              notificationTitle = `Task Added: ${candidate}`;
+              notificationDescription = statusLabel;
             } else if (previousStatus !== (task.status || "")) {
               shouldPlaySound = true;
-              notificationMsg = "Task Updated";
+              const candidate = task["Candidate Name"] || task.subject || "Candidate";
+              notificationTitle = `Task Updated: ${candidate}`;
+              notificationDescription = `Status changed: ${previousStatus || "N/A"} -> ${task.status || "N/A"}`;
+            } else if (previousTask) {
+              const changedFields: string[] = [];
+              if ((previousTask.assignedExpert || '') !== (task.assignedExpert || '')) {
+                changedFields.push('assigned expert');
+              }
+              if ((previousTask["Date of Interview"] || '') !== (task["Date of Interview"] || '')) {
+                changedFields.push('interview date');
+              }
+              if ((previousTask["Start Time Of Interview"] || '') !== (task["Start Time Of Interview"] || '')) {
+                changedFields.push('interview time');
+              }
+              const previousJoin = Boolean(previousTask.joinUrl || previousTask.joinWebUrl);
+              const nextJoin = Boolean(task.joinUrl || task.joinWebUrl);
+              if (previousJoin !== nextJoin) {
+                changedFields.push(nextJoin ? 'meeting link added' : 'meeting link removed');
+              }
+
+              if (changedFields.length > 0) {
+                shouldPlaySound = true;
+                const candidate = task["Candidate Name"] || task.subject || "Candidate";
+                notificationTitle = `Task Updated: ${candidate}`;
+                notificationDescription = `Updated: ${changedFields.join(', ')}`;
+              }
             }
           }
         }
@@ -2881,8 +3347,11 @@ export default function TasksToday() {
 
         if (shouldPlaySound) {
           playTune();
-          if (notificationMsg) {
-            toast({ title: notificationMsg, description: "Dashboard updated" });
+          if (notificationTitle) {
+            toast({
+              title: notificationTitle,
+              description: notificationDescription || "Dashboard updated",
+            });
           }
         }
 
@@ -2906,7 +3375,8 @@ export default function TasksToday() {
       if (!taskId) return;
 
       setTasks((prev) => {
-        if (!prev.some(t => t._id === taskId)) return prev;
+        const removedTask = prev.find((t) => t._id === taskId);
+        if (!removedTask) return prev;
 
         const next = prev.filter(t => t._id !== taskId);
 
@@ -2915,6 +3385,12 @@ export default function TasksToday() {
           delete map[taskId];
           writeMap(map);
         }
+
+        const candidate = removedTask["Candidate Name"] || removedTask.subject || taskId;
+        toast({
+          title: `Task Removed: ${candidate}`,
+          description: 'This task is no longer visible in your dashboard.',
+        });
 
         return next;
       });
@@ -2954,10 +3430,13 @@ export default function TasksToday() {
 
     const onConnect = () => {
       const recovered = Boolean((socket as Socket & { recovered?: boolean }).recovered);
-      socketRecoveredRef.current = recovered;
+      const requiresCatchUp = forceCatchUpRef.current || !recovered;
 
-      if (forceCatchUpRef.current || !recovered) {
-        fetchTasksRef.current(true, 0);
+      // We are connected; run a single catch-up fetch when recovery isn't available.
+      socketRecoveredRef.current = true;
+
+      if (requiresCatchUp) {
+        fetchTasksRef.current(true, 0, { silent: true, replace: true });
       }
       forceCatchUpRef.current = false;
     };
@@ -3006,7 +3485,60 @@ export default function TasksToday() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, readMap, writeMap, refreshAccessToken]);
 
-  // Safety fallback: recover if socket is disconnected or running an unrecovered session.
+  useEffect(() => {
+    if (document.visibilityState !== 'visible') {
+      return;
+    }
+
+    const queue = tasks.filter((task) => {
+      if (!task?.transcription || !task?._id) {
+        return false;
+      }
+      if (debriefPrefetchAttemptedRef.current.has(task._id)) {
+        return false;
+      }
+      if (debriefPrefetchInFlightRef.current.has(task._id)) {
+        return false;
+      }
+      return true;
+    });
+
+    if (queue.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const runPrefetch = async () => {
+      for (const task of queue) {
+        if (cancelled) {
+          break;
+        }
+        if (!task._id || debriefPrefetchAttemptedRef.current.has(task._id)) {
+          continue;
+        }
+
+        debriefPrefetchInFlightRef.current.add(task._id);
+        try {
+          await requestInterviewDebrief(task._id);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'unknown error';
+          console.error(`Interview debrief prefetch failed for task ${task._id}: ${message}`);
+        } finally {
+          debriefPrefetchInFlightRef.current.delete(task._id);
+          debriefPrefetchAttemptedRef.current.add(task._id);
+        }
+      }
+    };
+
+    void runPrefetch();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [requestInterviewDebrief, tasks]);
+
+  // Safety fallback: reconnect if socket disconnects.
   useEffect(() => {
     const intervalId = window.setInterval(() => {
       if (document.visibilityState !== 'visible') {
@@ -3015,11 +3547,6 @@ export default function TasksToday() {
 
       if (!socket.connected) {
         socket.connect();
-        return;
-      }
-
-      if (!socketRecoveredRef.current) {
-        fetchTasksRef.current(true, 0);
       }
     }, 60_000);
 
@@ -3036,6 +3563,7 @@ export default function TasksToday() {
   // === Filtering / sorting ===
   const teamLeadOptions = useMemo(() => {
     const base = Object.entries(teamLeadData)
+      .filter(([, entry]) => (entry.role || '').toLowerCase() === 'mlead')
       .map(([value, entry]) => ({ value, label: formatNameInput(entry.label) || entry.label }))
       .filter((option) => option.label)
       .sort((a, b) => a.label.localeCompare(b.label));
@@ -3224,7 +3752,7 @@ export default function TasksToday() {
             onChange={(e) => setExpertFilter(e.target.value)}
             className="w-40"
           />
-          {(normalizedRole === 'mm' || normalizedRole === 'mam') && (
+          {(normalizedRole === 'mm' || normalizedRole === 'mam' || normalizedRole === 'mlead') && (
             <Select
               value={selectedTeamLead}
               onValueChange={setSelectedTeamLead}
@@ -3275,7 +3803,7 @@ export default function TasksToday() {
           <DashboardFilters filters={filters} onChange={setFilters} allowReceivedDate={allowReceivedDate} />
         )}
 
-        {teamLeadError && (normalizedRole === 'mm' || normalizedRole === 'mam') && (
+        {teamLeadError && (normalizedRole === 'mm' || normalizedRole === 'mam' || normalizedRole === 'mlead') && (
           <p className="text-sm text-red-500">{teamLeadError}</p>
         )}
 
@@ -3313,7 +3841,7 @@ export default function TasksToday() {
                 </TableHead>
                 {meetingsEnabled && <TableHead>Meeting</TableHead>}
                 <TableHead>Status</TableHead>
-                {(normalizedRole === 'admin' || normalizedRole === 'mam' || normalizedRole === 'mm' || normalizedRole === 'mlead' || normalizedRole === 'recruiter') && (
+                {showActionsColumn && (
                   <TableHead>Actions</TableHead>
                 )}
               </TableRow>
@@ -3418,9 +3946,9 @@ export default function TasksToday() {
                         <Badge className={getStatusBadge(task.status)}>{task.status}</Badge>
                       )}
                     </TableCell>
-                    {(normalizedRole === 'admin' || normalizedRole === 'mam' || normalizedRole === 'mm' || normalizedRole === 'mlead' || normalizedRole === 'recruiter') && (
+                    {showActionsColumn && (
                       <TableCell>
-                        {canCloneSupport || canRequestMock || canGenerateThanksMail || user === 'admin' ? (
+                        {showActionsColumn ? (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button size="sm" variant="outline">
@@ -3428,6 +3956,19 @@ export default function TasksToday() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              {canGenerateInterviewDebrief && (
+                                <>
+                                  <DropdownMenuItem
+                                    onClick={() => handleOpenDebriefDialog(task)}
+                                    disabled={!task.transcription}
+                                  >
+                                    Interview Debrief
+                                  </DropdownMenuItem>
+                                  {(user === "admin" || canGenerateThanksMail || canRequestMock || canCloneSupport) && (
+                                    <DropdownMenuSeparator />
+                                  )}
+                                </>
+                              )}
                               {user === "admin" && (
                                 <>
                                   <DropdownMenuItem
@@ -3807,6 +4348,144 @@ export default function TasksToday() {
               className="sm:w-auto"
             >
               {thanksMailLoading ? 'Generating… (takes up to a minute)' : 'Generate with GPT-5'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(debriefDialogTask)} onOpenChange={(open) => !open && closeDebriefDialog()}>
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Interview Debrief</DialogTitle>
+          </DialogHeader>
+          {debriefDialogTask ? (
+            <div className="space-y-4">
+              <Alert>
+                <AlertTitle>Structured screening analysis</AlertTitle>
+                <AlertDescription className="text-sm text-muted-foreground">
+                  This output is generated from transcript and job details, with evidence references from the interview timeline.
+                </AlertDescription>
+              </Alert>
+              {!debriefDialogTask.transcription && (
+                <Alert variant="destructive">
+                  <AlertTitle>Transcript missing</AlertTitle>
+                  <AlertDescription>
+                    TxAv is unavailable. Debrief can run only when transcript is available for this task.
+                  </AlertDescription>
+                </Alert>
+              )}
+              {debriefGeneratedAt && (
+                <p className="text-xs text-muted-foreground">
+                  Last generated on {new Date(debriefGeneratedAt).toLocaleString()}
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card/40 px-3 py-2">
+                <Badge variant="outline" className="font-medium">
+                  Candidate: {debriefDialogTask["Candidate Name"] || "Not available"}
+                </Badge>
+                <Badge variant="secondary" className="font-medium">
+                  Role: {debriefDialogTask["Job Title"] || "Not available"}
+                </Badge>
+                <div className="ml-auto flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleCopyDebrief}
+                    disabled={!debriefContent}
+                  >
+                    Copy
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleGenerateInterviewDebrief}
+                    disabled={debriefLoading || !debriefDialogTask?.transcription}
+                  >
+                    {debriefLoading ? "Refreshing..." : "Regenerate"}
+                  </Button>
+                </div>
+              </div>
+              <ScrollArea className="h-[58vh] rounded-md border bg-card/30 p-4">
+                {debriefLoading ? (
+                  <p className="text-sm text-muted-foreground animate-pulse">
+                    Generating interview debrief...
+                  </p>
+                ) : debriefSections.length > 0 ? (
+                  <div className="space-y-3 pr-2">
+                    {debriefSections.map((section) => (
+                      <Card key={section.id} className="border-border/70 bg-background/40">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base">{section.title}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-2 text-sm">
+                          {section.lines.map((line, index) => {
+                            if (!line.trim()) {
+                              return <div key={`${section.id}-${index}`} className="h-1" />;
+                            }
+
+                            const safeLine = DOMPurify.sanitize(line, { USE_PROFILES: { html: false } }).trim();
+                            const normalizedLine = safeLine
+                              .replace(/^[-*•]\s+/, "")
+                              .replace(/^\d+[\).]\s+/, "")
+                              .trim();
+                            const keyValueMatch = normalizedLine.match(
+                              /^([A-Za-z][A-Za-z0-9\s/&()'%-]{2,50}):\s*(.+)$/
+                            );
+
+                            if (keyValueMatch) {
+                              return (
+                                <div
+                                  key={`${section.id}-${index}`}
+                                  className="grid gap-1 rounded-sm border border-border/40 bg-muted/20 px-2 py-1 md:grid-cols-[220px_1fr]"
+                                >
+                                  <span className="font-medium text-muted-foreground">{keyValueMatch[1]}</span>
+                                  <span className="text-foreground">{keyValueMatch[2]}</span>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <p key={`${section.id}-${index}`} className="leading-6 text-foreground">
+                                {normalizedLine}
+                              </p>
+                            );
+                          })}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : sanitizedDebriefHtml ? (
+                  <div
+                    className="prose prose-sm dark:prose-invert max-w-none space-y-3 text-sm leading-6 text-foreground"
+                    dangerouslySetInnerHTML={{ __html: sanitizedDebriefHtml }}
+                  />
+                ) : debriefContent ? (
+                  <pre className="whitespace-pre-wrap text-sm text-foreground">{debriefContent}</pre>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No interview debrief available yet for this task.
+                  </p>
+                )}
+              </ScrollArea>
+              {debriefStatusMessage && !debriefError && (
+                <p className="text-xs text-muted-foreground">{debriefStatusMessage}</p>
+              )}
+              {debriefError && <p className="text-sm text-red-600">{debriefError}</p>}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Select a task with transcript availability to review interview debrief.
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="sm:w-auto"
+              onClick={closeDebriefDialog}
+              disabled={debriefLoading}
+            >
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

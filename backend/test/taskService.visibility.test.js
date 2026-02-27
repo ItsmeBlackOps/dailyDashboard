@@ -2,80 +2,55 @@ import { describe, it, expect } from '@jest/globals';
 import { taskService } from '../src/services/taskService.js';
 
 describe('taskService.visibility', () => {
-    describe('mlead visibility', () => {
-        const mleadEmail = 'avinash.mishra@vizvainc.com'; // Mixed case example
-        const mleadRole = 'mlead';
-        const manager = 'Some Manager';
-        const teamEmails = ['recruiter1@vizvainc.com', 'recruiter2@vizvainc.com'];
+  it('uses sender/cc family only for MAM/MM/mlead visibility match', () => {
+    const query = taskService.buildTaskVisibilityMatch('mam.user@vizvainc.com', 'mam');
+    const patterns = query.$or || [];
 
-        it('matches sender with mixed case (case-insensitive)', () => {
-            const query = taskService.buildSearchQuery(mleadEmail, mleadRole, manager, []);
-            const patterns = query.$or || [];
+    expect(patterns.length).toBeGreaterThan(0);
+    expect(patterns.every((entry) => entry.sender || entry.cc)).toBe(true);
+    expect(patterns.some((entry) => entry.sender?.$regex)).toBe(true);
+    expect(patterns.some((entry) => entry.cc?.$regex)).toBe(true);
+    expect(patterns.some((entry) => entry.assignedTo || entry.assignedToEmail || entry.assignedEmail || entry.assignedExpert)).toBe(false);
+  });
 
-            // Should match lowercased email in sender/cc
-            const lowerEmail = mleadEmail.toLowerCase();
-            const hasSenderMatch = patterns.some(p => p.sender && p.sender.$regex && p.sender.$options === 'i' && p.sender.$regex.includes(lowerEmail));
-            const hasCcMatch = patterns.some(p => p.cc && p.cc.$regex && p.cc.$options === 'i' && p.cc.$regex.includes(lowerEmail));
+  it('uses assigned-related family for AM/lead visibility match', () => {
+    const query = taskService.buildTaskVisibilityMatch('lead.user@vizvainc.com', 'lead');
+    const patterns = query.$or || [];
 
-            expect(hasSenderMatch).toBe(true);
-            expect(hasCcMatch).toBe(true);
-        });
+    expect(patterns.length).toBeGreaterThan(0);
+    expect(patterns.some((entry) => entry.assignedTo || entry.assignedToEmail || entry.assignedEmail || entry.assignedExpert)).toBe(true);
+    expect(patterns.some((entry) => entry.sender || entry.cc)).toBe(false);
+  });
 
-        it('includes tasks where team members are sender or cc', () => {
-            const query = taskService.buildSearchQuery(mleadEmail, mleadRole, manager, teamEmails);
-            const patterns = query.$or || [];
+  it('grants MAM access only when sender/cc matches hierarchy/self', () => {
+    const visible = taskService.isTaskVisibleToUser(
+      { sender: 'mam.user@vizvainc.com', cc: '' },
+      'mam.user@vizvainc.com',
+      'mam'
+    );
+    const hidden = taskService.isTaskVisibleToUser(
+      { sender: 'someone.else@example.com', cc: '' },
+      'mam.user@vizvainc.com',
+      'mam'
+    );
 
-            // Check for recruiter 1 - expecting it to be present in the regex
-            // Note: The code escapes the email, so we expect 'recruiter1@vizvainc\\.com'
-            // We can just check that the regex string contains the local part to be safe/simple
-            const r1Local = teamEmails[0].split('@')[0];
-            const hasR1Sender = patterns.some(p => p.sender && p.sender.$regex && p.sender.$regex.includes(r1Local));
+    expect(visible).toBe(true);
+    expect(hidden).toBe(false);
+  });
 
-            expect(hasR1Sender).toBe(true);
-        });
+  it('grants lead access only when assigned fields match hierarchy/self', () => {
+    const visible = taskService.isTaskVisibleToUser(
+      { assignedTo: 'lead.user@vizvainc.com', sender: 'unrelated@example.com' },
+      'lead.user@vizvainc.com',
+      'lead'
+    );
+    const hidden = taskService.isTaskVisibleToUser(
+      { sender: 'lead.user@vizvainc.com', assignedTo: 'other.user@example.com' },
+      'lead.user@vizvainc.com',
+      'lead'
+    );
 
-        it('does NOT include assignedTo matching for mlead', () => {
-            const query = taskService.buildSearchQuery(mleadEmail, mleadRole, manager, teamEmails);
-            const patterns = query.$or || [];
-
-            // We expect NO pattern that matches assignedTo for the mlead's email
-            const lowerEmail = mleadEmail.toLowerCase();
-            // The code produces assignedTo for TEAM members, but not for self.
-            // We check that NONE of the assignedTo patterns match the SELF email.
-
-            const hasAssignedToMe = patterns.some(p =>
-                p.assignedTo &&
-                ((p.assignedTo.$regex && p.assignedTo.$regex.includes(lowerEmail)) || p.assignedTo === lowerEmail)
-            );
-
-            expect(hasAssignedToMe).toBe(false);
-        });
-    });
-
-    describe('mam visibility', () => {
-        const mamEmail = 'mam.user@vizvainc.com';
-        const mamRole = 'mam';
-        const manager = 'Upper Manager';
-        const teamEmails = ['mlead1@vizvainc.com', 'recruiter1@vizvainc.com']; // Team includes mleads and their recruiters
-
-        it('matches sender with mixed case (case-insensitive)', () => {
-            const query = taskService.buildSearchQuery(mamEmail, mamRole, manager, []);
-            const patterns = query.$or || [];
-
-            const lowerEmail = mamEmail.toLowerCase();
-            const hasSenderMatch = patterns.some(p => p.sender && p.sender.$regex && p.sender.$options === 'i' && p.sender.$regex.includes(lowerEmail));
-
-            expect(hasSenderMatch).toBe(true);
-        });
-
-        it('includes tasks from team members', () => {
-            const query = taskService.buildSearchQuery(mamEmail, mamRole, manager, teamEmails);
-            const patterns = query.$or || [];
-
-            const mleadLocal = teamEmails[0].split('@')[0];
-            const hasMleadSender = patterns.some(p => p.sender && p.sender.$regex && p.sender.$regex.includes(mleadLocal));
-
-            expect(hasMleadSender).toBe(true);
-        });
-    });
+    expect(visible).toBe(true);
+    expect(hidden).toBe(false);
+  });
 });

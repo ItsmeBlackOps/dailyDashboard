@@ -1180,8 +1180,8 @@ export class TaskModel {
       .join(' ');
   }
 
-  setupChangeStream(io, userModel) {
-    this.changeStreamContext = { io, userModel };
+  setupChangeStream(io, userModel, visibilityEvaluator = null) {
+    this.changeStreamContext = { io, userModel, visibilityEvaluator };
     this.changeStreamRestartAttempts = 0;
     this.startTaskChangeStream();
   }
@@ -1295,7 +1295,23 @@ export class TaskModel {
     return { taskRemoved: removedCount };
   }
 
-  handleUpsertTaskChange(change, io, userModel) {
+  evaluateRealtimeVisibility(user, task, userModel, visibilityEvaluator) {
+    if (typeof visibilityEvaluator === 'function') {
+      try {
+        return Boolean(visibilityEvaluator(user, task));
+      } catch (error) {
+        logger.warn('Realtime visibility callback failed, falling back to model visibility', {
+          error: error.message,
+          email: user?.email,
+          role: user?.role
+        });
+      }
+    }
+
+    return this.shouldSendTaskToUser(user, task, userModel);
+  }
+
+  handleUpsertTaskChange(change, io, userModel, visibilityEvaluator) {
     // 1. Prepare New State
     let docNew = null;
     if (['insert', 'update', 'replace'].includes(change.operationType)) {
@@ -1337,8 +1353,12 @@ export class TaskModel {
       const user = socket.data.user;
       if (!user) continue;
 
-      const visibleBefore = taskOld ? this.shouldSendTaskToUser(user, taskOld, userModel) : false;
-      const visibleAfter = taskNew ? this.shouldSendTaskToUser(user, taskNew, userModel) : false;
+      const visibleBefore = taskOld
+        ? this.evaluateRealtimeVisibility(user, taskOld, userModel, visibilityEvaluator)
+        : false;
+      const visibleAfter = taskNew
+        ? this.evaluateRealtimeVisibility(user, taskNew, userModel, visibilityEvaluator)
+        : false;
 
       if (visibleBefore && !visibleAfter) {
         socket.emit('taskRemoved', { _id: taskId });
@@ -1376,7 +1396,7 @@ export class TaskModel {
 
       const pipeline = this.getTaskChangeStreamPipeline();
       const options = this.getTaskChangeStreamOptions();
-      const { io, userModel } = this.changeStreamContext;
+      const { io, userModel, visibilityEvaluator } = this.changeStreamContext;
 
       const changeStream = this.collection.watch(pipeline, options);
       this.changeStream = changeStream;
@@ -1396,7 +1416,7 @@ export class TaskModel {
             return;
           }
 
-          this.handleUpsertTaskChange(change, io, userModel);
+          this.handleUpsertTaskChange(change, io, userModel, visibilityEvaluator);
         } catch (error) {
           logger.error('Change stream processing error', { error: error.message, stack: error.stack });
         }

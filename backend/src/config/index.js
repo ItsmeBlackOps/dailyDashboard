@@ -77,7 +77,8 @@ const config = {
     apiKey: process.env.OPENAI_API_KEY || '',
     baseUrl: process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE_URL || 'https://api.openai.com/v1',
     model: process.env.OPENAI_REPORTING_MODEL || 'gpt-4o',
-    timeoutMs: Number.parseInt(process.env.OPENAI_TIMEOUT_MS || '300000', 10)
+    timeoutMs: Number.parseInt(process.env.OPENAI_TIMEOUT_MS || '300000', 10),
+    reasoningEffort: stripQuotes(process.env.OPENAI_REASONING_EFFORT || '')
   },
 
   newRelic: {
@@ -169,7 +170,8 @@ const config = {
     apiKey: process.env.APPWRITE_API_KEY,
     databaseId: process.env.APPWRITE_DATABASE_ID,
     transcriptsCollectionId: process.env.APPWRITE_COLLECTION_ID_TRANSCRIPTS,
-    generatedContentCollectionId: process.env.APPWRITE_COLLECTION_ID_GENERATED_CONTENT
+    generatedContentCollectionId: process.env.APPWRITE_COLLECTION_ID_GENERATED_CONTENT,
+    interviewDebriefCollectionId: process.env.APPWRITE_COLLECTION_ID_INTERVIEW_DEBRIEF
   }
 };
 

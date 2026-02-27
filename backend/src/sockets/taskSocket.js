@@ -284,7 +284,8 @@ export class TaskSocketHandler {
         taskId,
         user.email,
         user.role,
-        user.teamLead
+        user.teamLead,
+        user.manager
       );
 
       logger.info('Task retrieved by ID via socket', {
@@ -434,7 +435,7 @@ export class TaskSocketHandler {
       const user = socket.data.user;
       if (!user) return;
 
-      if (this.taskService.taskModel.shouldSendTaskToUser(user, task, this.taskService.userModel)) {
+      if (this.taskService.checkTaskAccess(task, user.email, user.role, user.teamLead, user.manager)) {
         socket.emit(event, task);
 
         logger.debug('Task update emitted', {

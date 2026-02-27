@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { candidateModel, WORKFLOW_STATUS, RESUME_UNDERSTANDING_STATUS } from '../models/Candidate.js';
 import { userModel } from '../models/User.js';
+import { userService } from './userService.js';
 import { logger } from '../utils/logger.js';
 import { domainEventBus } from '../events/eventBus.js';
 import { DomainEvents } from '../events/eventTypes.js';
@@ -18,6 +19,8 @@ const MM_BRANCH_MAP = new Map([
 const ROLE_MM = 'mm';
 const ROLE_MAM = 'mam';
 const ROLE_MLEAD = 'mlead';
+const ALLOWED_BRANCH_VALUES = ['GGR', 'LKN', 'AHM'];
+const ALLOWED_BRANCHES = new Set(ALLOWED_BRANCH_VALUES);
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function escapeRegex(value) {
@@ -85,6 +88,28 @@ function formatEmail(value = '') {
 }
 
 class CandidateService {
+  getAllowedBranches() {
+    return [...ALLOWED_BRANCH_VALUES];
+  }
+
+  normalizeAndValidateBranch(rawBranch) {
+    const branch = String(rawBranch || '').trim().toUpperCase();
+    if (!branch) {
+      const error = new Error('Branch is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!ALLOWED_BRANCHES.has(branch)) {
+      logger.warn('Invalid branch value rejected', { branch });
+      const error = new Error(`Branch must be one of ${ALLOWED_BRANCH_VALUES.join(', ')}`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    return branch;
+  }
+
   resolveBranchForMm(email, role) {
     if (!email || !role) {
       return null;
@@ -96,6 +121,109 @@ class CandidateService {
 
     const mappedBranch = MM_BRANCH_MAP.get(normalizeEmail(email));
     return mappedBranch || null;
+  }
+
+  resolveMmForMam(user) {
+    if (!user?.email || (user.role || '').trim().toLowerCase() !== ROLE_MAM) {
+      return null;
+    }
+
+    const mamEmail = normalizeEmail(user.email);
+    const mamRecord = userModel.getUserByEmail(mamEmail);
+    const managerRef = mamRecord?.manager || user.manager || '';
+
+    if (!managerRef) {
+      logger.warn('Unable to resolve MM for MAM: missing manager reference', { mamEmail });
+      return null;
+    }
+
+    const resolvedManagerEmail = normalizeEmail(this._findEmailByName(managerRef) || managerRef);
+    if (!resolvedManagerEmail) {
+      logger.warn('Unable to resolve MM for MAM: manager reference not mappable', {
+        mamEmail,
+        managerRef
+      });
+      return null;
+    }
+
+    const managerRecord = userModel.getUserByEmail(resolvedManagerEmail);
+    const managerRole = (managerRecord?.role || '').toLowerCase();
+    if (managerRole !== ROLE_MM) {
+      logger.warn('Unable to resolve MM for MAM: manager role is not MM', {
+        mamEmail,
+        managerEmail: resolvedManagerEmail,
+        managerRole: managerRecord?.role || null
+      });
+      return null;
+    }
+
+    return resolvedManagerEmail;
+  }
+
+  resolveDefaultBranchForMam(user) {
+    const mmEmail = this.resolveMmForMam(user);
+    if (!mmEmail) {
+      return {
+        mmEmail: null,
+        branch: null,
+        reason: 'MAM to MM mapping is missing. Contact admin.'
+      };
+    }
+
+    const branch = this.resolveBranchForMm(mmEmail, ROLE_MM);
+    if (!branch) {
+      logger.warn('Unable to resolve default branch for MAM: MM branch mapping missing', {
+        mamEmail: normalizeEmail(user?.email || ''),
+        mmEmail
+      });
+      return {
+        mmEmail,
+        branch: null,
+        reason: 'MM branch mapping is missing. Contact admin.'
+      };
+    }
+
+    logger.info('Resolved default branch for MAM', {
+      mamEmail: normalizeEmail(user?.email || ''),
+      mmEmail,
+      branch
+    });
+
+    return {
+      mmEmail,
+      branch,
+      reason: null
+    };
+  }
+
+  buildCreatePolicy(user) {
+    const normalizedRole = (user?.role || '').toLowerCase();
+    const policy = {
+      allowedBranches: this.getAllowedBranches(),
+      defaultBranch: null,
+      branchReadOnly: false,
+      canCreate: true
+    };
+
+    if (normalizedRole === ROLE_MAM) {
+      const resolution = this.resolveDefaultBranchForMam(user);
+      policy.defaultBranch = resolution.branch;
+      policy.branchReadOnly = true;
+      policy.canCreate = Boolean(resolution.branch);
+      if (!resolution.branch && resolution.reason) {
+        policy.reason = resolution.reason;
+      }
+    }
+
+    return policy;
+  }
+
+  buildCandidateOptions(user, extras = {}) {
+    return {
+      recruiterChoices: this.buildAssignablePeople(user),
+      createPolicy: this.buildCreatePolicy(user),
+      ...extras
+    };
   }
 
   collectHierarchyEmails(user) {
@@ -501,10 +629,9 @@ class CandidateService {
         count: candidates.length,
         hasSearch: Boolean(searchPattern)
       },
-      options: {
-        recruiterChoices: this.buildAssignablePeople(user),
+      options: this.buildCandidateOptions(user, {
         expertChoices: this.buildExpertChoices(expertEmails)
-      }
+      })
     };
   }
 
@@ -607,106 +734,67 @@ class CandidateService {
   }
 
   buildAssignablePeople(user) {
-    const allUsers = userModel.getAllUsers();
-    const normalizedRole = (user.role || '').toLowerCase();
-    const mmEmail = formatEmail(user.email || '');
-    const mmName = normalizeName(formatDisplayName(user.email));
-    const result = new Map();
+    const inScopeActiveEmails = this.resolveActiveHierarchyEmails(user);
+    const options = Array.from(inScopeActiveEmails)
+      .map((email) => ({
+        value: email,
+        label: formatDisplayName(email)
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
 
-    const addPerson = (person, labelOverride) => {
-      const email = formatEmail(person.email || '');
-      if (!email) return;
-      const label = labelOverride || formatDisplayName(person.displayName || person.email || '');
-      result.set(email, label);
+    logger.debug('Built hierarchy-scoped recruiter choices', {
+      userEmail: normalizeEmail(user?.email || ''),
+      role: (user?.role || '').toLowerCase(),
+      count: options.length
+    });
+
+    return options;
+  }
+
+  resolveActiveHierarchyEmails(user) {
+    const emailSet = new Set();
+
+    const addEmail = (rawEmail) => {
+      const normalized = formatEmail(rawEmail || '');
+      if (normalized) {
+        emailSet.add(normalized);
+      }
     };
 
-    if (normalizedRole === ROLE_MM) {
-      for (const person of allUsers) {
-        const normalizedRoleValue = (person.role || '').toLowerCase();
-        if (!['mam', 'mlead', 'recruiter'].includes(normalizedRoleValue)) continue;
-        const personManagerName = normalizeName(person.manager || '');
-        const personManagerEmail = formatEmail(person.manager || '');
-        if (personManagerName === mmName || (mmEmail && personManagerEmail === mmEmail)) {
-          addPerson(person);
-        }
-      }
-
-      addPerson({ email: user.email, displayName: user.email });
-
-      return Array.from(result.entries())
-        .map(([value, label]) => ({ value, label }))
-        .sort((a, b) => a.label.localeCompare(b.label));
+    if (!user?.email) {
+      return emailSet;
     }
 
-    if (normalizedRole === ROLE_MAM) {
-      const mamName = normalizeName(formatDisplayName(user.email));
-      const mamEmail = formatEmail(user.email || '');
-      const mleadNames = new Set();
-
-      addPerson({ email: user.email, displayName: user.email });
-
-      for (const person of allUsers) {
-        const normalizedRoleValue = (person.role || '').toLowerCase();
-        if (normalizedRoleValue !== 'mlead') continue;
-        const personManagerName = normalizeName(person.manager || '');
-        const personManagerEmail = formatEmail(person.manager || '');
-        const personTeamLeadName = normalizeName(person.teamLead || '');
-        if (
-          personManagerName === mamName ||
-          (mamEmail && personManagerEmail === mamEmail) ||
-          (personTeamLeadName && personTeamLeadName === mamName)
-        ) {
-          addPerson(person);
-          mleadNames.add(normalizeName(formatDisplayName(person.email || '')));
-        }
-      }
-
-      for (const person of allUsers) {
-        const normalizedRoleValue = (person.role || '').toLowerCase();
-        if (normalizedRoleValue !== 'recruiter') continue;
-        const teamLeadName = normalizeName(person.teamLead || '');
-        if (teamLeadName === mamName || mleadNames.has(teamLeadName)) {
-          addPerson(person);
-        }
-      }
-
-      return Array.from(result.entries())
-        .map(([value, label]) => ({ value, label }))
-        .sort((a, b) => a.label.localeCompare(b.label));
+    const manageableUsers = userService.collectManageableUsers(user);
+    for (const person of manageableUsers) {
+      if (person?.active === false) continue;
+      addEmail(person.email);
     }
 
-    if (normalizedRole === ROLE_MLEAD) {
-      const mleadName = normalizeName(formatDisplayName(user.email));
-      addPerson({ email: user.email, displayName: user.email });
-
-      for (const person of allUsers) {
-        const normalizedRoleValue = (person.role || '').toLowerCase();
-        if (normalizedRoleValue !== 'recruiter') continue;
-        const teamLeadName = normalizeName(person.teamLead || '');
-        if (teamLeadName === mleadName) {
-          addPerson(person);
-        }
-      }
-
-      return Array.from(result.entries())
-        .map(([value, label]) => ({ value, label }))
-        .sort((a, b) => a.label.localeCompare(b.label));
+    const selfRecord = userModel.getUserByEmail(user.email);
+    if (selfRecord?.active === false) {
+      return emailSet;
     }
+    addEmail(user.email);
 
-    const relevantRoles = new Set(['mam', 'mlead', 'recruiter']);
-    for (const person of allUsers) {
-      const normalizedRoleValue = (person.role || '').toLowerCase();
-      if (!relevantRoles.has(normalizedRoleValue)) continue;
-      addPerson(person);
+    return emailSet;
+  }
+
+  assertRecruiterInScope(user, recruiterEmail) {
+    const normalizedRecruiterEmail = formatEmail(recruiterEmail || '');
+    const allowedRecruiters = this.resolveActiveHierarchyEmails(user);
+
+    if (!normalizedRecruiterEmail || !allowedRecruiters.has(normalizedRecruiterEmail)) {
+      logger.warn('Recruiter out-of-scope for candidate creation', {
+        userEmail: normalizeEmail(user?.email || ''),
+        userRole: (user?.role || '').toLowerCase(),
+        recruiterEmail: normalizedRecruiterEmail || null,
+        allowedCount: allowedRecruiters.size
+      });
+      const error = new Error('Recruiter must be an active user in your hierarchy or yourself');
+      error.statusCode = 403;
+      throw error;
     }
-
-    if (user?.email) {
-      addPerson({ email: user.email, displayName: user.email });
-    }
-
-    return Array.from(result.entries())
-      .map(([value, label]) => ({ value, label }))
-      .sort((a, b) => a.label.localeCompare(b.label));
   }
 
   buildExpertChoices(expertEmails = []) {
@@ -989,13 +1077,7 @@ class CandidateService {
     }
 
     if (payload.branch !== undefined) {
-      const branch = payload.branch?.toString?.().trim();
-      if (!branch) {
-        const error = new Error('Branch is required');
-        error.statusCode = 400;
-        throw error;
-      }
-      sanitized.branch = branch.toUpperCase();
+      sanitized.branch = this.normalizeAndValidateBranch(payload.branch);
     }
 
     if (payload.technology !== undefined) {
@@ -1287,10 +1369,9 @@ class CandidateService {
 
     const normalizedRole = user.role.trim().toLowerCase();
 
-    // STRICT: Only MM and Admin can create via this flow.
-    // Managers, Recruiters, MAM, MLead are Excluded.
-    if (!['admin', 'mm'].includes(normalizedRole)) {
-      const error = new Error('Access denied. Only Branch Heads (MM) can create candidates.');
+    // Recruitment creation flow: allow admin, manager, MM, and MAM.
+    if (!['admin', 'manager', 'mm', 'mam'].includes(normalizedRole)) {
+      const error = new Error('Access denied. Only MM, MAM, managers, or admins can create candidates.');
       error.statusCode = 403;
       throw error;
     }
@@ -1308,6 +1389,20 @@ class CandidateService {
       throw error;
     }
 
+    if (normalizedRole === ROLE_MAM) {
+      const mamBranchResolution = this.resolveDefaultBranchForMam(user);
+      if (!mamBranchResolution.branch) {
+        logger.warn('Candidate creation blocked for MAM: branch mapping missing', {
+          mamEmail: normalizeEmail(user.email),
+          reason: mamBranchResolution.reason || null
+        });
+        const error = new Error(mamBranchResolution.reason || 'MAM branch mapping missing');
+        error.statusCode = 403;
+        throw error;
+      }
+      sanitized.branch = mamBranchResolution.branch;
+    }
+
     if (!sanitized.branch) {
       const error = new Error('Branch is required');
       error.statusCode = 400;
@@ -1319,6 +1414,7 @@ class CandidateService {
       error.statusCode = 400;
       throw error;
     }
+    this.assertRecruiterInScope(user, sanitized.recruiter);
 
     if (!sanitized.name || !sanitized.email) {
       const error = new Error('Candidate name and email are required');
@@ -1464,9 +1560,7 @@ class CandidateService {
         throw error;
       }
       const result = await this.fetchCandidatesByBranch(user, branch, options);
-      result.options = {
-        recruiterChoices: this.buildAssignablePeople(user)
-      };
+      result.options = this.buildCandidateOptions(user);
       return result;
     }
 
@@ -1485,9 +1579,7 @@ class CandidateService {
           Array.from(recruiterEmails),
           { ...options, includeSelfPatterns: true }
         );
-        result.options = {
-          recruiterChoices: this.buildAssignablePeople(user)
-        };
+        result.options = this.buildCandidateOptions(user);
         return result;
       }
 
@@ -1501,9 +1593,7 @@ class CandidateService {
           Array.from(recruiters),
           { ...options, includeSelfPatterns: true }
         );
-        result.options = {
-          recruiterChoices: this.buildAssignablePeople(user)
-        };
+        result.options = this.buildCandidateOptions(user);
         return result;
       }
     }
@@ -1549,10 +1639,9 @@ class CandidateService {
 
       const expertList = Array.from(experts).filter(Boolean);
       const result = await this.fetchCandidatesByExperts(user, expertList, options);
-      result.options = {
-        recruiterChoices: this.buildAssignablePeople(user),
+      result.options = this.buildCandidateOptions(user, {
         expertChoices: this.buildExpertChoices(expertList)
-      };
+      });
       return result;
     }
 
@@ -1574,16 +1663,17 @@ class CandidateService {
 
       const expertList = Array.from(experts).filter(Boolean);
       const result = await this.fetchCandidatesByExperts(user, expertList, options);
-      result.options = {
-        recruiterChoices: this.buildAssignablePeople(user),
+      result.options = this.buildCandidateOptions(user, {
         expertChoices: this.buildExpertChoices(expertList)
-      };
+      });
       return result;
     }
 
     if (normalizedRole === 'user') {
       const expertEmail = normalizeEmail(user.email);
-      return this.fetchCandidatesByExperts(user, expertEmail ? [expertEmail] : [], options);
+      const result = await this.fetchCandidatesByExperts(user, expertEmail ? [expertEmail] : [], options);
+      result.options = this.buildCandidateOptions(user);
+      return result;
     }
 
     if (normalizedRole === 'recruiter') {
@@ -1598,9 +1688,7 @@ class CandidateService {
         [recruiterEmail],
         { ...options, includeSelfPatterns: true }
       );
-      result.options = {
-        recruiterChoices: this.buildAssignablePeople(user)
-      };
+      result.options = this.buildCandidateOptions(user);
       return result;
     }
 
@@ -1615,9 +1703,7 @@ class CandidateService {
           count: 0,
           hasSearch: false
         },
-        options: {
-          recruiterChoices: this.buildAssignablePeople(user)
-        }
+        options: this.buildCandidateOptions(user)
       };
     }
 

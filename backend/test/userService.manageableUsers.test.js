@@ -30,8 +30,8 @@ describe('UserService.getManageableUsers admin/manager coverage', () => {
   it('returns all other users for manager', async () => {
     const users = [
       { email: 'manager@example.com', role: 'manager', active: true },
-      { email: 'user2@example.com', role: 'user', active: true },
-      { email: 'mlead1@example.com', role: 'mlead', active: true },
+      { email: 'user2@example.com', role: 'user', teamLead: 'Manager', active: true },
+      { email: 'mlead1@example.com', role: 'mlead', teamLead: 'Manager', active: true },
     ];
 
     service.userModel = {
@@ -43,6 +43,38 @@ describe('UserService.getManageableUsers admin/manager coverage', () => {
     expect(result.users).toHaveLength(2);
     const emails = result.users.map((u) => u.email).sort();
     expect(emails).toEqual(['mlead1@example.com', 'user2@example.com']);
+  });
+
+  it('builds hierarchy scope with self + manageable aliases', () => {
+    const users = [
+      { email: 'mam.user@example.com', role: 'mam', teamLead: '', manager: '', active: true },
+      { email: 'mlead.one@example.com', role: 'mlead', teamLead: 'Mam User', manager: '', active: true },
+      { email: 'recruiter.one@example.com', role: 'recruiter', teamLead: 'Mlead One', manager: '', active: true }
+    ];
+
+    service.userModel = {
+      getAllUsers: () => users
+    };
+
+    const scope = service.buildTaskHierarchyScope({
+      email: 'mam.user@example.com',
+      role: 'mam'
+    });
+
+    expect(scope.emails).toEqual([
+      'mam.user@example.com',
+      'mlead.one@example.com',
+      'recruiter.one@example.com'
+    ]);
+    expect(scope.locals).toEqual(
+      expect.arrayContaining(['mam.user', 'mlead.one', 'recruiter.one'])
+    );
+    expect(scope.displayNames).toEqual(
+      expect.arrayContaining(['mam user', 'mlead one', 'recruiter one'])
+    );
+    expect(scope.escaped.emails).toEqual(
+      expect.arrayContaining(['mam\\.user@example\\.com', 'mlead\\.one@example\\.com'])
+    );
   });
 });
 

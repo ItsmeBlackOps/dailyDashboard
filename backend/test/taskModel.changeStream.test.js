@@ -84,6 +84,35 @@ describe('TaskModel change stream realtime mapping', () => {
     );
   });
 
+  it('uses provided visibility callback for realtime gating parity', async () => {
+    const stream = new FakeChangeStream();
+    model.collection = { watch: jest.fn(() => stream) };
+
+    const socket = createSocket('lead.user@example.com', 'lead');
+    const io = createIo([socket]);
+
+    const visibilityEvaluator = jest.fn((_user, task) => Boolean(task?.visible));
+    jest.spyOn(model, 'formatTask').mockImplementation((doc) => doc);
+    const fallbackSpy = jest.spyOn(model, 'shouldSendTaskToUser').mockReturnValue(false);
+
+    model.setupChangeStream(io, userModel, visibilityEvaluator);
+
+    stream.emit('change', {
+      operationType: 'update',
+      fullDocument: { _id: 'task-callback', visible: true },
+      fullDocumentBeforeChange: { _id: 'task-callback', visible: false },
+      documentKey: { _id: 'task-callback' }
+    });
+
+    await Promise.resolve();
+    expect(visibilityEvaluator).toHaveBeenCalled();
+    expect(socket.emit).toHaveBeenCalledWith(
+      'taskUpdated',
+      expect.objectContaining({ _id: 'task-callback', visible: true })
+    );
+    expect(fallbackSpy).not.toHaveBeenCalled();
+  });
+
   it('emits taskRemoved when an update causes visibility loss', async () => {
     const stream = new FakeChangeStream();
     model.collection = { watch: jest.fn(() => stream) };
