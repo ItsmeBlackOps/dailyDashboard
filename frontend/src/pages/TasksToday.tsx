@@ -2772,6 +2772,7 @@ export default function TasksToday() {
           const recipientEmail = typeof recipientRaw === 'string' ? recipientRaw.trim() : '';
           console.log('recipientRaw', recipientRaw);
           console.log('recipientEmail', recipientEmail);
+          const easternDateTime = start?.tz("America/New_York").format("MM/DD/YYYY hh:mm A z");
           if (recipientEmail) {
             try {
               await fetch('https://default4ece6d1e592c44f1b1876076e91805.10.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/f9e4c56d839c42539f80c0bdcf9c4002/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=NCFHcyOAQ0WygZWYNIby6IlMKTQNiI87Rs7Kbv43Cj8', {
@@ -2781,7 +2782,7 @@ export default function TasksToday() {
                 },
                 body: JSON.stringify({
                   to: recipientEmail,
-                  subject: `Join Meeting at ${edtTime} EST`,
+                  subject: `Join Meeting at ${formatDate(start)} ${easternDateTime} EST`,
                   body: resolvedLink,
                   start: start ? start.toDate().toISOString() : undefined
                 }),
