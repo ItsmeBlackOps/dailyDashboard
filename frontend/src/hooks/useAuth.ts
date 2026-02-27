@@ -2,9 +2,18 @@ import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 
-const DEFAULT_HTTP_URL = import.meta.env.DEV
-  ? 'http://localhost:3004'
-  : '';
+const LOCAL_BACKEND_URL = 'http://localhost:3004';
+
+const resolveDefaultHttpUrl = () => {
+  if (import.meta.env.DEV) {
+    return LOCAL_BACKEND_URL;
+  }
+  // In non-dev builds prefer same-origin (/api, /socket.io) so local preview
+  // and reverse-proxy setups do not hardcode localhost:3004.
+  return '';
+};
+
+const DEFAULT_HTTP_URL = resolveDefaultHttpUrl();
 
 const normalizeHttpUrl = (value: string) => {
   const trimmed = value.trim();
@@ -28,7 +37,7 @@ const normalizeSocketUrl = (value: string, fallback: string) => {
 };
 
 const resolveHttpUrl = () => {
-  const candidates = [import.meta.env.VITE_API_URL, DEFAULT_HTTP_URL];
+  const candidates = [import.meta.env.VITE_API_BASE, import.meta.env.VITE_API_URL, DEFAULT_HTTP_URL];
   const raw = candidates.find((entry) => typeof entry === 'string' && entry.trim().length > 0);
   return normalizeHttpUrl(raw || DEFAULT_HTTP_URL);
 };

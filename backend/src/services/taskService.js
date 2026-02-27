@@ -2,10 +2,13 @@ import moment from 'moment-timezone';
 import { ObjectId } from 'mongodb';
 import { taskModel } from '../models/Task.js';
 import { userModel } from '../models/User.js';
+import { userService } from './userService.js';
 import { logger, createTimer } from '../utils/logger.js';
 
 const TIMEZONE = 'America/New_York';
 const RECEIVED_DATE_FIELD_ROLES = new Set(['admin', 'mm', 'mam', 'mlead', 'recruiter']);
+const RECRUITMENT_MANAGER_ROLES = new Set(['mm', 'mam', 'mlead']);
+const EXPERT_MANAGER_ROLES = new Set(['am', 'lead']);
 // const TOP_PERFORMER_LIMIT = 25;
 
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -14,6 +17,7 @@ export class TaskService {
   constructor() {
     this.taskModel = taskModel;
     this.userModel = userModel;
+    this.userService = userService;
   }
 
   async getTasksForUser(userEmail, userRole, teamLead, manager, tab = "Date of Interview", targetDate, options = {}) {
@@ -21,9 +25,8 @@ export class TaskService {
     try {
       logger.debug('Getting tasks for user', { userEmail, userRole, tab, targetDate, options });
 
-      const teamEmails = this.userModel
-        .getTeamEmails(userEmail, userRole, teamLead)
-        .map((email) => email.toLowerCase());
+      const visibilityScope = this.resolveTaskVisibilityScope(userEmail, userRole);
+      const teamEmails = visibilityScope.emails;
 
       const tasks = await this.taskModel.getTasksForUser(
         userEmail,
@@ -95,9 +98,7 @@ export class TaskService {
         requested: { start, end, dateField, range, upcoming, limit, offset }
       });
 
-      const teamEmails = this.userModel
-        .getTeamEmails(userEmail, userRole, teamLead)
-        .map((email) => email.toLowerCase());
+      const visibilityScope = this.resolveTaskVisibilityScope(userEmail, userRole);
 
       // 1. Initial Match (Criteria)
       const initialMatch = {};
@@ -184,48 +185,7 @@ export class TaskService {
 
       // 4. Access Control (Visibility Filter) -- SAME AS SEARCH
       // We should extract this logic ideally, but for now copying ensures strict equivalence.
-      const normalizedRole = userRole.toLowerCase();
-      let visibilityMatch = {};
-
-      if (normalizedRole === 'admin') {
-        // No filter
-      } else if (['mam', 'mm', 'mlead'].includes(normalizedRole)) {
-        visibilityMatch = this.buildSearchQuery(userEmail, userRole, manager, teamEmails);
-      } else if (normalizedRole === 'recruiter') {
-        visibilityMatch = this.buildSearchQuery(userEmail, userRole, manager, teamEmails);
-      } else if (['lead', 'am'].includes(normalizedRole)) {
-        // Optimization: Use $in for assignedTo to hit the Index
-        const emailList = teamEmails.filter(Boolean);
-        if (emailList.length > 0) {
-          const regexObj = { $regex: emailList.map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), $options: 'i' };
-          visibilityMatch = {
-            $or: [
-              { assignedTo: { $in: emailList } }, // Primary Index Path
-              { assignedTo: regexObj },
-              { candidateExpertRaw: regexObj }
-            ]
-          };
-        } else {
-          const selfRegex = { $regex: userEmail, $options: 'i' };
-          visibilityMatch = {
-            $or: [
-              { assignedTo: userEmail },
-              { assignedTo: selfRegex },
-              { candidateExpertRaw: selfRegex }
-            ]
-          };
-        }
-      } else {
-        const selfRegex = { $regex: userEmail, $options: 'i' };
-        visibilityMatch = {
-          $or: [
-            { assignedTo: userEmail },
-            { assignedTo: selfRegex },
-            { candidateExpertRaw: selfRegex },
-            { suggestions: selfRegex }
-          ]
-        };
-      }
+      const visibilityMatch = this.buildTaskVisibilityMatch(userEmail, userRole, teamLead, manager);
 
       if (Object.keys(visibilityMatch).length > 0) {
         pipeline.push({ $match: visibilityMatch });
@@ -260,7 +220,7 @@ export class TaskService {
           count: tasks.length,
           dateRange: { startIso, endIso, range: rangeUsed },
           userRole,
-          teamSize: teamEmails.length,
+          teamSize: visibilityScope.emails.length,
           dateField: effectiveDateField
         }
       };
@@ -374,7 +334,7 @@ export class TaskService {
     }
   }
 
-  async getTaskById(taskId, userEmail, userRole, teamLead) {
+  async getTaskById(taskId, userEmail, userRole, teamLead, manager) {
     const timer = createTimer('taskService.getTaskById', logger);
     try {
       logger.debug('Getting task by ID', { taskId, userEmail });
@@ -405,16 +365,7 @@ export class TaskService {
         throw new Error('Invalid task data');
       }
 
-      const hasAccess = this.checkTaskAccess(formattedTask, userEmail, userRole, teamLead);
-
-      console.log('[checkTaskAccess]', {
-        userEmail,
-        userRole,
-        teamLead,
-        taskId,
-        assignedTo: formattedTask.assignedTo || formattedTask.assignedEmail || formattedTask.assignedToEmail,
-        hasAccess
-      });
+      const hasAccess = this.checkTaskAccess(formattedTask, userEmail, userRole, teamLead, manager);
 
       if (!hasAccess) {
         throw new Error('Access denied');
@@ -485,12 +436,8 @@ export class TaskService {
     }
   }
 
-  checkTaskAccess(task, userEmail, userRole, teamLead) {
-    return this.taskModel.shouldSendTaskToUser(
-      { email: userEmail, role: userRole, teamLead },
-      task,
-      this.userModel
-    );
+  checkTaskAccess(task, userEmail, userRole, teamLead, manager) {
+    return this.isTaskVisibleToUser(task, userEmail, userRole, teamLead, manager);
   }
 
   async getTaskStatistics(userEmail, userRole, teamLead, manager, startDate, endDate) {
@@ -594,7 +541,17 @@ export class TaskService {
 
   setupRealtimeUpdates(io) {
     try {
-      this.taskModel.setupChangeStream(io, this.userModel);
+      this.taskModel.setupChangeStream(
+        io,
+        this.userModel,
+        (user, task) => this.checkTaskAccess(
+          task,
+          user?.email,
+          user?.role,
+          user?.teamLead,
+          user?.manager
+        )
+      );
       logger.info('Task realtime updates configured');
     } catch (error) {
       logger.error('Failed to setup task realtime updates', { error: error.message });
@@ -618,8 +575,7 @@ export class TaskService {
         offset = 0
       } = searchCriteria;
 
-      const teamEmails = this.userModel.getTeamEmails(userEmail, userRole, teamLead);
-      const normalizedRole = userRole.toLowerCase();
+      const visibilityScope = this.resolveTaskVisibilityScope(userEmail, userRole);
 
       // 1. Initial Match (Performance Optimization)
       const initialMatch = {};
@@ -699,65 +655,7 @@ export class TaskService {
 
       // 4. Access Control (Visibility Filter)
       // This MUST be applied after lookups because it depends on candidateExpertRaw
-      let visibilityMatch = {};
-
-      if (normalizedRole === 'admin') {
-        // No filter
-      } else if (['mam', 'mm', 'mlead'].includes(normalizedRole)) {
-        // Managers: Reuse buildUserQuery logic logic roughly
-        // But since buildUserQuery returns a query object, we can use it directly if it only touches base fields.
-        // Managers only look at cc/sender usually.
-        visibilityMatch = this.buildSearchQuery(userEmail, userRole, manager, teamEmails);
-      } else if (normalizedRole === 'recruiter') {
-        // Recruiters: Reuse buildUserQuery logic
-        visibilityMatch = this.buildSearchQuery(userEmail, userRole, manager, teamEmails);
-      } else if (['lead', 'am'].includes(normalizedRole)) {
-        // Leads: Team Assignment OR Team Suggestion
-        // We need regex to match any team member in assignedTo OR candidateExpertRaw
-        const teamRegex = teamEmails.map(e => {
-          // Escape special chars just in case
-          return e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        }).join('|');
-
-        // Names? Logic in filterAndFormatTokens is complex (token matching).
-        // For search, we'll approximate with Email-based regex + basic Name regex if possible.
-        // Getting exact "Token Match" in Aggregation is very hard.
-        // We will stick to the RegExp of known team emails/names.
-        // To improve, we should make sure teamEmails includes names (which getTeamEmails tries to do via display name derivation? No usually just emails).
-
-      } else if (['lead', 'am'].includes(normalizedRole)) {
-        // Optimization: Use $in for assignedTo to hit the Index
-        const emailList = teamEmails.filter(Boolean);
-        if (emailList.length > 0) {
-          const regexObj = { $regex: emailList.map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), $options: 'i' };
-          visibilityMatch = {
-            $or: [
-              { assignedTo: { $in: emailList } }, // Primary Index Path
-              { assignedTo: regexObj }, // Fallback for case mismatch if collation fails (safe)
-              { candidateExpertRaw: regexObj }
-            ]
-          };
-        } else {
-          const selfRegex = { $regex: userEmail, $options: 'i' };
-          visibilityMatch = {
-            $or: [
-              { assignedTo: userEmail }, // Primary Index Path
-              { assignedTo: selfRegex },
-              { candidateExpertRaw: selfRegex }
-            ]
-          };
-        }
-      } else {
-        const selfRegex = { $regex: userEmail, $options: 'i' };
-        visibilityMatch = {
-          $or: [
-            { assignedTo: userEmail }, // Primary Index Path
-            { assignedTo: selfRegex },
-            { candidateExpertRaw: selfRegex },
-            { suggestions: selfRegex }
-          ]
-        };
-      }
+      const visibilityMatch = this.buildTaskVisibilityMatch(userEmail, userRole, teamLead, manager);
 
       if (Object.keys(visibilityMatch).length > 0) {
         pipeline.push({ $match: visibilityMatch });
@@ -787,6 +685,7 @@ export class TaskService {
         tasks: formattedTasks,
         meta: {
           count: formattedTasks.length,
+          teamSize: visibilityScope.emails.length,
           offset,
           limit,
           searchCriteria
@@ -804,84 +703,261 @@ export class TaskService {
     }
   }
 
-  buildSearchQuery(userEmail, userRole, manager, teamEmails) {
-    const baseQuery = {};
+  normalizeRole(userRole = '') {
+    return (userRole || '').toString().trim().toLowerCase();
+  }
 
-    if (userRole === 'admin') {
-      return baseQuery;
-    }
+  normalizeVisibilityToken(value = '') {
+    return (value || '')
+      .toString()
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+  }
 
-    const lowerEmail = userEmail.toLowerCase();
-    const normalizedRole = userRole.toLowerCase();
-
-    if (['mlead', 'mam', 'mm'].includes(normalizedRole)) {
-      const patterns = [
-        { sender: { $regex: lowerEmail, $options: 'i' } },
-        { cc: { $regex: lowerEmail, $options: 'i' } }
-      ];
-
-      if (teamEmails && teamEmails.length > 0) {
-        const teamRegex = teamEmails
-          .map(e => escapeRegex(e))
-          .join('|');
-
-        patterns.push({ sender: { $regex: teamRegex, $options: 'i' } });
-        patterns.push({ cc: { $regex: teamRegex, $options: 'i' } });
-        patterns.push({ assignedTo: { $regex: teamRegex, $options: 'i' } });
+  resolveTaskVisibilityScope(userEmail, userRole) {
+    try {
+      const scope = this.userService.buildTaskHierarchyScope({ email: userEmail, role: userRole });
+      if (Array.isArray(scope?.emails) && scope.emails.length > 0) {
+        return scope;
       }
-
-      return { $or: patterns };
+    } catch (error) {
+      logger.warn('Failed to resolve hierarchy visibility scope, falling back to self scope', {
+        userEmail,
+        userRole,
+        error: error.message
+      });
     }
 
-    if (userRole === 'lead') {
-      const teamLocals = teamEmails.map(e => e.split('@')[0]);
-      const emailParts = lowerEmail.split('@')[0].split('.');
-      const leadFullName = emailParts.length >= 2
-        ? `${emailParts[0].charAt(0).toUpperCase()}${emailParts[0].slice(1)} ${emailParts[1].charAt(0).toUpperCase()}${emailParts[1].slice(1)}`
-        : `${emailParts[0].charAt(0).toUpperCase()}${emailParts[0].slice(1)}`;
+    const lowerEmail = this.normalizeVisibilityToken(userEmail);
+    const local = lowerEmail.split('@')[0];
+    const display = this.normalizeVisibilityToken(this.userService.deriveDisplayNameFromEmail(lowerEmail));
 
-      return {
-        $or: [
-          { assignedTo: { $regex: teamEmails.join('|'), $options: 'i' } },
-          { assignedTo: { $regex: teamLocals.join('|'), $options: 'i' } },
-          { assignedTo: { $regex: leadFullName, $options: 'i' } }
-        ]
-      };
+    return {
+      emails: lowerEmail ? [lowerEmail] : [],
+      locals: local ? [local] : [],
+      displayNames: display ? [display] : [],
+      escaped: {
+        emails: lowerEmail ? [escapeRegex(lowerEmail)] : [],
+        locals: local ? [escapeRegex(local)] : [],
+        displayNames: display ? [escapeRegex(display)] : []
+      }
+    };
+  }
+
+  buildVisibilityRegexSource(scope = {}) {
+    const segments = new Set([
+      ...(scope?.escaped?.emails || []),
+      ...(scope?.escaped?.locals || []),
+      ...(scope?.escaped?.displayNames || [])
+    ]);
+
+    return Array.from(segments).filter(Boolean).join('|');
+  }
+
+  buildContainsRegexMatch(fields = [], regexSource = '') {
+    if (!regexSource) {
+      return {};
     }
 
-    if (userRole === 'recruiter') {
-      const localPart = lowerEmail.split('@')[0];
-      const emailParts = localPart.split('.');
-      const recruiterDisplay = emailParts.length >= 2
-        ? `${emailParts[0].charAt(0).toUpperCase()}${emailParts[0].slice(1)} ${emailParts[1].charAt(0).toUpperCase()}${emailParts[1].slice(1)}`
-        : `${localPart.charAt(0).toUpperCase()}${localPart.slice(1)}`;
+    return {
+      $or: fields.map((field) => ({
+        [field]: { $regex: regexSource, $options: 'i' }
+      }))
+    };
+  }
 
-      return {
-        $or: [
-          { sender: { $regex: localPart, $options: 'i' } },
-          { sender: { $regex: lowerEmail, $options: 'i' } },
-          { cc: { $regex: localPart, $options: 'i' } },
-          { to: { $regex: localPart, $options: 'i' } },
-          { assignedTo: { $regex: `^${localPart}$`, $options: 'i' } },
-          { assignedTo: { $regex: `^${lowerEmail}$`, $options: 'i' } },
-          { assignedTo: { $regex: `^${recruiterDisplay}$`, $options: 'i' } }
-        ]
-      };
+  buildAssignedScopeMatch(scope = {}) {
+    const fields = ['assignedTo', 'assignedToEmail', 'assignedEmail', 'assignedExpert'];
+    const conditions = [];
+
+    if (Array.isArray(scope.emails) && scope.emails.length > 0) {
+      for (const field of fields) {
+        conditions.push({ [field]: { $in: scope.emails } });
+      }
     }
 
-    // Regular user
-    const emailParts = lowerEmail.split('@')[0].split('.');
-    const firstLast = emailParts.length >= 2
-      ? `${emailParts[0].charAt(0).toUpperCase()}${emailParts[0].slice(1)} ${emailParts[1].charAt(0).toUpperCase()}${emailParts[1].slice(1)}`
-      : `${emailParts[0].charAt(0).toUpperCase()}${emailParts[0].slice(1)}`;
+    const regexSource = this.buildVisibilityRegexSource(scope);
+    if (regexSource) {
+      for (const field of fields) {
+        conditions.push({ [field]: { $regex: regexSource, $options: 'i' } });
+      }
+    }
+
+    if (conditions.length === 0) {
+      return {};
+    }
+
+    return { $or: conditions };
+  }
+
+  buildRecruiterVisibilityMatch(userEmail) {
+    const lowerEmail = this.normalizeVisibilityToken(userEmail);
+    const localPart = lowerEmail.split('@')[0];
+    const recruiterDisplay = this.normalizeVisibilityToken(this.userService.deriveDisplayNameFromEmail(lowerEmail));
 
     return {
       $or: [
-        { assignedTo: { $regex: `^${lowerEmail.split('@')[0]}$`, $options: 'i' } },
-        { assignedTo: { $regex: `^${lowerEmail}$`, $options: 'i' } },
-        { assignedTo: { $regex: `^${firstLast}$`, $options: 'i' } }
+        { sender: { $regex: escapeRegex(localPart), $options: 'i' } },
+        { sender: { $regex: escapeRegex(lowerEmail), $options: 'i' } },
+        { cc: { $regex: escapeRegex(localPart), $options: 'i' } },
+        { to: { $regex: escapeRegex(localPart), $options: 'i' } },
+        { assignedTo: { $regex: `^${escapeRegex(localPart)}$`, $options: 'i' } },
+        { assignedTo: { $regex: `^${escapeRegex(lowerEmail)}$`, $options: 'i' } },
+        { assignedToEmail: { $regex: `^${escapeRegex(lowerEmail)}$`, $options: 'i' } },
+        { assignedEmail: { $regex: `^${escapeRegex(lowerEmail)}$`, $options: 'i' } },
+        { assignedExpert: { $regex: `^${escapeRegex(recruiterDisplay)}$`, $options: 'i' } }
       ]
     };
+  }
+
+  buildIndividualVisibilityMatch(userEmail) {
+    const lowerEmail = this.normalizeVisibilityToken(userEmail);
+    const localPart = lowerEmail.split('@')[0];
+    const displayName = this.normalizeVisibilityToken(this.userService.deriveDisplayNameFromEmail(lowerEmail));
+
+    return {
+      $or: [
+        { assignedTo: { $regex: `^${escapeRegex(localPart)}$`, $options: 'i' } },
+        { assignedTo: { $regex: `^${escapeRegex(lowerEmail)}$`, $options: 'i' } },
+        { assignedToEmail: { $regex: `^${escapeRegex(lowerEmail)}$`, $options: 'i' } },
+        { assignedEmail: { $regex: `^${escapeRegex(lowerEmail)}$`, $options: 'i' } },
+        { assignedExpert: { $regex: `^${escapeRegex(displayName)}$`, $options: 'i' } }
+      ]
+    };
+  }
+
+  buildTaskVisibilityMatch(userEmail, userRole, teamLead, manager) {
+    const normalizedRole = this.normalizeRole(userRole);
+
+    if (normalizedRole === 'admin') {
+      return {};
+    }
+
+    if (RECRUITMENT_MANAGER_ROLES.has(normalizedRole)) {
+      const scope = this.resolveTaskVisibilityScope(userEmail, userRole);
+      const regexSource = this.buildVisibilityRegexSource(scope);
+      const match = this.buildContainsRegexMatch(['sender', 'cc'], regexSource);
+
+      logger.debug('Task visibility match built', {
+        userEmail,
+        userRole: normalizedRole,
+        family: 'recruitment-manager',
+        fields: ['sender', 'cc'],
+        scopeSize: scope.emails.length
+      });
+
+      return match;
+    }
+
+    if (EXPERT_MANAGER_ROLES.has(normalizedRole)) {
+      const scope = this.resolveTaskVisibilityScope(userEmail, userRole);
+      const match = this.buildAssignedScopeMatch(scope);
+
+      logger.debug('Task visibility match built', {
+        userEmail,
+        userRole: normalizedRole,
+        family: 'expert-manager',
+        fields: ['assignedTo', 'assignedToEmail', 'assignedEmail', 'assignedExpert'],
+        scopeSize: scope.emails.length
+      });
+
+      return match;
+    }
+
+    if (normalizedRole === 'recruiter') {
+      return this.buildRecruiterVisibilityMatch(userEmail);
+    }
+
+    return this.buildIndividualVisibilityMatch(userEmail);
+  }
+
+  buildSearchQuery(userEmail, userRole, manager, teamEmails) {
+    return this.buildTaskVisibilityMatch(userEmail, userRole);
+  }
+
+  fieldContainsAnyToken(value, tokens) {
+    if (!value || !tokens || tokens.size === 0) {
+      return false;
+    }
+
+    const values = Array.isArray(value) ? value : [value];
+    for (const entry of values) {
+      const normalizedEntry = this.normalizeVisibilityToken(entry);
+      if (!normalizedEntry) continue;
+
+      for (const token of tokens) {
+        if (!token) continue;
+        if (normalizedEntry === token || normalizedEntry.includes(token)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  taskMatchesScopeFields(task, fields, scope) {
+    const tokens = new Set(
+      [
+        ...(scope?.emails || []),
+        ...(scope?.locals || []),
+        ...(scope?.displayNames || [])
+      ]
+        .map((value) => this.normalizeVisibilityToken(value))
+        .filter(Boolean)
+    );
+
+    if (tokens.size === 0) {
+      return false;
+    }
+
+    return fields.some((field) => this.fieldContainsAnyToken(task?.[field], tokens));
+  }
+
+  isTaskVisibleToUser(task, userEmail, userRole, teamLead, manager) {
+    if (!task || !userEmail) {
+      return false;
+    }
+
+    const normalizedRole = this.normalizeRole(userRole);
+    const lowerEmail = this.normalizeVisibilityToken(userEmail);
+
+    if (normalizedRole === 'admin') {
+      return true;
+    }
+
+    if (RECRUITMENT_MANAGER_ROLES.has(normalizedRole)) {
+      const scope = this.resolveTaskVisibilityScope(userEmail, userRole);
+      return this.taskMatchesScopeFields(task, ['sender', 'cc'], scope);
+    }
+
+    if (EXPERT_MANAGER_ROLES.has(normalizedRole)) {
+      const scope = this.resolveTaskVisibilityScope(userEmail, userRole);
+      return this.taskMatchesScopeFields(
+        task,
+        ['assignedTo', 'assignedToEmail', 'assignedEmail', 'assignedExpert'],
+        scope
+      );
+    }
+
+    if (normalizedRole === 'recruiter') {
+      const localPart = lowerEmail.split('@')[0];
+      const displayName = this.normalizeVisibilityToken(this.userService.deriveDisplayNameFromEmail(lowerEmail));
+      const haystack = [task.sender, task.cc, task.to, task.assignedTo, task.assignedToEmail, task.assignedEmail, task.assignedExpert]
+        .filter(Boolean)
+        .map((value) => value.toString().toLowerCase())
+        .join(' ');
+
+      return haystack.includes(lowerEmail) || haystack.includes(localPart) || (displayName && haystack.includes(displayName));
+    }
+
+    const selfScope = this.resolveTaskVisibilityScope(userEmail, 'user');
+    return this.taskMatchesScopeFields(
+      task,
+      ['assignedTo', 'assignedToEmail', 'assignedEmail', 'assignedExpert'],
+      selfScope
+    );
   }
 
   buildKpiMetrics(tasks, userRole) {

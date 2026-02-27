@@ -82,6 +82,14 @@ interface RecruiterOption {
   label: string;
 }
 
+interface CandidateCreatePolicy {
+  allowedBranches: string[];
+  defaultBranch: string | null;
+  branchReadOnly: boolean;
+  canCreate: boolean;
+  reason?: string;
+}
+
 interface SupportFormState {
   candidateName: string;
   technology: string;
@@ -245,6 +253,13 @@ const MOCK_ROUNDS = [
 const EST_TIMEZONE = "America/New_York";
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5 MB default limit mirrored with backend
 const TOUR_ROLES = ["recruiter", "mlead", "mam", "mm"] as const;
+const DEFAULT_ALLOWED_BRANCHES = ['GGR', 'LKN', 'AHM'] as const;
+const DEFAULT_CREATE_POLICY: CandidateCreatePolicy = {
+  allowedBranches: [...DEFAULT_ALLOWED_BRANCHES],
+  defaultBranch: null,
+  branchReadOnly: false,
+  canCreate: true
+};
 
 const DISPLAY_TIME_OPTIONS = Array.from({ length: 288 }, (_, index) => {
   const minutes = index * 5;
@@ -274,6 +289,7 @@ interface BranchCandidatesResponse {
   options?: {
     recruiterChoices?: RecruiterOption[];
     expertChoices?: RecruiterOption[];
+    createPolicy?: Partial<CandidateCreatePolicy>;
   };
   error?: string;
 }
@@ -304,7 +320,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const canChangeContactField = ['mm', 'mam', 'mlead', 'recruiter', "admin"].includes(normalizedRole);
   const canChangeExpertField = ['lead', 'am', "admin"].includes(normalizedRole);
   const isManager = normalizedRole === 'manager';
-  const showCreateButton = isManager || normalizedRole === 'mm';
+  const showCreateButton = isManager || normalizedRole === 'mm' || normalizedRole === 'mam';
   const tourEligible = TOUR_ROLES.some((roleKey) => roleKey === normalizedRole);
   const [visibleCount, setVisibleCount] = useState(20);
   const observerTarget = useRef<HTMLDivElement>(null);
@@ -363,7 +379,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   }, [scope, role, posthog]);
 
   const CREATE_RESUME_MAX_BYTES = 5 * 1024 * 1024;
-  const canCloneFromTasks = useMemo(() => !['user', 'lead', 'mam'].includes(normalizedRole), [normalizedRole]);
+  const canCloneFromTasks = useMemo(() => !['user', 'lead'].includes(normalizedRole), [normalizedRole]);
   const [loading, setLoading] = useState<boolean>(canView);
   const [error, setError] = useState<string>("");
   const [search, setSearch] = useState<string>("");
@@ -377,6 +393,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const account = accounts[0];
   const [recruiterOptions, setRecruiterOptions] = useState<RecruiterOption[]>([]);
   const [expertOptions, setExpertOptions] = useState<RecruiterOption[]>([]);
+  const [createPolicy, setCreatePolicy] = useState<CandidateCreatePolicy>(DEFAULT_CREATE_POLICY);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editCandidateId, setEditCandidateId] = useState<string | null>(null);
   const [formState, setFormState] = useState({
@@ -594,6 +611,36 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     }
 
     return normalized.sort((a, b) => a.label.localeCompare(b.label));
+  }, []);
+
+  const normalizeCreatePolicy = useCallback((policy?: Partial<CandidateCreatePolicy>): CandidateCreatePolicy => {
+    const allowedBranches = Array.from(
+      new Set(
+        (Array.isArray(policy?.allowedBranches) ? policy.allowedBranches : [...DEFAULT_ALLOWED_BRANCHES])
+          .map((value) => String(value || '').trim().toUpperCase())
+          .filter(Boolean)
+      )
+    );
+
+    const normalizedAllowedBranches = allowedBranches.length > 0 ? allowedBranches : [...DEFAULT_ALLOWED_BRANCHES];
+    const rawDefaultBranch = typeof policy?.defaultBranch === 'string'
+      ? policy.defaultBranch.trim().toUpperCase()
+      : '';
+    const defaultBranch = rawDefaultBranch && normalizedAllowedBranches.includes(rawDefaultBranch)
+      ? rawDefaultBranch
+      : null;
+
+    const reason = typeof policy?.reason === 'string' && policy.reason.trim()
+      ? policy.reason.trim()
+      : undefined;
+
+    return {
+      allowedBranches: normalizedAllowedBranches,
+      defaultBranch,
+      branchReadOnly: Boolean(policy?.branchReadOnly),
+      canCreate: policy?.canCreate !== false,
+      ...(reason ? { reason } : {})
+    };
   }, []);
 
   const createLoopSlot = useCallback((overrides?: Partial<LoopSlotForm>): LoopSlotForm => {
@@ -2385,7 +2432,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         element: cloneInfoElement,
         popover: {
           title: 'Clones Handled By Recruiters',
-          description: 'Only recruiters or MM teammates can duplicate tasks. Ping them when you need an older request copied into Branch Candidates.',
+          description: 'Only recruitment team members can duplicate tasks. Ping them when you need an older request copied into Branch Candidates.',
           side: 'right'
         }
       });
@@ -2499,6 +2546,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         if (!resp?.success) {
           setCandidates([]);
           setScope(null);
+          setCreatePolicy(DEFAULT_CREATE_POLICY);
           setError(resp?.error || "Unable to load candidates");
           setLoading(false);
           return;
@@ -2517,6 +2565,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         })));
         setRecruiterOptions(normalizeOptionList(resp.options?.recruiterChoices));
         setExpertOptions(normalizeOptionList(resp.options?.expertChoices));
+        setCreatePolicy(normalizeCreatePolicy(resp.options?.createPolicy));
 
         if (resp.scope) {
           if (resp.scope.type === 'branch') {
@@ -2549,7 +2598,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         setLoading(false);
       }
     );
-  }, [socket, normalizeOptionList]);
+  }, [socket, normalizeOptionList, normalizeCreatePolicy]);
 
   useEffect(() => {
     if (!socket) {
@@ -2820,6 +2869,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   };
 
   const handleCreateFieldChange = (field: keyof typeof createForm, value: string) => {
+    if (field === 'branch' && normalizedRole === 'mam' && createPolicy.branchReadOnly) {
+      return;
+    }
     let nextValue = value;
     if (field === 'name' || field === 'technology') {
       nextValue = titleCasePreserveSpacing(value);
@@ -2845,6 +2897,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         return { ...prev, contact: prev.contact.trim() };
       }
       if (field === 'branch') {
+        if (normalizedRole === 'mam' && createPolicy.branchReadOnly) {
+          return prev;
+        }
         return { ...prev, branch: prev.branch.trim().toUpperCase() };
       }
       return prev;
@@ -2889,6 +2944,18 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     const trimmedBranch = createForm.branch.trim().toUpperCase();
     const trimmedRecruiter = createForm.recruiter.trim().toLowerCase();
     const trimmedContact = createForm.contact.trim();
+    const effectiveAllowedBranches = (createPolicy.allowedBranches || [...DEFAULT_ALLOWED_BRANCHES])
+      .map((branch) => String(branch || '').trim().toUpperCase())
+      .filter(Boolean);
+    const allowedBranchSet = new Set(effectiveAllowedBranches.length > 0 ? effectiveAllowedBranches : [...DEFAULT_ALLOWED_BRANCHES]);
+    const effectiveBranch = normalizedRole === 'mam' && createPolicy.branchReadOnly
+      ? (createPolicy.defaultBranch || trimmedBranch).toUpperCase()
+      : trimmedBranch;
+    const recruiterAllowedSet = new Set(
+      recruiterOptions
+        .map((option) => String(option.value || '').trim().toLowerCase())
+        .filter(Boolean)
+    );
 
     if (!trimmedName) {
       setCreateError('Name is required');
@@ -2908,14 +2975,32 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       return;
     }
 
-    if (!trimmedBranch) {
+    if (normalizedRole === 'mam' && !createPolicy.canCreate) {
+      setCreateError(createPolicy.reason || 'MAM branch mapping is missing. Contact admin.');
+      setCreating(false);
+      return;
+    }
+
+    if (!effectiveBranch) {
       setCreateError('Branch is required');
+      setCreating(false);
+      return;
+    }
+
+    if (!allowedBranchSet.has(effectiveBranch)) {
+      setCreateError(`Branch must be one of ${Array.from(allowedBranchSet).join(', ')}`);
       setCreating(false);
       return;
     }
 
     if (!trimmedRecruiter || !EMAIL_REGEX.test(trimmedRecruiter)) {
       setCreateError('Please select a recruiter email');
+      setCreating(false);
+      return;
+    }
+
+    if (!recruiterAllowedSet.has(trimmedRecruiter)) {
+      setCreateError('Please select an active recruiter from your hierarchy list');
       setCreating(false);
       return;
     }
@@ -2955,7 +3040,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       name: trimmedName,
       email: trimmedEmail,
       technology: trimmedTechnology,
-      branch: trimmedBranch,
+      branch: effectiveBranch,
       recruiter: trimmedRecruiter,
       resumeLink
     };
@@ -3319,11 +3404,21 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 size="sm"
                 onClick={() => {
                   setCreateError('');
+                  if (normalizedRole === 'mam' && !createPolicy.canCreate) {
+                    toast({
+                      title: 'Candidate creation unavailable',
+                      description: createPolicy.reason || 'MAM branch mapping is missing. Contact admin.',
+                      variant: 'destructive'
+                    });
+                    return;
+                  }
                   setCreateForm((prev) => ({
                     ...prev,
-                    branch: prev.branch || (scope?.type === 'branch' && scope.value
-                      ? String(scope.value).toUpperCase()
-                      : prev.branch)
+                    branch: normalizedRole === 'mam'
+                      ? (createPolicy.defaultBranch || prev.branch || '')
+                      : (prev.branch || (scope?.type === 'branch' && scope.value
+                        ? String(scope.value).toUpperCase()
+                        : prev.branch))
                   }));
                   setIsCreateOpen(true);
                 }}
@@ -3353,7 +3448,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 </li>
               ) : (
                 <li data-tour-id="branch-clone-highlight">
-                  • <span className="text-primary font-medium">Clone magic</span>: only recruiters or MM teammates can duplicate tasks. Ask them when you need the same support details again.
+                  • <span className="text-primary font-medium">Clone magic</span>: only recruitment team members can duplicate tasks. Ask them when you need the same support details again.
                 </li>
               )}
               <li>
@@ -3942,6 +4037,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   onChange={(event) => handleCreateFieldChange('branch', event.target.value)}
                   onBlur={() => handleCreateFieldBlur('branch')}
                   placeholder="e.g., GGR"
+                  readOnly={normalizedRole === 'mam' && createPolicy.branchReadOnly}
                 />
               </div>
               <div className="space-y-2">
@@ -3996,7 +4092,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               <Button variant="outline" onClick={resetCreateState} disabled={creating}>
                 Cancel
               </Button>
-              <Button onClick={handleCreateCandidate} disabled={creating || recruiterOptions.length === 0 || !createResumeFile}>
+              <Button onClick={handleCreateCandidate} disabled={creating || recruiterOptions.length === 0 || !createResumeFile || (normalizedRole === 'mam' && !createPolicy.canCreate)}>
                 {creating ? 'Submitting…' : 'Submit Candidate'}
               </Button>
             </DialogFooter>

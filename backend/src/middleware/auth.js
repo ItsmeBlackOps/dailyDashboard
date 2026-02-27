@@ -57,9 +57,12 @@ export const requireRole = (roles) => {
       return next(new Error('Authentication required'));
     }
 
-    const allowedRoles = Array.isArray(roles) ? roles : [roles];
+    const allowedRoles = (Array.isArray(roles) ? roles : [roles])
+      .map((role) => (role || '').toString().trim().toLowerCase())
+      .filter(Boolean);
+    const currentRole = (user.role || '').toString().trim().toLowerCase();
 
-    if (!allowedRoles.includes(user.role)) {
+    if (!allowedRoles.includes(currentRole)) {
       logger.warn('Socket access denied - insufficient permissions', {
         userEmail: user.email,
         userRole: user.role,
@@ -144,9 +147,12 @@ export const requireHTTPRole = (roles) => {
       });
     }
 
-    const allowedRoles = Array.isArray(roles) ? roles : [roles];
+    const allowedRoles = (Array.isArray(roles) ? roles : [roles])
+      .map((role) => (role || '').toString().trim().toLowerCase())
+      .filter(Boolean);
+    const currentRole = (user.role || '').toString().trim().toLowerCase();
 
-    if (!allowedRoles.includes(user.role)) {
+    if (!allowedRoles.includes(currentRole)) {
       logger.warn('HTTP access denied - insufficient permissions', {
         userEmail: user.email,
         userRole: user.role,

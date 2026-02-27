@@ -31,3 +31,39 @@ describe('CandidateModel.createCandidate', () => {
     );
   });
 });
+
+describe('CandidateModel.updateCandidateById', () => {
+  it('maps updates.branch to Branch persistence field', async () => {
+    const model = new CandidateModel();
+    const updateOne = jest.fn().mockResolvedValue({ matchedCount: 1 });
+    const findOne = jest.fn().mockResolvedValue({
+      _id: { toString: () => 'cand-2' },
+      Branch: 'LKN',
+      Recruiter: 'recruiter@example.com',
+      Expert: '',
+      Technology: 'React',
+      'Candidate Name': 'Test Candidate',
+      'Email ID': 'test@example.com',
+      'Contact No': '',
+      workflowStatus: 'awaiting_expert',
+      resumeUnderstandingStatus: 'pending',
+      resumeLink: ''
+    });
+
+    model.collection = {
+      updateOne,
+      findOne
+    };
+
+    await model.updateCandidateById('65f1b48a9c6c1c0b2e5f2e31', { branch: 'LKN' });
+
+    expect(updateOne).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          Branch: 'LKN'
+        })
+      })
+    );
+  });
+});

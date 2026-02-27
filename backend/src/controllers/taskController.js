@@ -1,6 +1,7 @@
 import { taskService } from '../services/taskService.js';
 import { thanksMailService } from '../services/thanksMailService.js';
 import { interviewerQuestionService } from '../services/interviewerQuestionService.js';
+import { interviewDebriefService } from '../services/interviewDebriefService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 
@@ -37,7 +38,8 @@ export class TaskController {
       taskId,
       user.email,
       user.role,
-      user.teamLead
+      user.teamLead,
+      user.manager
     );
 
     res.status(200).json(result);
@@ -138,6 +140,82 @@ export class TaskController {
       questions: result.questions,
       generatedAt: result.generatedAt,
       rateLimit: result.rateLimit
+    });
+  });
+
+  getInterviewDebrief = asyncHandler(async (req, res) => {
+    const { taskId } = req.params;
+    const force = req.body?.force === true;
+
+    if (!taskId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Task id is required'
+      });
+    }
+
+    const result = await interviewDebriefService.requestInterviewDebrief({
+      taskId,
+      user: req.user,
+      force
+    });
+
+    if (result.status === 'ready') {
+      return res.status(200).json({
+        success: true,
+        status: 'ready',
+        markdown: result.markdown,
+        html: result.html,
+        generatedAt: result.generatedAt,
+        cached: result.cached
+      });
+    }
+
+    return res.status(202).json({
+      success: true,
+      status: result.status || 'queued',
+      message: result.message || 'Interview debrief generation started in background.',
+      queuedAt: result.queuedAt || null,
+      startedAt: result.startedAt || null,
+      error: result.error || null
+    });
+  });
+
+  getInterviewDebriefStatus = asyncHandler(async (req, res) => {
+    const { taskId } = req.params;
+
+    if (!taskId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Task id is required'
+      });
+    }
+
+    const result = await interviewDebriefService.getInterviewDebriefStatus({
+      taskId,
+      user: req.user,
+      autoQueue: true
+    });
+
+    if (result.status === 'ready') {
+      return res.status(200).json({
+        success: true,
+        status: 'ready',
+        markdown: result.markdown,
+        html: result.html,
+        generatedAt: result.generatedAt,
+        cached: result.cached
+      });
+    }
+
+    const statusCode = result.status === 'failed' ? 200 : 202;
+    return res.status(statusCode).json({
+      success: true,
+      status: result.status || 'queued',
+      message: result.message || 'Interview debrief is still processing.',
+      queuedAt: result.queuedAt || null,
+      startedAt: result.startedAt || null,
+      error: result.error || null
     });
   });
 

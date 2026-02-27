@@ -16,6 +16,7 @@ const ROLE_CANONICAL_MAP = new Map([
 ]);
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export class UserService {
   constructor() {
@@ -692,6 +693,55 @@ export class UserService {
       throw new Error('Invalid email format');
     }
     return email;
+  }
+
+  buildTaskHierarchyScope(requestingUser = {}) {
+    const selfEmail = this.normalizeEmailValue(requestingUser.email);
+    const manageableUsers = this.collectManageableUsers(requestingUser);
+
+    const emailSet = new Set();
+    if (selfEmail) {
+      emailSet.add(selfEmail);
+    }
+
+    for (const user of manageableUsers) {
+      const normalizedEmail = this.normalizeEmailValue(user?.email);
+      if (normalizedEmail) {
+        emailSet.add(normalizedEmail);
+      }
+    }
+
+    const emails = Array.from(emailSet).sort();
+    const locals = Array.from(
+      new Set(
+        emails
+          .map((email) => email.split('@')[0])
+          .map((value) => this.normalizeNameValue(value))
+          .filter(Boolean)
+      )
+    );
+
+    const displayNames = Array.from(
+      new Set(
+        emails
+          .map((email) => this.deriveDisplayNameFromEmail(email))
+          .map((value) => this.normalizeNameValue(value))
+          .filter(Boolean)
+      )
+    );
+
+    const escaped = {
+      emails: emails.map((value) => escapeRegex(value)),
+      locals: locals.map((value) => escapeRegex(value)),
+      displayNames: displayNames.map((value) => escapeRegex(value))
+    };
+
+    return {
+      emails,
+      locals,
+      displayNames,
+      escaped
+    };
   }
 
   collectManageableUsers(requestingUser) {

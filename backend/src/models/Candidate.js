@@ -223,6 +223,7 @@ export class CandidateModel {
         ...(updates.name !== undefined ? { 'Candidate Name': updates.name } : {}),
         ...(updates.email !== undefined ? { 'Email ID': updates.email } : {}),
         ...(updates.technology !== undefined ? { Technology: updates.technology } : {}),
+        ...(updates.branch !== undefined ? { Branch: updates.branch } : {}),
         ...(updates.recruiter !== undefined ? { Recruiter: updates.recruiter } : {}),
         ...(updates.expert !== undefined ? { Expert: updates.expert } : {}),
         ...(updates.contact !== undefined ? { 'Contact No': updates.contact } : {}),

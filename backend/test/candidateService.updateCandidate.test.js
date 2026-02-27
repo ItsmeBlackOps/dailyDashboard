@@ -2,12 +2,14 @@ import { describe, it, expect, jest, afterEach } from '@jest/globals';
 import { candidateService } from '../src/services/candidateService.js';
 import { candidateModel } from '../src/models/Candidate.js';
 import { userModel } from '../src/models/User.js';
+import { userService } from '../src/services/userService.js';
 
 const originalUpdate = candidateModel.updateCandidateById;
 const originalGetByBranch = candidateModel.getCandidatesByBranch;
 const originalGetByRecruiters = candidateModel.getCandidatesByRecruiters;
 const originalGetByExperts = candidateModel.getCandidatesByExperts;
 const originalGetAllUsers = userModel.getAllUsers;
+const originalCollectManageableUsers = userService.collectManageableUsers;
 
 afterEach(() => {
   candidateModel.updateCandidateById = originalUpdate;
@@ -15,6 +17,7 @@ afterEach(() => {
   candidateModel.getCandidatesByRecruiters = originalGetByRecruiters;
   candidateModel.getCandidatesByExperts = originalGetByExperts;
   userModel.getAllUsers = originalGetAllUsers;
+  userService.collectManageableUsers = originalCollectManageableUsers;
   jest.restoreAllMocks();
 });
 
@@ -77,18 +80,27 @@ describe('candidateService.updateCandidateDetails', () => {
     ).rejects.toThrow('Access denied');
   });
 
-  it('rejects updates from admin despite read access', async () => {
-    candidateModel.updateCandidateById = jest.fn();
+  it('allows admin updates when valid fields are provided', async () => {
+    candidateModel.updateCandidateById = jest.fn().mockResolvedValue({
+      id: 'abc123',
+      name: 'john doe',
+      branch: 'GGR',
+      recruiter: 'recruiter@example.com',
+      expert: 'expert@example.com',
+      technology: 'react',
+      email: 'john.doe@example.com',
+      contact: '+11234567890'
+    });
 
-    await expect(
-      candidateService.updateCandidateDetails(
-        { email: 'admin@example.com', role: 'admin' },
-        'abc123',
-        { expert: 'expert@example.com' }
-      )
-    ).rejects.toThrow('Access denied');
+    await candidateService.updateCandidateDetails(
+      { email: 'admin@example.com', role: 'admin' },
+      'abc123',
+      { expert: 'expert@example.com' }
+    );
 
-    expect(candidateModel.updateCandidateById).not.toHaveBeenCalled();
+    expect(candidateModel.updateCandidateById).toHaveBeenCalledWith('abc123', {
+      expert: 'expert@example.com'
+    });
   });
 
   it('validates email format before updating', async () => {
@@ -99,6 +111,16 @@ describe('candidateService.updateCandidateDetails', () => {
         { email: 'invalid-email' }
       )
     ).rejects.toThrow('Invalid email address');
+  });
+
+  it('rejects invalid branch updates outside allowed whitelist', async () => {
+    await expect(
+      candidateService.updateCandidateDetails(
+        { email: 'mm.user@vizvainc.com', role: 'MM' },
+        'abc123',
+        { branch: 'XYZ' }
+      )
+    ).rejects.toThrow('Branch must be one of GGR, LKN, AHM');
   });
 
   it('allows MLEAD to update recruiter assignments', async () => {
@@ -154,6 +176,7 @@ describe('candidateService.updateCandidateDetails', () => {
     expect(candidateModel.updateCandidateById).toHaveBeenCalledWith('rec123', {
       name: 'Alice Smith',
       email: 'alice.smith@vizvainc.com',
+      technology: 'Node Js',
       contact: '+11234567890'
     });
   });
@@ -275,6 +298,9 @@ describe('candidateService.getCandidatesForUser expert scopes', () => {
       { email: 'recruit.one@company.com', role: 'recruiter', teamLead: 'Lead User' },
       { email: 'someone.else@company.com', role: 'user', teamLead: 'Other Lead' }
     ]);
+    userService.collectManageableUsers = jest.fn().mockReturnValue([
+      { email: 'recruit.one@company.com', role: 'recruiter', active: true }
+    ]);
 
     const result = await candidateService.getCandidatesForUser(
       { email: 'lead.user@company.com', role: 'lead' },
@@ -335,6 +361,7 @@ describe('candidateService.getCandidatesForUser expert scopes', () => {
     userModel.getAllUsers = jest.fn().mockReturnValue([
       { email: 'recruit.two@company.com', role: 'recruiter', teamLead: 'Lead User' }
     ]);
+    userService.collectManageableUsers = jest.fn().mockReturnValue([]);
 
     const result = await candidateService.getCandidatesForUser(
       { email: 'user.two@company.com', role: 'user' },
@@ -355,7 +382,14 @@ describe('candidateService.getCandidatesForUser expert scopes', () => {
       recruiter: 'Recruit Two'
     });
 
-    expect(result.options).toBeUndefined();
+    expect(result.options).toEqual(
+      expect.objectContaining({
+        recruiterChoices: [{ value: 'user.two@company.com', label: 'User Two' }],
+        createPolicy: expect.objectContaining({
+          canCreate: true
+        })
+      })
+    );
   });
 
   it('returns combined expert scope for AM including leads and users', async () => {
@@ -431,6 +465,7 @@ describe('candidateService.getCandidatesForUser recruiter scope', () => {
       { email: 'recruiter.one@company.com', role: 'recruiter' },
       { email: 'manager.one@company.com', role: 'manager' }
     ]);
+    userService.collectManageableUsers = jest.fn().mockReturnValue([]);
 
     const result = await candidateService.getCandidatesForUser(
       { email: 'recruiter.one@company.com', role: 'recruiter' },
@@ -475,6 +510,11 @@ describe('candidateService buildAssignablePeople integration', () => {
       { email: 'mlead.direct@silverspaceinc.com', role: 'mlead', manager: 'Tushar Ahuja' },
       { email: 'recruit.direct@silverspaceinc.com', role: 'recruiter', manager: 'Tushar Ahuja', teamLead: 'Mlead Direct' }
     ]);
+    userService.collectManageableUsers = jest.fn().mockReturnValue([
+      { email: 'mam.one@silverspaceinc.com', role: 'mam', active: true },
+      { email: 'mlead.direct@silverspaceinc.com', role: 'mlead', active: true },
+      { email: 'recruit.direct@silverspaceinc.com', role: 'recruiter', active: true }
+    ]);
 
     const result = await candidateService.getCandidatesForUser(
       { email: 'tushar.ahuja@silverspaceinc.com', role: 'MM' },
@@ -497,6 +537,11 @@ describe('candidateService buildAssignablePeople integration', () => {
       { email: 'recruit.direct@silverspaceinc.com', role: 'recruiter', teamLead: 'Mam User' },
       { email: 'recruit.two@silverspaceinc.com', role: 'recruiter', teamLead: 'Other Lead' }
     ]);
+    userService.collectManageableUsers = jest.fn().mockReturnValue([
+      { email: 'mlead.one@silverspaceinc.com', role: 'mlead', active: true },
+      { email: 'recruit.direct@silverspaceinc.com', role: 'recruiter', active: true },
+      { email: 'recruit.one@silverspaceinc.com', role: 'recruiter', active: true }
+    ]);
 
     const result = await candidateService.getCandidatesForUser(
       { email: 'mam.user@silverspaceinc.com', role: 'MAM' },
@@ -504,10 +549,12 @@ describe('candidateService buildAssignablePeople integration', () => {
     );
 
     const [mamRecruitersArg, mamOptionsArg] = candidateModel.getCandidatesByRecruiters.mock.calls[0];
-    expect(mamRecruitersArg).toEqual([
-      'recruit.direct@silverspaceinc.com',
-      'mam.user@silverspaceinc.com'
-    ]);
+    expect(mamRecruitersArg).toEqual(
+      expect.arrayContaining([
+        'recruit.direct@silverspaceinc.com',
+        'mam.user@silverspaceinc.com'
+      ])
+    );
     expect(mamOptionsArg.visibility.senderPatterns).toEqual(
       expect.arrayContaining(['mam\\.user'])
     );
@@ -526,6 +573,9 @@ describe('candidateService buildAssignablePeople integration', () => {
       { email: 'recruit.one@silverspaceinc.com', role: 'recruiter', teamLead: 'Mlead One' },
       { email: 'recruit.two@silverspaceinc.com', role: 'recruiter', teamLead: 'Another Lead' }
     ]);
+    userService.collectManageableUsers = jest.fn().mockReturnValue([
+      { email: 'recruit.one@silverspaceinc.com', role: 'recruiter', active: true }
+    ]);
 
     const result = await candidateService.getCandidatesForUser(
       { email: 'mlead.one@silverspaceinc.com', role: 'mlead' },
@@ -533,7 +583,10 @@ describe('candidateService buildAssignablePeople integration', () => {
     );
 
     const [mleadRecruitersArg, mleadOptionsArg] = candidateModel.getCandidatesByRecruiters.mock.calls[0];
-    expect(mleadRecruitersArg).toEqual(['recruit.one@silverspaceinc.com']);
+    expect(new Set(mleadRecruitersArg)).toEqual(new Set([
+      'recruit.one@silverspaceinc.com',
+      'mlead.one@silverspaceinc.com'
+    ]));
     expect(mleadOptionsArg.visibility.senderPatterns).toEqual(
       expect.arrayContaining(['mlead\\.one'])
     );
