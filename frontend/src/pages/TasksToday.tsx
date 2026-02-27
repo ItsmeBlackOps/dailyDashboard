@@ -96,6 +96,8 @@ interface Task {
 
   status?: string;
   "Email ID"?: string;
+  assignedTo?: string;
+  assignedEmail?: string;
   assignedExpert?: string;
   recruiterName?: string;
   transcription?: boolean;
@@ -324,6 +326,9 @@ export default function TasksToday() {
 
   const firstLoad = useRef(true);
   const seenTasksRef = useRef<Set<string>>(new Set());
+  const autoMeetingAttemptedRef = useRef<Set<string>>(new Set());
+  const autoMeetingInFlightRef = useRef<Set<string>>(new Set());
+  const autoMeetingWorkerActiveRef = useRef(false);
 
   // timersRef keeps active active per reminder key
   const timersRef = useRef<Map<string, number>>(new Map());
@@ -397,6 +402,25 @@ export default function TasksToday() {
     const raw = localStorage.getItem("email") || "";
     const trimmed = raw.trim().toLowerCase();
     return trimmed.length > 0 ? trimmed : null;
+  }, []);
+
+  const resolveTaskAssignedEmail = useCallback((task: Task): string | null => {
+    const candidates = [
+      task.assignedEmail,
+      task.assignedTo,
+      task.assignedExpert,
+      (task as any)?.AssignedExpert
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string') continue;
+      const normalized = candidate.trim().toLowerCase();
+      if (normalized.includes('@')) {
+        return normalized;
+      }
+    }
+
+    return null;
   }, []);
   const [mockDialogTask, setMockDialogTask] = useState<Task | null>(null);
   const [mockPreview, setMockPreview] = useState<MockPreviewState | null>(null);
@@ -2763,6 +2787,10 @@ export default function TasksToday() {
     fetchTasksRef.current = fetchTasks;
   }, [fetchTasks]);
 
+  // Reconnect/catch-up flags for Socket.IO session recovery handling.
+  const forceCatchUpRef = useRef(true);
+  const socketRecoveredRef = useRef(false);
+
   // Stable ref to scheduleFlush to avoid re-binding socket listeners on filter change
   const scheduleFlushRef = useRef<() => void>(() => { });
 
@@ -2872,15 +2900,19 @@ export default function TasksToday() {
 
   useEffect(() => {
     // 1. Task Removed Event
-    const onRemove = (data: { _id: string }) => {
-      setTasks((prev) => {
-        if (!prev.some(t => t._id === data._id)) return prev;
+    const onRemove = (data: { _id: string | { toString?: () => string } }) => {
+      const rawId = data?._id;
+      const taskId = typeof rawId === 'string' ? rawId : rawId?.toString?.() || '';
+      if (!taskId) return;
 
-        const next = prev.filter(t => t._id !== data._id);
+      setTasks((prev) => {
+        if (!prev.some(t => t._id === taskId)) return prev;
+
+        const next = prev.filter(t => t._id !== taskId);
 
         const map = readMap();
-        if (map[data._id]) {
-          delete map[data._id];
+        if (map[taskId]) {
+          delete map[taskId];
           writeMap(map);
         }
 
@@ -2907,13 +2939,31 @@ export default function TasksToday() {
     // 2. Task Signal Events (Created / Updated) — use ref so this effect
     //    doesn't re-run (and disconnect the socket) when filters change
     const onCreated = (t: Task) => {
-      pendingIdsRef.current.add(t._id);
+      const taskId = typeof t?._id === 'string' ? t._id : (t as any)?._id?.toString?.() || '';
+      if (!taskId) return;
+      pendingIdsRef.current.add(taskId);
       scheduleFlushRef.current();
     };
 
     const onUpdated = (t: Task) => {
-      pendingIdsRef.current.add(t._id);
+      const taskId = typeof t?._id === 'string' ? t._id : (t as any)?._id?.toString?.() || '';
+      if (!taskId) return;
+      pendingIdsRef.current.add(taskId);
       scheduleFlushRef.current();
+    };
+
+    const onConnect = () => {
+      const recovered = Boolean((socket as Socket & { recovered?: boolean }).recovered);
+      socketRecoveredRef.current = recovered;
+
+      if (forceCatchUpRef.current || !recovered) {
+        fetchTasksRef.current(true, 0);
+      }
+      forceCatchUpRef.current = false;
+    };
+
+    const onDisconnect = () => {
+      socketRecoveredRef.current = false;
     };
 
     const onAuthError = async (err: Error) => {
@@ -2921,20 +2971,23 @@ export default function TasksToday() {
       const ok = await refreshAccessToken();
       if (!ok) return socket.disconnect();
       socket.auth = { token: localStorage.getItem("accessToken") || "" };
-      socket.once("connect", () => fetchTasksRef.current(true, 0));
+      forceCatchUpRef.current = true;
       socket.connect();
     };
 
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
     socket.on("taskCreated", onCreated);
     socket.on("taskUpdated", onUpdated);
     socket.on("taskRemoved", onRemove);
     socket.on("transcriptsEnriched", onTranscriptsEnriched);
     socket.on("connect_error", onAuthError);
 
-    socket.once("connect", () => fetchTasksRef.current(true, 0));
     socket.connect();
 
     return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
       socket.off("taskCreated", onCreated);
       socket.off("taskUpdated", onUpdated);
       socket.off("taskRemoved", onRemove);
@@ -2952,6 +3005,28 @@ export default function TasksToday() {
     // scheduleFlush/fetchTasks are accessed via refs so no reconnect on filter change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, readMap, writeMap, refreshAccessToken]);
+
+  // Safety fallback: recover if socket is disconnected or running an unrecovered session.
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+
+      if (!socket.connected) {
+        socket.connect();
+        return;
+      }
+
+      if (!socketRecoveredRef.current) {
+        fetchTasksRef.current(true, 0);
+      }
+    }, 60_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [socket]);
 
   // When filters change, refetch
   useEffect(() => {
@@ -3028,6 +3103,80 @@ export default function TasksToday() {
         ? (t.recruiterName || "").toLowerCase().includes(recruiterFilter.toLowerCase())
         : true
     );
+
+  useEffect(() => {
+    const liveTaskIds = new Set(tasks.map((task) => task._id).filter(Boolean));
+
+    for (const taskId of Array.from(autoMeetingAttemptedRef.current)) {
+      if (!liveTaskIds.has(taskId)) {
+        autoMeetingAttemptedRef.current.delete(taskId);
+      }
+    }
+
+    for (const taskId of Array.from(autoMeetingInFlightRef.current)) {
+      if (!liveTaskIds.has(taskId)) {
+        autoMeetingInFlightRef.current.delete(taskId);
+      }
+    }
+  }, [tasks]);
+
+  // Auto-create Teams meetings for visible tasks once per task per session.
+  useEffect(() => {
+    const hasAuth = Boolean(authUser) || Boolean(localStorage.getItem('accessToken'));
+    const loggedInEmail = (authUser?.email || currentUserEmail || '').trim().toLowerCase();
+    if (!hasAuth || !meetingsEnabled || !canManageMeetings) return;
+    if (!loggedInEmail) return;
+    if (consentChecking || needsConsent) return;
+    if (autoMeetingWorkerActiveRef.current) return;
+
+    const nextTask = displayed.find((task) => {
+      const taskId = task._id;
+      if (!taskId) return false;
+      if (extractJoinLink(task)) return false;
+      if (meetingBusy[taskId]) return false;
+      if (autoMeetingAttemptedRef.current.has(taskId)) return false;
+      if (autoMeetingInFlightRef.current.has(taskId)) return false;
+      const assignedEmail = resolveTaskAssignedEmail(task);
+      if (!assignedEmail || assignedEmail !== loggedInEmail) return false;
+      return true;
+    });
+
+    if (!nextTask) return;
+
+    let cancelled = false;
+
+    const processNext = async () => {
+      if (cancelled) return;
+      autoMeetingWorkerActiveRef.current = true;
+      const taskId = nextTask._id;
+      autoMeetingInFlightRef.current.add(taskId);
+      try {
+        await handleCreateMeeting(nextTask);
+      } finally {
+        autoMeetingInFlightRef.current.delete(taskId);
+        autoMeetingAttemptedRef.current.add(taskId);
+        autoMeetingWorkerActiveRef.current = false;
+      }
+    };
+
+    void processNext();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    authUser,
+    currentUserEmail,
+    meetingsEnabled,
+    canManageMeetings,
+    consentChecking,
+    needsConsent,
+    displayed,
+    extractJoinLink,
+    meetingBusy,
+    resolveTaskAssignedEmail,
+    handleCreateMeeting
+  ]);
 
 
   return (
