@@ -13,7 +13,7 @@ class Database {
   async connect() {
     try {
       logger.info('🚀 Connecting to MongoDB...');
-
+      logger.debug(`MongoDB URI: ${config.database.uri}`);
       const clientOptions = {
         ...(config.database.options || {}),
         monitorCommands: true
