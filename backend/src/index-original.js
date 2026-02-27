@@ -149,7 +149,7 @@ let db;
 // --- MongoDB Connection ---
 let taskBodyCollection;
 async function connectMongo() {
-  console.log("🚀 Connecting to MongoDB...");
+  console.log(`🚀 Connecting to MongoDB...${mongoURI}`);
   const client = new MongoClient(mongoURI);
   await client.connect();
   db = client.db("interviewSupport");
