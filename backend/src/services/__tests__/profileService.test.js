@@ -2,7 +2,8 @@ import { jest } from '@jest/globals';
 
 const mockUserModel = {
   getUserProfileMetadata: jest.fn(),
-  upsertUserProfileMetadata: jest.fn()
+  upsertUserProfileMetadata: jest.fn(),
+  getUserByEmail: jest.fn()
 };
 
 jest.unstable_mockModule('../../models/User.js', () => ({
@@ -14,6 +15,7 @@ const { profileService } = await import('../profileService.js');
 describe('profileService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUserModel.getUserByEmail.mockReturnValue({ role: 'recruiter' });
   });
 
   describe('getProfile', () => {
@@ -28,6 +30,29 @@ describe('profileService', () => {
       expect(result.profile.companyUrl).toBe('https://www.silverspaceinc.com');
       expect(result.profile.displayName).toBe('User');
       expect(result.profile.isComplete).toBe(false);
+      expect(result.profile.requiresRoleDetailSelection).toBe(false);
+      expect(result.profile.allowedRoleDetails).toEqual(['DATA', 'DEVELOPER', 'DEVOPS']);
+    });
+
+    it('requires role detail selection for role user when job role is invalid', async () => {
+      mockUserModel.getUserByEmail.mockReturnValue({ role: 'user' });
+      mockUserModel.getUserProfileMetadata.mockResolvedValue({
+        metadata: { jobRole: 'Senior Recruiter' }
+      });
+
+      const result = await profileService.getProfile('user@silverspaceinc.com');
+      expect(result.profile.requiresRoleDetailSelection).toBe(true);
+    });
+
+    it('does not require role detail selection for role user with valid value', async () => {
+      mockUserModel.getUserByEmail.mockReturnValue({ role: 'user' });
+      mockUserModel.getUserProfileMetadata.mockResolvedValue({
+        metadata: { jobRole: 'developer' }
+      });
+
+      const result = await profileService.getProfile('user@silverspaceinc.com');
+      expect(result.profile.jobRole).toBe('DEVELOPER');
+      expect(result.profile.requiresRoleDetailSelection).toBe(false);
     });
   });
 
@@ -93,6 +118,39 @@ describe('profileService', () => {
           displayName: 'User Example',
           jobRole: 'Recruiter',
           phoneNumber: '+1 (555) 123-4567'
+        })
+      );
+    });
+
+    it('rejects unsupported job role for role user', async () => {
+      mockUserModel.getUserByEmail.mockReturnValue({ role: 'user' });
+
+      await expect(
+        profileService.updateProfile('user@silverspaceinc.com', {
+          displayName: 'User Example',
+          jobRole: 'Recruiter',
+          phoneNumber: '5551234567'
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: 'Job role must be one of: DATA, DEVELOPER, DEVOPS'
+      });
+    });
+
+    it('accepts valid enum job role for role user and stores uppercase', async () => {
+      mockUserModel.getUserByEmail.mockReturnValue({ role: 'user' });
+      mockUserModel.upsertUserProfileMetadata.mockResolvedValue({ acknowledged: true });
+
+      await profileService.updateProfile('user@silverspaceinc.com', {
+        displayName: 'User Example',
+        jobRole: 'developer',
+        phoneNumber: '5551234567'
+      });
+
+      expect(mockUserModel.upsertUserProfileMetadata).toHaveBeenCalledWith(
+        'user@silverspaceinc.com',
+        expect.objectContaining({
+          jobRole: 'DEVELOPER'
         })
       );
     });

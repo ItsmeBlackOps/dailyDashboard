@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { UserProfileProvider } from '@/contexts/UserProfileContext';
 import { useToast } from '@/hooks/use-toast';
 import { NotificationDetailModal } from '@/components/ui/notification-modal';
+import { RoleDetailRequiredDialog } from './RoleDetailRequiredDialog';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -74,6 +75,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               {children}
             </main>
           </div>
+          <RoleDetailRequiredDialog />
           <NotificationDetailModal />
         </div>
       </UserProfileProvider>

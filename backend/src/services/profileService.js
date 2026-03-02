@@ -1,5 +1,10 @@
 import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
+import {
+  ROLE_DETAIL_OPTIONS,
+  isValidUserRoleDetail,
+  normalizeRoleDetail
+} from '../constants/profileRoleDetails.js';
 
 const COMPANY_PROFILES = [
   {
@@ -82,6 +87,9 @@ class ProfileService {
       userModel.getUserProfileMetadata(lowerEmail),
       Promise.resolve(determineCompany(lowerEmail))
     ]);
+    const userRecord = userModel.getUserByEmail(lowerEmail);
+    const normalizedSystemRole = (userRecord?.role || '').toString().trim().toLowerCase();
+    const isUserRole = normalizedSystemRole === 'user';
 
     const stored = record?.metadata ?? record?.profile ?? {};
 
@@ -93,15 +101,22 @@ class ProfileService {
       companyName: company.name || sanitizeLine(stored.companyName || '', { allowSymbols: true }),
       companyUrl: company.url || (typeof stored.companyUrl === 'string' ? stored.companyUrl : ''),
     };
+    const normalizedRoleDetail = normalizeRoleDetail(profile.jobRole);
+    const isRoleDetailValid = isValidUserRoleDetail(normalizedRoleDetail);
+    const requiresRoleDetailSelection = isUserRole && !isRoleDetailValid;
+    const effectiveJobRole = isUserRole && isRoleDetailValid ? normalizedRoleDetail : profile.jobRole;
 
     const isComplete = Boolean(
-      profile.displayName && profile.jobRole && profile.phoneNumber && profile.companyName && profile.companyUrl
+      profile.displayName && effectiveJobRole && profile.phoneNumber && profile.companyName && profile.companyUrl
     );
 
     return {
       success: true,
       profile: {
         ...profile,
+        jobRole: effectiveJobRole,
+        requiresRoleDetailSelection,
+        allowedRoleDetails: ROLE_DETAIL_OPTIONS,
         isComplete
       }
     };
@@ -114,9 +129,14 @@ class ProfileService {
 
     const lowerEmail = email.toLowerCase();
     const company = determineCompany(lowerEmail);
+    const userRecord = userModel.getUserByEmail(lowerEmail);
+    const normalizedSystemRole = (userRecord?.role || '').toString().trim().toLowerCase();
+    const isUserRole = normalizedSystemRole === 'user';
 
     const displayName = sanitizeLine(payload.displayName || deriveDisplayNameFromEmail(lowerEmail), { allowSymbols: true });
-    const jobRole = sanitizeLine(payload.jobRole || '', { allowSymbols: true });
+    const rawJobRole = sanitizeLine(payload.jobRole || '', { allowSymbols: true });
+    const roleDetail = normalizeRoleDetail(rawJobRole);
+    const jobRole = isUserRole ? roleDetail : rawJobRole;
     const formattedPhone = formatUsPhone(payload.phoneNumber || '');
 
     if (!displayName) {
@@ -127,6 +147,12 @@ class ProfileService {
 
     if (!jobRole) {
       const error = new Error('Job role is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (isUserRole && !isValidUserRoleDetail(jobRole)) {
+      const error = new Error(`Job role must be one of: ${ROLE_DETAIL_OPTIONS.join(', ')}`);
       error.statusCode = 400;
       throw error;
     }
@@ -161,6 +187,8 @@ class ProfileService {
       profile: {
         email: lowerEmail,
         ...metadata,
+        requiresRoleDetailSelection: false,
+        allowedRoleDetails: ROLE_DETAIL_OPTIONS,
         isComplete: Boolean(metadata.displayName && metadata.jobRole && metadata.phoneNumber && metadata.companyName && metadata.companyUrl)
       }
     };
