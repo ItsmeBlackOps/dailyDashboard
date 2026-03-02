@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useUserProfile, formatPhoneDraft, formatPhoneCanonical } from '@/contexts/UserProfileContext';
 import { useNotifications } from '@/context/NotificationContext';
 interface HeaderProps {
@@ -26,6 +27,8 @@ interface HeaderProps {
 }
 
 import { usePostHog } from 'posthog-js/react';
+
+const DEFAULT_ROLE_OPTIONS = ['DATA', 'DEVELOPER', 'DEVOPS'];
 
 export function Header({ toggleSidebar }: HeaderProps) {
   const { logout } = useAuth();
@@ -52,6 +55,12 @@ export function Header({ toggleSidebar }: HeaderProps) {
   }, []);
 
   const fallbackEmail = useMemo(() => profile?.email || getStoredValue('email'), [profile?.email, getStoredValue]);
+  const storedSystemRole = useMemo(() => (getStoredValue('role') || '').trim().toLowerCase(), [getStoredValue]);
+  const isSystemUserRole = storedSystemRole === 'user';
+  const allowedRoleDetails = useMemo(
+    () => profile?.allowedRoleDetails?.length ? profile.allowedRoleDetails : DEFAULT_ROLE_OPTIONS,
+    [profile?.allowedRoleDetails]
+  );
   const fallbackDisplayName = useMemo(
     () => profile?.displayName || getStoredValue('displayName') || fallbackEmail.split('@')[0],
     [profile?.displayName, getStoredValue, fallbackEmail]
@@ -87,6 +96,10 @@ export function Header({ toggleSidebar }: HeaderProps) {
       return;
     }
     setFormState((prev) => ({ ...prev, [field]: event.target.value }));
+  };
+
+  const handleRoleDetailChange = (value: string) => {
+    setFormState((prev) => ({ ...prev, jobRole: value }));
   };
 
   const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -315,13 +328,32 @@ export function Header({ toggleSidebar }: HeaderProps) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="profile-role">Job role</Label>
-                <Input
-                  id="profile-role"
-                  value={formState.jobRole}
-                  onChange={handleFieldChange('jobRole')}
-                  placeholder="Senior Recruiter"
-                  disabled={saving}
-                />
+                {isSystemUserRole ? (
+                  <Select
+                    value={formState.jobRole}
+                    onValueChange={handleRoleDetailChange}
+                    disabled={saving}
+                  >
+                    <SelectTrigger id="profile-role">
+                      <SelectValue placeholder="Select role detail" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allowedRoleDetails.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    id="profile-role"
+                    value={formState.jobRole}
+                    onChange={handleFieldChange('jobRole')}
+                    placeholder="Senior Recruiter"
+                    disabled={saving}
+                  />
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="profile-phone">US phone number</Label>

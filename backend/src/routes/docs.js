@@ -31,6 +31,70 @@ const openapi = {
         }
       }
     },
+    '/profile/me': {
+      get: {
+        summary: 'Get current user profile metadata',
+        description: 'Returns the signed-in user profile and role-detail enforcement flags.',
+        responses: {
+          '200': {
+            description: 'Profile metadata',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    profile: {
+                      type: 'object',
+                      properties: {
+                        email: { type: 'string', format: 'email' },
+                        displayName: { type: 'string' },
+                        jobRole: { type: 'string' },
+                        phoneNumber: { type: 'string' },
+                        companyName: { type: 'string' },
+                        companyUrl: { type: 'string' },
+                        requiresRoleDetailSelection: { type: 'boolean' },
+                        allowedRoleDetails: {
+                          type: 'array',
+                          items: { type: 'string', enum: ['DATA', 'DEVELOPER', 'DEVOPS'] }
+                        },
+                        isComplete: { type: 'boolean' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          '401': { description: 'Unauthorized' }
+        }
+      },
+      put: {
+        summary: 'Update current user profile metadata',
+        description: 'For users with role `user`, `jobRole` must be one of DATA, DEVELOPER, DEVOPS.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['displayName', 'jobRole', 'phoneNumber'],
+                properties: {
+                  displayName: { type: 'string' },
+                  jobRole: { type: 'string' },
+                  phoneNumber: { type: 'string' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          '200': { description: 'Profile updated' },
+          '400': { description: 'Validation failed' },
+          '401': { description: 'Unauthorized' }
+        }
+      }
+    },
     '/support/interview': {
       post: {
         summary: 'Send interview support request email',

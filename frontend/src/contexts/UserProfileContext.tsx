@@ -11,6 +11,8 @@ export interface UserProfile {
   phoneNumber: string;
   companyName: string;
   companyUrl: string;
+  requiresRoleDetailSelection?: boolean;
+  allowedRoleDetails?: string[];
   isComplete: boolean;
 }
 
