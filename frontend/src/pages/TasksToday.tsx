@@ -1851,6 +1851,10 @@ export default function TasksToday() {
         title: 'Mock request sent',
         description: 'Mock interview details emailed successfully.'
       });
+      toast({
+        title: 'Scheduling tip',
+        description: 'Submit at least 2 business days in advance to improve the chance of your preferred schedule.'
+      });
       closeMockDialog();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to send mock request';

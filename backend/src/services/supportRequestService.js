@@ -181,7 +181,7 @@ function buildHtmlTable(rows) {
 function buildMockHtmlBody(details) {
   const caution = `<div style="border-left:4px solid #b91c1c;background:#fef2f2;padding:12px 16px;margin:0 0 16px;font-family:Arial, sans-serif;font-size:14px;line-height:1.5;">
     <p style="margin:0 0 8px;font-weight:700;color:#b91c1c;">Complete the mock before the day of interview.</p>
-    <p style="margin:0;color:#7f1d1d;">Please note that the mock interview will be conducted based on expert availability and may not be scheduled exactly on the requested date and time. We recommend submitting the request at least <strong>2 business days</strong> in advance to increase the likelihood of aligning with your preferred schedule.</p>
+    <p style="margin:0;color:#7f1d1d;">Please note that the mock interview will be conducted based on expert availability and may not be scheduled exactly on the requested date and time.</p>
   </div>`;
   const schedule = `<p style="font-family:Arial, sans-serif;font-size:14px;color:#0f1e3d;margin:0 0 12px;">Mock <strong>${escapeHtml(details.interviewRound)}</strong> is scheduled at <strong>${escapeHtml(details.interviewDateTimeDisplay)}</strong>.</p>`;
   const rows = [
