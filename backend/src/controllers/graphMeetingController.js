@@ -51,7 +51,16 @@ function normalizeUrl(value) {
   }
 }
 
-function parseRecordAutomatically(value) {
+const LOBBY_BYPASS_SCOPES = new Set([
+  'organizer',
+  'organization',
+  'organizationAndFederated',
+  'everyone',
+  'invited',
+  'organizationExcludingGuests'
+]);
+
+function parseOptionalBoolean(value) {
   if (typeof value === 'boolean') {
     return value;
   }
@@ -65,6 +74,57 @@ function parseRecordAutomatically(value) {
     }
   }
   return undefined;
+}
+
+function normalizeLobbyBypassScope(value) {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return LOBBY_BYPASS_SCOPES.has(trimmed) ? trimmed : undefined;
+}
+
+function parseLobbyBypassSettings(body) {
+  if (!body || typeof body !== 'object') {
+    return undefined;
+  }
+
+  const nestedSettings =
+    body.lobbyBypassSettings && typeof body.lobbyBypassSettings === 'object'
+      ? body.lobbyBypassSettings
+      : {};
+
+  let scope = normalizeLobbyBypassScope(body.lobbyBypassScope);
+  if (!scope) {
+    scope = normalizeLobbyBypassScope(nestedSettings.scope);
+  }
+
+  const allowEveryone = parseOptionalBoolean(body.allowEveryoneBypassLobby);
+  if (!scope && allowEveryone === true) {
+    scope = 'everyone';
+  }
+
+  let isDialInBypassEnabled = parseOptionalBoolean(body.isDialInBypassEnabled);
+  if (typeof isDialInBypassEnabled !== 'boolean') {
+    isDialInBypassEnabled = parseOptionalBoolean(nestedSettings.isDialInBypassEnabled);
+  }
+
+  if (!scope && typeof isDialInBypassEnabled !== 'boolean') {
+    return undefined;
+  }
+
+  const settings = {};
+  if (scope) {
+    settings.scope = scope;
+  }
+  if (typeof isDialInBypassEnabled === 'boolean') {
+    settings.isDialInBypassEnabled = isDialInBypassEnabled;
+  }
+
+  return settings;
 }
 
 export const graphMeetingController = {
@@ -137,9 +197,13 @@ export const graphMeetingController = {
     if (endDateTime) {
       payload.endDateTime = endDateTime;
     }
-    const recordAutomatically = parseRecordAutomatically(req.body?.recordAutomatically);
+    const recordAutomatically = parseOptionalBoolean(req.body?.recordAutomatically);
     if (typeof recordAutomatically === 'boolean') {
       payload.recordAutomatically = recordAutomatically;
+    }
+    const lobbyBypassSettings = parseLobbyBypassSettings(req.body);
+    if (lobbyBypassSettings) {
+      payload.lobbyBypassSettings = lobbyBypassSettings;
     }
 
     try {
