@@ -2,6 +2,8 @@ import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
 
+const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export class UserModel {
   constructor() {
     this.collection = null;
@@ -35,6 +37,27 @@ export class UserModel {
     this.cache.set(normalizedEmail, payload);
   }
 
+  async findUserDocumentByEmailCaseInsensitive(email, projection = null) {
+    if (!this.collection || !email) {
+      return null;
+    }
+
+    const lowerEmail = email.toLowerCase();
+    const exact = await this.collection.findOne(
+      { email: lowerEmail },
+      projection ? { projection } : undefined
+    );
+    if (exact) {
+      return exact;
+    }
+
+    const regex = new RegExp(`^${escapeRegex(lowerEmail)}$`, 'i');
+    return this.collection.findOne(
+      { email: regex },
+      projection ? { projection } : undefined
+    );
+  }
+
   async refreshCacheForEmail(email) {
     if (!this.collection || !email) {
       return;
@@ -43,7 +66,7 @@ export class UserModel {
     const lowerEmail = email.toLowerCase();
 
     try {
-      const document = await this.collection.findOne({ email: lowerEmail });
+      const document = await this.findUserDocumentByEmailCaseInsensitive(lowerEmail);
       if (document) {
         this.setCacheEntryFromDocument(document);
       } else {
@@ -176,8 +199,16 @@ export class UserModel {
         update.active = Boolean(updateData.active);
       }
 
+      const lowerEmail = email.toLowerCase();
+      const userRecord = await this.findUserDocumentByEmailCaseInsensitive(lowerEmail, { _id: 1 });
+      if (!userRecord?._id) {
+        const error = new Error('User not found');
+        error.statusCode = 404;
+        throw error;
+      }
+
       const result = await this.collection.updateOne(
-        { email: email.toLowerCase() },
+        { _id: userRecord._id },
         { $set: update }
       );
 
@@ -194,7 +225,14 @@ export class UserModel {
   async deleteUser(email) {
     try {
       const lowerEmail = email.toLowerCase();
-      const result = await this.collection.deleteOne({ email: lowerEmail });
+      const userRecord = await this.findUserDocumentByEmailCaseInsensitive(lowerEmail, { _id: 1 });
+      if (!userRecord?._id) {
+        const error = new Error('User not found');
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const result = await this.collection.deleteOne({ _id: userRecord._id });
       this.cache.delete(lowerEmail);
       logger.info('User deleted', { email, deletedCount: result.deletedCount });
       return result;
@@ -215,17 +253,12 @@ export class UserModel {
 
     const lowerEmail = email.toLowerCase();
 
-    const document = await this.collection.findOne(
-      { email: lowerEmail },
-      {
-        projection: {
-          email: 1,
-          profile: 1,
-          createdAt: 1,
-          updatedAt: 1
-        }
-      }
-    );
+    const document = await this.findUserDocumentByEmailCaseInsensitive(lowerEmail, {
+      email: 1,
+      profile: 1,
+      createdAt: 1,
+      updatedAt: 1
+    });
 
     if (!document) {
       return null;
@@ -250,12 +283,10 @@ export class UserModel {
 
     const lowerEmail = email.toLowerCase();
 
-    const userRecord = await this.collection.findOne(
-      { email: lowerEmail },
-      {
-        projection: { _id: 0, email: 1 }
-      }
-    );
+    const userRecord = await this.findUserDocumentByEmailCaseInsensitive(lowerEmail, {
+      _id: 1,
+      email: 1
+    });
 
     if (!userRecord) {
       const error = new Error('User not found');
@@ -276,7 +307,7 @@ export class UserModel {
       }
     };
 
-    const result = await this.collection.updateOne({ email: lowerEmail }, updateDoc);
+    const result = await this.collection.updateOne({ _id: userRecord._id }, updateDoc);
 
     const cached = this.cache.get(lowerEmail) || {};
     this.cache.set(lowerEmail, {
