@@ -95,6 +95,31 @@ const openapi = {
         }
       }
     },
+    '/profile/me/role-detail': {
+      put: {
+        summary: 'Update mandatory role detail for user-role accounts',
+        description: 'Updates only `profile.jobRole`. This endpoint is intended for accounts with role `user`.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['jobRole'],
+                properties: {
+                  jobRole: { type: 'string', enum: ['DATA', 'DEVELOPER', 'DEVOPS'] }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          '200': { description: 'Role detail updated' },
+          '400': { description: 'Validation failed' },
+          '401': { description: 'Unauthorized' }
+        }
+      }
+    },
     '/support/interview': {
       post: {
         summary: 'Send interview support request email',

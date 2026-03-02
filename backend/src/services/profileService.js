@@ -193,6 +193,57 @@ class ProfileService {
       }
     };
   }
+
+  async updateRoleDetail(email, payload = {}) {
+    if (!email) {
+      throw new Error('Email is required');
+    }
+
+    const lowerEmail = email.toLowerCase();
+    const userRecord = userModel.getUserByEmail(lowerEmail);
+    const normalizedSystemRole = (userRecord?.role || '').toString().trim().toLowerCase();
+
+    if (normalizedSystemRole !== 'user') {
+      const error = new Error('Role detail selection is only required for user role');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const jobRole = normalizeRoleDetail(payload.jobRole || '');
+    if (!isValidUserRoleDetail(jobRole)) {
+      const error = new Error(`Job role must be one of: ${ROLE_DETAIL_OPTIONS.join(', ')}`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const current = await this.getProfile(lowerEmail);
+    const metadata = {
+      displayName: current.profile.displayName,
+      jobRole,
+      phoneNumber: current.profile.phoneNumber,
+      companyName: current.profile.companyName,
+      companyUrl: current.profile.companyUrl
+    };
+
+    await userModel.upsertUserProfileMetadata(lowerEmail, metadata);
+
+    return {
+      success: true,
+      profile: {
+        ...current.profile,
+        jobRole,
+        requiresRoleDetailSelection: false,
+        allowedRoleDetails: ROLE_DETAIL_OPTIONS,
+        isComplete: Boolean(
+          metadata.displayName &&
+          metadata.jobRole &&
+          metadata.phoneNumber &&
+          metadata.companyName &&
+          metadata.companyUrl
+        )
+      }
+    };
+  }
 }
 
 export const profileService = new ProfileService();

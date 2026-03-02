@@ -155,4 +155,40 @@ describe('profileService', () => {
       );
     });
   });
+
+  describe('updateRoleDetail', () => {
+    it('updates only role detail for role user', async () => {
+      mockUserModel.getUserByEmail.mockReturnValue({ role: 'user' });
+      mockUserModel.getUserProfileMetadata.mockResolvedValue({
+        metadata: {
+          displayName: 'User Example',
+          jobRole: '',
+          phoneNumber: '+1 (555) 123-4567',
+          companyName: 'Silverspace Inc.',
+          companyUrl: 'https://www.silverspaceinc.com'
+        }
+      });
+      mockUserModel.upsertUserProfileMetadata.mockResolvedValue({ acknowledged: true });
+
+      const result = await profileService.updateRoleDetail('user@silverspaceinc.com', { jobRole: 'data' });
+
+      expect(result.success).toBe(true);
+      expect(mockUserModel.upsertUserProfileMetadata).toHaveBeenCalledWith(
+        'user@silverspaceinc.com',
+        expect.objectContaining({
+          jobRole: 'DATA',
+          displayName: 'User Example',
+          phoneNumber: '+1 (555) 123-4567'
+        })
+      );
+    });
+
+    it('rejects updateRoleDetail for non-user role', async () => {
+      mockUserModel.getUserByEmail.mockReturnValue({ role: 'recruiter' });
+
+      await expect(
+        profileService.updateRoleDetail('recruiter@silverspaceinc.com', { jobRole: 'DATA' })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+  });
 });

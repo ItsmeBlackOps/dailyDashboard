@@ -4,11 +4,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { API_URL, useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
 
 const DEFAULT_ROLE_OPTIONS = ['DATA', 'DEVELOPER', 'DEVOPS'];
 
 export function RoleDetailRequiredDialog() {
-  const { profile, saving, updateProfile } = useUserProfile();
+  const { profile, saving, refresh } = useUserProfile();
+  const { authFetch } = useAuth();
+  const { toast } = useToast();
   const [selectedRoleDetail, setSelectedRoleDetail] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -27,11 +31,23 @@ export function RoleDetailRequiredDialog() {
     if (!profile || !canSubmit) return;
     setSubmitting(true);
     try {
-      await updateProfile({
-        displayName: profile.displayName,
-        phoneNumber: profile.phoneNumber,
-        jobRole: currentValue
+      const res = await authFetch(`${API_URL}/api/profile/me/role-detail`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobRole: currentValue })
       });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Unable to save role detail');
+      }
+      await refresh();
+      toast({
+        title: 'Role detail saved',
+        description: 'Your role detail has been updated successfully.'
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save role detail';
+      toast({ title: 'Save failed', description: message, variant: 'destructive' });
     } finally {
       setSubmitting(false);
     }
@@ -79,4 +95,3 @@ export function RoleDetailRequiredDialog() {
     </Dialog>
   );
 }
-

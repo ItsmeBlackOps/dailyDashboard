@@ -8,5 +8,6 @@ router.use(authenticateHTTP);
 
 router.get('/me', profileController.getCurrentUserProfile);
 router.put('/me', profileController.updateCurrentUserProfile);
+router.put('/me/role-detail', profileController.updateCurrentUserRoleDetail);
 
 export default router;

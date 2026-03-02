@@ -2,7 +2,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RoleDetailRequiredDialog } from './RoleDetailRequiredDialog';
 
-const updateProfile = vi.fn();
+const refresh = vi.fn();
+const authFetch = vi.fn();
+const toast = vi.fn();
 
 vi.mock('@/contexts/UserProfileContext', () => ({
   useUserProfile: () => ({
@@ -18,14 +20,29 @@ vi.mock('@/contexts/UserProfileContext', () => ({
       allowedRoleDetails: ['DATA', 'DEVELOPER', 'DEVOPS']
     },
     saving: false,
-    updateProfile
+    refresh
   })
+}));
+
+vi.mock('@/hooks/useAuth', () => ({
+  API_URL: 'http://localhost:3004',
+  useAuth: () => ({ authFetch })
+}));
+
+vi.mock('@/hooks/use-toast', () => ({
+  useToast: () => ({ toast })
 }));
 
 describe('RoleDetailRequiredDialog', () => {
   beforeEach(() => {
-    updateProfile.mockReset();
+    refresh.mockReset();
+    authFetch.mockReset();
+    toast.mockReset();
     localStorage.setItem('role', 'user');
+    authFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true })
+    });
   });
 
   it('shows mandatory note when role-detail selection is required', () => {
@@ -42,11 +59,12 @@ describe('RoleDetailRequiredDialog', () => {
     fireEvent.click(screen.getAllByText('Save')[0]);
 
     await waitFor(() => {
-      expect(updateProfile).toHaveBeenCalledWith({
-        displayName: 'User Example',
-        phoneNumber: '+1 (555) 123-4567',
-        jobRole: 'DATA'
-      });
+      expect(authFetch).toHaveBeenCalledWith(
+        'http://localhost:3004/api/profile/me/role-detail',
+        expect.objectContaining({
+          method: 'PUT'
+        })
+      );
     });
   });
 });
