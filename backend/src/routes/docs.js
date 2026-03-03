@@ -266,6 +266,228 @@ const openapi = {
           '503': { description: 'Feature disabled or upstream service unavailable' }
         }
       }
+    },
+    '/tasks/{taskId}/transcript-request': {
+      post: {
+        summary: 'Request transcript access for the current user',
+        description:
+          'Creates or re-submits a transcript access request for the signed-in user after validating task visibility and transcript availability (TxAv).',
+        parameters: [
+          {
+            name: 'taskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' }
+          }
+        ],
+        responses: {
+          '200': {
+            description: 'Transcript request created or reused',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    message: { type: 'string' },
+                    request: { $ref: '#/components/schemas/TranscriptRequest' }
+                  }
+                }
+              }
+            }
+          },
+          '400': { description: 'Task id missing or TxAv unavailable' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Task not visible to current user' }
+        }
+      },
+      get: {
+        summary: 'Get transcript request status for current user on a task',
+        parameters: [
+          {
+            name: 'taskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' }
+          }
+        ],
+        responses: {
+          '200': {
+            description: 'Transcript request status',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    status: { $ref: '#/components/schemas/TranscriptRequestStatus' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/tasks/transcript-requests/status': {
+      post: {
+        summary: 'Get transcript request statuses for multiple tasks (current user)',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  taskIds: {
+                    type: 'array',
+                    items: { type: 'string' }
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'Map of task id to transcript request status payload',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    statuses: {
+                      type: 'object',
+                      additionalProperties: { $ref: '#/components/schemas/TranscriptRequestStatus' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/tasks/{taskId}/transcript': {
+      get: {
+        summary: 'Get transcript text for a task',
+        description:
+          'Admins can always access. Non-admin users can access only after their transcript request is approved.',
+        parameters: [
+          {
+            name: 'taskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' }
+          }
+        ],
+        responses: {
+          '200': {
+            description: 'Transcript returned as plain text',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    title: { type: 'string' },
+                    transcriptText: { type: 'string' },
+                    generatedAt: { type: 'string', nullable: true }
+                  }
+                }
+              }
+            }
+          },
+          '403': { description: 'Transcript access is not approved for current user' },
+          '404': { description: 'Transcript not found' }
+        }
+      }
+    },
+    '/transcript-requests': {
+      get: {
+        summary: 'Admin: list transcript access requests',
+        parameters: [
+          {
+            name: 'status',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', enum: ['pending', 'approved', 'rejected'] }
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            required: false,
+            schema: { type: 'integer', minimum: 1, maximum: 500 }
+          }
+        ],
+        responses: {
+          '200': {
+            description: 'Transcript request list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    requests: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/TranscriptRequest' }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          '403': { description: 'Admin role required' }
+        }
+      }
+    },
+    '/transcript-requests/{requestId}': {
+      put: {
+        summary: 'Admin: approve or reject a transcript request',
+        parameters: [
+          {
+            name: 'requestId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['action'],
+                properties: {
+                  action: { type: 'string', enum: ['approve', 'reject'] },
+                  note: { type: 'string', nullable: true }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'Request status updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    request: { $ref: '#/components/schemas/TranscriptRequest' }
+                  }
+                }
+              }
+            }
+          },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Request not found' }
+        }
+      }
     }
   },
   components: {
@@ -312,6 +534,34 @@ const openapi = {
         properties: {
           remaining: { type: 'integer', minimum: 0 },
           resetAt: { type: 'string', format: 'date-time', nullable: true }
+        }
+      },
+      TranscriptRequestStatus: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['none', 'pending', 'approved', 'rejected'] },
+          requestedAt: { type: 'string', nullable: true },
+          reviewedAt: { type: 'string', nullable: true },
+          reviewNote: { type: 'string', nullable: true }
+        }
+      },
+      TranscriptRequest: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          taskId: { type: 'string' },
+          taskSubject: { type: 'string' },
+          transcriptTitle: { type: 'string' },
+          candidateName: { type: 'string' },
+          interviewDate: { type: 'string' },
+          interviewRound: { type: 'string' },
+          requestedBy: { type: 'string', format: 'email' },
+          requesterRole: { type: 'string' },
+          requestedAt: { type: 'string' },
+          status: { type: 'string', enum: ['pending', 'approved', 'rejected'] },
+          reviewedBy: { type: 'string', nullable: true },
+          reviewedAt: { type: 'string', nullable: true },
+          reviewNote: { type: 'string', nullable: true }
         }
       },
       InterviewSupportPayload: {

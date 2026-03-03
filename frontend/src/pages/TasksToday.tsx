@@ -230,6 +230,15 @@ interface InterviewDebriefSection {
   lines: string[];
 }
 
+type TranscriptRequestStatus = 'none' | 'pending' | 'approved' | 'rejected';
+
+interface TranscriptRequestState {
+  status: TranscriptRequestStatus;
+  requestedAt?: string | null;
+  reviewedAt?: string | null;
+  reviewNote?: string | null;
+}
+
 const DEBRIEF_SECTION_PATTERNS: Array<{ title: string; pattern: RegExp }> = [
   { title: "Overall Score", pattern: /^(?:1[\).]?\s*)?overall score\b/i },
   { title: "Quality of Answers", pattern: /^(?:2[\).]?\s*)?quality of the candidate[’']?s answers\b/i },
@@ -413,8 +422,6 @@ export default function TasksToday() {
   const autoMeetingAttemptedRef = useRef<Set<string>>(new Set());
   const autoMeetingInFlightRef = useRef<Set<string>>(new Set());
   const autoMeetingWorkerActiveRef = useRef(false);
-  const debriefPrefetchAttemptedRef = useRef<Set<string>>(new Set());
-  const debriefPrefetchInFlightRef = useRef<Set<string>>(new Set());
 
   // timersRef keeps active active per reminder key
   const timersRef = useRef<Map<string, number>>(new Map());
@@ -539,6 +546,14 @@ export default function TasksToday() {
   const [debriefError, setDebriefError] = useState('');
   const [debriefLoading, setDebriefLoading] = useState(false);
   const [debriefStatusMessage, setDebriefStatusMessage] = useState('');
+  const [transcriptRequestStatusMap, setTranscriptRequestStatusMap] = useState<Record<string, TranscriptRequestState>>({});
+  const [transcriptRequestLoadingMap, setTranscriptRequestLoadingMap] = useState<Record<string, boolean>>({});
+  const [transcriptDialogTask, setTranscriptDialogTask] = useState<Task | null>(null);
+  const [transcriptDialogContent, setTranscriptDialogContent] = useState('');
+  const [transcriptDialogTitle, setTranscriptDialogTitle] = useState('');
+  const [transcriptDialogGeneratedAt, setTranscriptDialogGeneratedAt] = useState<string | null>(null);
+  const [transcriptDialogLoading, setTranscriptDialogLoading] = useState(false);
+  const [transcriptDialogError, setTranscriptDialogError] = useState('');
 
   // Delete Dialog State
   const [deleteTaskDialog, setDeleteTaskDialog] = useState<{ open: boolean; task: Task | null }>({
@@ -2360,32 +2375,162 @@ export default function TasksToday() {
     }
   }, [debriefContent, toast]);
 
-  useEffect(() => {
-    if (!debriefDialogTask?._id) {
+  const closeTranscriptDialog = useCallback(() => {
+    setTranscriptDialogTask(null);
+    setTranscriptDialogTitle('');
+    setTranscriptDialogContent('');
+    setTranscriptDialogGeneratedAt(null);
+    setTranscriptDialogError('');
+    setTranscriptDialogLoading(false);
+  }, []);
+
+  const fetchTranscriptRequestStatuses = useCallback(async (taskIds: string[]) => {
+    const normalizedTaskIds = Array.from(new Set(taskIds.filter((taskId) => typeof taskId === 'string' && taskId.trim().length > 0)));
+    if (normalizedTaskIds.length === 0) {
+      setTranscriptRequestStatusMap({});
       return;
     }
 
-    let active = true;
+    try {
+      const response = await authFetch(`${API_URL}/api/tasks/transcript-requests/status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ taskIds: normalizedTaskIds })
+      });
 
-    const initialize = async () => {
-      try {
-        await startDebriefGeneration(debriefDialogTask._id, { force: false });
-      } catch (error) {
-        if (!active) {
-          return;
-        }
-        const message = error instanceof Error ? error.message : 'Unable to load interview debrief.';
-        setDebriefError(message);
-        setDebriefLoading(false);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Unable to load transcript request statuses.');
       }
-    };
 
-    void initialize();
+      const statuses = payload?.statuses && typeof payload.statuses === 'object' ? payload.statuses : {};
+      const next: Record<string, TranscriptRequestState> = {};
 
-    return () => {
-      active = false;
-    };
-  }, [debriefDialogTask?._id, startDebriefGeneration]);
+      for (const taskId of normalizedTaskIds) {
+        const raw = statuses?.[taskId];
+        const statusValue = typeof raw?.status === 'string' ? raw.status.toLowerCase() : 'none';
+        const status: TranscriptRequestStatus = ['pending', 'approved', 'rejected'].includes(statusValue)
+          ? (statusValue as TranscriptRequestStatus)
+          : 'none';
+
+        next[taskId] = {
+          status,
+          requestedAt: typeof raw?.requestedAt === 'string' ? raw.requestedAt : null,
+          reviewedAt: typeof raw?.reviewedAt === 'string' ? raw.reviewedAt : null,
+          reviewNote: typeof raw?.reviewNote === 'string' ? raw.reviewNote : null
+        };
+      }
+
+      setTranscriptRequestStatusMap(next);
+    } catch (error) {
+      console.error('Failed to load transcript request statuses', error);
+      setTranscriptRequestStatusMap({});
+    }
+  }, [API_URL, authFetch]);
+
+  const handleRequestTranscript = useCallback(async (task: Task) => {
+    if (!task?._id) {
+      return;
+    }
+
+    if (!task.transcription) {
+      toast({
+        title: 'Transcript unavailable',
+        description: 'TxAv is missing for this task. You can request access only after transcript is available.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setTranscriptRequestLoadingMap((prev) => ({ ...prev, [task._id]: true }));
+
+    try {
+      const response = await authFetch(`${API_URL}/api/tasks/${task._id}/transcript-request`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = typeof payload?.error === 'string' ? payload.error : 'Unable to submit transcript request.';
+        throw new Error(message);
+      }
+
+      const rawStatus = typeof payload?.request?.status === 'string' ? payload.request.status.toLowerCase() : 'none';
+      const status: TranscriptRequestStatus = ['pending', 'approved', 'rejected'].includes(rawStatus)
+        ? (rawStatus as TranscriptRequestStatus)
+        : 'none';
+
+      setTranscriptRequestStatusMap((prev) => ({
+        ...prev,
+        [task._id]: {
+          status,
+          requestedAt: typeof payload?.request?.requestedAt === 'string' ? payload.request.requestedAt : null,
+          reviewedAt: typeof payload?.request?.reviewedAt === 'string' ? payload.request.reviewedAt : null,
+          reviewNote: typeof payload?.request?.reviewNote === 'string' ? payload.request.reviewNote : null
+        }
+      }));
+
+      toast({
+        title: 'Transcript request updated',
+        description: typeof payload?.message === 'string'
+          ? payload.message
+          : 'Transcript request submitted for admin approval.'
+      });
+    } catch (error) {
+      toast({
+        title: 'Transcript request failed',
+        description: error instanceof Error ? error.message : 'Unable to submit transcript request.',
+        variant: 'destructive'
+      });
+    } finally {
+      setTranscriptRequestLoadingMap((prev) => ({ ...prev, [task._id]: false }));
+    }
+  }, [API_URL, authFetch, toast]);
+
+  const handleViewTranscript = useCallback(async (task: Task) => {
+    if (!task?._id) {
+      return;
+    }
+
+    setTranscriptDialogTask(task);
+    setTranscriptDialogTitle('');
+    setTranscriptDialogContent('');
+    setTranscriptDialogGeneratedAt(null);
+    setTranscriptDialogError('');
+    setTranscriptDialogLoading(true);
+
+    try {
+      const response = await authFetch(`${API_URL}/api/tasks/${task._id}/transcript`);
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message = typeof payload?.error === 'string' ? payload.error : 'Unable to load transcript.';
+        throw new Error(message);
+      }
+
+      const transcriptText = typeof payload?.transcriptText === 'string'
+        ? payload.transcriptText
+        : '';
+
+      if (!transcriptText.trim()) {
+        throw new Error('Transcript content is empty.');
+      }
+
+      setTranscriptDialogTitle(typeof payload?.title === 'string' ? payload.title : (task.subject || 'Transcript'));
+      setTranscriptDialogContent(DOMPurify.sanitize(transcriptText, { USE_PROFILES: { html: false } }));
+      setTranscriptDialogGeneratedAt(typeof payload?.generatedAt === 'string' ? payload.generatedAt : null);
+    } catch (error) {
+      setTranscriptDialogError(error instanceof Error ? error.message : 'Unable to load transcript.');
+    } finally {
+      setTranscriptDialogLoading(false);
+    }
+  }, [API_URL, authFetch]);
 
   useEffect(() => {
     if (!debriefDialogTask?._id || !debriefLoading) {
@@ -2549,6 +2694,13 @@ export default function TasksToday() {
             emailAddress: {
               address: 'harsh.patel@silverspaceinc.com',
               name: 'Harsh Patel',
+            },
+            type: 'required',
+          },
+          {
+            emailAddress: {
+              address: 'fred@fireflies.ai',
+              name: 'Fred (Fireflies)',
             },
             type: 'required',
           },
@@ -3403,16 +3555,50 @@ export default function TasksToday() {
 
     // 2. Transcript Enrichment (Deferred)
     const onTranscriptsEnriched = (data: { transcriptMap: Record<string, boolean> }) => {
+      const transcriptMap = data?.transcriptMap;
+      if (!transcriptMap || typeof transcriptMap !== 'object') {
+        return;
+      }
+
       setTasks((prev) => {
         let hasChanges = false;
+        const newlyAvailableCandidates: string[] = [];
+
         const next = prev.map((t) => {
-          const newVal = data.transcriptMap[t._id];
+          const newVal = transcriptMap[t._id];
           if (newVal !== undefined && t.transcription !== newVal) {
             hasChanges = true;
+            if (newVal === true && t.transcription !== true) {
+              const candidateName = t["Candidate Name"] || t.subject || 'Candidate';
+              newlyAvailableCandidates.push(candidateName);
+            }
             return { ...t, transcription: newVal };
           }
           return t;
         });
+
+        if (!firstLoad.current && newlyAvailableCandidates.length > 0) {
+          const uniqueCandidates = Array.from(
+            new Set(
+              newlyAvailableCandidates
+                .map((name) => DOMPurify.sanitize(String(name || ''), { USE_PROFILES: { html: false } }).trim())
+                .filter(Boolean)
+            )
+          );
+
+          if (uniqueCandidates.length === 1) {
+            toast({
+              title: `Transcription Received: ${uniqueCandidates[0]}`,
+              description: 'TxAv is now available for this task.',
+            });
+          } else {
+            toast({
+              title: 'Transcriptions Received',
+              description: `TxAv is now available for ${uniqueCandidates.length} tasks.`,
+            });
+          }
+        }
+
         return hasChanges ? next : prev;
       });
     };
@@ -3491,57 +3677,18 @@ export default function TasksToday() {
   }, [socket, readMap, writeMap, refreshAccessToken]);
 
   useEffect(() => {
-    if (document.visibilityState !== 'visible') {
+    const taskIds = tasks
+      .filter((task) => Boolean(task?.transcription))
+      .map((task) => task?._id)
+      .filter((taskId): taskId is string => typeof taskId === 'string' && taskId.trim().length > 0);
+
+    if (taskIds.length === 0) {
+      setTranscriptRequestStatusMap({});
       return;
     }
 
-    const queue = tasks.filter((task) => {
-      if (!task?.transcription || !task?._id) {
-        return false;
-      }
-      if (debriefPrefetchAttemptedRef.current.has(task._id)) {
-        return false;
-      }
-      if (debriefPrefetchInFlightRef.current.has(task._id)) {
-        return false;
-      }
-      return true;
-    });
-
-    if (queue.length === 0) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const runPrefetch = async () => {
-      for (const task of queue) {
-        if (cancelled) {
-          break;
-        }
-        if (!task._id || debriefPrefetchAttemptedRef.current.has(task._id)) {
-          continue;
-        }
-
-        debriefPrefetchInFlightRef.current.add(task._id);
-        try {
-          await requestInterviewDebrief(task._id);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'unknown error';
-          console.error(`Interview debrief prefetch failed for task ${task._id}: ${message}`);
-        } finally {
-          debriefPrefetchInFlightRef.current.delete(task._id);
-          debriefPrefetchAttemptedRef.current.add(task._id);
-        }
-      }
-    };
-
-    void runPrefetch();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [requestInterviewDebrief, tasks]);
+    void fetchTranscriptRequestStatuses(taskIds);
+  }, [fetchTranscriptRequestStatuses, tasks]);
 
   // Safety fallback: reconnect if socket disconnects.
   useEffect(() => {
@@ -3863,6 +4010,18 @@ export default function TasksToday() {
                 const canOpenQuestions = Boolean(
                   task.transcription || (storedQuestionsEntry?.questions?.length || 0) > 0
                 );
+                const transcriptRequestState = transcriptRequestStatusMap[task._id] || { status: 'none' as TranscriptRequestStatus };
+                const transcriptStatus = transcriptRequestState.status;
+                const transcriptRequestBusy = Boolean(transcriptRequestLoadingMap[task._id]);
+                const canViewTranscript = Boolean(
+                  task.transcription &&
+                  (normalizedRole === 'admin' || transcriptStatus === 'approved')
+                );
+                const canRequestTranscript = Boolean(
+                  task.transcription &&
+                  normalizedRole !== 'admin' &&
+                  transcriptStatus !== 'approved'
+                );
                 return (
                   <TableRow key={task._id} className={getRowClasses(task.status)}>
                     {showSubject && (
@@ -3968,6 +4127,37 @@ export default function TasksToday() {
                                     disabled={!task.transcription}
                                   >
                                     Interview Debrief
+                                  </DropdownMenuItem>
+                                  {(user === "admin" || canGenerateThanksMail || canRequestMock || canCloneSupport) && (
+                                    <DropdownMenuSeparator />
+                                  )}
+                                </>
+                              )}
+                              {task.transcription && (
+                                <>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      if (canViewTranscript) {
+                                        void handleViewTranscript(task);
+                                        return;
+                                      }
+                                      if (canRequestTranscript && transcriptStatus !== 'pending') {
+                                        void handleRequestTranscript(task);
+                                      }
+                                    }}
+                                    disabled={
+                                      transcriptRequestBusy ||
+                                      (!canViewTranscript && !canRequestTranscript) ||
+                                      (!canViewTranscript && transcriptStatus === 'pending')
+                                    }
+                                  >
+                                    {canViewTranscript
+                                      ? 'View Transcript'
+                                      : transcriptStatus === 'pending'
+                                        ? 'Transcript Request Pending'
+                                        : transcriptStatus === 'rejected'
+                                          ? 'Re-request Transcript Access'
+                                          : 'Request Transcript Access'}
                                   </DropdownMenuItem>
                                   {(user === "admin" || canGenerateThanksMail || canRequestMock || canCloneSupport) && (
                                     <DropdownMenuSeparator />
@@ -4406,7 +4596,7 @@ export default function TasksToday() {
                     onClick={handleGenerateInterviewDebrief}
                     disabled={debriefLoading || !debriefDialogTask?.transcription}
                   >
-                    {debriefLoading ? "Refreshing..." : "Regenerate"}
+                    {debriefLoading ? "Refreshing..." : debriefContent ? "Regenerate" : "Generate"}
                   </Button>
                 </div>
               </div>
@@ -4489,6 +4679,59 @@ export default function TasksToday() {
               className="sm:w-auto"
               onClick={closeDebriefDialog}
               disabled={debriefLoading}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(transcriptDialogTask)} onOpenChange={(open) => !open && closeTranscriptDialog()}>
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Task Transcript</DialogTitle>
+          </DialogHeader>
+          {transcriptDialogTask ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card/40 px-3 py-2">
+                <Badge variant="outline" className="font-medium">
+                  Candidate: {transcriptDialogTask["Candidate Name"] || 'Not available'}
+                </Badge>
+                <Badge variant="secondary" className="font-medium">
+                  Round: {transcriptDialogTask["Interview Round"] || 'Not available'}
+                </Badge>
+                {transcriptDialogGeneratedAt && (
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    Updated: {new Date(transcriptDialogGeneratedAt).toLocaleString()}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground break-all">
+                {transcriptDialogTitle || transcriptDialogTask.subject || 'Transcript'}
+              </p>
+              <ScrollArea className="h-[58vh] rounded-md border bg-card/30 p-4">
+                {transcriptDialogLoading ? (
+                  <p className="text-sm text-muted-foreground animate-pulse">
+                    Loading transcript...
+                  </p>
+                ) : transcriptDialogError ? (
+                  <p className="text-sm text-red-600">{transcriptDialogError}</p>
+                ) : transcriptDialogContent ? (
+                  <pre className="whitespace-pre-wrap text-sm text-foreground">{transcriptDialogContent}</pre>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Transcript content is unavailable for this task.</p>
+                )}
+              </ScrollArea>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Select a task to view transcript.</p>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="sm:w-auto"
+              onClick={closeTranscriptDialog}
+              disabled={transcriptDialogLoading}
             >
               Close
             </Button>
