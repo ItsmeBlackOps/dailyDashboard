@@ -8,6 +8,7 @@ import { MicrosoftConsentDialog } from '@/components/MicrosoftConsentDialog';
 import { useToast } from '@/hooks/use-toast';
 import { NotificationDetailModal } from '@/components/ui/notification-modal';
 import { RoleDetailRequiredDialog } from './RoleDetailRequiredDialog';
+import { RecruiterCallAlertDialog } from './RecruiterCallAlertDialog';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -81,6 +82,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             <RoleDetailRequiredDialog />
             <NotificationDetailModal />
             <MicrosoftConsentDialog />
+            <RecruiterCallAlertDialog />
           </div>
         </UserProfileProvider>
       </MicrosoftConsentProvider>

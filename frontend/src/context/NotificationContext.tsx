@@ -43,6 +43,12 @@ interface NotificationEvent {
     resumeUnderstandingStatus?: string;
 }
 
+interface CallAlert {
+    candidateId: string;
+    candidateName: string;
+    attemptCount: number;
+}
+
 interface NotificationContextType {
     notifications: NotificationEvent[];
     unreadCount: number;
@@ -53,6 +59,8 @@ interface NotificationContextType {
     isModalOpen: boolean;
     openModal: (notification: NotificationEvent) => void;
     closeModal: () => void;
+    callAlert: CallAlert | null;
+    clearCallAlert: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | null>(null);
@@ -69,6 +77,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
     const [selectedNotification, setSelectedNotification] = useState<NotificationEvent | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [callAlert, setCallAlert] = useState<CallAlert | null>(null);
 
     const { toast } = useToast();
     const { refreshAccessToken, authFetch } = useAuth();
@@ -383,6 +392,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         };
         socket.on('taskNotification', handleTaskNotification);
 
+        const handleCallAlert = (payload: CallAlert) => {
+            setCallAlert(payload);
+            playSound('beep');
+        };
+        socket.on('callAlertNotification', handleCallAlert);
+
         socket.connect();
 
         return () => {
@@ -395,6 +410,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             socket.off('candidateStatusUpdated', handleStatusUpdate);
             socket.off('bulkCandidateStatusUpdated', handleBulkStatusUpdate);
             socket.off('taskNotification', handleTaskNotification);
+            socket.off('callAlertNotification', handleCallAlert);
             socket.disconnect();
         };
     }, [socket, refreshAccessToken, toast]);
@@ -420,7 +436,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
     return (
-        <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, clearAll, selectedNotification, isModalOpen, openModal, closeModal }}>
+        <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, clearAll, selectedNotification, isModalOpen, openModal, closeModal, callAlert, clearCallAlert: () => setCallAlert(null) }}>
             {children}
             {/* Audio element if needed for persistent playback context, but new Audio() works often */}
         </NotificationContext.Provider>

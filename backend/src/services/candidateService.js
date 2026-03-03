@@ -1765,6 +1765,97 @@ class CandidateService {
     return this.formatCandidateRecord(candidate);
   }
 
+  async getActivities(user, candidateId) {
+    if (!user?.email) {
+      const error = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    const activities = await database.getCollection('candidateactivities')
+      .find({ candidateId: new ObjectId(candidateId) })
+      .sort({ createdAt: 1 })
+      .toArray();
+
+    return activities.map(a => ({
+      id: a._id,
+      type: a.type,
+      outcome: a.outcome,
+      notes: a.notes,
+      createdBy: a.createdBy,
+      createdAt: a.createdAt
+    }));
+  }
+
+  async addActivity(user, candidateId, { type, outcome, notes }) {
+    if (!user?.email) {
+      const error = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    const validTypes = ['call_attempt', 'document_prepared'];
+    if (!validTypes.includes(type)) {
+      const error = new Error('Invalid activity type');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (type === 'call_attempt') {
+      const validOutcomes = ['connected', 'unavailable'];
+      if (!validOutcomes.includes(outcome)) {
+        const error = new Error('Invalid outcome for call_attempt');
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
+    const newActivity = {
+      candidateId: new ObjectId(candidateId),
+      type,
+      ...(type === 'call_attempt' && { outcome }),
+      ...(notes && { notes }),
+      createdBy: {
+        email: user.email,
+        name: formatDisplayName(user.email),
+        role: user.role
+      },
+      createdAt: new Date()
+    };
+
+    const result = await database.getCollection('candidateactivities').insertOne(newActivity);
+    const activity = {
+      id: result.insertedId,
+      type: newActivity.type,
+      outcome: newActivity.outcome,
+      notes: newActivity.notes,
+      createdBy: newActivity.createdBy,
+      createdAt: newActivity.createdAt
+    };
+
+    if (type === 'call_attempt' && outcome === 'unavailable') {
+      const recentActivities = await database.getCollection('candidateactivities')
+        .find({ candidateId: new ObjectId(candidateId) })
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      let count = 0;
+      for (const a of recentActivities) {
+        if (a.type === 'call_attempt' && a.outcome === 'unavailable') {
+          count++;
+        } else {
+          break;
+        }
+      }
+
+      if (count >= 2) {
+        return { activity, alertRecruiter: true, attemptCount: count };
+      }
+    }
+
+    return { activity, alertRecruiter: false, attemptCount: 0 };
+  }
+
   async addComment(user, candidateId, content, type = 'internal') {
     if (!user?.email || !user?.role) {
       const error = new Error('Authentication required');
