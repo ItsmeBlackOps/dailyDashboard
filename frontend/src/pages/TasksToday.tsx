@@ -51,8 +51,7 @@ import type { AccountInfo, AuthenticationResult } from "@azure/msal-browser";
 import { loginRequest } from "@/authConfig";
 import { API_BASE, API_SCOPE, AZURE_CLIENT_ID } from "@/constants";
 import { acquireBackendToken } from "@/tokens";
-import { checkMeetingConsent, openConsentAndPoll } from "@/meetings/meetingsConsent";
-import { useOnlineMeetingConsent } from "@/hooks/useOnlineMeetingConsent";
+import { useMicrosoftConsent } from "@/contexts/MicrosoftConsentContext";
 import { OnlineMeetingConsentBanner } from "@/components/OnlineMeetingConsentBanner";
 import { Copy, Filter } from "lucide-react";
 import { deriveDisplayNameFromEmail, formatNameInput } from "@/utils/userNames";
@@ -487,7 +486,8 @@ export default function TasksToday() {
     error: consentError,
     refresh: refreshConsent,
     grant: grantConsent,
-  } = useOnlineMeetingConsent(instance, account);
+    openConsentDialog,
+  } = useMicrosoftConsent();
   const [meetingBusy, setMeetingBusy] = useState<Record<string, boolean>>({});
   const [teamLeadData, setTeamLeadData] = useState<Record<string, TeamLeadEntry>>({});
   const [teamLeadLoading, setTeamLeadLoading] = useState(false);
@@ -2777,24 +2777,13 @@ export default function TasksToday() {
           return;
         }
 
-        let consentOk = false;
-        try {
-          consentOk = await checkMeetingConsent(instance, activeAccount);
-        } catch (error) {
-          console.warn('Consent check failed', error);
-        }
-
-        if (!consentOk) {
-          const granted = await openConsentAndPoll(instance, activeAccount);
-          await refreshConsent();
-          if (!granted) {
-            toast({
-              title: 'Consent required',
-              description: 'Please grant Microsoft Graph consent to create meetings.',
-              variant: 'destructive',
-            });
-            return;
-          }
+        if (needsConsent) {
+          openConsentDialog();
+          toast({
+            title: 'Teams access required',
+            description: 'Grant access in the dialog, then try again.',
+          });
+          return;
         }
 
         let userToken = '';
@@ -2971,11 +2960,11 @@ export default function TasksToday() {
       ensureMicrosoftAccount,
       instance,
       refreshConsent,
+      needsConsent,
+      openConsentDialog,
       parseStart,
       parseEnd,
       acquireBackendToken,
-      checkMeetingConsent,
-      openConsentAndPoll,
       API_BASE,
       API_SCOPE,
       extractJoinLink,

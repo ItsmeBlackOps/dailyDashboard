@@ -1,19 +1,19 @@
-import { useEffect, useState } from "react";
-import { CheckCircle2, FileText } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle2, FileText, ShieldX } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { AdminAwaitingExpert } from "@/components/candidates/AdminAwaitingExpert";
 import { TranscriptApprovalQueue } from "@/components/admin/TranscriptApprovalQueue";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 const AdminAlertsPage = () => {
-  const [role, setRole] = useState("");
+  const [role] = useState(() => localStorage.getItem("role") || "");
   const normalizedRole = role.trim().toLowerCase();
   const isAdmin = normalizedRole === "admin";
-
-  useEffect(() => {
-    setRole(localStorage.getItem("role") || "");
-  }, []);
+  const navigate = useNavigate();
 
   return (
     <DashboardLayout>
@@ -45,9 +45,18 @@ const AdminAlertsPage = () => {
           </Tabs>
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">
-          Admin access required. Please sign in with an administrator account.
-        </p>
+        <Card className="max-w-md mx-auto mt-16">
+          <CardContent className="flex flex-col items-center gap-4 py-10 text-center">
+            <ShieldX className="h-12 w-12 text-muted-foreground" />
+            <div>
+              <p className="font-semibold text-lg">Admin Access Required</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                This page is restricted to administrator accounts.
+              </p>
+            </div>
+            <Button onClick={() => navigate("/")}>Go to Dashboard</Button>
+          </CardContent>
+        </Card>
       )}
     </DashboardLayout>
   );

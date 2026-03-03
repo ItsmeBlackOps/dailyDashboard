@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Building2, ExternalLink, Globe, Menu, Phone, User, UserCog, LogOut, ChevronDown, CheckCircle2, AlertTriangle, Bell, Info } from 'lucide-react';
+import { Building2, Globe, Loader2, Menu, Phone, User, UserCog, LogOut, ChevronDown, CheckCircle2, AlertTriangle, Bell, Info, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { API_BASE } from '@/constants';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -20,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useUserProfile, formatPhoneDraft, formatPhoneCanonical } from '@/contexts/UserProfileContext';
+import { useMicrosoftConsent } from '@/contexts/MicrosoftConsentContext';
 import { useNotifications } from '@/context/NotificationContext';
 interface HeaderProps {
   toggleSidebar: () => void;
@@ -30,20 +30,24 @@ import { usePostHog } from 'posthog-js/react';
 
 const DEFAULT_ROLE_OPTIONS = ['DATA', 'DEVELOPER', 'DEVOPS'];
 
+function formatNotifTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  const diffMs = Date.now() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
 export function Header({ toggleSidebar }: HeaderProps) {
   const { logout } = useAuth();
   const posthog = usePostHog();
   const { profile, loading, saving, updateProfile } = useUserProfile();
+  const { needsConsent, checking: consentChecking, hasAccount, openConsentDialog } = useMicrosoftConsent();
   const [editOpen, setEditOpen] = useState(false);
   const [formState, setFormState] = useState({ displayName: '', jobRole: '', phoneNumber: '' });
-
-  const openConsentPopup = useCallback(() => {
-    const width = 600;
-    const height = 700;
-    const specs = `noopener,noreferrer,width=${width},height=${height}`;
-    const consentUrl = `${API_BASE}/auth/consent`;
-    window.open(consentUrl, 'teams-consent', specs);
-  }, []);
 
   const getStoredValue = useCallback((key: string) => {
     if (typeof window === 'undefined') return '';
@@ -199,7 +203,7 @@ export function Header({ toggleSidebar }: HeaderProps) {
                     </div>
                     <span className="text-xs text-muted-foreground line-clamp-2">{notif.description}</span>
                     <span className="text-[10px] text-muted-foreground/70 self-end">
-                      {new Date(notif.timestamp).toLocaleTimeString()}
+                      {formatNotifTime(notif.timestamp)}
                     </span>
                   </DropdownMenuItem>
                 ))}
@@ -208,10 +212,27 @@ export function Header({ toggleSidebar }: HeaderProps) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button onClick={openConsentPopup} variant="ghost" size="sm">
-          <ExternalLink className="h-4 w-4 mr-1" />
-          Grant Teams Consent
-        </Button>
+        {consentChecking ? (
+          <Button variant="ghost" size="sm" disabled className="text-muted-foreground">
+            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            Checking...
+          </Button>
+        ) : !hasAccount ? (
+          <Button variant="ghost" size="sm" disabled className="text-muted-foreground">
+            <WifiOff className="h-4 w-4 mr-1" />
+            No Microsoft account
+          </Button>
+        ) : needsConsent ? (
+          <Button variant="ghost" size="sm" onClick={openConsentDialog} className="text-destructive hover:text-destructive">
+            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#ef4444', marginRight: 6, flexShrink: 0 }} />
+            Teams Access
+          </Button>
+        ) : (
+          <span className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground">
+            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+            Teams Connected
+          </span>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -307,7 +328,12 @@ export function Header({ toggleSidebar }: HeaderProps) {
       </div>
 
       <Dialog open={editOpen} onOpenChange={handleDialogChange}>
-        <DialogContent>
+        <DialogContent
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            document.getElementById('profile-name')?.focus();
+          }}
+        >
           <form onSubmit={handleEditSubmit} className="space-y-4">
             <DialogHeader>
               <DialogTitle>Update contact details</DialogTitle>

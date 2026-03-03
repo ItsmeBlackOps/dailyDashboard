@@ -3,6 +3,8 @@ import { Header } from './Header';
 import { ThemeProvider } from '@/hooks/useTheme';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { UserProfileProvider } from '@/contexts/UserProfileContext';
+import { MicrosoftConsentProvider } from '@/contexts/MicrosoftConsentContext';
+import { MicrosoftConsentDialog } from '@/components/MicrosoftConsentDialog';
 import { useToast } from '@/hooks/use-toast';
 import { NotificationDetailModal } from '@/components/ui/notification-modal';
 import { RoleDetailRequiredDialog } from './RoleDetailRequiredDialog';
@@ -64,21 +66,24 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <ThemeProvider>
-      <UserProfileProvider>
-        <div className="h-screen flex flex-col bg-gradient-to-br from-background via-background to-primary/5 text-foreground">
-          <Header toggleSidebar={toggleSidebar} openSettings={openSettings} />
+      <MicrosoftConsentProvider>
+        <UserProfileProvider>
+          <div className="h-screen flex flex-col bg-gradient-to-br from-background via-background to-primary/5 text-foreground">
+            <Header toggleSidebar={toggleSidebar} openSettings={openSettings} />
 
-          {/* Keep sidebar beside main, not under header */}
-          <div className="flex flex-1 overflow-hidden">
-            <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
-            <main className="flex-1 overflow-auto p-4 md:p-6 relative">
-              {children}
-            </main>
+            {/* Keep sidebar beside main, not under header */}
+            <div className="flex flex-1 overflow-hidden">
+              <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
+              <main className="flex-1 overflow-auto p-4 md:p-6 relative">
+                {children}
+              </main>
+            </div>
+            <RoleDetailRequiredDialog />
+            <NotificationDetailModal />
+            <MicrosoftConsentDialog />
           </div>
-          <RoleDetailRequiredDialog />
-          <NotificationDetailModal />
-        </div>
-      </UserProfileProvider>
+        </UserProfileProvider>
+      </MicrosoftConsentProvider>
     </ThemeProvider>
   );
 }

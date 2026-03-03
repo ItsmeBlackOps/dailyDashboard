@@ -10,6 +10,7 @@ import {
   FileText,
   Database,
   UserPlus,
+  KeyRound,
   ClipboardCheck,
   BellRing,
   Sparkles
@@ -81,7 +82,7 @@ function NavItem({ icon: Icon, label, href, badge, showDot, isOpen, tourId }: Na
     >
       <span className="relative flex-shrink-0">
         <Icon className="h-5 w-5" />
-        {showDot && (
+        {(showDot || (!isOpen && !!badge)) && (
           <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background" />
         )}
       </span>
@@ -440,7 +441,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
             <Separator className="my-4" />
 
             <nav className="grid gap-1">
-              {['MAM', 'MM', 'admin', 'mtl', 'MTL'].includes(role) && (
+              {['mam', 'mm', 'admin', 'mtl'].includes(normalizedRole) && (
                 <>
                   <NavItem
                     icon={BarChart3}
@@ -497,7 +498,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 setIsPasswordModalOpen(true);
               }}
             >
-              <UserPlus className="h-5 w-5 flex-shrink-0 rotate-90" />
+              <KeyRound className="h-5 w-5 flex-shrink-0" />
               {isOpen && <span>Change Password</span>}
             </Button>
             <Button
