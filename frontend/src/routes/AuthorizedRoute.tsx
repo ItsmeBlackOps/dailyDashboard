@@ -1,5 +1,5 @@
 // src/routes/AuthorizedRoute.tsx
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, ScrollRestoration, useLocation } from 'react-router-dom';
 import { NotificationProvider } from '@/context/NotificationContext';
 
 const isAuthed = () => Boolean(localStorage.getItem('accessToken'));
@@ -18,6 +18,7 @@ export default function AuthorizedRoute() {
   }
   return (
     <NotificationProvider>
+      <ScrollRestoration />
       <Outlet />
     </NotificationProvider>
   );
