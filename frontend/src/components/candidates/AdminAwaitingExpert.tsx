@@ -341,9 +341,9 @@ export function AdminAwaitingExpert({ role }: AdminAwaitingExpertProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Admin Alerts</CardTitle>
+        <CardTitle>Candidate Assignment Approval</CardTitle>
         <CardDescription>
-          Assign experts to newly submitted candidates. Managers provide the recruiter; you complete the pairing.
+          Assign experts to newly submitted candidates. Managers provide recruiter context; admins complete the pairing.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

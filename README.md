@@ -81,6 +81,14 @@
 - The endpoint sanitizes responses, normalizes question metadata, and returns a cached timestamp plus remaining quota indicators.
 - Shares the `OPENAI_*` configuration used by the thank-you email generator; ensure those environment variables are set before enabling the feature.
 
+### Transcript Request & Approval
+- `POST /api/tasks/:taskId/transcript-request` lets any authenticated user who can see the task submit a transcript access request when TxAv is available.
+- `GET /api/tasks/:taskId/transcript-request` and `POST /api/tasks/transcript-requests/status` return the current user’s request status (`none`, `pending`, `approved`, `rejected`).
+- Admin approval endpoints:
+  - `GET /api/transcript-requests?status=pending`
+  - `PUT /api/transcript-requests/:requestId` with `{ "action": "approve" | "reject", "note": "optional" }`
+- Once approved, requester transcript access is granted via `GET /api/tasks/:taskId/transcript`.
+
 ### Dev Scripts
 - `npm start` – runs the server
 - `npm test` – runs Jest unit tests
@@ -144,6 +152,7 @@ API documentation is provided using Swagger. A minimal OpenAPI 3.1 document is s
 - Subject column is hidden by default. Users can toggle visibility via the “Show Subject” switch; the choice is persisted per-browser.
 - When Azure AD configuration is present, each task row exposes a “Create meeting” button that provisions an online Teams meeting based on the subject and scheduled time. First-time users see a consent banner that launches the Microsoft permissions dialog and polls the backend health check until consent succeeds. Once a meeting is created the join links are saved back onto the task, replacing the action with “Join meeting” and “Copy link” shortcuts.
 - Recruiters and leads can open the Actions menu and choose **Extract Interviewer Questions** (below **Generate Thanks Mail**) to fetch a sanitized, categorized list of interviewer questions. Extracted lists are cached locally per task and respect the same 3-per-6-hour GPT usage limit surfaced in the dialog.
+- Transcript actions are now explicit-only: no automatic interview debrief generation is triggered in background or on dialog open. Users generate debriefs manually and request transcript visibility from Actions when TxAv is green.
 
 ### Microsoft Teams Meetings (prototype)
 
