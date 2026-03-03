@@ -14,6 +14,8 @@ import moment from 'moment-timezone';
 import DOMPurify from 'dompurify';
 import { usePostHog } from 'posthog-js/react';
 import { useNotifications } from "@/context/NotificationContext";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { CandidateActivityTab } from "./CandidateActivityTab";
 
 interface Comment {
     id: string;
@@ -201,77 +203,90 @@ export function ResumeDiscussionDrawer({
                     </SheetDescription>
                 </SheetHeader>
 
-                <ScrollArea className="flex-1 p-4">
-                    {loading ? (
-                        <div className="flex justify-center py-8">
-                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        </div>
-                    ) : error ? (
-                        <div className="text-destructive text-sm text-center py-4">{error}</div>
-                    ) : comments.length === 0 ? (
-                        <div className="text-muted-foreground text-center py-8 text-sm">
-                            No comments yet. Start the discussion!
-                        </div>
-                    ) : (
-                        <div className="flex flex-col gap-4" ref={scrollRef}>
-                            {comments.map((comment) => (
-                                <div key={comment.id} className={`flex gap-3 ${comment.type === 'complaint' ? 'bg-destructive/10 p-2 rounded-lg -mx-2' : ''}`}>
-                                    <Avatar className="h-8 w-8 mt-1">
-                                        <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(comment.author.name)}&background=random`} />
-                                        <AvatarFallback>{comment.author.name.charAt(0)}</AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex-1 space-y-1">
-                                        <div className="flex items-center justify-between">
-                                            <span className="font-semibold text-sm">{comment.author.name}</span>
-                                            <span className="text-xs text-muted-foreground">
-                                                {moment(comment.createdAt).fromNow()}
-                                            </span>
-                                        </div>
-                                        <div className="text-xs text-muted-foreground mb-1">{comment.author.role}</div>
-                                        <div className="text-sm text-foreground/90 whitespace-pre-wrap break-words">
-                                            {comment.content}
-                                        </div>
-                                        {comment.type === 'complaint' && (
-                                            <div className="flex items-center gap-1 text-[10px] text-destructive uppercase tracking-wider font-semibold mt-1">
-                                                <Lock className="h-3 w-3" /> Hidden from Experts
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                            <div ref={scrollRef} />
-                        </div>
-                    )}
-                </ScrollArea>
+                <Tabs defaultValue="discussion" className="flex-1 flex flex-col min-h-0">
+                    <TabsList className="mx-4 mt-2 grid grid-cols-2 self-start">
+                        <TabsTrigger value="discussion">Discussion</TabsTrigger>
+                        <TabsTrigger value="activity">Activity</TabsTrigger>
+                    </TabsList>
 
-                <div className="p-4 border-t bg-background mt-auto">
-                    {canCreateComplaints && (
-                        <div className="flex items-center space-x-2 mb-3">
-                            <Switch id="complaint-mode" checked={isComplaint} onCheckedChange={setIsComplaint} />
-                            <Label htmlFor="complaint-mode" className={`text-xs font-medium cursor-pointer flex items-center gap-1 ${isComplaint ? 'text-destructive' : 'text-muted-foreground'}`}>
-                                {isComplaint ? (
-                                    <>
-                                        <Lock className="h-3 w-3" /> Complaint (Hidden from Expert)
-                                    </>
-                                ) : (
-                                    'Normal Comment'
-                                )}
-                            </Label>
+                    <TabsContent value="discussion" className="flex-1 flex flex-col min-h-0 mt-0">
+                        <ScrollArea className="flex-1 p-4">
+                            {loading ? (
+                                <div className="flex justify-center py-8">
+                                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                                </div>
+                            ) : error ? (
+                                <div className="text-destructive text-sm text-center py-4">{error}</div>
+                            ) : comments.length === 0 ? (
+                                <div className="text-muted-foreground text-center py-8 text-sm">
+                                    No comments yet. Start the discussion!
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-4" ref={scrollRef}>
+                                    {comments.map((comment) => (
+                                        <div key={comment.id} className={`flex gap-3 ${comment.type === 'complaint' ? 'bg-destructive/10 p-2 rounded-lg -mx-2' : ''}`}>
+                                            <Avatar className="h-8 w-8 mt-1">
+                                                <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(comment.author.name)}&background=random`} />
+                                                <AvatarFallback>{comment.author.name.charAt(0)}</AvatarFallback>
+                                            </Avatar>
+                                            <div className="flex-1 space-y-1">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-semibold text-sm">{comment.author.name}</span>
+                                                    <span className="text-xs text-muted-foreground">
+                                                        {moment(comment.createdAt).fromNow()}
+                                                    </span>
+                                                </div>
+                                                <div className="text-xs text-muted-foreground mb-1">{comment.author.role}</div>
+                                                <div className="text-sm text-foreground/90 whitespace-pre-wrap break-words">
+                                                    {comment.content}
+                                                </div>
+                                                {comment.type === 'complaint' && (
+                                                    <div className="flex items-center gap-1 text-[10px] text-destructive uppercase tracking-wider font-semibold mt-1">
+                                                        <Lock className="h-3 w-3" /> Hidden from Experts
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <div ref={scrollRef} />
+                                </div>
+                            )}
+                        </ScrollArea>
+
+                        <div className="p-4 border-t bg-background mt-auto">
+                            {canCreateComplaints && (
+                                <div className="flex items-center space-x-2 mb-3">
+                                    <Switch id="complaint-mode" checked={isComplaint} onCheckedChange={setIsComplaint} />
+                                    <Label htmlFor="complaint-mode" className={`text-xs font-medium cursor-pointer flex items-center gap-1 ${isComplaint ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                        {isComplaint ? (
+                                            <>
+                                                <Lock className="h-3 w-3" /> Complaint (Hidden from Expert)
+                                            </>
+                                        ) : (
+                                            'Normal Comment'
+                                        )}
+                                    </Label>
+                                </div>
+                            )}
+                            <div className="flex gap-2">
+                                <Textarea
+                                    value={newMessage}
+                                    onChange={(e) => setNewMessage(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="Type your message..."
+                                    className="min-h-[80px] resize-none"
+                                />
+                                <Button size="icon" className="h-auto w-12" onClick={handleSend} disabled={!newMessage.trim() || sending}>
+                                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                </Button>
+                            </div>
                         </div>
-                    )}
-                    <div className="flex gap-2">
-                        <Textarea
-                            value={newMessage}
-                            onChange={(e) => setNewMessage(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Type your message..."
-                            className="min-h-[80px] resize-none"
-                        />
-                        <Button size="icon" className="h-auto w-12" onClick={handleSend} disabled={!newMessage.trim() || sending}>
-                            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                        </Button>
-                    </div>
-                </div>
+                    </TabsContent>
+
+                    <TabsContent value="activity" className="flex-1 overflow-auto p-4 mt-0">
+                        <CandidateActivityTab candidateId={candidateId} isOpen={isOpen} />
+                    </TabsContent>
+                </Tabs>
             </SheetContent>
         </Sheet>
     );

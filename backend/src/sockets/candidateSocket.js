@@ -38,6 +38,8 @@ class CandidateSocketHandler {
     socket.on('leaveCandidateRoom', (candidateId) => {
       if (candidateId) socket.leave(`candidate:${candidateId}`);
     });
+    socket.on('getActivities', socketAsyncHandler(this.handleGetActivities.bind(this)));
+    socket.on('addActivity', socketAsyncHandler(this.handleAddActivity.bind(this)));
 
   }
 
@@ -991,6 +993,46 @@ class CandidateSocketHandler {
     }
   }
 
+
+  async handleGetActivities(socket, payload, callback) {
+    const { candidateId } = payload;
+    const user = socket.data.user;
+    try {
+      const activities = await candidateService.getActivities(user, candidateId);
+      return callback({ success: true, data: activities });
+    } catch (error) {
+      logger.error('handleGetActivities failed', { error: error.message, candidateId, user: user?.email });
+      return callback({ success: false, error: error.message });
+    }
+  }
+
+  async handleAddActivity(socket, payload, callback) {
+    const { candidateId, type, outcome, notes } = payload;
+    const user = socket.data.user;
+    try {
+      const { activity, alertRecruiter, attemptCount } =
+        await candidateService.addActivity(user, candidateId, { type, outcome, notes });
+
+      this.emitToCandidateRoom(socket, candidateId, 'newActivity', { candidateId, activity });
+
+      if (alertRecruiter) {
+        const candidate = await candidateService.getCandidateById(user, candidateId);
+        const recruiterEmail = candidate?.recruiterRaw || candidate?.Recruiter || candidate?.recruiter;
+        if (recruiterEmail) {
+          this.emitToUser(socket, recruiterEmail, 'callAlertNotification', {
+            candidateId,
+            candidateName: candidate?.['Candidate Name'] || 'Candidate',
+            attemptCount
+          });
+        }
+      }
+
+      return callback({ success: true, data: activity });
+    } catch (error) {
+      logger.error('handleAddActivity failed', { error: error.message, candidateId, user: user?.email });
+      return callback({ success: false, error: error.message });
+    }
+  }
 
   emitToRoles(socket, roles, event, payload) {
     if (!event) {
