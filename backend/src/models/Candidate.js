@@ -269,7 +269,7 @@ export class CandidateModel {
       source: payload.source || {},
       workflowStatus: payload.workflowStatus || WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: payload.resumeUnderstandingStatus || RESUME_UNDERSTANDING_STATUS.pending,
-      status: payload.status || 'active',
+      status: payload.status || 'Active',
       createdBy: payload.createdBy || null,
       updated_at: now,
       _last_write: now,

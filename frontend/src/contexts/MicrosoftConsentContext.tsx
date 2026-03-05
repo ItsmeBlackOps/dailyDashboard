@@ -18,7 +18,7 @@ const MicrosoftConsentContext = createContext<MicrosoftConsentContextValue | nul
 
 export function MicrosoftConsentProvider({ children }: { children: ReactNode }) {
   const { instance, accounts } = useMsal();
-  const account = useAccount(accounts[0] ?? null) ?? undefined;
+  const account = useAccount(accounts?.[0] ?? null) ?? undefined;
   const { needsConsent, checking, error, grant, refresh } = useOnlineMeetingConsent(instance, account);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const hasCheckedRef = useRef(false);

@@ -38,6 +38,7 @@ import { transcriptRequestModel } from './models/TranscriptRequest.js';
 import { authService } from './services/authService.js';
 import { taskService } from './services/taskService.js';
 import { userService } from './services/userService.js';
+import { candidateService } from './services/candidateService.js';
 
 // Import middleware
 import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler.js';
@@ -72,6 +73,9 @@ class Application {
 
       // Initialize models
       await this.initializeModels();
+
+      // One-time backfill: ensure all candidates have a task_created activity
+      await candidateService.backfillTaskCreatedActivities();
 
       // Setup HTTP server and Socket.IO
       this.setupServer();

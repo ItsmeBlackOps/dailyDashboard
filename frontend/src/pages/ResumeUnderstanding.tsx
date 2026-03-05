@@ -117,9 +117,9 @@ export default function ResumeUnderstanding() {
   }, [discussionCandidateId, queues]);
 
   const openDiscussion = (candidateId: string) => {
-    // Mark all unread comment notifications for this candidate as read — clears the red dot
+    // Mark all unread comment and activity notifications for this candidate as read — clears the red dot
     notifications
-      .filter(n => n.candidateId === candidateId && n.type === 'comment' && !n.read)
+      .filter(n => n.candidateId === candidateId && (n.type === 'comment' || n.type === 'activity') && !n.read)
       .forEach(n => markAsRead(n.id));
 
     setSearchParams(prev => {
@@ -478,7 +478,7 @@ export default function ResumeUnderstanding() {
                                     </Button>
                                     {notifications.some(n =>
                                       n.candidateId === candidate.id &&
-                                      n.type === 'comment' &&
+                                      (n.type === 'comment' || n.type === 'activity') &&
                                       !n.read
                                     ) && (
                                         <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-red-500 ring-2 ring-background" />
@@ -527,6 +527,7 @@ export default function ResumeUnderstanding() {
           onClose={closeDiscussion}
           candidateId={selectedCandidate.id}
           candidateName={selectedCandidate.name}
+          expertRaw={selectedCandidate.expertRaw}
         />
       )}
     </DashboardLayout>

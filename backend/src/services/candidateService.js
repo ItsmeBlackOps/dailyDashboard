@@ -1759,10 +1759,34 @@ class CandidateService {
     // However, since the socket handler calls this for notifications, and notifications are triggered by an action
     // allowed by the user, we assume read access is implicit or acceptable.
 
+    // Try the main candidates collection first
     const candidate = await candidateModel.getCandidateById(candidateId);
-    if (!candidate) return null;
+    if (candidate) return this.formatCandidateRecord(candidate);
 
-    return this.formatCandidateRecord(candidate);
+    // Fallback: check candidateDetails collection (used by Resume Understanding)
+    try {
+      const detailsDoc = await database.getCollection('candidateDetails')
+        .findOne({ _id: new ObjectId(candidateId) });
+      if (detailsDoc) {
+        // Return a lightweight record with the fields needed for notifications/alerts
+        return {
+          id: detailsDoc._id?.toString(),
+          _id: detailsDoc._id,
+          name: detailsDoc['Candidate Name'] || 'Candidate',
+          'Candidate Name': detailsDoc['Candidate Name'],
+          Recruiter: detailsDoc.Recruiter,
+          recruiterRaw: detailsDoc.Recruiter, // In candidateDetails, Recruiter is the raw email
+          recruiter: detailsDoc.Recruiter,
+          expertRaw: detailsDoc.Expert,
+          expert: detailsDoc.Expert,
+          branch: detailsDoc.Branch,
+        };
+      }
+    } catch (fallbackErr) {
+      logger.warn('getCandidateById fallback lookup failed', { error: fallbackErr.message, candidateId });
+    }
+
+    return null;
   }
 
   async getActivities(user, candidateId) {
@@ -1794,7 +1818,7 @@ class CandidateService {
       throw error;
     }
 
-    const validTypes = ['call_attempt', 'document_prepared'];
+    const validTypes = ['call_attempt', 'document_prepared', 'mock_interview', 'task_created', 'task_recreated', 'call_response'];
     if (!validTypes.includes(type)) {
       const error = new Error('Invalid activity type');
       error.statusCode = 400;
@@ -1904,6 +1928,219 @@ class CandidateService {
       type: newComment.type,
       createdAt: newComment.createdAt
     };
+  }
+  // ─── Persistent Call Alerts ────────────────────────────────────────
+  /**
+   * Create or update a pending call alert for a recruiter.
+   * If one already exists for the same candidate, updates the attemptCount.
+   */
+  async createPendingCallAlert({ candidateId, candidateName, attemptCount, recruiterEmail }) {
+    const col = database.getCollection('pendingCallAlerts');
+    const now = new Date();
+
+    const result = await col.updateOne(
+      { candidateId: new ObjectId(candidateId), recruiterEmail: recruiterEmail.toLowerCase(), status: 'pending' },
+      {
+        $set: {
+          candidateName,
+          attemptCount,
+          updatedAt: now
+        },
+        $setOnInsert: {
+          candidateId: new ObjectId(candidateId),
+          recruiterEmail: recruiterEmail.toLowerCase(),
+          status: 'pending',
+          createdAt: now
+        }
+      },
+      { upsert: true }
+    );
+
+    logger.info('Pending call alert created/updated', { candidateId, recruiterEmail, attemptCount });
+    return result;
+  }
+
+  /**
+   * Get all pending (unresponded) call alerts for a recruiter.
+   */
+  async getPendingCallAlerts(userEmail) {
+    if (!userEmail) return [];
+    const col = database.getCollection('pendingCallAlerts');
+    return col
+      .find({ recruiterEmail: userEmail.toLowerCase(), status: 'pending' })
+      .sort({ createdAt: 1 })
+      .toArray();
+  }
+
+  /**
+   * Respond to a call alert — marks it responded and logs the response as an activity.
+   */
+  async respondToCallAlert(user, alertId, responseText) {
+    if (!user?.email) {
+      const error = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+    if (!responseText || !responseText.trim()) {
+      const error = new Error('Response text is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const col = database.getCollection('pendingCallAlerts');
+    const alert = await col.findOne({ _id: new ObjectId(alertId), status: 'pending' });
+
+    if (!alert) {
+      const error = new Error('Alert not found or already responded');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Mark alert as responded
+    await col.updateOne(
+      { _id: new ObjectId(alertId) },
+      {
+        $set: {
+          status: 'responded',
+          response: responseText.trim(),
+          respondedBy: user.email,
+          respondedAt: new Date()
+        }
+      }
+    );
+
+    // Log the response as an activity on the candidate
+    const activityCol = database.getCollection('candidateactivities');
+    const newActivity = {
+      candidateId: alert.candidateId,
+      type: 'call_response',
+      notes: responseText.trim(),
+      createdBy: {
+        email: user.email,
+        name: formatDisplayName(user.email),
+        role: user.role || 'recruiter'
+      },
+      createdAt: new Date()
+    };
+
+    const actResult = await activityCol.insertOne(newActivity);
+
+    logger.info('Call alert responded', { alertId, candidateId: alert.candidateId.toString(), user: user.email });
+
+    return {
+      alert,
+      activity: {
+        id: actResult.insertedId,
+        type: newActivity.type,
+        notes: newActivity.notes,
+        createdBy: newActivity.createdBy,
+        createdAt: newActivity.createdAt
+      }
+    };
+  }
+
+  /**
+   * One-time backfill: insert a task_created activity for every candidate
+   * that doesn't already have one.  Uses the candidate's own created_at
+   * timestamp so the Activity timeline is historically accurate.
+   */
+  async backfillTaskCreatedActivities() {
+    const col = database.getCollection('candidateactivities');
+    try {
+      // Step 1: Remove duplicate task_created entries (keep only the earliest per candidate)
+      const dupes = await col.aggregate([
+        { $match: { type: 'task_created' } },
+        { $sort: { createdAt: 1 } },
+        { $group: { _id: '$candidateId', count: { $sum: 1 }, keep: { $first: '$_id' }, ids: { $push: '$_id' } } },
+        { $match: { count: { $gt: 1 } } }
+      ]).toArray();
+
+      if (dupes.length > 0) {
+        const idsToDelete = dupes.flatMap(d => d.ids.filter(id => id.toString() !== d.keep.toString()));
+        if (idsToDelete.length > 0) {
+          await col.deleteMany({ _id: { $in: idsToDelete } });
+          logger.info(`Cleaned up ${idsToDelete.length} duplicate task_created entries`);
+        }
+      }
+
+      // Step 2: Build a candidate lookup map (createdBy or Recruiter as fallback)
+      const candidates = await database.getCollection('candidateDetails')
+        .find({ docType: { $in: [null, 'candidate'] } })
+        .project({ _id: 1, createdBy: 1, Recruiter: 1, created_at: 1, updated_at: 1 })
+        .toArray();
+
+      if (!candidates.length) return;
+
+      const candidateMap = new Map(candidates.map(c => [c._id.toString(), c]));
+
+      // Step 3: Fix existing "System" entries — replace with actual creator info
+      const systemEntries = await col
+        .find({ type: 'task_created', 'createdBy.email': 'system' })
+        .toArray();
+
+      if (systemEntries.length > 0) {
+        const bulkOps = [];
+        for (const entry of systemEntries) {
+          const cand = candidateMap.get(entry.candidateId.toString());
+          if (!cand) continue;
+          const creatorEmail = cand.createdBy || cand.Recruiter || '';
+          if (!creatorEmail) continue;
+          bulkOps.push({
+            updateOne: {
+              filter: { _id: entry._id },
+              update: {
+                $set: {
+                  'createdBy.email': creatorEmail,
+                  'createdBy.name': formatDisplayName(creatorEmail),
+                  'createdBy.role': 'recruiter',
+                  notes: `Task created by ${formatDisplayName(creatorEmail)}`,
+                  createdAt: cand.created_at || cand.updated_at || cand._id.getTimestamp()
+                }
+              }
+            }
+          });
+        }
+        if (bulkOps.length > 0) {
+          await col.bulkWrite(bulkOps);
+          logger.info(`Fixed creator info on ${bulkOps.length} task_created entries`);
+        }
+      }
+
+      // Step 4: Backfill candidates that still don't have a task_created entry
+      const existing = await col
+        .find({ type: 'task_created' })
+        .project({ candidateId: 1 })
+        .toArray();
+
+      const existingSet = new Set(existing.map(e => e.candidateId.toString()));
+
+      const toInsert = candidates
+        .filter(c => !existingSet.has(c._id.toString()))
+        .map(c => {
+          const creatorEmail = c.createdBy || c.Recruiter || '';
+          const createdAt = c.created_at || c.updated_at || c._id.getTimestamp();
+          return {
+            candidateId: c._id,
+            type: 'task_created',
+            notes: creatorEmail ? `Task created by ${formatDisplayName(creatorEmail)}` : 'Task created',
+            createdBy: {
+              email: creatorEmail || 'system',
+              name: creatorEmail ? formatDisplayName(creatorEmail) : 'System',
+              role: 'recruiter'
+            },
+            createdAt
+          };
+        });
+
+      if (toInsert.length > 0) {
+        await col.insertMany(toInsert);
+        logger.info(`Backfilled task_created activities for ${toInsert.length} candidates`);
+      } else {
+        logger.info('All candidates already have task_created activity');
+      }
+    } catch (err) {
+      logger.error('task_created backfill failed', { error: err.message });
+    }
   }
 }
 

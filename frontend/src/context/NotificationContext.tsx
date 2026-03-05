@@ -29,7 +29,7 @@ interface Actor {
 
 interface NotificationEvent {
     id: string;
-    type: 'comment' | 'assignment' | 'info' | 'batch';
+    type: 'comment' | 'assignment' | 'info' | 'batch' | 'activity';
     title: string;
     description: string;
     timestamp: string;
@@ -44,9 +44,11 @@ interface NotificationEvent {
 }
 
 interface CallAlert {
+    id: string;
     candidateId: string;
     candidateName: string;
     attemptCount: number;
+    createdAt?: string;
 }
 
 interface NotificationContextType {
@@ -59,8 +61,9 @@ interface NotificationContextType {
     isModalOpen: boolean;
     openModal: (notification: NotificationEvent) => void;
     closeModal: () => void;
-    callAlert: CallAlert | null;
-    clearCallAlert: () => void;
+    pendingCallAlerts: CallAlert[];
+    respondToCallAlert: (alertId: string, responseText: string) => Promise<boolean>;
+    activityRefreshTrigger: number;
 }
 
 const NotificationContext = createContext<NotificationContextType | null>(null);
@@ -77,7 +80,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
     const [selectedNotification, setSelectedNotification] = useState<NotificationEvent | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [callAlert, setCallAlert] = useState<CallAlert | null>(null);
+    const [pendingCallAlerts, setPendingCallAlerts] = useState<CallAlert[]>([]);
+    const [activityRefreshTrigger, setActivityRefreshTrigger] = useState(0);
 
     const { toast } = useToast();
     const { refreshAccessToken, authFetch } = useAuth();
@@ -168,6 +172,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
         const handleConnect = () => {
             console.log("Notification Socket Connected");
+            // Fetch persistent pending call alerts from DB
+            socket.emit('getPendingCallAlerts', (response: any) => {
+                if (response?.success && Array.isArray(response.data)) {
+                    setPendingCallAlerts(response.data);
+                }
+            });
         };
 
         const handleNewComment = (payload: { candidate: any, comment: any }) => {
@@ -392,11 +402,59 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         };
         socket.on('taskNotification', handleTaskNotification);
 
-        const handleCallAlert = (payload: CallAlert) => {
-            setCallAlert(payload);
+        const handleCallAlert = (payload: any) => {
+            // New real-time alert — add to pending list (will have id after DB persist)
+            // Re-fetch from DB to get the persisted alert with its _id
+            socket.emit('getPendingCallAlerts', (response: any) => {
+                if (response?.success && Array.isArray(response.data)) {
+                    setPendingCallAlerts(response.data);
+                }
+            });
             playSound('beep');
         };
         socket.on('callAlertNotification', handleCallAlert);
+
+        // Activity Notification Handler
+        const handleActivityNotification = (payload: { candidate: any, activity: any }) => {
+            const { candidate, activity } = payload;
+            const actorName = activity?.createdBy?.name || 'Someone';
+            const candidateName = candidate?.['Candidate Name'] || candidate?.name || 'Candidate';
+
+            const typeLabels: Record<string, string> = {
+                call_attempt: activity?.outcome === 'connected' ? 'Call Connected' : 'Candidate Unavailable',
+                document_prepared: 'Document Prepared',
+                mock_interview: 'Mock Interview',
+                task_created: 'Task Created',
+                task_recreated: 'Task Recreated',
+                call_response: 'Call Response'
+            };
+            const label = typeLabels[activity?.type] || activity?.type || 'Activity';
+
+            const notifId = activity?.id || activity?._id || `activity-${Date.now()}`;
+
+            const newNotif: NotificationEvent = {
+                id: notifId,
+                type: 'activity',
+                title: 'New Activity',
+                description: `${label} logged for ${candidateName} by ${actorName}`,
+                timestamp: new Date().toISOString(),
+                read: false,
+                candidateId: candidate?.id || candidate?._id,
+            };
+
+            setNotifications(prev => {
+                if (prev.some(n => n.id === newNotif.id)) return prev;
+                return [newNotif, ...prev];
+            });
+
+            toast({
+                title: 'New Activity',
+                description: `${label} - ${candidateName}`,
+                duration: 5000,
+            });
+            playSound('beep');
+        };
+        socket.on('newActivityNotification', handleActivityNotification);
 
         socket.connect();
 
@@ -411,6 +469,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             socket.off('bulkCandidateStatusUpdated', handleBulkStatusUpdate);
             socket.off('taskNotification', handleTaskNotification);
             socket.off('callAlertNotification', handleCallAlert);
+            socket.off('newActivityNotification', handleActivityNotification);
             socket.disconnect();
         };
     }, [socket, refreshAccessToken, toast]);
@@ -435,10 +494,35 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
+    const respondToCallAlert = async (alertId: string, responseText: string): Promise<boolean> => {
+        if (!socket) return false;
+        return new Promise((resolve) => {
+            socket.emit('respondToCallAlert', { alertId, responseText }, (response: any) => {
+                if (response?.success) {
+                    setPendingCallAlerts(prev => prev.filter(a => a.id !== alertId));
+                    setActivityRefreshTrigger(prev => prev + 1);
+                    toast({
+                        title: 'Response Submitted',
+                        description: 'Your response has been logged.',
+                        duration: 3000,
+                    });
+                    resolve(true);
+                } else {
+                    toast({
+                        title: 'Error',
+                        description: response?.error || 'Failed to submit response',
+                        variant: 'destructive',
+                        duration: 4000,
+                    });
+                    resolve(false);
+                }
+            });
+        });
+    };
+
     return (
-        <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, clearAll, selectedNotification, isModalOpen, openModal, closeModal, callAlert, clearCallAlert: () => setCallAlert(null) }}>
+        <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, clearAll, selectedNotification, isModalOpen, openModal, closeModal, pendingCallAlerts, respondToCallAlert, activityRefreshTrigger }}>
             {children}
-            {/* Audio element if needed for persistent playback context, but new Audio() works often */}
         </NotificationContext.Provider>
     );
 }

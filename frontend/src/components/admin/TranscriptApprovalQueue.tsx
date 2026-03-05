@@ -73,7 +73,7 @@ export function TranscriptApprovalQueue() {
     } finally {
       setLoading(false);
     }
-  }, [API_URL, authFetch, statusFilter, toast]);
+  }, [authFetch, statusFilter, toast]);
 
   useEffect(() => {
     void loadRequests();
@@ -117,7 +117,7 @@ export function TranscriptApprovalQueue() {
     } finally {
       setActionLoading((prev) => ({ ...prev, [requestId]: false }));
     }
-  }, [API_URL, authFetch, statusFilter, toast]);
+  }, [authFetch, statusFilter, toast]);
 
   const requestCountLabel = useMemo(() => {
     if (loading) return 'Loading...';
