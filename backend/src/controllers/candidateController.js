@@ -14,7 +14,7 @@ class CandidateController {
       }
 
       const normalizedRole = (user.role || '').trim().toLowerCase();
-      if (!['manager', 'admin', 'mm', 'recruiter', "mlead"].includes(normalizedRole)) {
+      if (!['manager', 'admin', 'mm', 'mam', 'mlead', 'recruiter'].includes(normalizedRole)) {
         return res.status(403).json({
           success: false,
           error: 'Only managers can upload resumes'

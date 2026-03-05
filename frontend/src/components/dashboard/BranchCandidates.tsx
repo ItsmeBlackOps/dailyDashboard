@@ -2102,6 +2102,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       }
 
       const payload = {
+        candidateId: mockCandidate.id,
         candidateName: mockForm.candidateName,
         candidateEmail: mockForm.candidateEmail,
         contactNumber: mockForm.contactNumber,
