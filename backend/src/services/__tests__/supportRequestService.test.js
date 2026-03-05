@@ -80,20 +80,24 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
 
     mockUserModel.getUserByEmail.mockImplementation((email) => {
       if (email === 'recruiter@example.com') {
-        return {
-          teamLead: 'Alice Leader',
-          manager: 'Bob Manager'
-        };
+        return { teamLead: 'Alice Leader', manager: 'Bob Manager' };
       }
       if (email === 'alice.leader@example.com') {
         return { teamLead: '', manager: 'Bob Manager' };
+      }
+      if (email === 'bob.manager@example.com') {
+        return { teamLead: '', manager: 'Carol Mm' };
+      }
+      if (email === 'carol.mm@example.com') {
+        return { teamLead: '', manager: '' };
       }
       return null;
     });
 
     mockUserModel.getAllUsers.mockReturnValue([
       { email: 'alice.leader@example.com', role: 'mlead', teamLead: '', manager: 'Bob Manager' },
-      { email: 'bob.manager@example.com', role: 'mam', teamLead: '', manager: '' },
+      { email: 'bob.manager@example.com', role: 'mam', teamLead: '', manager: 'Carol Mm' },
+      { email: 'carol.mm@example.com', role: 'mm', teamLead: '', manager: '' },
       { email: 'recruiter@example.com', role: 'recruiter', teamLead: 'Alice Leader', manager: 'Bob Manager' }
     ]);
 
@@ -125,10 +129,14 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
     expect(args.message.toRecipients).toEqual([
       { emailAddress: { address: 'tech.leaders@silverspaceinc.com' } }
     ]);
+    // recruiter is the sender — excluded from CC; mlead, mam, mm included
     expect(args.message.ccRecipients).toEqual(expect.arrayContaining([
       { emailAddress: { address: 'alice.leader@example.com' } },
-      { emailAddress: { address: 'bob.manager@example.com' } }
+      { emailAddress: { address: 'bob.manager@example.com' } },
+      { emailAddress: { address: 'carol.mm@example.com' } }
     ]));
+    const ccAddresses = args.message.ccRecipients.map((r) => r.emailAddress.address);
+    expect(ccAddresses).not.toContain('recruiter@example.com');
     expect(args.message.subject).toContain('Interview Support - John Doe - Full Stack');
     expect(args.message.subject).toContain(' at ');
     expect(args.message.subject).toMatch(/EST$/);
@@ -161,20 +169,24 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
 
     mockUserModel.getUserByEmail.mockImplementation((email) => {
       if (email === 'recruiter@example.com') {
-        return {
-          teamLead: 'Alice Leader',
-          manager: 'Bob Manager'
-        };
+        return { teamLead: 'Alice Leader', manager: 'Bob Manager' };
       }
       if (email === 'alice.leader@example.com') {
         return { teamLead: '', manager: 'Bob Manager' };
+      }
+      if (email === 'bob.manager@example.com') {
+        return { teamLead: '', manager: 'Carol Mm' };
+      }
+      if (email === 'carol.mm@example.com') {
+        return { teamLead: '', manager: '' };
       }
       return null;
     });
 
     mockUserModel.getAllUsers.mockReturnValue([
       { email: 'alice.leader@example.com', role: 'mlead', teamLead: '', manager: 'Bob Manager' },
-      { email: 'bob.manager@example.com', role: 'mam', teamLead: '', manager: '' },
+      { email: 'bob.manager@example.com', role: 'mam', teamLead: '', manager: 'Carol Mm' },
+      { email: 'carol.mm@example.com', role: 'mm', teamLead: '', manager: '' },
       { email: 'recruiter@example.com', role: 'recruiter', teamLead: 'Alice Leader', manager: 'Bob Manager' }
     ]);
 
@@ -378,15 +390,116 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
         jest.useRealTimers();
       }
     });
+
+  it('excludes sender from cc and includes full chain when mam submits for another candidate', async () => {
+    const futureLocal = moment().tz('America/New_York').add(5, 'hours').startOf('minute').format('YYYY-MM-DDTHH:mm');
+
+    mockCandidateModel.getCandidateById.mockResolvedValue({
+      id: 'cand-5',
+      name: 'jane smith',
+      technology: 'python',
+      email: 'jane@example.com',
+      recruiter: 'recruiter@example.com',
+      contact: '+1 555 9999'
+    });
+
+    mockCandidateService.formatCandidateRecord.mockReturnValue({
+      id: 'cand-5',
+      name: 'Jane Smith',
+      technology: 'Python',
+      email: 'jane@example.com',
+      recruiterRaw: 'recruiter@example.com',
+      contact: '+1 555 9999'
+    });
+
+    mockUserModel.getUserByEmail.mockImplementation((email) => {
+      if (email === 'recruiter@example.com') {
+        return { teamLead: 'Alice Leader', manager: 'Bob Manager' };
+      }
+      if (email === 'bob.manager@example.com') {
+        return { teamLead: '', manager: 'Carol Mm' };
+      }
+      if (email === 'carol.mm@example.com') {
+        return { teamLead: '', manager: '' };
+      }
+      return null;
+    });
+
+    mockUserModel.getAllUsers.mockReturnValue([
+      { email: 'alice.leader@example.com', role: 'mlead', teamLead: '', manager: 'Bob Manager' },
+      { email: 'bob.manager@example.com', role: 'mam', teamLead: '', manager: 'Carol Mm' },
+      { email: 'carol.mm@example.com', role: 'mm', teamLead: '', manager: '' },
+      { email: 'recruiter@example.com', role: 'recruiter', teamLead: 'Alice Leader', manager: 'Bob Manager' }
+    ]);
+
+    mockGraphMailService.sendDelegatedMail.mockResolvedValue({});
+
+    await supportRequestService.sendInterviewSupportRequest(
+      { email: 'bob.manager@example.com', role: 'mam' },
+      {
+        candidateId: 'cand-5',
+        endClient: 'Acme Corp',
+        jobTitle: 'Python Developer',
+        interviewRound: '1st Round',
+        interviewDateTime: futureLocal,
+        duration: '60'
+      },
+      {},
+      'mam-token'
+    );
+
+    const [, args] = mockGraphMailService.sendDelegatedMail.mock.calls[0];
+    // mam is sender — excluded; recruiter, mlead, mm are included
+    expect(args.message.ccRecipients).toEqual(expect.arrayContaining([
+      { emailAddress: { address: 'recruiter@example.com' } },
+      { emailAddress: { address: 'alice.leader@example.com' } },
+      { emailAddress: { address: 'carol.mm@example.com' } }
+    ]));
+    const ccAddresses = args.message.ccRecipients.map((r) => r.emailAddress.address);
+    expect(ccAddresses).not.toContain('bob.manager@example.com');
+  });
 });
 
 describe('supportRequestService.sendMockInterviewRequest', () => {
+  const mockCandidateDoc = {
+    id: 'mock-cand-1',
+    name: 'john doe',
+    technology: 'react js',
+    email: 'john@example.com',
+    recruiter: 'recruiter@example.com',
+    contact: '+1 555 0000'
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     config.support.supportTo = 'tech.leaders@silverspaceinc.com';
     config.support.supportCcFallback = [];
-    mockUserModel.getAllUsers.mockReturnValue([]);
     mockGraphMailService.sendDelegatedMail.mockResolvedValue({});
+    mockCandidateModel.getCandidateById.mockResolvedValue(mockCandidateDoc);
+    mockCandidateService.formatCandidateRecord.mockReturnValue({
+      ...mockCandidateDoc,
+      name: 'John Doe',
+      technology: 'React Js',
+      recruiterRaw: 'recruiter@example.com'
+    });
+    mockUserModel.getUserByEmail.mockImplementation((email) => {
+      if (email === 'recruiter@example.com') {
+        return { teamLead: 'Alice Leader', manager: 'Bob Manager' };
+      }
+      if (email === 'bob.manager@example.com') {
+        return { teamLead: '', manager: 'Carol Mm' };
+      }
+      if (email === 'carol.mm@example.com') {
+        return { teamLead: '', manager: '' };
+      }
+      return null;
+    });
+    mockUserModel.getAllUsers.mockReturnValue([
+      { email: 'alice.leader@example.com', role: 'mlead', teamLead: '', manager: 'Bob Manager' },
+      { email: 'bob.manager@example.com', role: 'mam', teamLead: '', manager: 'Carol Mm' },
+      { email: 'carol.mm@example.com', role: 'mm', teamLead: '', manager: '' },
+      { email: 'recruiter@example.com', role: 'recruiter', teamLead: 'Alice Leader', manager: 'Bob Manager' }
+    ]);
   });
 
   it('sends mock email with stored attachments', async () => {
@@ -397,6 +510,7 @@ describe('supportRequestService.sendMockInterviewRequest', () => {
     const result = await supportRequestService.sendMockInterviewRequest(
       { email: 'recruiter@example.com', role: 'recruiter' },
       {
+        candidateId: 'mock-cand-1',
         candidateName: 'john doe',
         candidateEmail: 'john@example.com',
         contactNumber: '+1 555 0000',
@@ -421,11 +535,14 @@ describe('supportRequestService.sendMockInterviewRequest', () => {
     expect(payload.message.subject).toContain('Mock Interview - John Doe - React Js - Training');
     expect(payload.message.body.content).toContain('Complete the mock before the day of interview.');
     expect(payload.message.attachments).toHaveLength(2);
-    expect(payload.message.ccRecipients).toEqual(
-      expect.arrayContaining([
-        { emailAddress: { address: 'recruiter@example.com' } }
-      ])
-    );
+    // recruiter is sender — excluded from CC; mlead, mam, mm are included
+    expect(payload.message.ccRecipients).toEqual(expect.arrayContaining([
+      { emailAddress: { address: 'alice.leader@example.com' } },
+      { emailAddress: { address: 'bob.manager@example.com' } },
+      { emailAddress: { address: 'carol.mm@example.com' } }
+    ]));
+    const ccAddresses = payload.message.ccRecipients.map((r) => r.emailAddress.address);
+    expect(ccAddresses).not.toContain('recruiter@example.com');
     expect(payload.saveToSentItems).toBe(true);
   });
 });
@@ -481,6 +598,9 @@ describe('supportRequestService.sendAssessmentSupportRequest', () => {
         return { teamLead: '', manager: 'Bob Manager' };
       }
       if (email === 'bob.manager@example.com') {
+        return { teamLead: '', manager: 'Carol Mm' };
+      }
+      if (email === 'carol.mm@example.com') {
         return { teamLead: '', manager: '' };
       }
       return null;
@@ -488,7 +608,8 @@ describe('supportRequestService.sendAssessmentSupportRequest', () => {
 
     mockUserModel.getAllUsers.mockReturnValue([
       { email: 'alice.leader@example.com', role: 'mlead', teamLead: '', manager: 'Bob Manager' },
-      { email: 'bob.manager@example.com', role: 'mam', teamLead: '', manager: '' },
+      { email: 'bob.manager@example.com', role: 'mam', teamLead: '', manager: 'Carol Mm' },
+      { email: 'carol.mm@example.com', role: 'mm', teamLead: '', manager: '' },
       { email: 'recruiter@example.com', role: 'recruiter', teamLead: 'Alice Leader', manager: 'Bob Manager' }
     ]);
   });
@@ -623,5 +744,35 @@ describe('supportRequestService.sendAssessmentSupportRequest', () => {
       message: 'Assessment received date and time must be in the past',
       statusCode: 400
     });
+  });
+
+  it('excludes sender from cc and includes full chain when mam submits for another candidate', async () => {
+    const pastEst = moment().tz('America/New_York').subtract(1, 'day').set({ hour: 10, minute: 0 });
+
+    const payload = {
+      candidateId: 'cand-assess-1',
+      endClient: 'Acme',
+      jobTitle: 'Java Developer',
+      technology: 'Java',
+      assessmentReceivedDateTime: pastEst.format('YYYY-MM-DDTHH:mm'),
+      screeningDone: 'false'
+    };
+
+    await supportRequestService.sendAssessmentSupportRequest(
+      { email: 'bob.manager@example.com', role: 'mam' },
+      payload,
+      buildFiles(),
+      'mam-token'
+    );
+
+    const [, args] = mockGraphMailService.sendDelegatedMail.mock.calls[0];
+    // mam is sender — excluded; recruiter, mlead, mm are included
+    expect(args.message.ccRecipients).toEqual(expect.arrayContaining([
+      { emailAddress: { address: 'recruiter@example.com' } },
+      { emailAddress: { address: 'alice.leader@example.com' } },
+      { emailAddress: { address: 'carol.mm@example.com' } }
+    ]));
+    const ccAddresses = args.message.ccRecipients.map((r) => r.emailAddress.address);
+    expect(ccAddresses).not.toContain('bob.manager@example.com');
   });
 });

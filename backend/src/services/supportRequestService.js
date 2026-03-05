@@ -439,16 +439,23 @@ class SupportRequestService {
 
     const recruiterRecord = userModel.getUserByEmail(recruiterEmail);
     if (!recruiterRecord) {
-      return { teamLeadEmail: null, managerEmail: null };
+      return { mleadEmail: null, mamEmail: null, mmEmail: null };
     }
 
-    const teamLeadKey = normalizeName(recruiterRecord.teamLead ?? '');
-    const managerKey = normalizeName(recruiterRecord.manager ?? '');
+    const mleadKey = normalizeName(recruiterRecord.teamLead ?? '');
+    const mamKey = normalizeName(recruiterRecord.manager ?? '');
 
-    return {
-      teamLeadEmail: teamLeadKey ? nameMap.get(teamLeadKey) ?? null : null,
-      managerEmail: managerKey ? nameMap.get(managerKey) ?? null : null,
-    };
+    const mleadEmail = mleadKey ? nameMap.get(mleadKey) ?? null : null;
+    const mamEmail = mamKey ? nameMap.get(mamKey) ?? null : null;
+
+    let mmEmail = null;
+    if (mamEmail) {
+      const mamRecord = userModel.getUserByEmail(mamEmail);
+      const mmKey = normalizeName(mamRecord?.manager ?? '');
+      mmEmail = mmKey ? nameMap.get(mmKey) ?? null : null;
+    }
+
+    return { mleadEmail, mamEmail, mmEmail };
   }
 
   buildSubject(candidateName, technology, when) {
@@ -812,6 +819,7 @@ class SupportRequestService {
       throw duplicateError;
     }
 
+    const requesterEmail = ensureEmail(user.email || '', 'Requester email');
     const requesterDisplay = deriveDisplayNameFromEmail(user.email);
 
     let signatureHtml = '';
@@ -835,17 +843,17 @@ class SupportRequestService {
       });
     }
 
-    const { teamLeadEmail, managerEmail } = this.gatherHierarchyEmails(recruiterEmail);
+    const { mleadEmail, mamEmail, mmEmail } = this.gatherHierarchyEmails(recruiterEmail);
 
     const supportConfig = config.support || {};
     const toRecipients = new Set([supportConfig.supportTo || 'tech.leaders@silverspaceinc.com']);
     const ccRecipients = new Set(supportConfig.supportCcFallback || []);
 
-    if (teamLeadEmail) {
-      ccRecipients.add(teamLeadEmail);
-    }
-    if (managerEmail) {
-      ccRecipients.add(managerEmail);
+    const senderEmail = requesterEmail.toLowerCase();
+    for (const email of [recruiterEmail, mleadEmail, mamEmail, mmEmail]) {
+      if (email && email.toLowerCase() !== senderEmail) {
+        ccRecipients.add(email.toLowerCase());
+      }
     }
 
     const sanitizedAttachments = [];
@@ -1088,17 +1096,17 @@ class SupportRequestService {
       });
     }
 
-    const { teamLeadEmail, managerEmail } = this.gatherHierarchyEmails(recruiterEmail);
+    const { mleadEmail, mamEmail, mmEmail } = this.gatherHierarchyEmails(recruiterEmail);
 
     const supportConfig = config.support || {};
     const toRecipients = new Set([supportConfig.supportTo || 'tech.leaders@silverspaceinc.com']);
     const ccRecipients = new Set(supportConfig.supportCcFallback || []);
-    ccRecipients.add(requesterEmail);
-    if (teamLeadEmail) {
-      ccRecipients.add(teamLeadEmail);
-    }
-    if (managerEmail) {
-      ccRecipients.add(managerEmail);
+
+    const senderEmail = requesterEmail.toLowerCase();
+    for (const email of [recruiterEmail, mleadEmail, mamEmail, mmEmail]) {
+      if (email && email.toLowerCase() !== senderEmail) {
+        ccRecipients.add(email.toLowerCase());
+      }
     }
 
     const resumeAttachments = sanitizeFlexibleAttachments(files.resume);
@@ -1254,6 +1262,20 @@ class SupportRequestService {
 
     const storedAttachments = sanitizeStoredMockAttachments(payload.attachments);
 
+    const candidateId = normalizeWhitespace(payload.candidateId || '');
+    if (!candidateId) {
+      const error = new Error('Candidate id is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const candidateRecord = await this.loadCandidate(candidateId);
+    const formattedCandidate = candidateService.formatCandidateRecord(candidateRecord);
+    const recruiterEmail = ensureEmail(
+      formattedCandidate.recruiterRaw || candidateRecord.recruiter || candidateRecord.createdBy || '',
+      'Recruiter email'
+    );
+
     const supportConfig = config.support || {};
     const toRecipients = new Set([
       supportConfig.supportTo || 'tech.leaders@silverspaceinc.com'
@@ -1261,14 +1283,13 @@ class SupportRequestService {
     const ccRecipients = new Set(supportConfig.supportCcFallback || []);
 
     const requesterEmail = ensureEmail(user.email || '', 'Requester email');
-    ccRecipients.add(requesterEmail);
+    const senderEmail = requesterEmail.toLowerCase();
 
-    const hierarchy = this.gatherHierarchyEmails(requesterEmail);
-    if (hierarchy.teamLeadEmail) {
-      ccRecipients.add(hierarchy.teamLeadEmail);
-    }
-    if (hierarchy.managerEmail) {
-      ccRecipients.add(hierarchy.managerEmail);
+    const { mleadEmail, mamEmail, mmEmail } = this.gatherHierarchyEmails(recruiterEmail);
+    for (const email of [recruiterEmail, mleadEmail, mamEmail, mmEmail]) {
+      if (email && email.toLowerCase() !== senderEmail) {
+        ccRecipients.add(email.toLowerCase());
+      }
     }
 
     let signatureHtml = '';
