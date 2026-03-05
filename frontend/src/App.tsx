@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@radix-ui/react-tooltip';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 import SignIn from './pages/auth/SignIn';
 import TasksToday from './pages/TasksToday';
@@ -20,9 +21,10 @@ import PermissionsManagement from './pages/PermissionsManagement';
 const queryClient = new QueryClient();
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <BrowserRouter>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <BrowserRouter>
         <Routes>
           {/* Protected dashboard for admin only */}
           <Route element={<AuthorizedRoute />}>
@@ -46,10 +48,11 @@ const App = () => (
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </BrowserRouter>
-      <Toaster />
-    </TooltipProvider>
-  </QueryClientProvider>
+        </BrowserRouter>
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;

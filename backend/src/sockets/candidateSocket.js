@@ -40,6 +40,8 @@ class CandidateSocketHandler {
     });
     socket.on('getActivities', socketAsyncHandler(this.handleGetActivities.bind(this)));
     socket.on('addActivity', socketAsyncHandler(this.handleAddActivity.bind(this)));
+    socket.on('getPendingCallAlerts', socketAsyncHandler(this.handleGetPendingCallAlerts.bind(this)));
+    socket.on('respondToCallAlert', socketAsyncHandler(this.handleRespondToCallAlert.bind(this)));
 
   }
 
@@ -193,6 +195,20 @@ class CandidateSocketHandler {
       }
 
       const created = await candidateService.createCandidateFromManager(user, validation.payload);
+
+      // Auto-log task_created activity
+      try {
+        const candidateId = created.id || created._id;
+        if (candidateId) {
+          const { activity } = await candidateService.addActivity(user, candidateId.toString(), {
+            type: 'task_created',
+            notes: `Task created by ${user.name || user.email}`
+          });
+          this.emitToCandidateRoom(socket, candidateId.toString(), 'newActivity', { candidateId: candidateId.toString(), activity });
+        }
+      } catch (actErr) {
+        logger.error('Failed to log task_created activity', { error: actErr.message });
+      }
 
       return callback({ success: true, candidate: created });
     } catch (error) {
@@ -364,6 +380,19 @@ class CandidateSocketHandler {
       this.emitToRoles(socket, ['admin'], 'candidateResumeStatusChanged', {
         candidate: updated
       });
+
+      // Auto-log task_recreated activity when status goes back to pending
+      if (status === 'pending') {
+        try {
+          const { activity } = await candidateService.addActivity(user, candidateId, {
+            type: 'task_recreated',
+            notes: 'Resume understanding task recreated'
+          });
+          this.emitToCandidateRoom(socket, candidateId, 'newActivity', { candidateId, activity });
+        } catch (actErr) {
+          logger.error('Failed to log task_recreated activity', { error: actErr.message });
+        }
+      }
 
       return callback({ success: true, candidate: updated });
     } catch (error) {
@@ -941,6 +970,38 @@ class CandidateSocketHandler {
     return Array.from(recipients);
   }
 
+  async emitActivityNotifications(socket, candidate, activity, sender) {
+    if (!candidate) return [];
+
+    const senderEmail = sender.email.toLowerCase();
+    const recipients = new Set();
+
+    const addUser = (email) => {
+      if (email && email.toLowerCase() !== senderEmail) {
+        this.emitToUser(socket, email, 'newActivityNotification', { candidate, activity });
+        recipients.add(email.toLowerCase());
+      }
+    };
+
+    // 1. Notify Admins
+    this.emitToRoles(socket, ['admin'], 'newActivityNotification', { candidate, activity });
+
+    // 2. Hierarchy watchers (Recruiter -> MLead -> MAM -> MM)
+    const hierarchyEmails = candidateService.resolveHierarchyWatchers
+      ? candidateService.resolveHierarchyWatchers(candidate)
+      : [];
+    hierarchyEmails.forEach(email => addUser(email));
+
+    // 3. Expert hierarchy (Expert -> Lead -> AM) — activities are visible to all
+    const expertEmail = (candidate.expertRaw || candidate.Expert || '').trim();
+    const expertWatchers = candidateService.resolveExpertHierarchy
+      ? candidateService.resolveExpertHierarchy(expertEmail)
+      : expertEmail ? [expertEmail] : [];
+    expertWatchers.forEach(email => addUser(email));
+
+    return Array.from(recipients);
+  }
+
   emitToCandidateRoom(socket, candidateId, event, payload) {
     const namespace = socket.nsp;
     const room = `candidate:${candidateId}`;
@@ -1015,21 +1076,136 @@ class CandidateSocketHandler {
 
       this.emitToCandidateRoom(socket, candidateId, 'newActivity', { candidateId, activity });
 
-      if (alertRecruiter) {
+      // Activity Notifications (fire-and-forget, non-blocking)
+      try {
         const candidate = await candidateService.getCandidateById(user, candidateId);
-        const recruiterEmail = candidate?.recruiterRaw || candidate?.Recruiter || candidate?.recruiter;
-        if (recruiterEmail) {
-          this.emitToUser(socket, recruiterEmail, 'callAlertNotification', {
-            candidateId,
-            candidateName: candidate?.['Candidate Name'] || 'Candidate',
-            attemptCount
-          });
+
+        if (alertRecruiter) {
+          const recruiterEmail = candidate?.recruiterRaw || candidate?.Recruiter || candidate?.recruiter;
+          if (recruiterEmail) {
+            const alertPayload = {
+              candidateId,
+              candidateName: candidate?.['Candidate Name'] || 'Candidate',
+              attemptCount
+            };
+
+            // Persist alert in DB so it survives page refresh
+            try {
+              await candidateService.createPendingCallAlert({
+                ...alertPayload,
+                recruiterEmail
+              });
+            } catch (persistErr) {
+              logger.error('Failed to persist call alert', { error: persistErr.message });
+            }
+
+            this.emitToUser(socket, recruiterEmail, 'callAlertNotification', alertPayload);
+          }
         }
+
+        if (candidate) {
+          const actorName = user?.name || user?.email || 'Someone';
+          const candidateName = candidate?.['Candidate Name'] || candidate?.name || 'Candidate';
+          const typeLabels = {
+            call_attempt: activity.outcome === 'connected' ? 'Call Connected' : 'Candidate Unavailable',
+            document_prepared: 'Document Prepared',
+            mock_interview: 'Mock Interview'
+          };
+          const label = typeLabels[type] || type;
+
+          this.emitActivityNotifications(socket, candidate, activity, user)
+            .then(recipients => {
+              if (recipients && recipients.length > 0) {
+                return notificationService.broadcastToWatchers(recipients, {
+                  type: 'activity',
+                  candidateId: candidate.id || candidate._id,
+                  activityId: activity.id,
+                  title: 'New Activity',
+                  description: `${label} logged for ${candidateName} by ${actorName}`,
+                  isRead: false,
+                  createdAt: new Date()
+                });
+              }
+            })
+            .catch(err => {
+              logger.error('Failed to persist activity notifications', err);
+            });
+        }
+      } catch (notificationError) {
+        logger.error('Activity notification failed (non-critical)', {
+          error: notificationError.message,
+          candidateId,
+          user: user?.email
+        });
       }
 
       return callback({ success: true, data: activity });
     } catch (error) {
       logger.error('handleAddActivity failed', { error: error.message, candidateId, user: user?.email });
+      return callback({ success: false, error: error.message });
+    }
+  }
+
+  async handleGetPendingCallAlerts(socket, callback) {
+    const user = socket.data.user;
+    try {
+      const alerts = await candidateService.getPendingCallAlerts(user?.email);
+      const mapped = alerts.map(a => ({
+        id: a._id.toString(),
+        candidateId: a.candidateId.toString(),
+        candidateName: a.candidateName,
+        attemptCount: a.attemptCount,
+        createdAt: a.createdAt
+      }));
+      return callback({ success: true, data: mapped });
+    } catch (error) {
+      logger.error('handleGetPendingCallAlerts failed', { error: error.message, user: user?.email });
+      return callback({ success: false, error: error.message });
+    }
+  }
+
+  async handleRespondToCallAlert(socket, payload, callback) {
+    const user = socket.data.user;
+    const { alertId, responseText } = payload;
+    try {
+      const { alert, activity } = await candidateService.respondToCallAlert(user, alertId, responseText);
+
+      // Broadcast the response activity to anyone viewing this candidate's discussion
+      const candidateId = alert.candidateId.toString();
+      this.emitToCandidateRoom(socket, candidateId, 'newActivity', { candidateId, activity });
+
+      // Also notify watchers so they get the red dot / notification bell update
+      try {
+        const candidate = await candidateService.getCandidateById(user, candidateId);
+        if (candidate) {
+          const actorName = user?.name || user?.email || 'Recruiter';
+          const candidateName = candidate?.['Candidate Name'] || candidate?.name || 'Candidate';
+
+          this.emitActivityNotifications(socket, candidate, activity, user)
+            .then(recipients => {
+              if (recipients && recipients.length > 0) {
+                return notificationService.broadcastToWatchers(recipients, {
+                  type: 'activity',
+                  candidateId: candidate.id || candidate._id,
+                  activityId: activity.id,
+                  title: 'Call Response',
+                  description: `${actorName} responded regarding ${candidateName}'s unavailability`,
+                  isRead: false,
+                  createdAt: new Date()
+                });
+              }
+            })
+            .catch(err => {
+              logger.error('Failed to persist call response notifications', err);
+            });
+        }
+      } catch (notifErr) {
+        logger.error('Call response notification failed (non-critical)', { error: notifErr.message });
+      }
+
+      return callback({ success: true, data: activity });
+    } catch (error) {
+      logger.error('handleRespondToCallAlert failed', { error: error.message, user: user?.email });
       return callback({ success: false, error: error.message });
     }
   }

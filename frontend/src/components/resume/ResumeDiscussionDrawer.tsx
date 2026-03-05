@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Loader2, Send, Lock, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,6 @@ import moment from 'moment-timezone';
 import DOMPurify from 'dompurify';
 import { usePostHog } from 'posthog-js/react';
 import { useNotifications } from "@/context/NotificationContext";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CandidateActivityTab } from "./CandidateActivityTab";
 
 interface Comment {
@@ -34,13 +33,15 @@ interface ResumeDiscussionDrawerProps {
     onClose: () => void;
     candidateId: string;
     candidateName: string;
+    expertRaw?: string;
 }
 
 export function ResumeDiscussionDrawer({
     isOpen,
     onClose,
     candidateId,
-    candidateName
+    candidateName,
+    expertRaw
 }: ResumeDiscussionDrawerProps) {
     const [comments, setComments] = useState<Comment[]>([]);
     const [loading, setLoading] = useState(false);
@@ -48,25 +49,31 @@ export function ResumeDiscussionDrawer({
     const [error, setError] = useState('');
     const [newMessage, setNewMessage] = useState('');
     const [isComplaint, setIsComplaint] = useState(false);
+    const [activeTab, setActiveTab] = useState('discussion');
     const scrollRef = useRef<HTMLDivElement>(null);
     const { refreshAccessToken } = useAuth();
 
     const role = useMemo(() => (localStorage.getItem("role") || "").trim().toLowerCase(), []);
+    const userEmail = useMemo(() => (localStorage.getItem("email") || "").trim().toLowerCase(), []);
     const canSeeComplaints = useMemo(() => !['expert', 'user'].includes(role), [role]);
     const canCreateComplaints = useMemo(() => ['recruiter', 'mlead', 'mam', 'mm', 'admin', 'manager'].includes(role), [role]);
+    const canLogActivity = useMemo(() => {
+        return role === 'admin' || ((role === 'lead' || role === 'user') && (expertRaw || '').toLowerCase() === userEmail);
+    }, [role, expertRaw, userEmail]);
     const { notifications, markAsRead } = useNotifications();
     const posthog = usePostHog();
 
-    // Mark as read when drawer is open
+    // Tab-aware mark-as-read
     useEffect(() => {
         if (isOpen && candidateId) {
+            const targetType = activeTab === 'discussion' ? 'comment' : 'activity';
             notifications.forEach(n => {
-                if (n.candidateId === candidateId && n.type === 'comment' && !n.read) {
+                if (n.candidateId === candidateId && n.type === targetType && !n.read) {
                     markAsRead(n.id);
                 }
             });
         }
-    }, [isOpen, candidateId, notifications, markAsRead]);
+    }, [isOpen, candidateId, activeTab, notifications, markAsRead]);
 
     const socket = useMemo<Socket | null>(() => {
         if (!candidateId || !isOpen) return null;
@@ -172,7 +179,7 @@ export function ResumeDiscussionDrawer({
                 setIsComplaint(false);
                 setComments(prev => [...prev, response.data]);
 
-                posthog.capture('discussion_comment_posted', {
+                posthog?.capture('discussion_comment_posted', {
                     candidate_id: candidateId,
                     type: isComplaint ? 'complaint' : 'internal',
                 });
@@ -203,14 +210,38 @@ export function ResumeDiscussionDrawer({
                     </SheetDescription>
                 </SheetHeader>
 
-                <Tabs defaultValue="discussion" className="flex-1 flex flex-col min-h-0">
-                    <TabsList className="mx-4 mt-2 grid grid-cols-2 self-start">
-                        <TabsTrigger value="discussion">Discussion</TabsTrigger>
-                        <TabsTrigger value="activity">Activity</TabsTrigger>
-                    </TabsList>
+                <div className="mx-4 mt-2 inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground">
+                    <button
+                        className={`relative inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${activeTab === 'discussion' ? 'bg-background text-foreground shadow-sm' : ''}`}
+                        onClick={() => setActiveTab('discussion')}
+                    >
+                        Discussion
+                        {notifications.some(n =>
+                            n.candidateId === candidateId &&
+                            n.type === 'comment' &&
+                            !n.read
+                        ) && (
+                            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
+                        )}
+                    </button>
+                    <button
+                        className={`relative inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${activeTab === 'activity' ? 'bg-background text-foreground shadow-sm' : ''}`}
+                        onClick={() => setActiveTab('activity')}
+                    >
+                        Activity
+                        {notifications.some(n =>
+                            n.candidateId === candidateId &&
+                            n.type === 'activity' &&
+                            !n.read
+                        ) && (
+                            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
+                        )}
+                    </button>
+                </div>
 
-                    <TabsContent value="discussion" className="flex-1 flex flex-col min-h-0 mt-0">
-                        <ScrollArea className="flex-1 p-4">
+                {activeTab === 'discussion' && (
+                    <div className="flex-1 flex flex-col min-h-0">
+                        <div className="flex-1 overflow-y-auto p-4">
                             {loading ? (
                                 <div className="flex justify-center py-8">
                                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -222,21 +253,21 @@ export function ResumeDiscussionDrawer({
                                     No comments yet. Start the discussion!
                                 </div>
                             ) : (
-                                <div className="flex flex-col gap-4" ref={scrollRef}>
+                                <div className="flex flex-col gap-4">
                                     {comments.map((comment) => (
                                         <div key={comment.id} className={`flex gap-3 ${comment.type === 'complaint' ? 'bg-destructive/10 p-2 rounded-lg -mx-2' : ''}`}>
                                             <Avatar className="h-8 w-8 mt-1">
-                                                <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(comment.author.name)}&background=random`} />
-                                                <AvatarFallback>{comment.author.name.charAt(0)}</AvatarFallback>
+                                                <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(comment.author?.name ?? 'U')}&background=random`} />
+                                                <AvatarFallback>{(comment.author?.name ?? 'U').charAt(0)}</AvatarFallback>
                                             </Avatar>
                                             <div className="flex-1 space-y-1">
                                                 <div className="flex items-center justify-between">
-                                                    <span className="font-semibold text-sm">{comment.author.name}</span>
+                                                    <span className="font-semibold text-sm">{comment.author?.name ?? 'Unknown'}</span>
                                                     <span className="text-xs text-muted-foreground">
                                                         {moment(comment.createdAt).fromNow()}
                                                     </span>
                                                 </div>
-                                                <div className="text-xs text-muted-foreground mb-1">{comment.author.role}</div>
+                                                <div className="text-xs text-muted-foreground mb-1">{comment.author?.role ?? ''}</div>
                                                 <div className="text-sm text-foreground/90 whitespace-pre-wrap break-words">
                                                     {comment.content}
                                                 </div>
@@ -251,9 +282,9 @@ export function ResumeDiscussionDrawer({
                                     <div ref={scrollRef} />
                                 </div>
                             )}
-                        </ScrollArea>
+                        </div>
 
-                        <div className="p-4 border-t bg-background mt-auto">
+                        <div className="p-4 border-t bg-background">
                             {canCreateComplaints && (
                                 <div className="flex items-center space-x-2 mb-3">
                                     <Switch id="complaint-mode" checked={isComplaint} onCheckedChange={setIsComplaint} />
@@ -281,12 +312,14 @@ export function ResumeDiscussionDrawer({
                                 </Button>
                             </div>
                         </div>
-                    </TabsContent>
+                    </div>
+                )}
 
-                    <TabsContent value="activity" className="flex-1 overflow-auto p-4 mt-0">
-                        <CandidateActivityTab candidateId={candidateId} isOpen={isOpen} />
-                    </TabsContent>
-                </Tabs>
+                {activeTab === 'activity' && (
+                    <div className="flex-1 flex flex-col min-h-0">
+                        <CandidateActivityTab candidateId={candidateId} isOpen={isOpen} canLogActivity={canLogActivity} />
+                    </div>
+                )}
             </SheetContent>
         </Sheet>
     );
