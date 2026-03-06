@@ -507,6 +507,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [mockResumeFile, setMockResumeFile] = useState<File | null>(null);
   const [mockJdFile, setMockJdFile] = useState<File | null>(null);
 
+
   // Discussion Drawer State
   const [discussionOpen, setDiscussionOpen] = useState(false);
   const [discussionCandidate, setDiscussionCandidate] = useState<CandidateRow | null>(null);

@@ -37,6 +37,8 @@ const assessmentUpload = multer({
 
 router.use(authenticateHTTP);
 
+router.get('/cc-list/:candidateId', supportRequestController.getCcList);
+
 router.post(
   '/interview',
   interviewUpload.fields([
