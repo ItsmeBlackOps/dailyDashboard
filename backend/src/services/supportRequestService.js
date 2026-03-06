@@ -426,79 +426,106 @@ class SupportRequestService {
     }
   }
 
-  gatherHierarchyEmails(recruiterEmail) {
+  /**
+   * Walk the org hierarchy starting from startEmail.
+   * Follows teamLead first, then manager at each level.
+   * Stops when there is no next link or the next person has role 'admin'.
+   * Returns an ordered array of emails: [startEmail, next, next, …]
+   */
+  buildHierarchyChain(startEmail) {
     const allUsers = userModel.getAllUsers();
 
-    // Resolve a stored name/email value to an email address.
-    // When preferredRole is given, ONLY return a user whose role matches —
-    // this prevents admins or wrong-role users from being included in CC
-    // simply because their name was stored in a recruiter's manager field.
-    const findEmail = (nameValue, preferredRole = null) => {
+    const resolveEmail = (nameValue) => {
       if (!nameValue) return null;
-      // If the field already holds an email (legacy / direct entry), use it.
       if (nameValue.includes('@')) return nameValue.toLowerCase();
       const target = normalizeName(nameValue);
       if (!target) return null;
-
       for (const u of allUsers) {
-        const derived = normalizeName(deriveDisplayNameFromEmail(u.email));
-        if (derived !== target) continue;
-        if (preferredRole && (u.role || '').toLowerCase() !== preferredRole) {
-          logger.warn('gatherHierarchyEmails: name match found but role mismatch — skipped', {
-            storedName: nameValue,
-            matchedEmail: u.email,
-            matchedRole: u.role,
-            expectedRole: preferredRole,
-            recruiterEmail
-          });
-          continue;
+        if (normalizeName(deriveDisplayNameFromEmail(u.email)) === target) {
+          return u.email.toLowerCase();
         }
-        return u.email.toLowerCase();
       }
       return null;
     };
 
-    const recruiterRecord = userModel.getUserByEmail(recruiterEmail);
-    if (!recruiterRecord) {
-      logger.warn('gatherHierarchyEmails: recruiter record not found', { recruiterEmail });
-      return { mleadEmail: null, mamEmail: null, mmEmail: null };
-    }
+    const chain = [];
+    const visited = new Set();
+    let currentEmail = startEmail?.toLowerCase();
 
-    const mleadEmail = findEmail(recruiterRecord.teamLead ?? '', 'mlead');
+    while (currentEmail && !visited.has(currentEmail)) {
+      const record = userModel.getUserByEmail(currentEmail);
+      if (!record) break;
 
-    // Primary path: recruiterRecord.manager should name the MAM directly.
-    // Fallback path: if that field is stale/wrong (e.g. points to an admin),
-    // climb up through the MLead's own manager field to find the MAM.
-    let mamEmail = findEmail(recruiterRecord.manager ?? '', 'mam');
-    if (!mamEmail && mleadEmail) {
-      const mleadRecord = userModel.getUserByEmail(mleadEmail);
-      mamEmail = findEmail(mleadRecord?.manager ?? '', 'mam');
-      if (mamEmail) {
-        logger.info('gatherHierarchyEmails: MAM resolved via mlead fallback', {
-          recruiterEmail,
-          mleadEmail,
-          mamEmail,
-          storedRecruiterManager: recruiterRecord.manager ?? null
-        });
+      const role = (record.role || '').toLowerCase();
+      if (role === 'admin') break;
+
+      visited.add(currentEmail);
+      chain.push(currentEmail);
+
+      // Walk up: prefer teamLead, fall back to manager
+      const nextFromTeamLead = resolveEmail(record.teamLead ?? '');
+      const nextFromManager = resolveEmail(record.manager ?? '');
+
+      if (nextFromTeamLead && !visited.has(nextFromTeamLead)) {
+        currentEmail = nextFromTeamLead;
+      } else if (nextFromManager && !visited.has(nextFromManager)) {
+        currentEmail = nextFromManager;
+      } else {
+        break;
       }
     }
 
-    let mmEmail = null;
-    if (mamEmail) {
-      const mamRecord = userModel.getUserByEmail(mamEmail);
-      mmEmail = findEmail(mamRecord?.manager ?? '', 'mm');
-    }
+    logger.info('buildHierarchyChain: resolved', { startEmail, chain });
+    return chain;
+  }
+
+  /**
+   * Legacy wrapper — returns named hierarchy slots for the send methods.
+   */
+  gatherHierarchyEmails(recruiterEmail) {
+    const chain = this.buildHierarchyChain(recruiterEmail);
+    // chain[0] = recruiter, [1] = mlead, [2] = mam, [3] = mm (if present)
+    const mleadEmail = chain[1] || null;
+    const mamEmail = chain[2] || null;
+    const mmEmail = chain[3] || null;
 
     logger.info('gatherHierarchyEmails: resolved CC chain', {
       recruiterEmail,
-      storedTeamLead: recruiterRecord.teamLead ?? null,
-      storedManager: recruiterRecord.manager ?? null,
       mleadEmail,
       mamEmail,
       mmEmail
     });
 
     return { mleadEmail, mamEmail, mmEmail };
+  }
+
+  async getCcList(user, candidateId) {
+    this.ensureRoleAllowed(user);
+
+    if (!candidateId) {
+      const error = new Error('Candidate id is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const candidateRecord = await this.loadCandidate(candidateId);
+    const formattedCandidate = candidateService.formatCandidateRecord(candidateRecord);
+
+    const recruiterEmail = (
+      formattedCandidate.recruiterRaw || candidateRecord.recruiter || candidateRecord.createdBy || ''
+    ).toLowerCase().trim();
+
+    if (!recruiterEmail || !EMAIL_REGEX.test(recruiterEmail)) {
+      return { emailList: [], ccEmails: [] };
+    }
+
+    const chain = this.buildHierarchyChain(recruiterEmail);
+    const senderEmail = (user.email || '').toLowerCase();
+
+    return {
+      emailList: chain,
+      ccEmails: chain.filter((e) => e !== senderEmail),
+    };
   }
 
   buildSubject(candidateName, technology, when) {

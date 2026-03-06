@@ -43,6 +43,11 @@ class SupportRequestController {
     res.status(201).json(result);
   });
 
+  getCcList = asyncHandler(async (req, res) => {
+    const result = await supportRequestService.getCcList(req.user, req.params.candidateId);
+    res.json(result);
+  });
+
   createAssessmentSupport = asyncHandler(async (req, res) => {
     const graphTokenHeader = req.headers['x-graph-access-token'];
     const graphToken = typeof graphTokenHeader === 'string' ? graphTokenHeader.trim() : '';
