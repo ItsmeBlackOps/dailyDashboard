@@ -465,7 +465,9 @@ class SupportRequestService {
     }
 
     const mleadEmail = findEmail(recruiterRecord.teamLead ?? '', 'mlead');
-    const mamEmail = findEmail(recruiterRecord.manager ?? '', 'mam');
+    // MAM role is stored as 'mm' in this system (same as MM).
+    // Name-based matching distinguishes the correct person at each level.
+    const mamEmail = findEmail(recruiterRecord.manager ?? '', 'mm');
 
     let mmEmail = null;
     if (mamEmail) {
