@@ -443,7 +443,16 @@ class SupportRequestService {
       for (const u of allUsers) {
         const derived = normalizeName(deriveDisplayNameFromEmail(u.email));
         if (derived !== target) continue;
-        if (preferredRole && (u.role || '').toLowerCase() !== preferredRole) continue;
+        if (preferredRole && (u.role || '').toLowerCase() !== preferredRole) {
+          logger.warn('gatherHierarchyEmails: name match found but role mismatch — skipped', {
+            storedName: nameValue,
+            matchedEmail: u.email,
+            matchedRole: u.role,
+            expectedRole: preferredRole,
+            recruiterEmail
+          });
+          continue;
+        }
         return u.email.toLowerCase();
       }
       return null;
@@ -451,6 +460,7 @@ class SupportRequestService {
 
     const recruiterRecord = userModel.getUserByEmail(recruiterEmail);
     if (!recruiterRecord) {
+      logger.warn('gatherHierarchyEmails: recruiter record not found', { recruiterEmail });
       return { mleadEmail: null, mamEmail: null, mmEmail: null };
     }
 
@@ -462,6 +472,15 @@ class SupportRequestService {
       const mamRecord = userModel.getUserByEmail(mamEmail);
       mmEmail = findEmail(mamRecord?.manager ?? '', 'mm');
     }
+
+    logger.info('gatherHierarchyEmails: resolved CC chain', {
+      recruiterEmail,
+      storedTeamLead: recruiterRecord.teamLead ?? null,
+      storedManager: recruiterRecord.manager ?? null,
+      mleadEmail,
+      mamEmail,
+      mmEmail
+    });
 
     return { mleadEmail, mamEmail, mmEmail };
   }
