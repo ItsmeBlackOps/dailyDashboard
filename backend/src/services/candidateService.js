@@ -1934,7 +1934,7 @@ class CandidateService {
    * Create or update a pending call alert for a recruiter.
    * If one already exists for the same candidate, updates the attemptCount.
    */
-  async createPendingCallAlert({ candidateId, candidateName, attemptCount, recruiterEmail }) {
+  async createPendingCallAlert({ candidateId, candidateName, candidatePhone, candidateEmail, attemptCount, recruiterEmail }) {
     const col = database.getCollection('pendingCallAlerts');
     const now = new Date();
 
@@ -1943,6 +1943,8 @@ class CandidateService {
       {
         $set: {
           candidateName,
+          candidatePhone: candidatePhone || '',
+          candidateEmail: candidateEmail || '',
           attemptCount,
           updatedAt: now
         },

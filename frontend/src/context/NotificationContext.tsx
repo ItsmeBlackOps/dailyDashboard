@@ -47,6 +47,8 @@ interface CallAlert {
     id: string;
     candidateId: string;
     candidateName: string;
+    candidatePhone: string;
+    candidateEmail: string;
     attemptCount: number;
     createdAt?: string;
 }
