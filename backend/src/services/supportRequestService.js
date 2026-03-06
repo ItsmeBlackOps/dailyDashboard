@@ -465,9 +465,23 @@ class SupportRequestService {
     }
 
     const mleadEmail = findEmail(recruiterRecord.teamLead ?? '', 'mlead');
-    // MAM role is stored as 'mm' in this system (same as MM).
-    // Name-based matching distinguishes the correct person at each level.
-    const mamEmail = findEmail(recruiterRecord.manager ?? '', 'mm');
+
+    // Primary path: recruiterRecord.manager should name the MAM directly.
+    // Fallback path: if that field is stale/wrong (e.g. points to an admin),
+    // climb up through the MLead's own manager field to find the MAM.
+    let mamEmail = findEmail(recruiterRecord.manager ?? '', 'mam');
+    if (!mamEmail && mleadEmail) {
+      const mleadRecord = userModel.getUserByEmail(mleadEmail);
+      mamEmail = findEmail(mleadRecord?.manager ?? '', 'mam');
+      if (mamEmail) {
+        logger.info('gatherHierarchyEmails: MAM resolved via mlead fallback', {
+          recruiterEmail,
+          mleadEmail,
+          mamEmail,
+          storedRecruiterManager: recruiterRecord.manager ?? null
+        });
+      }
+    }
 
     let mmEmail = null;
     if (mamEmail) {
