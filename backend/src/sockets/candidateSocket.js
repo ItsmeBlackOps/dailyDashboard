@@ -1086,6 +1086,8 @@ class CandidateSocketHandler {
             const alertPayload = {
               candidateId,
               candidateName: candidate?.['Candidate Name'] || 'Candidate',
+              candidatePhone: candidate?.contact || candidate?.['Contact No'] || '',
+              candidateEmail: candidate?.email || candidate?.['Email ID'] || '',
               attemptCount
             };
 
@@ -1154,6 +1156,8 @@ class CandidateSocketHandler {
         id: a._id.toString(),
         candidateId: a.candidateId.toString(),
         candidateName: a.candidateName,
+        candidatePhone: a.candidatePhone || '',
+        candidateEmail: a.candidateEmail || '',
         attemptCount: a.attemptCount,
         createdAt: a.createdAt
       }));

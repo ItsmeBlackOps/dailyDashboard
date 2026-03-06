@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PhoneMissed, Loader2 } from 'lucide-react';
+import { PhoneMissed, Loader2, Phone, Mail } from 'lucide-react';
 import {
     AlertDialog,
     AlertDialogContent,
@@ -53,6 +53,22 @@ export function RecruiterCallAlertDialog() {
                                 <strong>{currentAlert.candidateName}</strong> has been unavailable for{' '}
                                 <strong>{currentAlert.attemptCount} consecutive call attempts</strong>.
                             </p>
+                            {(currentAlert.candidatePhone || currentAlert.candidateEmail) && (
+                                <div className="rounded-md border bg-muted/50 px-3 py-2 space-y-1 text-sm">
+                                    {currentAlert.candidatePhone && (
+                                        <div className="flex items-center gap-2">
+                                            <Phone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                            <span>{currentAlert.candidatePhone}</span>
+                                        </div>
+                                    )}
+                                    {currentAlert.candidateEmail && (
+                                        <div className="flex items-center gap-2">
+                                            <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                            <span>{currentAlert.candidateEmail}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <p>
                                 Please provide your response before continuing. This will be logged in the activity tab.
                             </p>
