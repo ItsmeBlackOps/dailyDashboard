@@ -430,8 +430,9 @@ class SupportRequestService {
     const allUsers = userModel.getAllUsers();
 
     // Resolve a stored name/email value to an email address.
-    // preferredRole: when multiple users share the same derived display name,
-    // prefer the one whose role matches (avoids collisions between e.g. two "John Doe" accounts).
+    // When preferredRole is given, ONLY return a user whose role matches —
+    // this prevents admins or wrong-role users from being included in CC
+    // simply because their name was stored in a recruiter's manager field.
     const findEmail = (nameValue, preferredRole = null) => {
       if (!nameValue) return null;
       // If the field already holds an email (legacy / direct entry), use it.
@@ -439,16 +440,13 @@ class SupportRequestService {
       const target = normalizeName(nameValue);
       if (!target) return null;
 
-      let fallback = null;
       for (const u of allUsers) {
         const derived = normalizeName(deriveDisplayNameFromEmail(u.email));
         if (derived !== target) continue;
-        if (preferredRole && (u.role || '').toLowerCase() === preferredRole) {
-          return u.email.toLowerCase(); // exact role + name match — best result
-        }
-        if (!fallback) fallback = u.email.toLowerCase(); // name-only match — keep as fallback
+        if (preferredRole && (u.role || '').toLowerCase() !== preferredRole) continue;
+        return u.email.toLowerCase();
       }
-      return fallback;
+      return null;
     };
 
     const recruiterRecord = userModel.getUserByEmail(recruiterEmail);
