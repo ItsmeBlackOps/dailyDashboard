@@ -427,32 +427,42 @@ class SupportRequestService {
   }
 
   gatherHierarchyEmails(recruiterEmail) {
-    const nameMap = new Map();
     const allUsers = userModel.getAllUsers();
-    for (const user of allUsers) {
-      const display = deriveDisplayNameFromEmail(user.email);
-      const key = normalizeName(display);
-      if (key) {
-        nameMap.set(key, user.email.toLowerCase());
+
+    // Resolve a stored name/email value to an email address.
+    // preferredRole: when multiple users share the same derived display name,
+    // prefer the one whose role matches (avoids collisions between e.g. two "John Doe" accounts).
+    const findEmail = (nameValue, preferredRole = null) => {
+      if (!nameValue) return null;
+      // If the field already holds an email (legacy / direct entry), use it.
+      if (nameValue.includes('@')) return nameValue.toLowerCase();
+      const target = normalizeName(nameValue);
+      if (!target) return null;
+
+      let fallback = null;
+      for (const u of allUsers) {
+        const derived = normalizeName(deriveDisplayNameFromEmail(u.email));
+        if (derived !== target) continue;
+        if (preferredRole && (u.role || '').toLowerCase() === preferredRole) {
+          return u.email.toLowerCase(); // exact role + name match — best result
+        }
+        if (!fallback) fallback = u.email.toLowerCase(); // name-only match — keep as fallback
       }
-    }
+      return fallback;
+    };
 
     const recruiterRecord = userModel.getUserByEmail(recruiterEmail);
     if (!recruiterRecord) {
       return { mleadEmail: null, mamEmail: null, mmEmail: null };
     }
 
-    const mleadKey = normalizeName(recruiterRecord.teamLead ?? '');
-    const mamKey = normalizeName(recruiterRecord.manager ?? '');
-
-    const mleadEmail = mleadKey ? nameMap.get(mleadKey) ?? null : null;
-    const mamEmail = mamKey ? nameMap.get(mamKey) ?? null : null;
+    const mleadEmail = findEmail(recruiterRecord.teamLead ?? '', 'mlead');
+    const mamEmail = findEmail(recruiterRecord.manager ?? '', 'mam');
 
     let mmEmail = null;
     if (mamEmail) {
       const mamRecord = userModel.getUserByEmail(mamEmail);
-      const mmKey = normalizeName(mamRecord?.manager ?? '');
-      mmEmail = mmKey ? nameMap.get(mmKey) ?? null : null;
+      mmEmail = findEmail(mamRecord?.manager ?? '', 'mm');
     }
 
     return { mleadEmail, mamEmail, mmEmail };
