@@ -463,6 +463,27 @@ export class CandidateModel {
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
+  async getCandidateByEmail(email) {
+    if (!this.collection) {
+      throw new Error('Candidate collection not initialized');
+    }
+
+    if (!email) {
+      return null;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const document = await this.collection.findOne({
+      'Email ID': { $regex: new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      docType: { $in: [null, 'candidate'] }
+    }, {
+      projection: DEFAULT_PROJECTION,
+      sort: { _last_write: -1 }
+    });
+
+    return document ? this.mapDocumentToCandidate(document) : null;
+  }
+
   async getCandidateById(id) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
