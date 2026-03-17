@@ -379,6 +379,16 @@ class SupportRequestService {
     return candidate;
   }
 
+  async loadCandidateByEmail(email) {
+    const candidate = await candidateModel.getCandidateByEmail(email);
+    if (!candidate) {
+      const error = new Error('Candidate not found for the given email');
+      error.statusCode = 404;
+      throw error;
+    }
+    return candidate;
+  }
+
   ensureAccess(user, candidate, normalizedRole) {
     if (normalizedRole === 'mm' || normalizedRole === 'mam') {
       return;
@@ -1333,13 +1343,10 @@ class SupportRequestService {
     const storedAttachments = sanitizeStoredMockAttachments(payload.attachments);
 
     const candidateId = normalizeWhitespace(payload.candidateId || '');
-    if (!candidateId) {
-      const error = new Error('Candidate id is required');
-      error.statusCode = 400;
-      throw error;
-    }
 
-    const candidateRecord = await this.loadCandidate(candidateId);
+    const candidateRecord = candidateId
+      ? await this.loadCandidate(candidateId)
+      : await this.loadCandidateByEmail(candidateEmail);
     const formattedCandidate = candidateService.formatCandidateRecord(candidateRecord);
     const recruiterEmail = ensureEmail(
       formattedCandidate.recruiterRaw || candidateRecord.recruiter || candidateRecord.createdBy || '',
