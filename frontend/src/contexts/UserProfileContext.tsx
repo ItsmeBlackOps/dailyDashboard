@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 
 import { API_URL, useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { trackError } from '@/utils/trackError';
 
 export interface UserProfile {
   email: string;
@@ -113,7 +114,9 @@ export const UserProfileProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const payload = await res.json();
       setProfile(payload?.profile ?? null);
     } catch (error) {
-      console.error('Failed to load profile metadata', error);
+      trackError('Failed to load profile metadata', error, {
+        api_url: `${API_URL}/api/profile/me`,
+      });
       setProfile(null);
     } finally {
       setLoading(false);

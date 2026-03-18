@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { trackError } from '@/utils/trackError';
 import DOMPurify from "dompurify";
 import moment from "moment-timezone";
 import { io, Socket } from "socket.io-client";
@@ -817,7 +818,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         }
       }
     } catch (error) {
-      console.error('Failed to persist mock materials', error);
+      trackError('Failed to persist mock materials', error, {
+        candidate_email: draft.candidateEmail,
+        source_task_id: draft.sourceTaskId,
+        storage_key: SUPPORT_MOCK_STORAGE_KEY,
+        stored_by: (localStorage.getItem('email') || '').trim().toLowerCase() || undefined,
+      });
     }
   }, []);
 
@@ -1919,7 +1925,13 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           storedAttachments.push(await encodeAttachmentForStorage(file, 'additional'));
         }
       } catch (encodeError) {
-        console.error('Failed to prepare attachments for cloning', encodeError);
+        trackError('Failed to prepare attachments for cloning', encodeError, {
+          candidate_name: supportForm.candidateName,
+          candidate_email: supportForm.email,
+          has_resume: !!resumeFile,
+          has_jd: !!jdFile,
+          additional_files_count: additionalFiles.length,
+        });
       }
 
       const storedDraft: SupportCloneDraft = {
@@ -1945,7 +1957,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         localStorage.setItem(SUPPORT_CLONE_STORAGE_KEY, JSON.stringify(storedDraft));
         persistSupportMockMaterials(storedDraft);
       } catch (storageError) {
-        console.error('Failed to persist support clone draft', storageError);
+        trackError('Failed to persist support clone draft', storageError, {
+          candidate_name: storedDraft.candidateName,
+          candidate_email: storedDraft.candidateEmail,
+          source_task_id: storedDraft.sourceTaskId,
+          storage_key: SUPPORT_CLONE_STORAGE_KEY,
+        });
       }
 
       resetSupportState();
