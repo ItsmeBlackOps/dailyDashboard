@@ -1,6 +1,7 @@
 // src/components/TasksToday.tsx
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
+import { trackError } from '@/utils/trackError';
 import DOMPurify from "dompurify";
 import moment, { Moment } from "moment-timezone";
 import { io, Socket } from "socket.io-client";
@@ -626,7 +627,10 @@ export default function TasksToday() {
         generatedAt: entry.generatedAt
       };
     } catch (error) {
-      console.error('Failed to read stored thanks mail draft', error);
+      trackError('Failed to read stored thanks mail draft', error, {
+        user_email: currentUserEmail ?? undefined,
+        storage_key: THANKS_MAIL_CACHE_KEY,
+      });
       return null;
     }
   }, [currentUserEmail]);
@@ -667,7 +671,11 @@ export default function TasksToday() {
 
       localStorage.setItem(THANKS_MAIL_CACHE_KEY, JSON.stringify(parsed));
     } catch (error) {
-      console.error('Failed to persist thanks mail draft', error);
+      trackError('Failed to persist thanks mail draft', error, {
+        task_id: taskId,
+        user_email: currentUserEmail ?? undefined,
+        storage_key: THANKS_MAIL_CACHE_KEY,
+      });
     }
   }, [currentUserEmail]);
 
@@ -715,7 +723,10 @@ export default function TasksToday() {
         generatedAt: entry.generatedAt
       };
     } catch (error) {
-      console.error('Failed to read stored interviewer questions', error);
+      trackError('Failed to read stored interviewer questions', error, {
+        user_email: currentUserEmail ?? undefined,
+        storage_key: QUESTIONS_CACHE_KEY,
+      });
       return null;
     }
   }, [currentUserEmail]);
@@ -768,7 +779,11 @@ export default function TasksToday() {
 
       localStorage.setItem(QUESTIONS_CACHE_KEY, JSON.stringify(parsed));
     } catch (error) {
-      console.error('Failed to persist interviewer questions', error);
+      trackError('Failed to persist interviewer questions', error, {
+        task_id: taskId,
+        user_email: currentUserEmail ?? undefined,
+        storage_key: QUESTIONS_CACHE_KEY,
+      });
     }
   }, [currentUserEmail]);
 
@@ -1408,7 +1423,11 @@ export default function TasksToday() {
           attachment.data = commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl;
         }
       } catch (error) {
-        console.error('Failed to encode mock attachment', error);
+        trackError('Failed to encode mock attachment', error, {
+          file_name: file.name,
+          file_size: file.size,
+          category,
+        });
       }
 
       return attachment;
@@ -1466,7 +1485,12 @@ export default function TasksToday() {
         }
       }
     } catch (error) {
-      console.error('Failed to persist mock materials', error);
+      trackError('Failed to persist mock materials', error, {
+        candidate_email: entry.candidateEmail,
+        candidate_name: entry.candidateName,
+        source_task_id: entry.sourceTaskId,
+        stored_by: (localStorage.getItem('email') || '').trim().toLowerCase() || undefined,
+      });
     }
   }, []);
 
@@ -1502,7 +1526,11 @@ export default function TasksToday() {
         }
       }
     } catch (error) {
-      console.error('Failed to load stored mock materials', error);
+      trackError('Failed to load stored mock materials', error, {
+        task_id: task._id,
+        candidate_email: task['Email ID'] ?? undefined,
+        storage_key: SUPPORT_MOCK_STORAGE_KEY,
+      });
     }
 
     try {
@@ -1527,7 +1555,9 @@ export default function TasksToday() {
         }
       }
     } catch (legacyError) {
-      console.error('Failed to parse legacy clone draft for mock materials', legacyError);
+      trackError('Failed to parse legacy clone draft for mock materials', legacyError, {
+        storage_key: SUPPORT_CLONE_STORAGE_KEY,
+      });
     }
 
     return null;

@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from 'react';
+import { trackError } from '@/utils/trackError';
 
 interface Props {
   children: ReactNode;
@@ -20,8 +21,9 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('[ErrorBoundary] Caught error:', error);
-    console.error('[ErrorBoundary] Component stack:', info.componentStack);
+    trackError('[ErrorBoundary] Caught error', error, {
+      component_stack: info.componentStack ?? undefined,
+    });
   }
 
   render() {
