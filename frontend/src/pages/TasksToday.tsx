@@ -1454,7 +1454,17 @@ export default function TasksToday() {
         parsed[key] = deduped.slice(0, MAX_STORED_MOCK_ENTRIES);
       }
 
-      localStorage.setItem(SUPPORT_MOCK_STORAGE_KEY, JSON.stringify(parsed));
+      try {
+        localStorage.setItem(SUPPORT_MOCK_STORAGE_KEY, JSON.stringify(parsed));
+      } catch (quotaError) {
+        if (quotaError instanceof DOMException && quotaError.name === 'QuotaExceededError') {
+          // Storage full — clear the key and retry once with fresh data
+          localStorage.removeItem(SUPPORT_MOCK_STORAGE_KEY);
+          localStorage.setItem(SUPPORT_MOCK_STORAGE_KEY, JSON.stringify(parsed));
+        } else {
+          throw quotaError;
+        }
+      }
     } catch (error) {
       console.error('Failed to persist mock materials', error);
     }
