@@ -582,6 +582,7 @@ const openapi = {
           interviewRound: {
             type: 'string',
             enum: [
+              'Screening',
               '1st Round',
               '2nd Round',
               '3rd Round',

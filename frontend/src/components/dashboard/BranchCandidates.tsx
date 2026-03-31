@@ -235,6 +235,7 @@ const looksLikeJobDescription = (value: string): boolean => {
 };
 
 const SUPPORT_ROUNDS = [
+  "Screening",
   "1st Round",
   "2nd Round",
   "3rd Round",
