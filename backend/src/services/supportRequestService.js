@@ -12,6 +12,7 @@ import { database } from '../config/database.js';
 
 const ALLOWED_ROLES = new Set(['recruiter', 'mlead', 'mam', 'mm']);
 const INTERVIEW_ROUNDS = new Set([
+  'Screening',
   '1st Round',
   '2nd Round',
   '3rd Round',
