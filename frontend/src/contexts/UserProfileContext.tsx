@@ -13,6 +13,7 @@ export interface UserProfile {
   companyName: string;
   companyUrl: string;
   requiresRoleDetailSelection?: boolean;
+  requiresContactNumber?: boolean;
   allowedRoleDetails?: string[];
   isComplete: boolean;
 }
