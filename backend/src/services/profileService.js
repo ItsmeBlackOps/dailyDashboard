@@ -104,6 +104,7 @@ class ProfileService {
     const normalizedRoleDetail = normalizeRoleDetail(profile.jobRole);
     const isRoleDetailValid = isValidUserRoleDetail(normalizedRoleDetail);
     const requiresRoleDetailSelection = isUserRole && !isRoleDetailValid;
+    const requiresContactNumber = isUserRole && !profile.phoneNumber;
     const effectiveJobRole = isUserRole && isRoleDetailValid ? normalizedRoleDetail : profile.jobRole;
 
     const isComplete = Boolean(
@@ -116,6 +117,7 @@ class ProfileService {
         ...profile,
         jobRole: effectiveJobRole,
         requiresRoleDetailSelection,
+        requiresContactNumber,
         allowedRoleDetails: ROLE_DETAIL_OPTIONS,
         isComplete
       }
