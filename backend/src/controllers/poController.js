@@ -9,6 +9,20 @@ function bearerFrom(req) {
   return match ? match[1] : '';
 }
 
+function toObjectId(value, fieldName) {
+  if (!value || !ObjectId.isValid(value)) {
+    const err = new Error(`Invalid ObjectId for field '${fieldName}': ${value}`);
+    err.statusCode = 400;
+    throw err;
+  }
+  return new ObjectId(value);
+}
+
+const safeNum = (v, fallback = 0) => {
+  const n = Number(v ?? fallback);
+  return Number.isFinite(n) ? n : fallback;
+};
+
 function buildEmailBody(po) {
   const poCount = po.poCount || {};
   const parts = [
@@ -32,7 +46,7 @@ function buildEmailBody(po) {
     `Position: ${po.position || ''}`,
     `Implementation/End Client: ${po.endClient || ''}`,
     `Vendor: ${po.vendor || ''}`,
-    `Rate: ${po.rate || ''}`,
+    `Rate: ${po.rate ?? ''}`,
     `Signup Date: ${po.signupDate ? new Date(po.signupDate).toLocaleDateString('en-GB') : ''}`,
     `Joining Date: ${po.joiningDate ? new Date(po.joiningDate).toLocaleDateString('en-GB') : ''}`,
     `Agreement: ${po.agreementPct ?? ''}% in ${po.agreementMonths ?? ''} Months / Upfront – $${po.upfrontAmount ?? ''} (NR)`,
@@ -72,21 +86,21 @@ class POController {
         rate:            body.rate             || null,
         signupDate:      body.signupDate       ? new Date(body.signupDate)  : null,
         joiningDate:     body.joiningDate      ? new Date(body.joiningDate) : null,
-        agreementPct:    body.agreementPct     != null ? Number(body.agreementPct)    : null,
-        agreementMonths: body.agreementMonths  != null ? Number(body.agreementMonths) : null,
-        upfrontAmount:   body.upfrontAmount    != null ? Number(body.upfrontAmount)   : null,
+        agreementPct:    body.agreementPct     != null ? safeNum(body.agreementPct, null)    : null,
+        agreementMonths: body.agreementMonths  != null ? safeNum(body.agreementMonths, null) : null,
+        upfrontAmount:   body.upfrontAmount    != null ? safeNum(body.upfrontAmount, null)   : null,
         poCount: {
-          total: Number(body.poCount?.total ?? 0),
-          ggr:   Number(body.poCount?.ggr   ?? 0),
-          lkn:   Number(body.poCount?.lkn   ?? 0),
-          ahm:   Number(body.poCount?.ahm   ?? 0),
-          lko:   Number(body.poCount?.lko   ?? 0),
-          uk:    Number(body.poCount?.uk    ?? 0),
+          total: safeNum(body.poCount?.total),
+          ggr:   safeNum(body.poCount?.ggr),
+          lkn:   safeNum(body.poCount?.lkn),
+          ahm:   safeNum(body.poCount?.ahm),
+          lko:   safeNum(body.poCount?.lko),
+          uk:    safeNum(body.poCount?.uk),
         },
         interviewExpert: body.interviewExpert  || null,
         isDraft:         body.isDraft !== false,
-        sourceTaskId:    body.sourceTaskId     ? new ObjectId(body.sourceTaskId)    : null,
-        candidateId:     body.candidateId      ? new ObjectId(body.candidateId)     : null,
+        sourceTaskId:    body.sourceTaskId     ? toObjectId(body.sourceTaskId, 'sourceTaskId') : null,
+        candidateId:     body.candidateId      ? toObjectId(body.candidateId, 'candidateId')   : null,
         updatedAt:       now,
       };
 
@@ -94,10 +108,13 @@ class POController {
       if (body._id) {
         const { _id, ...update } = doc;
         result = await col.findOneAndUpdate(
-          { _id: new ObjectId(body._id) },
+          { _id: toObjectId(body._id, '_id') },
           { $set: update },
           { returnDocument: 'after' }
         );
+        if (!result) {
+          return res.status(404).json({ success: false, error: 'PO not found' });
+        }
         return res.json({ success: true, po: result });
       } else {
         doc.createdBy = user.email;
@@ -106,8 +123,9 @@ class POController {
         return res.json({ success: true, po: { ...doc, _id: inserted.insertedId } });
       }
     } catch (err) {
+      const status = err.statusCode || 500;
       logger.error('POController.createOrUpdate error', { error: err.message });
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(status).json({ success: false, error: err.message });
     }
   }
 
@@ -121,8 +139,8 @@ class POController {
       if (req.query.isDraft !== undefined)
         filter.isDraft = req.query.isDraft === 'true';
 
-      const page  = Math.max(1, parseInt(req.query.page  ?? '1',  10));
-      const limit = Math.min(200, parseInt(req.query.limit ?? '50', 10));
+      const page  = Math.max(1, parseInt(req.query.page  ?? '1',  10) || 1);
+      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit ?? '50', 10) || 50));
       const skip  = (page - 1) * limit;
 
       const [items, total] = await Promise.all([
@@ -132,8 +150,9 @@ class POController {
 
       return res.json({ success: true, data: items, total, page, limit });
     } catch (err) {
+      const status = err.statusCode || 500;
       logger.error('POController.list error', { error: err.message });
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(status).json({ success: false, error: err.message });
     }
   }
 
@@ -141,11 +160,12 @@ class POController {
   async getByCandidateId(req, res) {
     try {
       const col = await this.getCollection();
-      const po = await col.findOne({ candidateId: new ObjectId(req.params.candidateId) });
+      const po = await col.findOne({ candidateId: toObjectId(req.params.candidateId, 'candidateId') });
       return res.json({ success: true, po: po ?? null });
     } catch (err) {
+      const status = err.statusCode || 500;
       logger.error('POController.getByCandidateId error', { error: err.message });
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(status).json({ success: false, error: err.message });
     }
   }
 
@@ -153,11 +173,17 @@ class POController {
   async remove(req, res) {
     try {
       const col = await this.getCollection();
-      await col.deleteOne({ _id: new ObjectId(req.params.id) });
+      // Only admin, MAM, MM, mlead can delete PO records
+      const allowedRoles = ['admin', 'mam', 'mm', 'mlead'];
+      if (!allowedRoles.includes((req.user.role || '').toLowerCase())) {
+        return res.status(403).json({ success: false, error: 'Insufficient permissions' });
+      }
+      await col.deleteOne({ _id: toObjectId(req.params.id, 'id') });
       return res.json({ success: true });
     } catch (err) {
+      const status = err.statusCode || 500;
       logger.error('POController.remove error', { error: err.message });
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(status).json({ success: false, error: err.message });
     }
   }
 
@@ -165,7 +191,7 @@ class POController {
   async createDraftEmail(req, res) {
     try {
       const col = await this.getCollection();
-      const po = await col.findOne({ _id: new ObjectId(req.params.id) });
+      const po = await col.findOne({ _id: toObjectId(req.params.id, 'id') });
       if (!po) return res.status(404).json({ success: false, error: 'PO not found' });
 
       const body = buildEmailBody(po);
@@ -175,6 +201,9 @@ class POController {
       };
 
       const userAssertion = bearerFrom(req);
+      if (!userAssertion) {
+        return res.status(401).json({ success: false, error: 'Bearer token required for Outlook draft creation' });
+      }
       const message = await graphMailService.createDraft(userAssertion, draftPayload);
 
       return res.json({
@@ -183,8 +212,9 @@ class POController {
         webLink: message.webLink ?? null,
       });
     } catch (err) {
+      const status = err.statusCode || 500;
       logger.error('POController.createDraftEmail error', { error: err.message });
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(status).json({ success: false, error: err.message });
     }
   }
 }

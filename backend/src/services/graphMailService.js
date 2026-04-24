@@ -3,6 +3,7 @@ import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
 const GRAPH_MAIL_ENDPOINT = 'https://graph.microsoft.com/v1.0/me/sendMail';
+const GRAPH_DRAFT_ENDPOINT = 'https://graph.microsoft.com/v1.0/me/messages';
 const GRAPH_SCOPE_DEFAULT = 'https://graph.microsoft.com/.default';
 
 class AzureMailNotConfiguredError extends Error {
@@ -184,9 +185,10 @@ class GraphMailService {
   }
 
   async createDraft(userAssertion, draftPayload) {
+    this.ensureEnabled();
     const accessToken = await this.acquireOnBehalfOfToken(userAssertion);
 
-    const response = await fetch('https://graph.microsoft.com/v1.0/me/messages', {
+    const response = await fetch(GRAPH_DRAFT_ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
