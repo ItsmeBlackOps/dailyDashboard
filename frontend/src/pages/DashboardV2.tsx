@@ -31,14 +31,23 @@ export default function DashboardV2() {
     const [loadingOverview, setLoadingOverview] = useState(true);
 
     const [searchParams, setSearchParams] = useSearchParams();
-    const activeTab = searchParams.get('tab') ?? 'overview';
-    const handleTabChange = (value: string) =>
-      setSearchParams({ tab: value }, { replace: true });
 
     const role = (localStorage.getItem('role') || '').toLowerCase();
     const canSeeRecruiterStats  = ['admin', 'recruiter', 'manager', 'mlead', 'mam', 'mm'].includes(role);
     const canSeeExpertStats     = ['admin', 'user', 'lead', 'am'].includes(role);
     const canSeeManagementReports = ['admin', 'mlead', 'lead', 'mam', 'am', 'mm', 'recruiter', 'user'].includes(role);
+
+    const ALWAYS_TABS = ['overview', 'candidates', 'po'];
+    const ROLE_TABS = [
+      canSeeRecruiterStats    ? 'recruiter'   : null,
+      canSeeExpertStats       ? 'expert'      : null,
+      canSeeManagementReports ? 'management'  : null,
+    ].filter(Boolean) as string[];
+    const VALID_TABS = [...ALWAYS_TABS, ...ROLE_TABS];
+    const raw = searchParams.get('tab');
+    const activeTab = raw && VALID_TABS.includes(raw) ? raw : 'overview';
+    const handleTabChange = (value: string) =>
+      setSearchParams(prev => { prev.set('tab', value); return prev; }, { replace: true });
     const canSeePO              = true; // all authenticated roles — scoped by backend
 
     const startDate = dateMode === 'month' ? `${selectedMonth}-01`
@@ -171,8 +180,9 @@ export default function DashboardV2() {
                                 <TabsTrigger value="overview" className="text-xs">Overview</TabsTrigger>
                                 <TabsTrigger value="candidates" className="text-xs">My Candidates</TabsTrigger>
                                 <TabsTrigger value="po" className="text-xs">PO Candidates</TabsTrigger>
-                                {canSeeRecruiterStats  && <TabsTrigger value="recruiter"  className="text-xs">Recruiter Stats</TabsTrigger>}
-                                {canSeeExpertStats     && <TabsTrigger value="expert"     className="text-xs">Expert Stats</TabsTrigger>}
+                                {canSeeRecruiterStats    && <TabsTrigger value="recruiter"   className="text-xs">Recruiter Stats</TabsTrigger>}
+                                {canSeeExpertStats       && <TabsTrigger value="expert"     className="text-xs">Expert Stats</TabsTrigger>}
+                                {canSeeManagementReports && <TabsTrigger value="management" className="text-xs">Management Reports</TabsTrigger>}
                             </TabsList>
                         </div>
 
@@ -250,6 +260,10 @@ export default function DashboardV2() {
 
                         <TabsContent value="expert" className="space-y-4 mt-0">
                             <ExpertAnalytics period={dateMode} dateBasis={dateBasis} startDate={startDate} />
+                        </TabsContent>
+
+                        <TabsContent value="management" className="mt-0">
+                            <ManagementReports />
                         </TabsContent>
                     </Tabs>
                 </div>

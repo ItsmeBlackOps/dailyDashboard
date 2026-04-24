@@ -18,9 +18,11 @@ const tabs = [
 
 export default function ProfileHub() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') ?? 'overview';
+  const VALID_TABS = tabs.map(t => t.value);
+  const raw = searchParams.get('tab');
+  const activeTab = raw && VALID_TABS.includes(raw) ? raw : 'overview';
   const setActiveTab = (value: string) =>
-    setSearchParams({ tab: value }, { replace: true });
+    setSearchParams(prev => { prev.set('tab', value); return prev; }, { replace: true });
 
   return (
     <div className="space-y-4">
