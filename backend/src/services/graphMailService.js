@@ -182,6 +182,39 @@ class GraphMailService {
 
     return parsed;
   }
+
+  async createDraft(userAssertion, draftPayload) {
+    const accessToken = await this.acquireOnBehalfOfToken(userAssertion);
+
+    const response = await fetch('https://graph.microsoft.com/v1.0/me/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(draftPayload),
+    });
+
+    const text = await response.text();
+    let parsed;
+    try {
+      parsed = text ? JSON.parse(text) : {};
+    } catch (err) {
+      logger.error('Failed to parse Graph createDraft response', { error: err.message });
+      parsed = text;
+    }
+
+    if (!response.ok) {
+      throw new GraphMailRequestError(
+        'Microsoft Graph createDraft request failed',
+        response.status,
+        parsed
+      );
+    }
+
+    logger.info('Outlook draft created', { messageId: parsed.id });
+    return parsed; // includes parsed.webLink for opening in Outlook
+  }
 }
 
 export const graphMailService = new GraphMailService();

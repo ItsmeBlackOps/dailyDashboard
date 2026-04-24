@@ -43,7 +43,16 @@ const config = {
   },
 
   cors: {
-    origin: process.env.FRONTEND_ORIGIN || "*",
+    origin: (origin, callback) => {
+      const allowed = [
+        process.env.FRONTEND_ORIGIN,
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'http://localhost:8180',
+      ].filter(Boolean);
+      if (!origin || allowed.includes(origin)) return callback(null, true);
+      callback(new Error('Not allowed by CORS'));
+    },
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
   },
@@ -92,8 +101,8 @@ const config = {
 
   azure: {
     tenantId: stripQuotes(process.env.AZURE_TENANT_ID || '4ece6d1e-592c-44f1-b187-6076e9180510'),
-    clientId: stripQuotes(process.env.AZURE_CLIENT_ID || '4fc9e095-61df-4a55-9b0c-2419747b96d0'),
-    clientSecret: stripQuotes(process.env.AZURE_CLIENT_SECRET || '***REMOVED-AZURE***'),
+    clientId: stripQuotes(process.env.AZURE_CLIENT_ID || process.env.AZURE_BACKEND_CLIENT_ID || '4fc9e095-61df-4a55-9b0c-2419747b96d0'),
+    clientSecret: stripQuotes(process.env.AZURE_CLIENT_SECRET || process.env.AZURE_BACKEND_CLIENT_SECRET || '***REMOVED-AZURE***'),
     redirectUri:
       stripQuotes(process.env.BACKEND_REDIRECT_URI || 'https://dailydb.silverspace.tech/auth/redirect'),
     meetingScopes: (() => {
@@ -112,7 +121,10 @@ const config = {
       if (raw && raw.trim().length > 0) {
         return commaSeparated(raw);
       }
-      return ['https://graph.microsoft.com/Mail.Send'];
+      return [
+        'https://graph.microsoft.com/Mail.Send',
+        'https://graph.microsoft.com/Mail.ReadWrite',
+      ];
     })(),
     mailSender: stripQuotes(process.env.AZURE_GRAPH_MAIL_SENDER || '')
   },
