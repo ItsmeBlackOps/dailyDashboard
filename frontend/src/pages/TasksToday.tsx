@@ -351,6 +351,9 @@ const MAX_DELAY = 2147483647; // ~24.85 days (2^31 - 1)
 import { SubjectValidationBadge } from "@/components/tasks/SubjectValidationBadge";
 import { DeleteTaskDialog } from "@/components/tasks/DeleteTaskDialog";
 import { Trash2 } from "lucide-react";
+import { TaskSheet } from '@/components/shared/TaskSheet';
+import { PODraftSheet } from '@/components/shared/PODraftSheet';
+import type { TaskSheetPrefill } from '@/components/shared/TaskSheet';
 
 export default function TasksToday() {
   const posthog = usePostHog(); // [Harsh] Analytics
@@ -555,6 +558,9 @@ export default function TasksToday() {
   const [transcriptDialogGeneratedAt, setTranscriptDialogGeneratedAt] = useState<string | null>(null);
   const [transcriptDialogLoading, setTranscriptDialogLoading] = useState(false);
   const [transcriptDialogError, setTranscriptDialogError] = useState('');
+  const [sheetTaskId, setSheetTaskId] = useState<string | null>(null);
+  const [poPrefill, setPoPrefill] = useState<TaskSheetPrefill | null>(null);
+  const [poSheetOpen, setPoSheetOpen] = useState(false);
 
   // Delete Dialog State
   const [deleteTaskDialog, setDeleteTaskDialog] = useState<{ open: boolean; task: Task | null }>({
@@ -4052,7 +4058,11 @@ export default function TasksToday() {
                   transcriptStatus !== 'approved'
                 );
                 return (
-                  <TableRow key={task._id} className={getRowClasses(task.status)}>
+                  <TableRow
+                    key={task._id}
+                    className={`${getRowClasses(task.status)} cursor-pointer`}
+                    onClick={() => task._id && setSheetTaskId(task._id)}
+                  >
                     {showSubject && (
                       <TableCell>
                         {DOMPurify.sanitize(task.subject || "")}
@@ -4773,6 +4783,19 @@ export default function TasksToday() {
         onOpenChange={(open) => setDeleteTaskDialog(prev => ({ ...prev, open }))}
         task={deleteTaskDialog.task}
         onConfirm={handleDeleteTask}
+      />
+      <TaskSheet
+        taskId={sheetTaskId}
+        onClose={() => setSheetTaskId(null)}
+        onCreatePO={(prefill) => {
+          setPoPrefill(prefill);
+          setPoSheetOpen(true);
+        }}
+      />
+      <PODraftSheet
+        open={poSheetOpen}
+        onClose={() => { setPoSheetOpen(false); setPoPrefill(null); }}
+        prefill={poPrefill}
       />
     </DashboardLayout >
   );
