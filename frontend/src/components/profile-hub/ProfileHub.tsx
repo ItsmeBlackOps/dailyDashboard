@@ -1,0 +1,56 @@
+import { useSearchParams } from 'react-router-dom';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import OverviewTab from './OverviewTab';
+import AnalyticsTab from './AnalyticsTab';
+import ProfilesTab from './ProfilesTab';
+import RecruitersTab from './RecruitersTab';
+import AlertsTab from './AlertsTab';
+import POTab from './POTab';
+
+const tabs = [
+  { value: 'overview',   label: 'Overview'       },
+  { value: 'analytics',  label: 'Analytics'      },
+  { value: 'profiles',   label: 'All Profiles'   },
+  { value: 'recruiters', label: 'Recruiters'     },
+  { value: 'alerts',     label: 'Alerts & Aging' },
+  { value: 'po',         label: 'PO Placed'      },
+];
+
+export default function ProfileHub() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') ?? 'overview';
+  const setActiveTab = (value: string) =>
+    setSearchParams({ tab: value }, { replace: true });
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-xl font-bold tracking-tight">Profile Distribution Hub</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Vizva recruiter analytics &amp; candidate tracking</p>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="overflow-x-auto pb-1">
+          <TabsList className="flex w-max gap-1 h-auto">
+            {tabs.map(t => (
+              <TabsTrigger key={t.value} value={t.value} className="text-xs whitespace-nowrap">
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+
+        <div className="mt-4">
+          <TabsContent value="overview"   className="mt-0">
+            <OverviewTab onNavigate={setActiveTab} />
+          </TabsContent>
+          <TabsContent value="analytics"  className="mt-0"><AnalyticsTab /></TabsContent>
+          <TabsContent value="profiles"   className="mt-0"><ProfilesTab /></TabsContent>
+          <TabsContent value="recruiters" className="mt-0"><RecruitersTab /></TabsContent>
+          <TabsContent value="alerts"     className="mt-0"><AlertsTab /></TabsContent>
+          <TabsContent value="po"         className="mt-0"><POTab /></TabsContent>
+        </div>
+      </Tabs>
+    </div>
+  );
+}
