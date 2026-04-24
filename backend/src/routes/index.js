@@ -14,6 +14,7 @@ import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
 import dashboardRoutes from './dashboardRoutes.js';
+import poRoutes from './po.js';
 
 const router = express.Router();
 
@@ -29,6 +30,7 @@ router.use('/notifications', notificationRoutes);
 router.use('/permissions', permissionRoutes);
 router.use('/transcript-requests', transcriptRequestRoutes);
 router.use('/dashboard', dashboardRoutes);
+router.use('/po', poRoutes);
 router.use('/', docsRoutes);
 
 // Health check endpoint
