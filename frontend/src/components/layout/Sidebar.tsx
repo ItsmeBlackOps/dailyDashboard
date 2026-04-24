@@ -417,7 +417,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   isOpen={isOpen}
                 />
               )}
-              {normalizedRole === 'admin' && (
+              {['admin', 'mlead', 'mm', 'mam'].includes(normalizedRole) && (
                 <NavItem
                   icon={BellRing}
                   label="Admin Alerts"
@@ -456,6 +456,14 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                     isOpen={isOpen}
                   />
                 </>
+              )}
+              {['admin', 'mam', 'mm', 'mlead', 'recruiter'].includes(normalizedRole) && (
+                <NavItem
+                  icon={LayoutDashboard}
+                  label="Profile Hub"
+                  href="/profile-hub"
+                  isOpen={isOpen}
+                />
               )}
             </nav>
           </div>

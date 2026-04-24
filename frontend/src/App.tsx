@@ -17,6 +17,9 @@ import UserManagementPage from './pages/UserManagement';
 import ResumeUnderstanding from './pages/ResumeUnderstanding';
 import DashboardV2 from './pages/DashboardV2';
 import PermissionsManagement from './pages/PermissionsManagement';
+import ProfileHubPage from './pages/ProfileHubPage';
+import CandidateDetailPage from './pages/CandidateDetailPage';
+import TaskDetailPage from './pages/TaskDetailPage';
 
 const queryClient = new QueryClient();
 
@@ -39,6 +42,9 @@ const App = () => (
             <Route path="/user-management" element={<UserManagementPage />} />
             <Route path="/permissions" element={<PermissionsManagement />} />
             <Route path="/dashboard-v2" element={<DashboardV2 />} />
+            <Route path="/profile-hub" element={<ProfileHubPage />} />
+            <Route path="/candidate/:id" element={<CandidateDetailPage />} />
+            <Route path="/task/:taskId" element={<TaskDetailPage />} />
             {/* Add any other protected routes here */}
           </Route>
 
