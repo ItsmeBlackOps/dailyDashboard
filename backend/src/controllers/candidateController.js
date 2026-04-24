@@ -1,7 +1,64 @@
 import { storageService } from '../services/storageService.js';
+import { candidateModel } from '../models/Candidate.js';
+import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
+import { database } from '../config/database.js';
+import { ObjectId } from 'mongodb';
+
+const MARKETING_ROLES = ['admin', 'mam', 'mm', 'mlead', 'recruiter'];
+const MARKETING_DOMAINS = ['vizvainc.com', 'vizvaconsultancy.co.uk'];
 
 class CandidateController {
+  // Returns a MongoDB filter object scoping candidateDetails by the requesting user.
+  // Uses string-based $regex + $options (same pattern as candidateModel) for driver compatibility.
+  async _scopeFilter(user) {
+    if (!user) return {};
+    const role = (user.role || '').trim().toLowerCase();
+    const email = (user.email || '').toLowerCase();
+    const esc = (e) => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const exactRe = (e) => ({ $regex: `^${esc(e)}$`, $options: 'i' });
+
+    if (role === 'admin') return {};
+
+    if (role === 'recruiter') return { Recruiter: exactRe(email) };
+
+    if (role === 'user' || role === 'expert') return { Expert: exactRe(email) };
+
+    if (['lead', 'mlead', 'am', 'mam'].includes(role)) {
+      let teamEmails = [];
+      if (role === 'mam') {
+        const mamName = userModel.formatDisplayNameFromEmail(email);
+        const userCol = database.getCollection('users');
+        if (userCol) {
+          const members = await userCol.find({ manager: { $regex: mamName, $options: 'i' } }).toArray();
+          teamEmails = members.map(u => u.email.toLowerCase());
+        }
+      } else {
+        teamEmails = userModel.getTeamEmails(email, role, user.teamLead) || [];
+      }
+      teamEmails.push(email);
+      // Build $or with one regex condition per email
+      return {
+        $or: [
+          { Recruiter: { $in: teamEmails.map(e => new RegExp(`^${esc(e)}$`, 'i')) } },
+          { Expert:    { $in: teamEmails.map(e => new RegExp(`^${esc(e)}$`, 'i')) } },
+        ],
+      };
+    }
+
+    if (role === 'mm') {
+      const profile = await userModel.getUserProfileMetadata(email);
+      let branch = profile?.metadata?.branch;
+      if (email.includes('tushar.ahuja')) branch = 'GGR';
+      if (email.includes('aryan.mishra')) branch = 'LKN';
+      if (email.includes('akash.avasthi')) branch = 'AHM';
+      if (branch) return { Branch: exactRe(branch) };
+      return { Recruiter: exactRe(email) };
+    }
+
+    return {};
+  }
+
   async uploadResume(req, res) {
     try {
       const user = req.user;
@@ -53,6 +110,473 @@ class CandidateController {
         success: false,
         error: error.statusCode === 400 ? error.message : 'Unable to upload resume'
       });
+    }
+  }
+
+  async getPOMissingDate(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+
+      const normalizedRole = (user.role || '').trim().toLowerCase();
+      if (!['admin', 'mam', 'mm', 'mlead', 'recruiter'].includes(normalizedRole)) {
+        return res.status(403).json({ success: false, error: 'Access denied' });
+      }
+
+      const col = candidateModel.collection;
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      const scope = await this._scopeFilter(user);
+      const docs = await col.find(
+        { ...scope, status: 'Placement Offer', poDate: { $exists: false } },
+        { projection: { _id: 1, 'Candidate Name': 1, Recruiter: 1, updated_at: 1 } }
+      ).limit(100).toArray();
+
+      return res.json({
+        success: true,
+        count: docs.length,
+        candidates: docs.map(d => ({
+          id: d._id.toString(),
+          name: d['Candidate Name'] || '',
+          recruiter: d.Recruiter || '',
+          updatedAt: d.updated_at
+        }))
+      });
+    } catch (error) {
+      logger.error('getPOMissingDate failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  async getHubStats(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const role = (user.role || '').trim().toLowerCase();
+      if (!MARKETING_ROLES.includes(role)) return res.status(403).json({ success: false, error: 'Access denied' });
+
+      const col = candidateModel.collection;
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      const scope = await this._scopeFilter(user);
+      const [statusAgg, branchAgg] = await Promise.all([
+        col.aggregate([{ $match: scope }, { $group: { _id: '$status', count: { $sum: 1 } } }]).toArray(),
+        col.aggregate([{ $match: scope }, { $group: { _id: '$Branch', count: { $sum: 1 } } }, { $sort: { count: -1 } }]).toArray(),
+      ]);
+
+      const byStatus = {};
+      let total = 0;
+      for (const s of statusAgg) {
+        const key = (s._id || 'Unassigned').trim();
+        byStatus[key] = (byStatus[key] || 0) + s.count;
+        total += s.count;
+      }
+
+      const branchColors = { GGR: '#635bff', LKN: '#0cce6b', AHM: '#f5a623', UK: '#ab6bff' };
+      const branches = branchAgg.map(b => ({
+        name: b._id || 'Unassigned',
+        count: b.count,
+        color: branchColors[b._id] || '#6b7280',
+      }));
+
+      return res.json({
+        success: true,
+        kpi: {
+          total,
+          active: (byStatus['Active'] || 0),
+          po: (byStatus['Placement Offer'] || 0),
+          hold: (byStatus['Hold'] || 0),
+          backout: (byStatus['Backout'] || 0),
+          lowPriority: (byStatus['Low Priority'] || 0),
+          unassigned: (byStatus['Unassigned'] || 0),
+        },
+        branches,
+        statusBreakdown: Object.entries(byStatus).map(([status, count]) => ({ status, count })),
+      });
+    } catch (error) {
+      logger.error('getHubStats failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  async getHubProfiles(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const role = (user.role || '').trim().toLowerCase();
+      if (!MARKETING_ROLES.includes(role)) return res.status(403).json({ success: false, error: 'Access denied' });
+
+      const col = candidateModel.collection;
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      const scope = await this._scopeFilter(user);
+      const { branch, status, search, recruiterEmail, page = '1', limit = '50' } = req.query;
+      const filter = { ...scope };
+      if (branch && branch !== 'all') filter.Branch = branch === 'Unassigned' ? null : branch;
+      if (status && status !== 'all') filter.status = status === 'Unassigned' ? null : status;
+      if (recruiterEmail) {
+        filter.$and = [...(filter.$and || []), { Recruiter: { $regex: new RegExp(`^${recruiterEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }];
+      }
+      if (search) {
+        const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(escaped, 'i');
+        const searchOr = [{ 'Candidate Name': re }, { Recruiter: re }, { Technology: re }];
+        filter.$and = [...(filter.$and || []), { $or: searchOr }];
+      }
+
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const [docs, total] = await Promise.all([
+        col.find(filter, {
+          projection: { _id: 1, 'Candidate Name': 1, Technology: 1, Branch: 1, Recruiter: 1, status: 1, updated_at: 1, poDate: 1 }
+        }).sort({ updated_at: -1 }).skip(skip).limit(parseInt(limit)).toArray(),
+        col.countDocuments(filter),
+      ]);
+
+      return res.json({
+        success: true,
+        total,
+        page: parseInt(page),
+        profiles: docs.map(d => ({
+          id: d._id.toString(),
+          name: d['Candidate Name'] || '',
+          technology: d.Technology || '',
+          branch: d.Branch || 'Unassigned',
+          recruiter: d.Recruiter || '',
+          status: d.status || 'Unassigned',
+          updatedAt: d.updated_at,
+          poDate: d.poDate ?? null,
+        })),
+      });
+    } catch (error) {
+      logger.error('getHubProfiles failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  async getHubRecruiters(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const role = (user.role || '').trim().toLowerCase();
+      if (!MARKETING_ROLES.includes(role)) return res.status(403).json({ success: false, error: 'Access denied' });
+
+      const col = candidateModel.collection;
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      const scope = await this._scopeFilter(user);
+      const agg = await col.aggregate([
+        { $match: { ...scope, Recruiter: { $exists: true, $ne: null, $ne: '' } } },
+        {
+          $group: {
+            _id: '$Recruiter',
+            total: { $sum: 1 },
+            active: { $sum: { $cond: [{ $eq: ['$status', 'Active'] }, 1, 0] } },
+            po: { $sum: { $cond: [{ $eq: ['$status', 'Placement Offer'] }, 1, 0] } },
+            hold: { $sum: { $cond: [{ $eq: ['$status', 'Hold'] }, 1, 0] } },
+            backout: { $sum: { $cond: [{ $eq: ['$status', 'Backout'] }, 1, 0] } },
+          }
+        },
+        { $sort: { total: -1 } },
+        { $limit: 20 },
+      ]).toArray();
+
+      // Filter to marketing domains only
+      const marketingRecruiters = agg.filter(r => {
+        const domain = (r._id || '').split('@')[1] || '';
+        return MARKETING_DOMAINS.includes(domain);
+      });
+
+      return res.json({
+        success: true,
+        recruiters: marketingRecruiters.map(r => {
+          const namePart = (r._id || '').split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          return { email: r._id, name: namePart, total: r.total, active: r.active, po: r.po, hold: r.hold, backout: r.backout };
+        }),
+      });
+    } catch (error) {
+      logger.error('getHubRecruiters failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  async getHubAlerts(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const role = (user.role || '').trim().toLowerCase();
+      if (!MARKETING_ROLES.includes(role)) return res.status(403).json({ success: false, error: 'Access denied' });
+
+      const col = candidateModel.collection;
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      const scope = await this._scopeFilter(user);
+      const docs = await col.find(
+        { ...scope, status: 'Hold' },
+        { projection: { _id: 1, 'Candidate Name': 1, Branch: 1, Recruiter: 1, updated_at: 1, statusHistory: 1 } }
+      ).sort({ updated_at: 1 }).limit(100).toArray();
+
+      const now = Date.now();
+      const alerts = docs.map(d => {
+        // Find the Hold entry in statusHistory for accurate date
+        const holdEntry = Array.isArray(d.statusHistory)
+          ? d.statusHistory.slice().reverse().find(e => e.status === 'Hold')
+          : null;
+        const sinceDate = holdEntry?.changedAt || d.updated_at;
+        const daysOnHold = sinceDate ? Math.floor((now - new Date(sinceDate).getTime()) / 86400000) : null;
+        const severity = daysOnHold >= 30 ? 'critical' : daysOnHold >= 14 ? 'high' : 'medium';
+        return {
+          id: d._id.toString(),
+          name: d['Candidate Name'] || '',
+          branch: d.Branch || 'Unassigned',
+          recruiter: d.Recruiter || '',
+          sinceDate,
+          daysOnHold,
+          severity,
+        };
+      });
+
+      return res.json({ success: true, alerts });
+    } catch (error) {
+      logger.error('getHubAlerts failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  async getHubPO(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+
+      const col = candidateModel.collection;
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      const scope = await this._scopeFilter(user);
+      const docs = await col.find(
+        { ...scope, status: 'Placement Offer' },
+        { projection: { _id: 1, 'Candidate Name': 1, Branch: 1, Recruiter: 1, Technology: 1, poDate: 1, updated_at: 1 } }
+      ).sort({ poDate: -1 }).limit(200).toArray();
+
+      const missingPoDate = docs.filter(d => !d.poDate).length;
+
+      return res.json({
+        success: true,
+        total: docs.length,
+        missingPoDate,
+        candidates: docs.map(d => ({
+          id: d._id.toString(),
+          name: d['Candidate Name'] || '',
+          branch: d.Branch || 'Unassigned',
+          recruiter: d.Recruiter || '',
+          technology: d.Technology || '',
+          poDate: d.poDate ?? null,
+          updatedAt: d.updated_at,
+        })),
+      });
+    } catch (error) {
+      logger.error('getHubPO failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  async getGrouped(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+
+      const col = candidateModel.collection;
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      const scope = await this._scopeFilter(user);
+
+      const STATUS_ORDER = ['Active', 'Placement Offer', 'Hold', 'Low Priority', 'Backout', 'Unassigned'];
+
+      // Get all candidates in scope with minimal projection
+      const docs = await col.find(scope, {
+        projection: {
+          _id: 1,
+          'Candidate Name': 1,
+          Technology: 1,
+          Branch: 1,
+          Recruiter: 1,
+          Expert: 1,
+          status: 1,
+          updated_at: 1,
+        }
+      }).sort({ updated_at: -1 }).toArray();
+
+      // Group by status
+      const groupMap = {};
+      for (const doc of docs) {
+        const key = (doc.status || 'Unassigned').trim();
+        if (!groupMap[key]) groupMap[key] = [];
+        groupMap[key].push({
+          id: doc._id.toString(),
+          name: doc['Candidate Name'] || '',
+          technology: doc.Technology || '',
+          branch: doc.Branch || 'Unassigned',
+          recruiter: doc.Recruiter || '',
+          expert: doc.Expert || '',
+          updatedAt: doc.updated_at || null,
+        });
+      }
+
+      const groups = STATUS_ORDER
+        .filter(s => groupMap[s])
+        .map(s => ({ status: s, count: groupMap[s].length, candidates: groupMap[s].slice(0, 20) }));
+
+      // Append any statuses not in STATUS_ORDER
+      for (const [status, candidates] of Object.entries(groupMap)) {
+        if (!STATUS_ORDER.includes(status)) {
+          groups.push({ status, count: candidates.length, candidates: candidates.slice(0, 20) });
+        }
+      }
+
+      return res.json({ success: true, total: docs.length, groups });
+    } catch (error) {
+      logger.error('getGrouped failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  async getCandidateById(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+
+      const { id } = req.params;
+      let oid;
+      try { oid = new ObjectId(id); } catch { return res.status(400).json({ success: false, error: 'Invalid candidate ID' }); }
+
+      const col = candidateModel.collection;
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      const doc = await col.findOne({ _id: oid });
+      if (!doc) return res.status(404).json({ success: false, error: 'Candidate not found' });
+
+      // Fetch interview tasks from taskBody collection
+      const taskCol = database.getCollection('taskBody');
+      const tasks = taskCol ? await taskCol.find(
+        { 'Email ID': doc['Email ID'] },
+        { projection: {
+          _id: 1,
+          'Date of Interview': 1, 'Start Time Of Interview': 1, 'End Time Of Interview': 1,
+          'Job Title': 1, 'End Client': 1, 'Interview Round': 1, 'Actual Round': 1,
+          status: 1, Vendor: 1, sender: 1, assignedTo: 1, assignedExpert: 1, assignedAt: 1,
+          suggestions: 1, receivedDateTime: 1
+        } }
+      ).sort({ 'Date of Interview': -1 }).limit(100).toArray() : [];
+
+      return res.json({
+        success: true,
+        candidate: {
+          id:         doc._id.toString(),
+          name:       doc['Candidate Name'] || '',
+          email:      doc['Email ID'] || '',
+          contact:    doc.Contact || doc.contact || '',
+          technology: doc.Technology || '',
+          branch:     doc.Branch || 'Unassigned',
+          recruiter:  doc.Recruiter || '',
+          expert:     doc.Expert || '',
+          status:     doc.status || 'Unassigned',
+          poDate:     doc.poDate ?? null,
+          receivedDate: doc.received_at || doc.createdAt || null,
+          updatedAt:  doc.updated_at || null,
+          resumeLink: doc.resumeLink || null,
+          statusHistory: Array.isArray(doc.statusHistory) ? doc.statusHistory : [],
+          workflowStatus: doc.workflowStatus || '',
+        },
+        interviews: tasks.map(t => ({
+          taskId:     t._id.toString(),
+          date:       t['Date of Interview'] || null,
+          startTime:  t['Start Time Of Interview'] || null,
+          endTime:    t['End Time Of Interview'] || null,
+          role:       t['Job Title'] || '',
+          client:     t['End Client'] || '',
+          round:      t['Interview Round'] || '',
+          actualRound: t['Actual Round'] || t.actualRound || '',
+          vendor:     t.Vendor || '',
+          status:     t.status || '',
+          assignedTo: t.assignedTo || t.assignedExpert || '',
+          assignedAt: t.assignedAt || null,
+          recruiter:  t.sender || '',
+          suggestions: Array.isArray(t.suggestions) ? t.suggestions : [],
+          receivedAt: t.receivedDateTime || null,
+        })),
+      });
+    } catch (error) {
+      logger.error('getCandidateById failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  async getTaskById(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+
+      const { taskId } = req.params;
+      const full = req.query.full === 'true';
+      let oid;
+      try { oid = new ObjectId(taskId); } catch { return res.status(400).json({ success: false, error: 'Invalid task ID' }); }
+
+      const taskCol = database.getCollection('taskBody');
+      if (!taskCol) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      // full=true includes email body + replies thread
+      const projection = full ? {} : { body: 0, replies: 0 };
+      const doc = await taskCol.findOne({ _id: oid }, { projection });
+      if (!doc) return res.status(404).json({ success: false, error: 'Task not found' });
+
+      // Resolve candidateId from Email ID
+      let candidateId = null;
+      const emailId = doc['Email ID'];
+      if (emailId) {
+        const candCol = candidateModel.collection;
+        if (candCol) {
+          const cand = await candCol.findOne({ 'Email ID': emailId }, { projection: { _id: 1 } });
+          if (cand) candidateId = cand._id.toString();
+        }
+      }
+
+      // Format replies: [{body, receivedDateTime, from}]
+      const replies = full && Array.isArray(doc.replies)
+        ? doc.replies.map(r => ({
+            body:      r.body || r.textBody || r.htmlBody || '',
+            from:      r.from || r.sender || '',
+            receivedAt: r.receivedDateTime || r.date || null,
+          })).filter(r => r.body)
+        : [];
+
+      return res.json({
+        success: true,
+        task: {
+          taskId:       doc._id.toString(),
+          candidateId,
+          candidateName: doc['Candidate Name'] || '',
+          emailId:      doc['Email ID'] || '',
+          date:         doc['Date of Interview'] || null,
+          startTime:    doc['Start Time Of Interview'] || null,
+          endTime:      doc['End Time Of Interview'] || null,
+          role:         doc['Job Title'] || '',
+          client:       doc['End Client'] || '',
+          round:        doc['Interview Round'] || '',
+          actualRound:  doc['Actual Round'] || doc.actualRound || '',
+          status:       doc.status || '',
+          vendor:       doc.Vendor || '',
+          recruiter:    doc.sender || '',
+          assignedTo:   doc.assignedTo || doc.assignedExpert || '',
+          assignedAt:   doc.assignedAt || null,
+          suggestions:  Array.isArray(doc.suggestions) ? doc.suggestions : [],
+          receivedAt:   doc.receivedDateTime || null,
+          // Full mode extras
+          body:    full ? (doc.body || doc.textBody || '') : undefined,
+          replies: full ? replies : undefined,
+          subject: doc.subject || doc.Subject || '',
+        },
+      });
+    } catch (error) {
+      logger.error('getTaskById failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
     }
   }
 }

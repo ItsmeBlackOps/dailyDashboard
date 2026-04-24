@@ -1322,6 +1322,14 @@ class CandidateService {
       throw error;
     }
 
+    // Auto-set poDate on first Placement Offer
+    if (updates.status === 'Placement Offer' && !oldDoc.poDate) {
+      updates.poDate = new Date();
+    }
+
+    // Pass caller identity for statusHistory
+    updates._changedBy = user.email;
+
     const updated = await candidateModel.updateCandidateById(candidateId, updates);
 
     logger.info('Candidate updated via updateCandidate', {

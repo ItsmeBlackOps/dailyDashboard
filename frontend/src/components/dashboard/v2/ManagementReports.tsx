@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth, API_URL } from '@/hooks/useAuth';
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 
 interface AtRiskCandidate {
+    _id: string;
     'Candidate Name': string;
     'Email ID': string;
     Branch: string;
@@ -39,6 +41,7 @@ interface InterviewTask {
 }
 
 export function ManagementReports() {
+    const navigate = useNavigate();
     const [report, setReport] = useState<AtRiskCandidate[]>([]);
     const [loading, setLoading] = useState(true);
     const { authFetch } = useAuth();
@@ -154,7 +157,17 @@ export function ManagementReports() {
             <Dialog open={!!selectedCandidate} onOpenChange={(open) => !open && setSelectedCandidate(null)}>
                 <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Interview History: {selectedCandidate?.['Candidate Name']}</DialogTitle>
+                        <div className="flex items-center justify-between gap-2">
+                            <DialogTitle>Interview History: {selectedCandidate?.['Candidate Name']}</DialogTitle>
+                            {selectedCandidate?._id && (
+                                <button
+                                    className="text-xs text-blue-500 hover:underline shrink-0"
+                                    onClick={() => navigate(`/candidate/${selectedCandidate._id}`)}
+                                >
+                                    View Full Profile →
+                                </button>
+                            )}
+                        </div>
                         <DialogDescription>
                             Recent activity and interview statuses.
                         </DialogDescription>

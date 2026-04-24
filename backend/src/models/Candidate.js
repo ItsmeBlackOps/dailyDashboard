@@ -21,7 +21,9 @@ const DEFAULT_PROJECTION = {
   metadata: 1,
   resumeLink: 1,
   docType: 1,
-  status: 1
+  status: 1,
+  poDate: 1,
+  statusHistory: 1
 };
 
 export const WORKFLOW_STATUS = {
@@ -218,6 +220,9 @@ export class CandidateModel {
       docType: { $in: [null, 'candidate'] }
     };
 
+    const changedBy = updates._changedBy;
+    const now = new Date();
+
     const updateDoc = {
       $set: {
         ...(updates.name !== undefined ? { 'Candidate Name': updates.name } : {}),
@@ -232,9 +237,20 @@ export class CandidateModel {
         ...(updates.resumeLink !== undefined ? { resumeLink: updates.resumeLink } : {}),
         ...(updates.status !== undefined ? { status: updates.status } : {}),
         ...(updates.createdBy !== undefined ? { createdBy: updates.createdBy } : {}),
-        updated_at: new Date()
+        ...(updates.poDate !== undefined ? { poDate: updates.poDate } : {}),
+        updated_at: now
       }
     };
+
+    if (updates.status !== undefined) {
+      updateDoc.$push = {
+        statusHistory: {
+          status: updates.status,
+          changedAt: now,
+          changedBy: changedBy || 'system'
+        }
+      };
+    }
 
     const result = await this.collection.updateOne(filter, updateDoc);
 
@@ -670,7 +686,13 @@ export class CandidateModel {
       resumeUnderstandingStatus: doc.resumeUnderstandingStatus || RESUME_UNDERSTANDING_STATUS.pending,
       resumeUnderstanding: Boolean(doc.resumeUnderstanding),
       createdBy: doc.createdBy || null,
-      resumeLink: doc.resumeLink || ''
+      resumeLink: doc.resumeLink || '',
+      poDate: doc.poDate instanceof Date ? doc.poDate.toISOString() : doc.poDate ?? null,
+      statusHistory: Array.isArray(doc.statusHistory) ? doc.statusHistory.map(e => ({
+        status: e.status,
+        changedAt: e.changedAt instanceof Date ? e.changedAt.toISOString() : e.changedAt,
+        changedBy: e.changedBy || 'system'
+      })) : []
     };
   }
 }

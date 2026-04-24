@@ -956,32 +956,36 @@ export class DashboardController {
                 // If the chart grouped by "Recruiter Name", filtering might be via $or or regex.
                 // Let's assume 'email' is the identifier passed.
                 if (email) {
+                    const safeEmail = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     const fuzzyName = this.userModel.formatDisplayNameFromEmail(email);
+                    const safeName = fuzzyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     pipeline.push({
                         $match: {
                             $or: [
-                                { senderRecruiter: { $regex: email, $options: 'i' } },
-                                { ownerRecruiter: { $regex: fuzzyName, $options: 'i' } }, // Match name
-                                { ownerRecruiter: { $regex: email, $options: 'i' } }      // Match email if raw
+                                { senderRecruiter: { $regex: safeEmail, $options: 'i' } },
+                                { ownerRecruiter: { $regex: safeName, $options: 'i' } },
+                                { ownerRecruiter: { $regex: safeEmail, $options: 'i' } }
                             ]
                         }
                     });
                 }
             } else if (type === 'expert') {
                 if (email) {
+                    const safeEmail = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     pipeline.push({
                         $match: {
-                            assignedExpert: { $regex: email, $options: 'i' }
+                            assignedExpert: { $regex: safeEmail, $options: 'i' }
                         }
                     });
                 }
             } else if (type === 'candidate') {
                 if (email) {
+                    const safeEmail = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     pipeline.push({
                         $match: {
                             $or: [
-                                { 'Candidate Name': { $regex: email, $options: 'i' } },
-                                { 'Candidate Email': { $regex: email, $options: 'i' } }
+                                { 'Candidate Name': { $regex: safeEmail, $options: 'i' } },
+                                { 'Candidate Email': { $regex: safeEmail, $options: 'i' } }
                             ]
                         }
                     });
@@ -1192,14 +1196,23 @@ export class DashboardController {
             pipeline.push({ $limit: 100 }); // Limit results
             pipeline.push({
                 $project: {
+                    _id: 1,
                     'Candidate Name': 1,
+                    'Email ID': 1,
                     'Date of Interview': 1,
                     'Start Time Of Interview': 1,
+                    'End Time Of Interview': 1,
                     'status': 1,
                     'Job Title': 1,
                     'End Client': 1,
                     'Interview Round': 1,
-                    'Actual Round': '$actualRoundResolved'
+                    'Actual Round': '$actualRoundResolved',
+                    'Vendor': 1,
+                    'sender': 1,
+                    'assignedTo': 1,
+                    'assignedExpert': 1,
+                    'assignedAt': 1,
+                    'suggestions': 1,
                 }
             });
 
@@ -1213,16 +1226,25 @@ export class DashboardController {
 
             const data = await this.taskCollection.aggregate(pipeline).toArray();
 
+            // Batch-lookup candidateId from candidateDetails by Email ID
+            const emails = [...new Set(data.map(t => t['Email ID']).filter(Boolean))];
+            const candidateCol = database.getCollection('candidateDetails');
+            const candidateDocs = (candidateCol && emails.length)
+                ? await candidateCol.find({ 'Email ID': { $in: emails } }, { projection: { _id: 1, 'Email ID': 1 } }).toArray()
+                : [];
+            const emailToId = Object.fromEntries(candidateDocs.map(d => [d['Email ID'], d._id.toString()]));
+            const enriched = data.map(t => ({ ...t, candidateId: emailToId[t['Email ID']] || null }));
+
             // PostHog: Log response
             logger.info('Dashboard: getRecruiterDrilldown - Response Sent', {
                 endpoint: 'getRecruiterDrilldown',
                 userEmail: req.user?.email,
-                recordCount: data.length,
+                recordCount: enriched.length,
                 recruiterEmail,
                 status
             });
 
-            res.json({ success: true, data });
+            res.json({ success: true, data: enriched });
 
         } catch (error) {
             logger.error('Error fetching recruiter drilldown', error);
@@ -1354,15 +1376,23 @@ export class DashboardController {
             pipeline.push({ $limit: 100 });
             pipeline.push({
                 $project: {
+                    _id: 1,
                     'Candidate Name': 1,
+                    'Email ID': 1,
                     'Date of Interview': 1,
                     'Start Time Of Interview': 1,
+                    'End Time Of Interview': 1,
                     'status': 1,
                     'Job Title': 1,
                     'End Client': 1,
                     'Interview Round': 1,
                     'Actual Round': '$actualRoundResolved',
-                    'assignedTo': 1
+                    'Vendor': 1,
+                    'sender': 1,
+                    'assignedTo': 1,
+                    'assignedExpert': 1,
+                    'assignedAt': 1,
+                    'suggestions': 1,
                 }
             });
 
@@ -1376,16 +1406,25 @@ export class DashboardController {
 
             const data = await this.taskCollection.aggregate(pipeline).toArray();
 
+            // Batch-lookup candidateId
+            const emails = [...new Set(data.map(t => t['Email ID']).filter(Boolean))];
+            const candidateCol = database.getCollection('candidateDetails');
+            const candidateDocs = (candidateCol && emails.length)
+                ? await candidateCol.find({ 'Email ID': { $in: emails } }, { projection: { _id: 1, 'Email ID': 1 } }).toArray()
+                : [];
+            const emailToId = Object.fromEntries(candidateDocs.map(d => [d['Email ID'], d._id.toString()]));
+            const enriched = data.map(t => ({ ...t, candidateId: emailToId[t['Email ID']] || null }));
+
             // PostHog: Log response
             logger.info('Dashboard: getExpertDrilldown - Response Sent', {
                 endpoint: 'getExpertDrilldown',
                 userEmail: req.user?.email,
-                recordCount: data.length,
+                recordCount: enriched.length,
                 expertEmail,
                 status
             });
 
-            res.json({ success: true, data });
+            res.json({ success: true, data: enriched });
 
         } catch (error) {
             logger.error('Error fetching expert drilldown', error);

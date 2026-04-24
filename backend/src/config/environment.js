@@ -80,7 +80,7 @@ const configSchema = {
     origin: {
       env: 'CORS_ORIGIN',
       type: 'array',
-      default: ['http://localhost:3000', 'http://localhost:8180'],
+      default: ['http://localhost:3000', 'http://localhost:8180', 'http://localhost:5173'],
       transform: (value) => typeof value === 'string' ? value.split(',') : value
     },
     credentials: {
