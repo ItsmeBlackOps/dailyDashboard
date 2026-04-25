@@ -6,18 +6,29 @@ import ProfilesTab from './ProfilesTab';
 import RecruitersTab from './RecruitersTab';
 import AlertsTab from './AlertsTab';
 import POTab from './POTab';
+import { AgingTab } from './AgingTab';
+import { WorkloadTab } from './WorkloadTab';
 
-const tabs = [
-  { value: 'overview',   label: 'Overview'       },
-  { value: 'analytics',  label: 'Analytics'      },
-  { value: 'profiles',   label: 'All Profiles'   },
-  { value: 'recruiters', label: 'Recruiters'     },
-  { value: 'alerts',     label: 'Alerts & Aging' },
-  { value: 'po',         label: 'PO Placed'      },
-];
+const MGMT_ROLES = ['admin', 'mam', 'mm', 'mlead'];
 
 export default function ProfileHub() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const normalizedRole = (localStorage.getItem('role') ?? '').toLowerCase();
+  const isMgmt = MGMT_ROLES.includes(normalizedRole);
+
+  const tabs = [
+    { value: 'overview',   label: 'Overview'       },
+    { value: 'analytics',  label: 'Analytics'      },
+    { value: 'profiles',   label: 'All Profiles'   },
+    { value: 'recruiters', label: 'Recruiters'     },
+    { value: 'alerts',     label: 'Alerts & Aging' },
+    { value: 'po',         label: 'PO Placed'      },
+    ...(isMgmt ? [
+      { value: 'aging',    label: 'Aging'          },
+      { value: 'workload', label: 'Workload'        },
+    ] : []),
+  ];
+
   const VALID_TABS = tabs.map(t => t.value);
   const raw = searchParams.get('tab');
   const activeTab = raw && VALID_TABS.includes(raw) ? raw : 'overview';
@@ -51,6 +62,16 @@ export default function ProfileHub() {
           <TabsContent value="recruiters" className="mt-0"><RecruitersTab /></TabsContent>
           <TabsContent value="alerts"     className="mt-0"><AlertsTab /></TabsContent>
           <TabsContent value="po"         className="mt-0"><POTab /></TabsContent>
+          {isMgmt && (
+            <TabsContent value="aging" className="mt-0">
+              <AgingTab />
+            </TabsContent>
+          )}
+          {isMgmt && (
+            <TabsContent value="workload" className="mt-0">
+              <WorkloadTab />
+            </TabsContent>
+          )}
         </div>
       </Tabs>
     </div>
