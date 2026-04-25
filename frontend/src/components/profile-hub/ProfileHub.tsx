@@ -6,8 +6,8 @@ import ProfilesTab from './ProfilesTab';
 import RecruitersTab from './RecruitersTab';
 import AlertsTab from './AlertsTab';
 import POTab from './POTab';
-import { AgingTab } from './AgingTab';
-import { WorkloadTab } from './WorkloadTab';
+import AgingTab from './AgingTab';
+import WorkloadTab from './WorkloadTab';
 
 const MGMT_ROLES = ['admin', 'mam', 'mm', 'mlead'];
 
