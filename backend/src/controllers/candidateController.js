@@ -706,6 +706,85 @@ class CandidateController {
       return res.status(500).json({ success: false, error: 'Internal server error' });
     }
   }
+
+  async getHubWorkload(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const role = (user.role || '').trim().toLowerCase();
+      if (!MARKETING_ROLES.includes(role)) return res.status(403).json({ success: false, error: 'Access denied' });
+
+      const col = candidateModel.collection;
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      // Load workloadConfig from hubConfig collection
+      const cfgCol = database.getCollection('hubConfig');
+      let workloadConfig = { defaultCapacity: 20, capacities: {} };
+      if (cfgCol) {
+        const doc = await cfgCol.findOne({ key: 'workloadConfig' });
+        if (doc?.value) workloadConfig = doc.value;
+      }
+      const { defaultCapacity, capacities = {} } = workloadConfig;
+
+      // Apply scope filter (same as other hub methods)
+      const scope = await this._scopeFilter(user);
+
+      // Aggregate active count per recruiter
+      const activeAgg = await col.aggregate([
+        { $match: { ...scope, Recruiter: { $exists: true, $ne: null }, status: 'Active' } },
+        { $group: { _id: '$Recruiter', activeCount: { $sum: 1 } } },
+      ]).toArray();
+
+      // Aggregate total count per recruiter (all statuses)
+      const totalAgg = await col.aggregate([
+        { $match: { ...scope, Recruiter: { $exists: true, $ne: null } } },
+        { $group: { _id: '$Recruiter', totalCount: { $sum: 1 } } },
+      ]).toArray();
+
+      // Build lookup maps
+      const activeMap = {};
+      for (const r of activeAgg) {
+        if (r._id) activeMap[r._id.toLowerCase()] = { email: r._id, activeCount: r.activeCount };
+      }
+      const totalMap = {};
+      for (const r of totalAgg) {
+        if (r._id) totalMap[r._id.toLowerCase()] = r.totalCount;
+      }
+
+      // Merge and filter to vizvainc.com domain only
+      const allEmails = new Set([...Object.keys(activeMap), ...Object.keys(totalMap)]);
+      const recruiters = [];
+      for (const emailLower of allEmails) {
+        const domain = emailLower.split('@')[1] || '';
+        if (domain !== 'vizvainc.com') continue;
+
+        const email = activeMap[emailLower]?.email || emailLower;
+        const activeCount = activeMap[emailLower]?.activeCount || 0;
+        const totalCount = totalMap[emailLower] || 0;
+        const capacity = capacities[email] || capacities[emailLower] || defaultCapacity;
+        const workloadRatio = Math.round((activeCount / capacity) * 100) / 100;
+        let workloadStatus;
+        if (workloadRatio > 0.9)       workloadStatus = 'overloaded';
+        else if (workloadRatio >= 0.4) workloadStatus = 'optimal';
+        else                           workloadStatus = 'underutilized';
+
+        const name = email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        recruiters.push({ email, name, activeCount, totalCount, capacity, workloadRatio, workloadStatus });
+      }
+
+      // Sort by workloadRatio descending (most loaded first)
+      recruiters.sort((a, b) => b.workloadRatio - a.workloadRatio);
+
+      return res.json({
+        success: true,
+        config: { defaultCapacity, capacities },
+        recruiters,
+      });
+    } catch (error) {
+      logger.error('getHubWorkload failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
 }
 
 export const candidateController = new CandidateController();
