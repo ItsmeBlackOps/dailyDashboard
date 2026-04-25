@@ -509,6 +509,133 @@ class CandidateController {
     }
   }
 
+  async getHubConfig(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+
+      const defaults = {
+        agingThresholds: { fresh: 2, warm: 5, aging: 10 },
+        workloadConfig: { defaultCapacity: 20, capacities: {} },
+      };
+
+      const col = database.getCollection('hubConfig');
+      if (!col) return res.json({ success: true, ...defaults });
+
+      const docs = await col.find({ key: { $in: ['agingThresholds', 'workloadConfig'] } }).toArray();
+      const byKey = {};
+      for (const d of docs) byKey[d.key] = d.value;
+
+      return res.json({
+        success: true,
+        agingThresholds: byKey.agingThresholds || defaults.agingThresholds,
+        workloadConfig:  byKey.workloadConfig  || defaults.workloadConfig,
+      });
+    } catch (error) {
+      logger.error('getHubConfig failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  async updateHubConfig(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      if ((user.role || '').trim().toLowerCase() !== 'admin') {
+        return res.status(403).json({ success: false, error: 'Admin only' });
+      }
+
+      const { key, value } = req.body;
+      if (!key || !['agingThresholds', 'workloadConfig'].includes(key)) {
+        return res.status(400).json({ success: false, error: 'Invalid key' });
+      }
+      if (!value || typeof value !== 'object') {
+        return res.status(400).json({ success: false, error: 'value must be an object' });
+      }
+
+      const col = database.getCollection('hubConfig');
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      await col.updateOne(
+        { key },
+        { $set: { key, value, updatedBy: user.email, updatedAt: new Date() } },
+        { upsert: true }
+      );
+
+      return res.json({ success: true, key, value });
+    } catch (error) {
+      logger.error('updateHubConfig failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  async getHubAging(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const role = (user.role || '').trim().toLowerCase();
+      if (!MARKETING_ROLES.includes(role)) return res.status(403).json({ success: false, error: 'Access denied' });
+
+      const col = candidateModel.collection;
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      // Load thresholds from hubConfig (fall back to defaults)
+      const defaultThresholds = { fresh: 2, warm: 5, aging: 10 };
+      let thresholds = defaultThresholds;
+      const cfgCol = database.getCollection('hubConfig');
+      if (cfgCol) {
+        const cfgDoc = await cfgCol.findOne({ key: 'agingThresholds' });
+        if (cfgDoc?.value) thresholds = cfgDoc.value;
+      }
+
+      const scope = await this._scopeFilter(user);
+      const { branch } = req.query;
+      const filter = {
+        ...scope,
+        status: { $nin: ['Backout', 'Placement Offer'] },
+      };
+      if (branch) filter.Branch = branch;
+
+      const docs = await col.find(filter, {
+        projection: { _id: 1, 'Candidate Name': 1, Recruiter: 1, Branch: 1, status: 1, updated_at: 1, created_at: 1 }
+      }).toArray();
+
+      const summary = { fresh: 0, warm: 0, aging: 0, critical: 0, total: 0 };
+      const candidates = docs.map(doc => {
+        const lastActivity = doc.updated_at || doc.created_at;
+        const idleDays = lastActivity
+          ? Math.floor((Date.now() - new Date(lastActivity).getTime()) / 86400000)
+          : 9999;
+        let agingStatus;
+        if (idleDays <= thresholds.fresh) agingStatus = 'fresh';
+        else if (idleDays <= thresholds.warm) agingStatus = 'warm';
+        else if (idleDays <= thresholds.aging) agingStatus = 'aging';
+        else agingStatus = 'critical';
+
+        summary[agingStatus]++;
+        summary.total++;
+
+        return {
+          _id: doc._id,
+          name: doc['Candidate Name'] || '',
+          recruiter: doc.Recruiter || '',
+          branch: doc.Branch || 'Unassigned',
+          status: doc.status || 'Unassigned',
+          idleDays,
+          agingStatus,
+          lastActivity,
+        };
+      });
+
+      candidates.sort((a, b) => b.idleDays - a.idleDays);
+
+      return res.json({ success: true, thresholds, summary, candidates });
+    } catch (error) {
+      logger.error('getHubAging failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
   async getTaskById(req, res) {
     try {
       const user = req.user;

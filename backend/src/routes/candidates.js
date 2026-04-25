@@ -42,6 +42,9 @@ router.get('/hub-alerts',     (req, res) => candidateController.getHubAlerts(req
 router.get('/hub-po',         (req, res) => candidateController.getHubPO(req, res));
 router.get('/grouped',        (req, res) => candidateController.getGrouped(req, res));
 router.get('/task/:taskId',   (req, res) => candidateController.getTaskById(req, res));
+router.get('/hub-config',    (req, res) => candidateController.getHubConfig(req, res));
+router.put('/hub-config',    (req, res) => candidateController.updateHubConfig(req, res));
+router.get('/hub-aging',     (req, res) => candidateController.getHubAging(req, res));
 router.get('/:id',            (req, res) => candidateController.getCandidateById(req, res));
 
 export default router;
