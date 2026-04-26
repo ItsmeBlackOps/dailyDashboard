@@ -40,6 +40,9 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
             "cd ${{ secrets.VM_PATH }} && \
+             git fetch origin && \
+             git reset --hard origin/main && \
+             chmod +x scripts/*.sh && \
              export GIT_SHA='${GIT_SHA}' && \
              export GIT_REF='${GIT_REF}' && \
              export ACTOR='${ACTOR}' && \
