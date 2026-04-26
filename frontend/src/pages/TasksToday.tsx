@@ -354,6 +354,7 @@ import { Trash2 } from "lucide-react";
 import { TaskSheet } from '@/components/shared/TaskSheet';
 import { PODraftSheet } from '@/components/shared/PODraftSheet';
 import type { TaskSheetPrefill } from '@/components/shared/TaskSheet';
+import BotStatusBadge from '@/components/shared/BotStatusBadge';
 
 export default function TasksToday() {
   const posthog = usePostHog(); // [Harsh] Analytics
@@ -4145,9 +4146,12 @@ export default function TasksToday() {
                       </TableCell>
                     )}
                     <TableCell>
-                      {task.status && (
-                        <Badge className={getStatusBadge(task.status)}>{task.status}</Badge>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1">
+                        {task.status && (
+                          <Badge className={getStatusBadge(task.status)}>{task.status}</Badge>
+                        )}
+                        <BotStatusBadge status={task.botStatus} attempts={task.botInviteAttempts} error={task.botLastError} />
+                      </div>
                     </TableCell>
                     {showActionsColumn && (
                       <TableCell>

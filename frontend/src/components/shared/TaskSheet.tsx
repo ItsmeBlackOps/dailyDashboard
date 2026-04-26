@@ -9,9 +9,11 @@ import {
 } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { useAuth, API_URL } from '@/hooks/useAuth';
+import BotStatusBadge from './BotStatusBadge';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface TaskReply {
@@ -54,6 +56,12 @@ interface TaskFull {
   body: string;
   replies: TaskReply[];
   subject: string;
+  meetingLink: string | null;
+  meetingPassword: string | null;
+  botStatus: string | null;
+  botInviteAttempts: number | null;
+  botJoinedAt: string | null;
+  botLastError: string | null;
 }
 
 interface TaskSheetProps {
@@ -166,6 +174,9 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
   const [task, setTask] = useState<TaskFull | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [linkDraft, setLinkDraft] = useState('');
+  const [passwordDraft, setPasswordDraft] = useState('');
+  const [savingLink, setSavingLink] = useState(false);
 
   useEffect(() => {
     if (!taskId) { setTask(null); setError(null); return; }
@@ -176,10 +187,35 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
       .then(json => {
         if (!json.success) throw new Error(json.error);
         setTask(json.task);
+        setLinkDraft(json.task.meetingLink ?? '');
+        setPasswordDraft(json.task.meetingPassword ?? '');
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [taskId, authFetch]);
+
+  const handleSaveMeetingLink = async () => {
+    if (!taskId || !linkDraft.trim()) return;
+    setSavingLink(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/tasks/${taskId}/meeting-link`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ meetingLink: linkDraft.trim(), meetingPassword: passwordDraft.trim() || null }),
+      });
+      if (!res.ok) throw new Error('Failed to save');
+      const data = await res.json();
+      setTask(data.task);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingLink(false);
+    }
+  };
 
   const handleCreatePO = () => {
     if (!task || !onCreatePO) return;
@@ -254,6 +290,41 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
               <Field icon={User}      label="Expert"
                 value={task.assignedTo ? (task.assignedTo.includes('@') ? formatEmail(task.assignedTo) : task.assignedTo) : null} />
               <Field icon={Clock}     label="Assigned At"  value={formatDate(task.assignedAt)} />
+            </div>
+
+            {/* Meeting Link */}
+            <div className="rounded-lg border p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold">Meeting Link</h4>
+                <BotStatusBadge status={task.botStatus ?? undefined} attempts={task.botInviteAttempts ?? undefined} error={task.botLastError} />
+              </div>
+              {task.meetingLink ? (
+                <a href={task.meetingLink} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline break-all">
+                  {task.meetingLink}
+                </a>
+              ) : (
+                <p className="text-xs text-muted-foreground">No meeting link set yet</p>
+              )}
+              {task.botLastError && (
+                <p className="text-xs text-rose-600">⚠️ {task.botLastError}</p>
+              )}
+              <div className="space-y-2 pt-2 border-t">
+                <Input
+                  placeholder="https://zoom.us/j/..."
+                  value={linkDraft}
+                  onChange={(e) => setLinkDraft(e.target.value)}
+                  className="h-8 text-xs"
+                />
+                <Input
+                  placeholder="Password (optional)"
+                  value={passwordDraft}
+                  onChange={(e) => setPasswordDraft(e.target.value)}
+                  className="h-8 text-xs"
+                />
+                <Button size="sm" onClick={handleSaveMeetingLink} disabled={savingLink}>
+                  {savingLink ? 'Saving...' : 'Save & Invite Bot'}
+                </Button>
+              </div>
             </div>
 
             {/* Suggestions */}
