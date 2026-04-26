@@ -55,6 +55,7 @@ import { acquireBackendToken } from "@/tokens";
 import { useMicrosoftConsent } from "@/contexts/MicrosoftConsentContext";
 import { OnlineMeetingConsentBanner } from "@/components/OnlineMeetingConsentBanner";
 import { Copy, Filter } from "lucide-react";
+import MultiSelectDropdown from '@/components/shared/MultiSelectDropdown';
 import { deriveDisplayNameFromEmail, formatNameInput } from "@/utils/userNames";
 import { useNavigate } from "react-router-dom";
 import { GRAPH_MAIL_SCOPES } from "@/constants";
@@ -499,6 +500,12 @@ export default function TasksToday() {
   const [teamLeadError, setTeamLeadError] = useState("");
   const [selectedTeamLead, setSelectedTeamLead] = useState<string>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [activeUsersByRole, setActiveUsersByRole] = useState<Record<string, Array<{ email: string; name: string; teamLead: string; manager: string; role: string }>>>({});
+  const [selectedRecruiters, setSelectedRecruiters] = useState<string[]>([]);
+  const [selectedMleads, setSelectedMleads] = useState<string[]>([]);
+  const [selectedExperts, setSelectedExperts] = useState<string[]>([]);
+  const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
+  const [filterLogic, setFilterLogic] = useState<'AND' | 'OR'>('AND');
   const navigate = useNavigate();
   const currentUserEmail = useMemo(() => {
     const raw = localStorage.getItem("email") || "";
@@ -1138,6 +1145,14 @@ export default function TasksToday() {
       active = false;
     };
   }, [normalizedRole, authFetch, buildTeamLeadMapping, toast]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    fetch('/api/users/active', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data) => { if (data.success) setActiveUsersByRole(data.byRole || {}); })
+      .catch(() => {});
+  }, []);
 
   // === Storage helpers ===
   const readScheduled = (): Record<string, string> => {
@@ -3790,6 +3805,73 @@ export default function TasksToday() {
     return map;
   }, [teamLeadData]);
 
+  // === Multi-select filter options (active users ∩ loaded tasks) ===
+  const recruiterOptions = useMemo(() => {
+    const activeRecruiters = activeUsersByRole.recruiter || [];
+    const activeMap = new Map(activeRecruiters.map((u) => [u.name.toLowerCase(), u]));
+    const uniqueNames = new Set(tasks.map((t) => (t.recruiterName || '').trim()).filter(Boolean));
+    const result: { value: string; label: string; sublabel?: string }[] = [];
+    for (const name of uniqueNames) {
+      const u = activeMap.get(name.toLowerCase());
+      if (!u) continue;
+      result.push({ value: u.email, label: u.name, sublabel: u.teamLead ? `Under ${u.teamLead}` : '' });
+    }
+    return result.sort((a, b) => a.label.localeCompare(b.label));
+  }, [tasks, activeUsersByRole]);
+
+  const mleadOptions = useMemo(() => {
+    const activeMleads = activeUsersByRole.mlead || [];
+    const activeMleadsByName = new Map(activeMleads.map((u) => [u.name.toLowerCase(), u]));
+    const activeRecruiters = activeUsersByRole.recruiter || [];
+    const activeRecruitersByName = new Map(activeRecruiters.map((u) => [u.name.toLowerCase(), u]));
+    const uniqueRecruiterNames = new Set(tasks.map((t) => (t.recruiterName || '').trim()).filter(Boolean));
+    const mleadNames = new Set<string>();
+    for (const rName of uniqueRecruiterNames) {
+      const recruiter = activeRecruitersByName.get(rName.toLowerCase());
+      if (recruiter?.teamLead) mleadNames.add(recruiter.teamLead);
+    }
+    const result: { value: string; label: string; sublabel?: string }[] = [];
+    for (const mleadName of mleadNames) {
+      const u = activeMleadsByName.get(mleadName.toLowerCase());
+      if (!u) continue;
+      result.push({ value: u.email, label: u.name });
+    }
+    return result.sort((a, b) => a.label.localeCompare(b.label));
+  }, [tasks, activeUsersByRole]);
+
+  const expertOptions = useMemo(() => {
+    const activeExperts = [...(activeUsersByRole.user || []), ...(activeUsersByRole.expert || [])];
+    const activeMap = new Map(activeExperts.map((u) => [u.name.toLowerCase(), u]));
+    const uniqueNames = new Set(tasks.map((t) => (t.assignedExpert || '').trim()).filter(Boolean));
+    const result: { value: string; label: string; sublabel?: string }[] = [];
+    for (const name of uniqueNames) {
+      const u = activeMap.get(name.toLowerCase());
+      if (!u) continue;
+      result.push({ value: u.email, label: u.name, sublabel: u.teamLead ? `Under ${u.teamLead}` : '' });
+    }
+    return result.sort((a, b) => a.label.localeCompare(b.label));
+  }, [tasks, activeUsersByRole]);
+
+  const leadOptions = useMemo(() => {
+    const activeLeads = activeUsersByRole.lead || [];
+    const activeLeadsByName = new Map(activeLeads.map((u) => [u.name.toLowerCase(), u]));
+    const allExperts = [...(activeUsersByRole.user || []), ...(activeUsersByRole.expert || [])];
+    const activeExpertsByName = new Map(allExperts.map((u) => [u.name.toLowerCase(), u]));
+    const uniqueExpertNames = new Set(tasks.map((t) => (t.assignedExpert || '').trim()).filter(Boolean));
+    const leadNames = new Set<string>();
+    for (const eName of uniqueExpertNames) {
+      const expert = activeExpertsByName.get(eName.toLowerCase());
+      if (expert?.teamLead) leadNames.add(expert.teamLead);
+    }
+    const result: { value: string; label: string; sublabel?: string }[] = [];
+    for (const leadName of leadNames) {
+      const u = activeLeadsByName.get(leadName.toLowerCase());
+      if (!u) continue;
+      result.push({ value: u.email, label: u.name });
+    }
+    return result.sort((a, b) => a.label.localeCompare(b.label));
+  }, [tasks, activeUsersByRole]);
+
   const statuses = Array.from(new Set(tasks.map((t) => t.status).filter(Boolean)));
 
   const sortedTasks = useMemo(() => sortByPrimaryStart(tasks), [tasks, sortByPrimaryStart]);
@@ -3818,7 +3900,62 @@ export default function TasksToday() {
       user !== 'user'
         ? (t.recruiterName || "").toLowerCase().includes(recruiterFilter.toLowerCase())
         : true
-    );
+    )
+    .filter((t) => {
+      // Multi-select role filters
+      const activeRecruiters = activeUsersByRole.recruiter || [];
+      const activeRecruitersByEmail = new Map(activeRecruiters.map((u) => [u.email, u]));
+      const allExperts = [...(activeUsersByRole.user || []), ...(activeUsersByRole.expert || [])];
+      const activeExpertsByEmail = new Map(allExperts.map((u) => [u.email, u]));
+      const activeMleads = activeUsersByRole.mlead || [];
+      const activeMleadsByEmail = new Map(activeMleads.map((u) => [u.email, u]));
+      const activeLeads = activeUsersByRole.lead || [];
+      const activeLeadsByEmail = new Map(activeLeads.map((u) => [u.email, u]));
+
+      const taskRecruiterName = (t.recruiterName || '').toLowerCase();
+      const taskExpertName = (t.assignedExpert || '').toLowerCase();
+
+      const checks: boolean[] = [];
+
+      if (selectedRecruiters.length) {
+        const match = selectedRecruiters.some((email) => {
+          const u = activeRecruitersByEmail.get(email);
+          return u ? u.name.toLowerCase() === taskRecruiterName : false;
+        });
+        checks.push(match);
+      }
+
+      if (selectedExperts.length) {
+        const match = selectedExperts.some((email) => {
+          const u = activeExpertsByEmail.get(email);
+          return u ? u.name.toLowerCase() === taskExpertName : false;
+        });
+        checks.push(match);
+      }
+
+      if (selectedMleads.length) {
+        const recruiter = activeRecruiters.find((u) => u.name.toLowerCase() === taskRecruiterName);
+        const recruiterMleadName = recruiter?.teamLead?.toLowerCase() || '';
+        const match = selectedMleads.some((email) => {
+          const u = activeMleadsByEmail.get(email);
+          return u ? u.name.toLowerCase() === recruiterMleadName : false;
+        });
+        checks.push(match);
+      }
+
+      if (selectedLeads.length) {
+        const expert = allExperts.find((u) => u.name.toLowerCase() === taskExpertName);
+        const expertLeadName = expert?.teamLead?.toLowerCase() || '';
+        const match = selectedLeads.some((email) => {
+          const u = activeLeadsByEmail.get(email);
+          return u ? u.name.toLowerCase() === expertLeadName : false;
+        });
+        checks.push(match);
+      }
+
+      if (checks.length === 0) return true;
+      return filterLogic === 'AND' ? checks.every(Boolean) : checks.some(Boolean);
+    });
 
   useEffect(() => {
     const liveTaskIds = new Set(tasks.map((task) => task._id).filter(Boolean));
@@ -3934,37 +4071,61 @@ export default function TasksToday() {
             onChange={(e) => setCandidateFilter(e.target.value)}
             className="w-40"
           />
-          <Input
-            placeholder="Filter expert"
-            value={expertFilter}
-            onChange={(e) => setExpertFilter(e.target.value)}
-            className="w-40"
-          />
-          {(normalizedRole === 'mm' || normalizedRole === 'mam' || normalizedRole === 'mlead') && (
-            <Select
-              value={selectedTeamLead}
-              onValueChange={setSelectedTeamLead}
-              disabled={teamLeadLoading || teamLeadOptions.length <= 1}
-            >
-              <SelectTrigger className="w-52">
-                <SelectValue placeholder={teamLeadLoading ? "Loading team leads" : "All Team Leads"} />
-              </SelectTrigger>
-              <SelectContent>
-                {teamLeadOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {(user === "MAM" || user === "MM") && (
+          {/* Free-text expert filter for non-management roles only */}
+          {!(['mlead', 'mam', 'mm', 'lead', 'am', 'admin'].includes(normalizedRole)) && (
             <Input
-              placeholder="Filter recruiter"
-              value={recruiterFilter}
-              onChange={(e) => setRecruiterFilter(e.target.value)}
+              placeholder="Filter expert"
+              value={expertFilter}
+              onChange={(e) => setExpertFilter(e.target.value)}
               className="w-40"
             />
+          )}
+          {/* Role-aware multi-select filters */}
+          {(['mlead', 'mam', 'mm', 'lead', 'am', 'admin'].includes(normalizedRole)) && (
+            <>
+              {(['mlead', 'mam', 'mm', 'admin'].includes(normalizedRole)) && (
+                <MultiSelectDropdown
+                  label="Recruiters"
+                  options={recruiterOptions}
+                  selected={selectedRecruiters}
+                  onChange={setSelectedRecruiters}
+                />
+              )}
+              {(['mam', 'mm', 'admin'].includes(normalizedRole)) && mleadOptions.length >= 2 && (
+                <MultiSelectDropdown
+                  label="Mleads"
+                  options={mleadOptions}
+                  selected={selectedMleads}
+                  onChange={setSelectedMleads}
+                />
+              )}
+              {(['lead', 'am', 'admin'].includes(normalizedRole)) && (
+                <MultiSelectDropdown
+                  label="Experts"
+                  options={expertOptions}
+                  selected={selectedExperts}
+                  onChange={setSelectedExperts}
+                />
+              )}
+              {(['am', 'admin'].includes(normalizedRole)) && leadOptions.length >= 2 && (
+                <MultiSelectDropdown
+                  label="Leads"
+                  options={leadOptions}
+                  selected={selectedLeads}
+                  onChange={setSelectedLeads}
+                />
+              )}
+              {(selectedRecruiters.length + selectedMleads.length + selectedExperts.length + selectedLeads.length) > 1 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 text-xs gap-1"
+                  onClick={() => setFilterLogic((prev) => (prev === 'AND' ? 'OR' : 'AND'))}
+                >
+                  Match: <strong>{filterLogic}</strong>
+                </Button>
+              )}
+            </>
           )}
 
           {/* Toggle: Subject column visibility */}
@@ -3991,7 +4152,7 @@ export default function TasksToday() {
           <DashboardFilters filters={filters} onChange={setFilters} allowReceivedDate={allowReceivedDate} />
         )}
 
-        {teamLeadError && (normalizedRole === 'mm' || normalizedRole === 'mam' || normalizedRole === 'mlead') && (
+        {teamLeadError && (normalizedRole === 'mm' || normalizedRole === 'mam') && (
           <p className="text-sm text-red-500">{teamLeadError}</p>
         )}
 
