@@ -1,5 +1,13 @@
 import { jest } from '@jest/globals';
 
+// Provide test-only Azure credentials so config.azure.enabled = true.
+// Real production secrets are no longer fall-backed in code (security).
+process.env.AZURE_CLIENT_ID     = process.env.AZURE_CLIENT_ID     || 'test-client-id';
+process.env.AZURE_CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET || 'test-client-secret';
+process.env.AZURE_TENANT_ID     = process.env.AZURE_TENANT_ID     || 'test-tenant-id';
+process.env.AZURE_GRAPH_MAIL_SCOPES = process.env.AZURE_GRAPH_MAIL_SCOPES
+  || 'https://graph.microsoft.com/Mail.Send';
+
 const mockAcquireTokenOnBehalfOf = jest.fn();
 const mockAcquireTokenByClientCredential = jest.fn();
 
