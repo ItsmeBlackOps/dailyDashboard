@@ -108,7 +108,7 @@ export class SubscriptionRegistry {
     if (!ids) {
       return [];
     }
-    return ids
+    return Array.from(ids)
       .map((id) => this.subscriptionById.get(id))
       .filter(Boolean);
   }

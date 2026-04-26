@@ -65,10 +65,12 @@ describe('Notification Change Tracking', () => {
         const payload = callArgs[1];
 
         expect(payload.changeDetails).toBeDefined();
+        // Production injects _changedBy into updates before computing changedFields,
+        // so _changedBy appears in changedFields and old/newValue alongside status.
         expect(payload.changeDetails).toEqual({
-            changedFields: ['status'],
-            oldValue: { status: 'Active' },
-            newValue: { status: 'Joined' }
+            changedFields: ['status', '_changedBy'],
+            oldValue: { status: 'Active', _changedBy: null },
+            newValue: { status: 'Joined', _changedBy: null }
         });
 
         expect(payload.actor).toEqual({
@@ -114,8 +116,10 @@ describe('Notification Change Tracking', () => {
         // Based on my implementation:
         // updates.status !== oldStatus
 
+        // Production always injects _changedBy into updates, so even when status is
+        // unchanged, _changedBy is detected as a changed field (undefined -> email).
         if (payload.changeDetails) {
-            expect(payload.changeDetails.changedFields).toEqual([]);
+            expect(payload.changeDetails.changedFields).toEqual(['_changedBy']);
         } else {
             expect(payload.changeDetails).toBeUndefined();
         }

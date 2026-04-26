@@ -630,7 +630,7 @@ export class TaskModel {
 
       const isAdmin = normalizedRole === 'admin';
       const isSelf = userEmailLower === assignedEmailLower;
-      const isOnTeam = teamEmailSet.has(assignedEmailLower) || teamEmailSet.has(candidateExpertRaw);
+      const isOnTeam = teamEmailSet.has(assignedEmailLower) || teamEmailSet.has(doc.candidateExpertRaw);
 
       if (isAdmin || isSelf || isOnTeam) {
         logSuggestionDebug('TasksToday base visibility satisfied', {

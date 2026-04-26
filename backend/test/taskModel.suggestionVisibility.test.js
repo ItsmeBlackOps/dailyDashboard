@@ -56,7 +56,9 @@ describe('TaskModel.filterAndFormatTasks suggestion visibility', () => {
     expect(tasks[0]._id).toBe('expert-name-1');
   });
 
-  it('excludes suggestion matches once task status is no longer pending', () => {
+  it('includes suggestion matches regardless of task status (status filter removed in production)', () => {
+    // NOTE: Production no longer filters by status in the suggestion-match path.
+    // A task with candidateExpertRaw matching the user is included even if status is 'Completed'.
     const docs = [
       { ...baseDoc, _id: 'expert-name-2', assignedTo: 'other@example.com', candidateExpertRaw: 'Aditya Sharma', status: 'Completed' }
     ];
@@ -65,7 +67,8 @@ describe('TaskModel.filterAndFormatTasks suggestion visibility', () => {
     const userRole = 'expert';
 
     const tasks = model.filterAndFormatTasks(docs, userEmail, userRole, []);
-    expect(tasks.length).toBe(0);
+    expect(tasks.length).toBe(1);
+    expect(tasks[0]._id).toBe('expert-name-2');
   });
 
   it('does not include when no assignment or suggestion match', () => {

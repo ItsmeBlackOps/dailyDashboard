@@ -40,6 +40,9 @@ describe('NotificationOrchestrator', () => {
 
     domainEventBus.publish(DomainEvents.CandidateUpdated, eventPayload);
 
+    // handleCandidateEvent is async; flush microtask queue so all enqueue calls complete
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     expect(outbox.enqueue).toHaveBeenCalled();
     const scopes = new Set(outbox.enqueue.mock.calls.map(([doc]) => doc.audienceScope));
     expect(scopes).toEqual(new Set([
