@@ -584,7 +584,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
               />
             </div>
             {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
-            {passwordSuccess && <p className="text-sm text-green-600">{passwordSuccess}</p>}
+            {passwordSuccess && <p className="text-sm text-aurora-emerald">{passwordSuccess}</p>}
           </div>
           <DialogFooter>
             <Button

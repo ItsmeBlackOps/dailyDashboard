@@ -33,12 +33,12 @@ export function StatusBadge({ status, candidateId, canEdit, onUpdate }: StatusBa
 
     const getColor = (s: string) => {
         switch (s) {
-            case 'Active': return 'bg-green-500 hover:bg-green-600';
-            case 'Hold': return 'bg-orange-500 hover:bg-orange-600';
-            case 'Low Priority': return 'bg-gray-500 hover:bg-gray-600';
-            case 'Backout': return 'bg-red-500 hover:bg-red-600';
-            case 'Placement Offer': return 'bg-indigo-500 hover:bg-indigo-600';
-            default: return 'bg-slate-500';
+            case 'Active': return 'bg-aurora-emerald hover:bg-aurora-emerald/80';
+            case 'Hold': return 'bg-aurora-amber hover:bg-aurora-amber/80';
+            case 'Low Priority': return 'bg-muted-foreground hover:bg-muted-foreground/80';
+            case 'Backout': return 'bg-destructive hover:bg-destructive/80';
+            case 'Placement Offer': return 'bg-aurora-violet hover:bg-aurora-violet/80';
+            default: return 'bg-muted-foreground';
         }
     };
 

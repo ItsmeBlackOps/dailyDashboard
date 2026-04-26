@@ -82,10 +82,10 @@ function ActivityTypeIcon({ type }: { type: ActivityType }) {
       variant="outline"
       className={cn(
         'rounded-full px-2 py-1 text-xs font-normal',
-        type === 'call' && 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-        type === 'email' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-        type === 'meeting' && 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-        type === 'note' && 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+        type === 'call' && 'bg-accent text-primary',
+        type === 'email' && 'bg-aurora-emerald/10 text-aurora-emerald',
+        type === 'meeting' && 'bg-aurora-violet/10 text-aurora-violet',
+        type === 'note' && 'bg-aurora-amber/10 text-aurora-amber'
       )}
     >
       {type.charAt(0).toUpperCase() + type.slice(1)}

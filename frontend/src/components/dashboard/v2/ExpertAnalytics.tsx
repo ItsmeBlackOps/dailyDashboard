@@ -196,13 +196,13 @@ export function ExpertAnalytics({ period, startDate, dateBasis }: { period: stri
                                         className="cursor-pointer hover:bg-muted/50"
                                         onClick={() => openExpertDrilldown(s.expert)}
                                     >
-                                        <TableCell className="font-medium text-blue-600 dark:text-blue-400">{s.expert}</TableCell>
+                                        <TableCell className="font-medium text-primary">{s.expert}</TableCell>
                                         <TableCell className="text-right">{s.totalTasks}</TableCell>
-                                        <TableCell className="text-right text-blue-600 font-semibold">{s.activeBucket}</TableCell>
+                                        <TableCell className="text-right text-primary font-semibold">{s.activeBucket}</TableCell>
                                         <TableCell className="text-right">{s.completedTasks}</TableCell>
                                         <TableCell className="text-right">
                                             <Badge variant={(Number.isFinite(s.acknowledgedShare) ? s.acknowledgedShare : 0) > 90 ? 'outline' : 'secondary'}
-                                                className={(Number.isFinite(s.acknowledgedShare) ? s.acknowledgedShare : 0) < 80 ? 'bg-red-50 text-red-700' : ''}>
+                                                className={(Number.isFinite(s.acknowledgedShare) ? s.acknowledgedShare : 0) < 80 ? 'bg-destructive/10 text-destructive' : ''}>
                                                 {(Number.isFinite(s.acknowledgedShare) ? s.acknowledgedShare : 0).toFixed(1)}%
                                             </Badge>
                                         </TableCell>
@@ -283,7 +283,7 @@ export function ExpertAnalytics({ period, startDate, dateBasis }: { period: stri
                                         <TableRow key={idx}
                                             className={task._id ? 'cursor-pointer hover:bg-muted/50' : ''}
                                             onClick={() => task._id && setSelectedTaskId(task._id)}>
-                                            <TableCell className="font-medium text-xs text-blue-600 dark:text-blue-400">{task['Candidate Name']}</TableCell>
+                                            <TableCell className="font-medium text-xs text-primary">{task['Candidate Name']}</TableCell>
                                             <TableCell className="text-xs">{task['Date of Interview']}</TableCell>
                                             <TableCell className="text-xs">{task['Start Time Of Interview']}</TableCell>
                                             <TableCell className="text-xs">{task['End Client']}</TableCell>
@@ -297,7 +297,7 @@ export function ExpertAnalytics({ period, startDate, dateBasis }: { period: stri
                                             <TableCell className="text-xs">{task['Actual Round']}</TableCell>
                                             <TableCell onClick={e => e.stopPropagation()}>
                                                 {task.candidateId && (
-                                                    <button className="text-blue-500 hover:text-blue-400"
+                                                    <button className="text-primary hover:text-primary/80"
                                                         title="View full profile"
                                                         onClick={() => navigate(`/candidate/${task.candidateId}`)}>
                                                         <ExternalLink className="h-3.5 w-3.5" />

@@ -101,11 +101,11 @@ export const SubjectValidationBadge: React.FC<{ task: Task }> = ({ task }) => {
             <TooltipProvider>
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <span className="inline-flex items-center justify-center ml-2 bg-white rounded-full p-0.5 shadow-sm border border-green-200 cursor-help transition-transform hover:scale-110">
-                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <span className="inline-flex items-center justify-center ml-2 bg-card rounded-full p-0.5 shadow-sm border border-aurora-emerald/30 cursor-help transition-transform hover:scale-110">
+                            <CheckCircle2 className="h-4 w-4 text-aurora-emerald" />
                         </span>
                     </TooltipTrigger>
-                    <TooltipContent className="bg-green-50 text-green-700 border-green-200">
+                    <TooltipContent className="bg-aurora-emerald/10 text-aurora-emerald border-aurora-emerald/30">
                         <p className="font-medium">Subject Format Valid</p>
                     </TooltipContent>
                 </Tooltip>
@@ -117,8 +117,8 @@ export const SubjectValidationBadge: React.FC<{ task: Task }> = ({ task }) => {
         <TooltipProvider>
             <Tooltip>
                 <TooltipTrigger asChild>
-                    <span className="inline-flex items-center justify-center ml-2 bg-white rounded-full p-0.5 shadow-sm border border-red-200 cursor-help transition-transform hover:scale-110">
-                        <AlertCircle className="h-4 w-4 text-red-600" />
+                    <span className="inline-flex items-center justify-center ml-2 bg-card rounded-full p-0.5 shadow-sm border border-destructive/30 cursor-help transition-transform hover:scale-110">
+                        <AlertCircle className="h-4 w-4 text-destructive" />
                     </span>
                 </TooltipTrigger>
                 <TooltipContent className="bg-destructive text-destructive-foreground border-destructive/50 max-w-sm shadow-md">

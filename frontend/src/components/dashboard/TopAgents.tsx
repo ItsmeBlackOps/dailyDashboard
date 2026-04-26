@@ -72,11 +72,11 @@ function initialsFrom(name: string): string {
 
 function roundBadgeClass(round: string) {
   const key = round.trim().toLowerCase();
-  if (key.startsWith("1")) return "bg-emerald-600 text-white";
-  if (key.startsWith("2")) return "bg-blue-600 text-white";
-  if (key.startsWith("3")) return "bg-purple-600 text-white";
-  if (key.includes("final")) return "bg-amber-600 text-white";
-  return "bg-slate-600 text-white";
+  if (key.startsWith("1")) return "bg-aurora-emerald text-white";
+  if (key.startsWith("2")) return "bg-primary text-white";
+  if (key.startsWith("3")) return "bg-aurora-violet text-white";
+  if (key.includes("final")) return "bg-aurora-amber text-white";
+  return "bg-muted-foreground text-white";
 }
 
 const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });

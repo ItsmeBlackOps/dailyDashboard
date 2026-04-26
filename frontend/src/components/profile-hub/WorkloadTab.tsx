@@ -77,27 +77,27 @@ const STATUS_CONFIG: Record<
 > = {
   overloaded: {
     label: 'OVERLOADED',
-    textColor: 'text-red-500',
-    barColor: 'bg-red-500',
-    bgColor: 'bg-red-50',
-    borderColor: 'border-red-200',
-    badgeClass: 'bg-red-100 text-red-700 border-red-300',
+    textColor: 'text-destructive',
+    barColor: 'bg-destructive',
+    bgColor: 'bg-destructive/10',
+    borderColor: 'border-destructive/30',
+    badgeClass: 'bg-destructive/15 text-destructive border-destructive/30',
   },
   optimal: {
     label: 'OPTIMAL',
-    textColor: 'text-emerald-500',
-    barColor: 'bg-emerald-500',
-    bgColor: 'bg-emerald-50',
-    borderColor: 'border-emerald-200',
-    badgeClass: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+    textColor: 'text-aurora-emerald',
+    barColor: 'bg-aurora-emerald',
+    bgColor: 'bg-aurora-emerald/10',
+    borderColor: 'border-aurora-emerald/30',
+    badgeClass: 'bg-aurora-emerald/15 text-aurora-emerald border-aurora-emerald/30',
   },
   underutilized: {
     label: 'UNDERUTILIZED',
-    textColor: 'text-sky-500',
-    barColor: 'bg-sky-500',
-    bgColor: 'bg-sky-50',
-    borderColor: 'border-sky-200',
-    badgeClass: 'bg-sky-100 text-sky-700 border-sky-300',
+    textColor: 'text-aurora-cyan',
+    barColor: 'bg-aurora-cyan',
+    bgColor: 'bg-aurora-cyan/10',
+    borderColor: 'border-aurora-cyan/30',
+    badgeClass: 'bg-aurora-cyan/15 text-aurora-cyan border-aurora-cyan/30',
   },
 };
 
@@ -202,9 +202,9 @@ export default function WorkloadTab() {
   // ── error ──
   if (error || !workloadData) {
     return (
-      <Card className="border-red-200">
+      <Card className="border-destructive/30">
         <CardContent className="p-4 flex items-center gap-3">
-          <span className="text-sm text-red-600">{error ?? 'Unknown error'}</span>
+          <span className="text-sm text-destructive">{error ?? 'Unknown error'}</span>
           <Button size="sm" variant="outline" onClick={fetchWorkload}>
             <RefreshCw className="h-3.5 w-3.5 mr-1" /> Retry
           </Button>
@@ -310,7 +310,7 @@ export default function WorkloadTab() {
                 {saveMsg && (
                   <span
                     className={`text-xs ${
-                      saveMsg.includes('aved') ? 'text-green-600' : 'text-red-600'
+                      saveMsg.includes('aved') ? 'text-aurora-emerald' : 'text-destructive'
                     }`}
                   >
                     {saveMsg}

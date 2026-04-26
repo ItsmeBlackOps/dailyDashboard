@@ -127,7 +127,7 @@ export default function ProfilesTab() {
                 const isAging = c.status === 'Hold' && days !== null && days > 10;
                 const statusKey = (c.status || 'Unassigned') as CandidateStatus;
                 return (
-                  <TableRow key={c.id} className={isAging ? 'bg-amber-500/5 border-l-2 border-l-amber-500' : ''}>
+                  <TableRow key={c.id} className={isAging ? 'bg-aurora-amber/5 border-l-2 border-l-aurora-amber' : ''}>
                     <TableCell className="text-xs font-medium">
                       <button className="hover:underline text-left" onClick={() => navigate(`/candidate/${c.id}`)}>{c.name}</button>
                     </TableCell>

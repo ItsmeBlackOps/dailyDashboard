@@ -13,13 +13,13 @@ interface HubStats {
 interface Props { onNavigate?: (tab: string) => void }
 
 const KPI_CONFIG = [
-  { key: 'total',       label: 'Total Profiles', icon: Users,         color: 'text-blue-400',    bar: 'bg-blue-500',    tab: 'profiles'   },
-  { key: 'active',      label: 'Active',         icon: CheckCircle,   color: 'text-emerald-400', bar: 'bg-emerald-500', tab: 'profiles'   },
-  { key: 'po',          label: 'PO Placed',      icon: TrendingUp,    color: 'text-violet-400',  bar: 'bg-violet-500',  tab: 'po'         },
-  { key: 'hold',        label: 'Hold',           icon: Clock,         color: 'text-amber-400',   bar: 'bg-amber-500',   tab: 'alerts'     },
-  { key: 'backout',     label: 'Backout',        icon: XCircle,       color: 'text-red-400',     bar: 'bg-red-500',     tab: 'profiles'   },
-  { key: 'lowPriority', label: 'Low Priority',   icon: AlertTriangle, color: 'text-sky-400',     bar: 'bg-sky-500',     tab: 'profiles'   },
-  { key: 'unassigned',  label: 'Unassigned',     icon: HelpCircle,    color: 'text-gray-400',    bar: 'bg-gray-500',    tab: 'profiles'   },
+  { key: 'total',       label: 'Total Profiles', icon: Users,         color: 'text-primary',              bar: 'bg-primary',              tab: 'profiles'   },
+  { key: 'active',      label: 'Active',         icon: CheckCircle,   color: 'text-aurora-emerald',       bar: 'bg-aurora-emerald',       tab: 'profiles'   },
+  { key: 'po',          label: 'PO Placed',      icon: TrendingUp,    color: 'text-aurora-violet',        bar: 'bg-aurora-violet',        tab: 'po'         },
+  { key: 'hold',        label: 'Hold',           icon: Clock,         color: 'text-aurora-amber',         bar: 'bg-aurora-amber',         tab: 'alerts'     },
+  { key: 'backout',     label: 'Backout',        icon: XCircle,       color: 'text-destructive',          bar: 'bg-destructive',          tab: 'profiles'   },
+  { key: 'lowPriority', label: 'Low Priority',   icon: AlertTriangle, color: 'text-aurora-cyan',          bar: 'bg-aurora-cyan',          tab: 'profiles'   },
+  { key: 'unassigned',  label: 'Unassigned',     icon: HelpCircle,    color: 'text-muted-foreground/70',  bar: 'bg-muted-foreground',     tab: 'profiles'   },
 ] as const;
 
 export default function OverviewTab({ onNavigate }: Props) {

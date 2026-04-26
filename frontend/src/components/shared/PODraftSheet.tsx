@@ -160,10 +160,10 @@ export function PODraftSheet({ open, onClose, prefill }: PODraftSheetProps) {
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {/* Auto-filled section */}
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-aurora-emerald mb-3">
               Auto-filled from task
             </div>
-            <div className="grid grid-cols-2 gap-3 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-lg p-3">
+            <div className="grid grid-cols-2 gap-3 bg-aurora-emerald/5 rounded-lg p-3">
               {([
                 ['Candidate', prefill?.candidateName],
                 ['Email', prefill?.emailId],
@@ -184,7 +184,7 @@ export function PODraftSheet({ open, onClose, prefill }: PODraftSheetProps) {
 
           {/* Manual fields */}
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-violet-600 dark:text-violet-400 mb-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-aurora-violet mb-3">
               Fill Manually
             </div>
             <div className="space-y-3">

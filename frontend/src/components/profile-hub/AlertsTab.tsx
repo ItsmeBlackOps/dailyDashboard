@@ -21,9 +21,9 @@ function formatRecruiter(email: string) {
 }
 
 const SEVERITY = {
-  critical: { left: 'border-l-red-500',    badge: 'bg-red-500/10 text-red-500 border-red-500/30',    icon: 'text-red-500',    label: 'Critical' },
-  high:     { left: 'border-l-orange-500', badge: 'bg-orange-500/10 text-orange-500 border-orange-500/30', icon: 'text-orange-500', label: 'High'     },
-  medium:   { left: 'border-l-amber-500',  badge: 'bg-amber-500/10 text-amber-500 border-amber-500/30',  icon: 'text-amber-500',  label: 'Medium'   },
+  critical: { left: 'border-l-destructive',      badge: 'bg-destructive/10 text-destructive border-destructive/30',          icon: 'text-destructive',      label: 'Critical' },
+  high:     { left: 'border-l-aurora-amber',     badge: 'bg-aurora-amber/10 text-aurora-amber border-aurora-amber/30',       icon: 'text-aurora-amber',     label: 'High'     },
+  medium:   { left: 'border-l-aurora-amber',     badge: 'bg-aurora-amber/10 text-aurora-amber border-aurora-amber/30',       icon: 'text-aurora-amber',     label: 'Medium'   },
 };
 
 export default function AlertsTab() {
@@ -53,8 +53,8 @@ export default function AlertsTab() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground flex-1">
           <span className="font-medium">{data.alerts.length} on Hold</span>
-          {critical > 0 && <span className="text-red-500 font-semibold">{critical} critical &gt;30d</span>}
-          {high     > 0 && <span className="text-orange-500 font-semibold">{high} high &gt;14d</span>}
+          {critical > 0 && <span className="text-destructive font-semibold">{critical} critical &gt;30d</span>}
+          {high     > 0 && <span className="text-aurora-amber font-semibold">{high} high &gt;14d</span>}
         </div>
         <div className="flex items-center gap-1.5">
           <Filter className="h-3.5 w-3.5 text-muted-foreground" />

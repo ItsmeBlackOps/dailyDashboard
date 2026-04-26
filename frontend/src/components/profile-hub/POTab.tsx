@@ -44,12 +44,12 @@ export default function POTab() {
   return (
     <div className="flex flex-col gap-3 h-full min-h-0">
       {missingPoDate > 0 && (
-        <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2">
-          <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
-          <span className="text-xs text-amber-600 flex-1">
+        <div className="flex items-center gap-2 rounded-md border border-aurora-amber/30 bg-aurora-amber/5 px-3 py-2">
+          <AlertCircle className="h-4 w-4 text-aurora-amber shrink-0" />
+          <span className="text-xs text-aurora-amber flex-1">
             {missingPoDate} candidates with "Placement Offer" status are missing a PO date.
           </span>
-          <Button variant="outline" size="sm" className="text-xs h-7 border-amber-500/40 text-amber-600"
+          <Button variant="outline" size="sm" className="text-xs h-7 border-aurora-amber/40 text-aurora-amber"
             onClick={() => setShowMissingOnly(v => !v)}>
             {showMissingOnly ? 'Show All' : 'Review →'}
           </Button>
@@ -81,7 +81,7 @@ export default function POTab() {
                   </TableCell>
                 </TableRow>
               ) : filtered.map(c => (
-                <TableRow key={c.id} className={!c.poDate ? 'bg-amber-500/5 border-l-2 border-l-amber-500' : ''}>
+                <TableRow key={c.id} className={!c.poDate ? 'bg-aurora-amber/5 border-l-2 border-l-aurora-amber' : ''}>
                   <TableCell className="text-xs font-medium">
                     <button className="hover:underline text-left" onClick={() => navigate(`/candidate/${c.id}`)}>{c.name}</button>
                   </TableCell>
@@ -92,12 +92,12 @@ export default function POTab() {
                   <TableCell className="text-xs text-muted-foreground">{formatRecruiter(c.recruiter)}</TableCell>
                   <TableCell>
                     {c.poDate ? (
-                      <div className="flex items-center gap-1 text-xs text-emerald-500">
+                      <div className="flex items-center gap-1 text-xs text-aurora-emerald">
                         <Calendar className="h-3 w-3" />
                         {formatDate(c.poDate)}
                       </div>
                     ) : (
-                      <span className="text-[10px] text-amber-500 font-semibold">Missing</span>
+                      <span className="text-[10px] text-aurora-amber font-semibold">Missing</span>
                     )}
                   </TableCell>
                 </TableRow>

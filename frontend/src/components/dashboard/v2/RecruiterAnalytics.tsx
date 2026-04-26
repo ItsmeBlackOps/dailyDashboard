@@ -278,9 +278,9 @@ export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: s
                                     <YAxis dataKey="name" type="category" width={100} fontSize={12} />
                                     <Tooltip />
                                     <Legend wrapperStyle={{ fontSize: '12px' }} />
-                                    <Bar dataKey="Sent" fill="#3b82f6" />
-                                    <Bar dataKey="Completed" fill="#22c55e" />
-                                    <Bar dataKey="NotDone" fill="#ef4444" />
+                                    <Bar dataKey="Sent" fill="var(--primary, #8b5cf6)" />
+                                    <Bar dataKey="Completed" fill="var(--aurora-emerald, #10b981)" />
+                                    <Bar dataKey="NotDone" fill="var(--destructive, #ef4444)" />
                                 </BarChart>
                             </ResponsiveContainer>
                         </CardContent>
@@ -302,19 +302,19 @@ export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: s
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Total Completed:</span>
-                                    <span className="font-bold text-green-600">{activeStats.reduce((sum, s) => sum + s.completed, 0)}</span>
+                                    <span className="font-bold text-aurora-emerald">{activeStats.reduce((sum, s) => sum + s.completed, 0)}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Total Not Done:</span>
-                                    <span className="font-bold text-red-600">{activeStats.reduce((sum, s) => sum + s.notDone, 0)}</span>
+                                    <span className="font-bold text-destructive">{activeStats.reduce((sum, s) => sum + s.notDone, 0)}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Total Cancelled:</span>
-                                    <span className="font-bold text-orange-600">{activeStats.reduce((sum, s) => sum + s.cancelled, 0)}</span>
+                                    <span className="font-bold text-aurora-amber">{activeStats.reduce((sum, s) => sum + s.cancelled, 0)}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Total Rescheduled:</span>
-                                    <span className="font-bold text-blue-600">{activeStats.reduce((sum, s) => sum + s.rescheduled, 0)}</span>
+                                    <span className="font-bold text-primary">{activeStats.reduce((sum, s) => sum + s.rescheduled, 0)}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Total Assigned:</span>
@@ -365,7 +365,7 @@ export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: s
                                                             Sent: <span className="font-bold text-foreground">{group.totalSent}</span>
                                                         </span>
                                                         <span className="text-muted-foreground">
-                                                            Done: <span className="font-bold text-green-600">{group.totalCompleted}</span>
+                                                            Done: <span className="font-bold text-aurora-emerald">{group.totalCompleted}</span>
                                                         </span>
                                                     </div>
                                                 </div>
@@ -389,10 +389,10 @@ export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: s
                                                                         className="cursor-pointer hover:bg-muted/50"
                                                                         onClick={() => openRecruiterDrilldown(s._id)}
                                                                     >
-                                                                    <TableCell className="font-medium text-blue-600 dark:text-blue-400 text-xs md:text-sm truncate max-w-[150px]">{s._id}</TableCell>
+                                                                    <TableCell className="font-medium text-primary text-xs md:text-sm truncate max-w-[150px]">{s._id}</TableCell>
                                                                     <TableCell className="text-right text-xs md:text-sm">{s.totalInterviewsSent}</TableCell>
                                                                     <TableCell className="text-right text-xs md:text-sm">{s.completed}</TableCell>
-                                                                    <TableCell className="text-right font-bold text-blue-600 text-xs md:text-sm">{s.qualityScore.toFixed(1)}</TableCell>
+                                                                    <TableCell className="text-right font-bold text-primary text-xs md:text-sm">{s.qualityScore.toFixed(1)}</TableCell>
                                                                     <TableCell className="text-right hidden sm:table-cell text-xs md:text-sm">{s.cancelled + s.rescheduled}</TableCell>
                                                                 </TableRow>
                                                             ))}
@@ -423,10 +423,10 @@ export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: s
                                                 className="cursor-pointer hover:bg-muted/50"
                                                 onClick={() => openRecruiterDrilldown(s._id)}
                                             >
-                                                <TableCell className="font-medium text-blue-600 dark:text-blue-400 text-xs md:text-sm truncate max-w-[150px] md:max-w-none">{s._id}</TableCell>
+                                                <TableCell className="font-medium text-primary text-xs md:text-sm truncate max-w-[150px] md:max-w-none">{s._id}</TableCell>
                                                 <TableCell className="text-right text-xs md:text-sm">{s.totalInterviewsSent}</TableCell>
                                                 <TableCell className="text-right text-xs md:text-sm">{s.completed}</TableCell>
-                                                <TableCell className="text-right font-bold text-blue-600 text-xs md:text-sm">{s.qualityScore.toFixed(1)}</TableCell>
+                                                <TableCell className="text-right font-bold text-primary text-xs md:text-sm">{s.qualityScore.toFixed(1)}</TableCell>
                                                 <TableCell className="text-right hidden sm:table-cell text-xs md:text-sm">{s.cancelled + s.rescheduled}</TableCell>
                                             </TableRow>
                                         ))}
@@ -513,7 +513,7 @@ export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: s
                                         <TableRow key={idx}
                                             className={task._id ? 'cursor-pointer hover:bg-muted/50' : ''}
                                             onClick={() => task._id && setSelectedTaskId(task._id)}>
-                                            <TableCell className="font-medium text-xs text-blue-600 dark:text-blue-400">{task['Candidate Name']}</TableCell>
+                                            <TableCell className="font-medium text-xs text-primary">{task['Candidate Name']}</TableCell>
                                             <TableCell className="text-xs">{task['Date of Interview']}</TableCell>
                                             <TableCell className="text-xs">{task['Start Time Of Interview']}</TableCell>
                                             <TableCell className="text-xs">{task['End Client']}</TableCell>
@@ -527,7 +527,7 @@ export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: s
                                             <TableCell className="text-xs">{task['Actual Round']}</TableCell>
                                             <TableCell onClick={e => e.stopPropagation()}>
                                                 {task.candidateId && (
-                                                    <button className="text-blue-500 hover:text-blue-400"
+                                                    <button className="text-primary hover:text-primary/80"
                                                         title="View full profile"
                                                         onClick={() => navigate(`/candidate/${task.candidateId}`)}>
                                                         <ExternalLink className="h-3.5 w-3.5" />

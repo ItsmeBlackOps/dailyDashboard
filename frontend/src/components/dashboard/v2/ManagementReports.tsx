@@ -106,10 +106,10 @@ export function ManagementReports() {
 
     return (
         <div className="space-y-6">
-            <Card className="border-red-100 dark:border-red-900/50">
+            <Card className="border-destructive/20">
                 <CardHeader>
                     <div className="flex items-center gap-2">
-                        <AlertTriangle className="h-5 w-5 text-red-500" />
+                        <AlertTriangle className="h-5 w-5 text-destructive" />
                         <CardTitle>
                             Low Activity Candidates (At Risk)
                             <Badge variant="destructive" className="ml-2 text-sm">
@@ -137,7 +137,7 @@ export function ManagementReports() {
                                     className="cursor-pointer hover:bg-muted/50"
                                     onClick={() => setSelectedCandidate(c)}
                                 >
-                                    <TableCell className="font-medium text-blue-600 dark:text-blue-400">{c['Candidate Name']}</TableCell>
+                                    <TableCell className="font-medium text-primary">{c['Candidate Name']}</TableCell>
                                     <TableCell>{c.Branch}</TableCell>
                                     <TableCell>{c.Recruiter}</TableCell>
                                     <TableCell className="text-right">{c.totalInterviews}</TableCell>
@@ -145,7 +145,7 @@ export function ManagementReports() {
                                         <span className="text-muted-foreground">
                                             {c.lastInterviewDate ? new Date(c.lastInterviewDate).toLocaleDateString() : 'Never'}
                                         </span>
-                                        {!c.lastInterviewDate && <Clock className="h-3 w-3 text-red-500" />}
+                                        {!c.lastInterviewDate && <Clock className="h-3 w-3 text-destructive" />}
                                     </TableCell>
                                 </TableRow>
                             ))}
@@ -161,7 +161,7 @@ export function ManagementReports() {
                             <DialogTitle>Interview History: {selectedCandidate?.['Candidate Name']}</DialogTitle>
                             {selectedCandidate?._id && (
                                 <button
-                                    className="text-xs text-blue-500 hover:underline shrink-0"
+                                    className="text-xs text-primary hover:underline shrink-0"
                                     onClick={() => navigate(`/candidate/${selectedCandidate._id}`)}
                                 >
                                     View Full Profile →

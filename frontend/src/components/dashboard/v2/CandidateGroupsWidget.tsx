@@ -38,7 +38,7 @@ const STATUS_ACCENT: Record<string, string> = {
   'Hold':            'border-l-amber-500',
   'Backout':         'border-l-red-500',
   'Low Priority':    'border-l-sky-500',
-  'Unassigned':      'border-l-gray-400',
+  'Unassigned':      'border-l-muted-foreground',
 };
 
 export function CandidateGroupsWidget() {
@@ -89,7 +89,7 @@ export function CandidateGroupsWidget() {
 
       {groups.map(group => {
         const isOpen = !!open[group.status];
-        const accentClass = STATUS_ACCENT[group.status] || 'border-l-gray-400';
+        const accentClass = STATUS_ACCENT[group.status] || 'border-l-muted-foreground';
         const statusKey = group.status as CandidateStatus;
 
         return (
@@ -101,7 +101,7 @@ export function CandidateGroupsWidget() {
             >
               <div className="flex items-center gap-2">
                 {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${statusColors[statusKey] || 'border-gray-300 text-gray-600'}`}>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${statusColors[statusKey] || 'border-border text-muted-foreground'}`}>
                   {group.status}
                 </span>
               </div>
@@ -135,7 +135,7 @@ export function CandidateGroupsWidget() {
                         </div>
                       </div>
                       {days !== null && (
-                        <span className={`text-[10px] font-mono shrink-0 ${days > 30 ? 'text-red-400' : days > 14 ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                        <span className={`text-[10px] font-mono shrink-0 ${days > 30 ? 'text-destructive' : days > 14 ? 'text-aurora-amber' : 'text-muted-foreground'}`}>
                           {days}d ago
                         </span>
                       )}

@@ -25,9 +25,9 @@ interface ContactDetailsProps {
 export function ContactDetails({ contact }: ContactDetailsProps) {
   const getStatusBadge = (status: string) => {
     const variants = {
-      active: 'bg-green-100 text-green-800',
-      inactive: 'bg-gray-100 text-gray-800',
-      lead: 'bg-blue-100 text-blue-800'
+      active: 'bg-aurora-emerald/15 text-aurora-emerald',
+      inactive: 'bg-muted/50 text-muted-foreground',
+      lead: 'bg-accent text-primary'
     };
     return variants[status as keyof typeof variants] || variants.active;
   };
@@ -148,7 +148,7 @@ export function ContactDetails({ contact }: ContactDetailsProps) {
         <CardContent>
           <div className="space-y-3">
             <div className="flex items-start gap-3 text-sm">
-              <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+              <div className="w-2 h-2 bg-aurora-emerald rounded-full mt-2"></div>
               <div>
                 <p className="font-medium">Email sent</p>
                 <p className="text-muted-foreground">Sent follow-up email about proposal</p>
@@ -157,7 +157,7 @@ export function ContactDetails({ contact }: ContactDetailsProps) {
             </div>
             
             <div className="flex items-start gap-3 text-sm">
-              <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
+              <div className="w-2 h-2 bg-primary rounded-full mt-2"></div>
               <div>
                 <p className="font-medium">Meeting scheduled</p>
                 <p className="text-muted-foreground">Demo call scheduled for next week</p>
@@ -166,7 +166,7 @@ export function ContactDetails({ contact }: ContactDetailsProps) {
             </div>
             
             <div className="flex items-start gap-3 text-sm">
-              <div className="w-2 h-2 bg-orange-500 rounded-full mt-2"></div>
+              <div className="w-2 h-2 bg-aurora-amber rounded-full mt-2"></div>
               <div>
                 <p className="font-medium">Note added</p>
                 <p className="text-muted-foreground">Initial contact made, interested in our services</p>

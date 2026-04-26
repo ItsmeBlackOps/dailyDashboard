@@ -90,11 +90,11 @@ function formatDateTime(d: string | null) {
 }
 
 const STATUS_CLASS: Record<string, string> = {
-  completed:   'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300',
-  done:        'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300',
-  selected:    'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300',
-  cancelled:   'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300',
-  rescheduled: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300',
+  completed:   'bg-aurora-emerald/10 text-aurora-emerald border-aurora-emerald/30',
+  done:        'bg-aurora-emerald/10 text-aurora-emerald border-aurora-emerald/30',
+  selected:    'bg-aurora-emerald/10 text-aurora-emerald border-aurora-emerald/30',
+  cancelled:   'bg-destructive/10 text-destructive border-destructive/30',
+  rescheduled: 'bg-aurora-amber/10 text-aurora-amber border-aurora-amber/30',
 };
 function statusClass(s: string) {
   return STATUS_CLASS[(s || '').toLowerCase()] ?? 'bg-muted text-foreground border-border';
@@ -299,14 +299,14 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
                 <BotStatusBadge status={task.botStatus ?? undefined} attempts={task.botInviteAttempts ?? undefined} error={task.botLastError} />
               </div>
               {task.meetingLink ? (
-                <a href={task.meetingLink} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline break-all">
+                <a href={task.meetingLink} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline break-all">
                   {task.meetingLink}
                 </a>
               ) : (
                 <p className="text-xs text-muted-foreground">No meeting link set yet</p>
               )}
               {task.botLastError && (
-                <p className="text-xs text-rose-600">⚠️ {task.botLastError}</p>
+                <p className="text-xs text-aurora-rose">⚠️ {task.botLastError}</p>
               )}
               <div className="space-y-2 pt-2 border-t">
                 <Input

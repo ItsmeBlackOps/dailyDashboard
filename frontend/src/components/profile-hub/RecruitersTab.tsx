@@ -116,15 +116,15 @@ export default function RecruitersTab() {
               </CardHeader>
               <CardContent className="px-4 pb-4 space-y-2">
                 <div className="flex items-center gap-2">
-                  <StatBar value={r.total} max={maxTotal} color="bg-blue-500" />
+                  <StatBar value={r.total} max={maxTotal} color="bg-primary" />
                   <span className="text-xs font-mono font-semibold w-6 text-right">{r.total}</span>
                   <span className="text-[10px] text-muted-foreground">total</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  <Badge variant="outline" className="text-[10px] px-1.5 text-emerald-500 border-emerald-500/30">{r.active} active</Badge>
-                  <Badge variant="outline" className="text-[10px] px-1.5 text-violet-500 border-violet-500/30">{r.po} PO</Badge>
-                  <Badge variant="outline" className="text-[10px] px-1.5 text-amber-500 border-amber-500/30">{r.hold} hold</Badge>
-                  <Badge variant="outline" className="text-[10px] px-1.5 text-red-500 border-red-500/30">{r.backout} backout</Badge>
+                  <Badge variant="outline" className="text-[10px] px-1.5 text-aurora-emerald border-aurora-emerald/30">{r.active} active</Badge>
+                  <Badge variant="outline" className="text-[10px] px-1.5 text-aurora-violet border-aurora-violet/30">{r.po} PO</Badge>
+                  <Badge variant="outline" className="text-[10px] px-1.5 text-aurora-amber border-aurora-amber/30">{r.hold} hold</Badge>
+                  <Badge variant="outline" className="text-[10px] px-1.5 text-destructive border-destructive/30">{r.backout} backout</Badge>
                 </div>
               </CardContent>
             </Card>
@@ -139,10 +139,10 @@ export default function RecruitersTab() {
             <div className="flex items-center justify-between gap-2">
               <DialogTitle className="text-base">{selected?.name}</DialogTitle>
               <div className="flex gap-1.5 flex-wrap">
-                <Badge variant="outline" className="text-[10px] text-emerald-500 border-emerald-500/30">{selected?.active} active</Badge>
-                <Badge variant="outline" className="text-[10px] text-violet-500 border-violet-500/30">{selected?.po} PO</Badge>
-                <Badge variant="outline" className="text-[10px] text-amber-500 border-amber-500/30">{selected?.hold} hold</Badge>
-                <Badge variant="outline" className="text-[10px] text-red-500 border-red-500/30">{selected?.backout} backout</Badge>
+                <Badge variant="outline" className="text-[10px] text-aurora-emerald border-aurora-emerald/30">{selected?.active} active</Badge>
+                <Badge variant="outline" className="text-[10px] text-aurora-violet border-aurora-violet/30">{selected?.po} PO</Badge>
+                <Badge variant="outline" className="text-[10px] text-aurora-amber border-aurora-amber/30">{selected?.hold} hold</Badge>
+                <Badge variant="outline" className="text-[10px] text-destructive border-destructive/30">{selected?.backout} backout</Badge>
               </div>
             </div>
             <p className="text-[10px] text-muted-foreground">{selected?.email}</p>
@@ -213,7 +213,7 @@ export default function RecruitersTab() {
                           {days !== null ? `${days}d ago` : '—'}
                         </TableCell>
                         <TableCell>
-                          <button className="text-blue-500 hover:text-blue-400" onClick={() => navigate(`/candidate/${c.id}`)}>
+                          <button className="text-primary hover:text-primary/80" onClick={() => navigate(`/candidate/${c.id}`)}>
                             <ExternalLink className="h-3.5 w-3.5" />
                           </button>
                         </TableCell>

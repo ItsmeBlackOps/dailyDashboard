@@ -11,12 +11,12 @@ interface HubStats {
 interface HubRecruiters { recruiters: Recruiter[] }
 
 const STATUS_PIE = [
-  { key: 'active',      label: 'Active',          color: '#10b981' },
-  { key: 'po',          label: 'Placement Offer',  color: '#8b5cf6' },
-  { key: 'hold',        label: 'Hold',             color: '#f59e0b' },
-  { key: 'backout',     label: 'Backout',          color: '#ef4444' },
-  { key: 'lowPriority', label: 'Low Priority',     color: '#0ea5e9' },
-  { key: 'unassigned',  label: 'Unassigned',       color: '#6b7280' },
+  { key: 'active',      label: 'Active',          color: 'var(--aurora-emerald, #10b981)' },
+  { key: 'po',          label: 'Placement Offer',  color: 'var(--aurora-violet, #8b5cf6)' },
+  { key: 'hold',        label: 'Hold',             color: 'var(--aurora-amber, #f59e0b)' },
+  { key: 'backout',     label: 'Backout',          color: 'var(--destructive, #ef4444)' },
+  { key: 'lowPriority', label: 'Low Priority',     color: 'var(--aurora-cyan, #0ea5e9)' },
+  { key: 'unassigned',  label: 'Unassigned',       color: 'var(--muted-foreground, #6b7280)' },
 ];
 
 const renderLegend = (props: any) => {
@@ -116,10 +116,10 @@ export default function AnalyticsTab() {
                   <YAxis tick={{ fontSize: 10 }} />
                   <Tooltip />
                   <Legend wrapperStyle={{ fontSize: 10 }} />
-                  <Bar dataKey="Active"  stackId="a" fill="#10b981" />
-                  <Bar dataKey="PO"      stackId="a" fill="#8b5cf6" />
-                  <Bar dataKey="Hold"    stackId="a" fill="#f59e0b" />
-                  <Bar dataKey="Backout" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Active"  stackId="a" fill="var(--aurora-emerald, #10b981)" />
+                  <Bar dataKey="PO"      stackId="a" fill="var(--aurora-violet, #8b5cf6)" />
+                  <Bar dataKey="Hold"    stackId="a" fill="var(--aurora-amber, #f59e0b)" />
+                  <Bar dataKey="Backout" stackId="a" fill="var(--destructive, #ef4444)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
