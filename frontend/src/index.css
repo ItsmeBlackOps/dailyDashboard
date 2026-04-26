@@ -2,41 +2,56 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   AURORA DESIGN SYSTEM
+   - Maps Shadcn HSL tokens to Aurora palette
+   - Dark = primary canvas (Aurora is dark-first)
+   - Light = "paper" mode with Aurora accents
+   ============================================================ */
+
 @layer base {
   :root {
-    /* Light Mode - Crisp & Airy */
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    /* ----- Aurora Light (paper) ----- */
+    --background: 48 23% 97%;            /* aurora paper #fbfaf6 */
+    --foreground: 252 33% 6%;            /* aurora ink */
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 252 33% 6%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 252 33% 6%;
 
-    --primary: 250 85% 60%;
-    /* Vibrant Indigo */
-    --primary-foreground: 210 40% 98%;
+    --primary: 263 90% 67%;              /* aurora violet #8b5cf6 */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222 47% 11.2%;
+    --secondary: 252 24% 95%;
+    --secondary-foreground: 252 33% 6%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 252 18% 92%;
+    --muted-foreground: 252 12% 40%;
 
-    --accent: 250 85% 96%;
-    --accent-foreground: 222 47% 11.2%;
+    --accent: 263 90% 95%;
+    --accent-foreground: 263 90% 30%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 351 95% 71%;          /* aurora rose */
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 250 85% 60%;
+    --border: 252 14% 88%;
+    --input: 252 14% 88%;
+    --ring: 263 90% 67%;                 /* aurora violet ring */
 
-    --radius: 0.75rem;
+    --radius: 0.625rem;
 
-    /* Aurora Design System Tokens */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 252 33% 6%;
+    --sidebar-primary: 263 90% 67%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 263 90% 95%;
+    --sidebar-accent-foreground: 263 90% 30%;
+    --sidebar-border: 252 14% 88%;
+    --sidebar-ring: 263 90% 67%;
+
+    /* ----- Aurora brand tokens (same in both themes) ----- */
     --ep-display: "Bricolage Grotesque", ui-serif, Georgia, serif;
     --ep-sans: "Inter Tight", ui-sans-serif, system-ui, -apple-system, sans-serif;
     --ep-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
@@ -49,61 +64,48 @@
     --ep-rose: #fb7185;
     --ep-amber: #fbbf24;
     --ep-emerald: #34d399;
-
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 250 85% 60%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 250 85% 96%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   .dark {
-    /* Dark Mode - Premium Glass (Deep Blue/Black) */
-    --background: 240 10% 4%;
-    /* #0a0a0c - Deepest Charcoal */
-    --foreground: 0 0% 98%;
+    /* ----- Aurora Dark (primary canvas) ----- */
+    --background: 252 33% 4%;            /* deeper than ink for body */
+    --foreground: 0 0% 95%;
 
-    --card: 240 10% 6%;
-    /* Slightly lighter than bg */
-    --card-foreground: 0 0% 98%;
+    --card: 252 24% 11%;                 /* aurora ink-2 */
+    --card-foreground: 0 0% 95%;
 
-    --popover: 240 10% 4%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 252 28% 9%;
+    --popover-foreground: 0 0% 95%;
 
-    --primary: 260 70% 60%;
-    /* Soft Purple Neon */
+    --primary: 263 90% 67%;              /* aurora violet stays vibrant */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 240 4% 16%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary: 252 24% 14%;
+    --secondary-foreground: 0 0% 95%;
 
-    --muted: 240 4% 16%;
-    --muted-foreground: 240 5% 65%;
+    --muted: 252 24% 14%;
+    --muted-foreground: 252 8% 65%;
 
-    --accent: 320 70% 60%;
-    /* Pink/Magenta Neon Accent */
-    --accent-foreground: 0 0% 98%;
+    --accent: 263 50% 22%;
+    --accent-foreground: 263 90% 80%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 351 95% 71%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 240 4% 16%;
-    --input: 240 4% 16%;
-    --ring: 260 70% 60%;
+    --border: 252 18% 20%;
+    --input: 252 18% 20%;
+    --ring: 263 90% 67%;
 
-    --sidebar-background: 240 10% 4%;
-    --sidebar-foreground: 240 5% 65%;
-    --sidebar-primary: 260 70% 60%;
+    --sidebar-background: 252 33% 6%;
+    --sidebar-foreground: 0 0% 90%;
+    --sidebar-primary: 263 90% 67%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 4% 16%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 240 4% 16%;
-    --sidebar-ring: 260 70% 60%;
+    --sidebar-accent: 263 50% 22%;
+    --sidebar-accent-foreground: 263 90% 85%;
+    --sidebar-border: 252 18% 18%;
+    --sidebar-ring: 263 90% 67%;
 
-    /* Aurora Design System Tokens */
+    /* Brand tokens stay consistent */
     --ep-display: "Bricolage Grotesque", ui-serif, Georgia, serif;
     --ep-sans: "Inter Tight", ui-sans-serif, system-ui, -apple-system, sans-serif;
     --ep-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
@@ -117,96 +119,87 @@
     --ep-amber: #fbbf24;
     --ep-emerald: #34d399;
   }
-}
 
-@layer base {
+  /* Body styles use Aurora typography by default */
   * {
     @apply border-border;
   }
-
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-family: var(--ep-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
-  /* Custom scrollbar for dark theme */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+  /* Aurora-themed scrollbars (dark mode) */
+  .dark ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .dark ::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(139, 92, 246, 0.3), rgba(34, 211, 238, 0.3));
+    border-radius: 4px;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(139, 92, 246, 0.5), rgba(34, 211, 238, 0.5));
   }
 
-  ::-webkit-scrollbar-track {
-    @apply bg-transparent;
+  /* Display headings (h1, h2 etc.) use Bricolage by default */
+  h1, h2, h3, h4 {
+    font-family: var(--ep-display);
+    letter-spacing: -0.015em;
   }
 
-  ::-webkit-scrollbar-thumb {
-    @apply bg-muted rounded-full;
-  }
-
-  /* Card styling */
-  .dashboard-card {
-    @apply bg-card border border-border rounded-lg shadow-sm p-4 h-full transition-all duration-200;
-  }
-
-  .dashboard-card:hover {
-    @apply shadow-md;
-  }
-
-  /* Stats counter animation */
-  .animate-counter {
-    @apply transition-all duration-300 ease-out;
-  }
-
-  /* Glass morphism */
-  .glass {
-    @apply backdrop-blur-xl bg-background/60 border border-white/10 shadow-lg;
-  }
-
-  .glass-card {
-    @apply backdrop-blur-md bg-card/60 border border-white/5 shadow-md transition-all duration-300 hover:shadow-lg hover:bg-card/70;
-  }
-
-  .glass-panel {
-    @apply backdrop-blur-2xl bg-background/80 border-r border-white/10;
-  }
-
-  .scroll-area {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  .scroll-area::-webkit-scrollbar {
-    display: none;
-  }
+  /* Numerics use JetBrains Mono via .font-mono utility (Tailwind) */
 }
 
-/* Aurora Design System Keyframes */
-@keyframes epSpin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-@keyframes epPing {
-  0% { transform: scale(0.4); opacity: 1; }
-  100% { transform: scale(1.6); opacity: 0; }
-}
-@keyframes epShimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
+/* ============================================================
+   AURORA KEYFRAMES — used by primitives
+   ============================================================ */
+
+@keyframes epSpin     { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes epPing     { 0% { transform: scale(0.4); opacity: 1; } 100% { transform: scale(1.6); opacity: 0; } }
+@keyframes epShimmer  { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
 @keyframes epAuroraDrift {
   0%   { transform: translate3d(0,0,0) scale(1); }
   50%  { transform: translate3d(-3%, 2%, 0) scale(1.08); }
   100% { transform: translate3d(0,0,0) scale(1); }
 }
-@keyframes epScan {
-  0% { transform: translateY(-50%); }
-  100% { transform: translateY(2400%); }
-}
-@keyframes epScanShort {
-  0% { transform: translateX(-110%); }
-  100% { transform: translateX(110%); }
-}
-@keyframes epFloat {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
+@keyframes epScan { 0% { transform: translateY(-50%); } 100% { transform: translateY(2400%); } }
+@keyframes epScanShort { 0% { transform: translateX(-110%); } 100% { transform: translateX(110%); } }
+@keyframes epFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+
+/* ============================================================
+   AURORA UTILITY CLASSES
+   For pages/components that want explicit Aurora styling
+   ============================================================ */
+
+@layer utilities {
+  .aurora-glass {
+    @apply bg-card/60 backdrop-blur-xl border border-white/10;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 24px -12px rgba(0,0,0,0.4);
+  }
+
+  .aurora-gradient-text {
+    background: linear-gradient(120deg, #8b5cf6 0%, #22d3ee 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .aurora-gradient-bg {
+    background: linear-gradient(120deg, #8b5cf6 0%, #6366f1 50%, #22d3ee 100%);
+  }
+
+  .aurora-halo-violet {
+    box-shadow: 0 0 24px 4px rgba(139,92,246,0.4), 0 12px 32px -8px rgba(34,211,238,0.5);
+  }
+
+  .aurora-dotted-bg {
+    background-image: radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
 }
