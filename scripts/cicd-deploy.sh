@@ -48,9 +48,17 @@ else
 fi
 
 # ---------- 3. Build + start inactive color ----------
+log "Cleaning any orphaned ${TARGET} containers"
+# Remove any stopped/orphaned containers matching the target color names (handles weird hash-prefixed leftovers)
+docker ps -a --format '{{.Names}}' | grep -E "(^|_)dailydb-(frontend|backend)-${TARGET}$" \
+  | while read -r name; do
+      log "  → removing orphan container ${name}"
+      docker rm -f "${name}" >/dev/null 2>&1 || true
+    done
+
 log "Building dailydashboard-frontend-${TARGET} and dailydashboard-backend-${TARGET}"
 docker compose build "frontend-${TARGET}" "backend-${TARGET}"
-docker compose up -d "frontend-${TARGET}" "backend-${TARGET}"
+docker compose up -d --force-recreate --remove-orphans "frontend-${TARGET}" "backend-${TARGET}"
 
 # ---------- 4. Wait for health ----------
 wait_for_healthy() {
