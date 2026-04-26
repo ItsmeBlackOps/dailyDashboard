@@ -17,6 +17,7 @@ router.post('/transcript-requests/status', transcriptRequestController.getMyTran
 router.get('/:taskId/interview-debrief', taskController.getInterviewDebriefStatus);
 router.get('/:taskId/transcript-request', transcriptRequestController.getMyTranscriptRequestStatus);
 router.get('/:taskId/transcript', transcriptRequestController.getTaskTranscript);
+router.patch('/:taskId/meeting-link', taskController.updateMeetingLink);
 router.get('/:taskId', taskController.getTaskById);
 
 router.post('/search', taskController.searchTasks);

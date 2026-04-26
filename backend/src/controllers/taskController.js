@@ -1,9 +1,11 @@
+import { ObjectId } from 'mongodb';
 import { taskService } from '../services/taskService.js';
 import { thanksMailService } from '../services/thanksMailService.js';
 import { interviewerQuestionService } from '../services/interviewerQuestionService.js';
 import { interviewDebriefService } from '../services/interviewDebriefService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
+import { database } from '../config/database.js';
 
 export class TaskController {
   constructor() {
@@ -237,6 +239,40 @@ export class TaskController {
     );
 
     res.status(200).json(result);
+  });
+
+  updateMeetingLink = asyncHandler(async (req, res) => {
+    const { taskId } = req.params;
+    const { meetingLink, meetingPassword } = req.body;
+
+    if (!ObjectId.isValid(taskId)) {
+      return res.status(400).json({ success: false, error: 'Invalid taskId' });
+    }
+
+    const collection = database.getCollection('taskBody');
+
+    const update = {
+      meetingLink: meetingLink || null,
+      meetingPassword: meetingPassword || null,
+      botStatus: 'pending',
+      botInviteAttempts: 0,
+      botJoinedAt: null,
+      precheckCheckedAt: null,
+      botLastError: null,
+      updatedAt: new Date(),
+    };
+
+    const result = await collection.findOneAndUpdate(
+      { _id: new ObjectId(taskId) },
+      { $set: update },
+      { returnDocument: 'after' }
+    );
+
+    if (!result) {
+      return res.status(404).json({ success: false, error: 'Task not found' });
+    }
+
+    return res.json({ success: true, task: result });
   });
 
   healthCheck = asyncHandler(async (req, res) => {
