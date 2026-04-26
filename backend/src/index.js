@@ -43,6 +43,9 @@ import { candidateService } from './services/candidateService.js';
 // Import middleware
 import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
+// Import jobs
+import { startFirefliesBotScheduler } from './jobs/firefliesBotScheduler.js';
+
 // Import routes and socket manager
 import apiRoutes from './routes/index.js';
 import { graphMeetingController } from './controllers/graphMeetingController.js';
@@ -248,6 +251,8 @@ class Application {
           logger.info(`📖 API Documentation: http://${config.server.host}:${config.server.port}/api/info`);
           logger.info(`🏥 Health Check: http://${config.server.host}:${config.server.port}/api/health`);
         }
+
+        startFirefliesBotScheduler();
       });
     } catch (error) {
       logger.error('❌ Failed to start server', { error: error.message });
