@@ -25,11 +25,12 @@ LOG_PREFIX="[$(date -u +%Y-%m-%dT%H:%M:%SZ)]"
 
 log() { echo "${LOG_PREFIX} $*"; }
 
-# ---------- 1. Pull latest ----------
+# ---------- 1. Pull latest (hard reset to discard any local VM mods) ----------
 log "Fetching latest main"
 git fetch --all --prune
 git checkout main
-git pull --ff-only origin main
+git reset --hard origin/main
+chmod +x scripts/*.sh 2>/dev/null || true
 log "On commit $(git rev-parse --short HEAD) (${GIT_SHA})"
 
 # ---------- 2. Detect active color ----------
