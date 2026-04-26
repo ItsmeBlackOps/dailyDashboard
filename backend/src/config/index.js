@@ -54,7 +54,8 @@ const config = {
       callback(new Error('Not allowed by CORS'));
     },
     methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true
+    credentials: true,
+    exposedHeaders: ['X-Response-Time-Ms']
   },
 
   socket: {

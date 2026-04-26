@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useUserProfile, formatPhoneDraft, formatPhoneCanonical } from '@/contexts/UserProfileContext';
 import { useMicrosoftConsent } from '@/contexts/MicrosoftConsentContext';
 import { useNotifications } from '@/context/NotificationContext';
+import PerformancePill from '@/components/shared/PerformancePill';
 interface HeaderProps {
   toggleSidebar: () => void;
   openSettings?: () => void; // keep if you plan to use it later
@@ -157,6 +158,7 @@ export function Header({ toggleSidebar }: HeaderProps) {
       </Link>
 
       <div className="ml-auto flex items-center gap-2">
+        <PerformancePill />
         <ThemeToggle />
 
         {/* Notification Bell */}

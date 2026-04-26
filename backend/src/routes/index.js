@@ -13,6 +13,41 @@ import transcriptRequestRoutes from './transcriptRequests.js';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
+async function adminPerformance(req, res) {
+  if (req.user?.role !== 'admin') return res.status(403).json({ success: false, error: 'admin only' });
+  try {
+    const db = database.getDb();
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const pipeline = [
+      { $match: { createdAt: { $gte: since } } },
+      {
+        $group: {
+          _id: { user: '$userEmail', role: '$userRole' },
+          avgMs: { $avg: '$durationMs' },
+          maxMs: { $max: '$durationMs' },
+          requests: { $sum: 1 },
+          slowRequests: { $sum: { $cond: [{ $gt: ['$durationMs', 1000] }, 1, 0] } },
+        }
+      },
+      { $sort: { avgMs: -1 } },
+      { $limit: 200 },
+    ];
+    const rows = await db.collection('perfMetrics').aggregate(pipeline).toArray();
+    return res.json({
+      success: true, since, rows: rows.map(r => ({
+        email: r._id.user || '(unauth)',
+        role: r._id.role || '',
+        avgMs: Math.round(r.avgMs),
+        maxMs: r.maxMs,
+        requests: r.requests,
+        slowRequests: r.slowRequests,
+      }))
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+}
+
 import dashboardRoutes from './dashboardRoutes.js';
 import poRoutes from './po.js';
 
@@ -95,6 +130,9 @@ router.get('/info', (req, res) => {
     }
   });
 });
+
+// Admin performance endpoint
+router.get('/admin/performance', adminPerformance);
 
 // Catch-all for undefined API routes (Express 5 requires handler without wildcard string)
 router.use((req, res) => {

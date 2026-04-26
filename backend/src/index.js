@@ -103,6 +103,35 @@ class Application {
   }
 
   setupExpress() {
+    // Response timing middleware — must be first so it wraps everything
+    this.app.use((req, res, next) => {
+      const start = Date.now();
+      const origSend = res.send.bind(res);
+      res.send = function (body) {
+        const ms = Date.now() - start;
+        res.setHeader('X-Response-Time-Ms', String(ms));
+        return origSend(body);
+      };
+      res.on('finish', () => {
+        const ms = Date.now() - start;
+        if (req.path.startsWith('/api')) {
+          try {
+            const db = database.getDb();
+            db.collection('perfMetrics').insertOne({
+              method: req.method,
+              path: req.path,
+              status: res.statusCode,
+              durationMs: ms,
+              userEmail: req.user?.email || null,
+              userRole: req.user?.role || null,
+              createdAt: new Date(),
+            }).catch(() => {});
+          } catch {}
+        }
+      });
+      next();
+    });
+
     this.app.use(cors(config.cors));
     this.app.use(express.json({ limit: '50mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '50mb' }));

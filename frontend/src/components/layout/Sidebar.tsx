@@ -13,7 +13,8 @@ import {
   KeyRound,
   ClipboardCheck,
   BellRing,
-  Sparkles
+  Sparkles,
+  Activity
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -462,6 +463,14 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   icon={LayoutDashboard}
                   label="Profile Hub"
                   href="/profile-hub"
+                  isOpen={isOpen}
+                />
+              )}
+              {normalizedRole === 'admin' && (
+                <NavItem
+                  icon={Activity}
+                  label="Performance"
+                  href="/admin/performance"
                   isOpen={isOpen}
                 />
               )}
