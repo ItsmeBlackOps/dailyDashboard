@@ -103,7 +103,7 @@ const config = {
   azure: {
     tenantId: stripQuotes(process.env.AZURE_TENANT_ID || '4ece6d1e-592c-44f1-b187-6076e9180510'),
     clientId: stripQuotes(process.env.AZURE_CLIENT_ID || process.env.AZURE_BACKEND_CLIENT_ID || '4fc9e095-61df-4a55-9b0c-2419747b96d0'),
-    clientSecret: stripQuotes(process.env.AZURE_CLIENT_SECRET || process.env.AZURE_BACKEND_CLIENT_SECRET || '***REMOVED-AZURE***'),
+    clientSecret: stripQuotes(process.env.AZURE_CLIENT_SECRET || process.env.AZURE_BACKEND_CLIENT_SECRET || ''),
     redirectUri:
       stripQuotes(process.env.BACKEND_REDIRECT_URI || 'https://dailydb.silverspace.tech/auth/redirect'),
     meetingScopes: (() => {
