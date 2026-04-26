@@ -1,0 +1,51 @@
+name: Deploy to VM
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target_color:
+        description: "Force deploy to specific color (auto = inactive)"
+        required: false
+        default: "auto"
+        type: choice
+        options: [auto, blue, green]
+
+concurrency:
+  group: deploy-vm
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy on VM
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run deploy script on VM
+        env:
+          TARGET_COLOR: ${{ github.event.inputs.target_color || 'auto' }}
+          GIT_SHA: ${{ github.sha }}
+          GIT_REF: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+            "cd ${{ secrets.VM_PATH }} && \
+             export GIT_SHA='${GIT_SHA}' && \
+             export GIT_REF='${GIT_REF}' && \
+             export ACTOR='${ACTOR}' && \
+             export TARGET_COLOR='${TARGET_COLOR}' && \
+             bash scripts/cicd-deploy.sh"
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
