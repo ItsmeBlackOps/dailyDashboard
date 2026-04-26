@@ -20,7 +20,7 @@ const PaginationContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ul
     ref={ref}
-    className={cn("flex flex-row items-center gap-1", className)}
+    className={cn("flex flex-row items-center gap-1 font-sans tracking-tight", className)}
     {...props}
   />
 ))
@@ -48,10 +48,9 @@ const PaginationLink = ({
   <a
     aria-current={isActive ? "page" : undefined}
     className={cn(
-      buttonVariants({
-        variant: isActive ? "outline" : "ghost",
-        size,
-      }),
+      isActive
+        ? "bg-[linear-gradient(120deg,#8b5cf6_0%,#22d3ee_100%)] text-white shadow-[0_4px_12px_-4px_rgba(139,92,246,0.5)] border border-aurora-violet/40 font-sans tracking-tight inline-flex items-center justify-center rounded-md h-9 w-9"
+        : "border border-white/10 bg-transparent hover:bg-white/5 hover:text-aurora-violet font-sans tracking-tight inline-flex items-center justify-center rounded-md h-9 w-9",
       className
     )}
     {...props}
@@ -66,7 +65,7 @@ const PaginationPrevious = ({
   <PaginationLink
     aria-label="Go to previous page"
     size="default"
-    className={cn("gap-1 pl-2.5", className)}
+    className={cn("gap-1 pl-2.5 border border-white/10 bg-transparent hover:bg-white/5 hover:text-aurora-violet font-sans tracking-tight", className)}
     {...props}
   >
     <ChevronLeft className="h-4 w-4" />
@@ -82,7 +81,7 @@ const PaginationNext = ({
   <PaginationLink
     aria-label="Go to next page"
     size="default"
-    className={cn("gap-1 pr-2.5", className)}
+    className={cn("gap-1 pr-2.5 border border-white/10 bg-transparent hover:bg-white/5 hover:text-aurora-violet font-sans tracking-tight", className)}
     {...props}
   >
     <span>Next</span>
@@ -97,7 +96,7 @@ const PaginationEllipsis = ({
 }: React.ComponentProps<"span">) => (
   <span
     aria-hidden
-    className={cn("flex h-9 w-9 items-center justify-center", className)}
+    className={cn("flex h-9 w-9 items-center justify-center text-muted-foreground font-sans tracking-tight", className)}
     {...props}
   >
     <MoreHorizontal className="h-4 w-4" />
