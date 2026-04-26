@@ -3,11 +3,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import OverviewTab from './OverviewTab';
 import AnalyticsTab from './AnalyticsTab';
 import ProfilesTab from './ProfilesTab';
-import RecruitersTab from './RecruitersTab';
-import AlertsTab from './AlertsTab';
+import RecruitersWorkloadTab from './RecruitersWorkloadTab';
+import AlertsAgingTab from './AlertsAgingTab';
 import POTab from './POTab';
-import AgingTab from './AgingTab';
-import WorkloadTab from './WorkloadTab';
 
 const MGMT_ROLES = ['admin', 'mam', 'mm', 'mlead'];
 
@@ -17,16 +15,12 @@ export default function ProfileHub() {
   const isMgmt = MGMT_ROLES.includes(normalizedRole);
 
   const tabs = [
-    { value: 'overview',   label: 'Overview'       },
-    { value: 'analytics',  label: 'Analytics'      },
-    { value: 'profiles',   label: 'All Profiles'   },
-    { value: 'recruiters', label: 'Recruiters'     },
-    { value: 'alerts',     label: 'Alerts & Aging' },
-    { value: 'po',         label: 'PO Placed'      },
-    ...(isMgmt ? [
-      { value: 'aging',    label: 'Aging'          },
-      { value: 'workload', label: 'Workload'        },
-    ] : []),
+    { value: 'overview',   label: 'Overview'              },
+    { value: 'analytics',  label: 'Analytics'             },
+    { value: 'profiles',   label: 'All Profiles'          },
+    { value: 'recruiters', label: 'Recruiters & Workload' },
+    { value: 'alerts',     label: 'Alerts & Aging'        },
+    { value: 'po',         label: 'PO Placed'             },
   ];
 
   const VALID_TABS = tabs.map(t => t.value);
@@ -54,24 +48,16 @@ export default function ProfileHub() {
         </div>
 
         <div className="mt-4">
-          <TabsContent value="overview"   className="mt-0">
+          <TabsContent value="overview" className="mt-0">
             <OverviewTab onNavigate={setActiveTab} />
           </TabsContent>
           <TabsContent value="analytics"  className="mt-0"><AnalyticsTab /></TabsContent>
           <TabsContent value="profiles"   className="mt-0"><ProfilesTab /></TabsContent>
-          <TabsContent value="recruiters" className="mt-0"><RecruitersTab /></TabsContent>
-          <TabsContent value="alerts"     className="mt-0"><AlertsTab /></TabsContent>
+          <TabsContent value="recruiters" className="mt-0">
+            {isMgmt ? <RecruitersWorkloadTab /> : <RecruitersWorkloadTab />}
+          </TabsContent>
+          <TabsContent value="alerts"     className="mt-0"><AlertsAgingTab /></TabsContent>
           <TabsContent value="po"         className="mt-0"><POTab /></TabsContent>
-          {isMgmt && (
-            <TabsContent value="aging" className="mt-0">
-              <AgingTab />
-            </TabsContent>
-          )}
-          {isMgmt && (
-            <TabsContent value="workload" className="mt-0">
-              <WorkloadTab />
-            </TabsContent>
-          )}
         </div>
       </Tabs>
     </div>

@@ -66,9 +66,9 @@ export default function ProfilesTab() {
   const totalPages = Math.ceil(total / 50);
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-48">
+    <div className="space-y-3 w-full">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto] items-center gap-2">
+        <div className="relative min-w-0">
           <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
           <Input placeholder="Search candidate, technology or recruiter…" className="pl-8 h-8 text-xs"
             value={search} onChange={e => setSearch(e.target.value)} />
@@ -92,9 +92,9 @@ export default function ProfilesTab() {
         </span>
       </div>
 
-      <div className="rounded-md border overflow-hidden">
-        <div className="max-h-[520px] overflow-auto">
-          <Table className="min-w-[640px]">
+      <div className="rounded-md border w-full overflow-x-auto">
+        <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
+          <Table className="min-w-full w-full">
             <TableHeader>
               <TableRow>
                 <TableHead className="text-[10px] uppercase tracking-wider">Candidate</TableHead>
