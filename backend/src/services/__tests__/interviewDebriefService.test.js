@@ -83,11 +83,11 @@ describe('interviewDebriefService', () => {
       '[00:10] Interviewer: Tell me about your Java work.'
     );
 
-    expect(prompt).toContain('1) Candidate: Aditi Sharma');
-    expect(prompt).toContain('2) Role: Java Developer');
-    expect(prompt).toContain('3) Company/Client: Acme');
-    expect(prompt).toContain('4) Interview type/round: Recruiter Screen');
-    expect(prompt).toContain('6) Job requirements (paste): Java 8, Spring Boot, React');
+    expect(prompt).toContain('1. Candidate: Aditi Sharma');
+    expect(prompt).toContain('2. Role: Java Developer');
+    expect(prompt).toContain('3. Company/Client: Acme');
+    expect(prompt).toContain('4. Interview type/round: Recruiter Screen');
+    expect(prompt).toContain('6. Job requirements (paste): Java 8, Spring Boot, React');
     expect(prompt).toContain('[00:10] Interviewer: Tell me about your Java work.');
   });
 

@@ -7,7 +7,19 @@ const mockLogger = {
 };
 
 jest.unstable_mockModule('../../utils/logger.js', () => ({
-  logger: mockLogger
+  logger: { ...mockLogger, child: jest.fn(() => ({ ...mockLogger, child: jest.fn() })) },
+  createTimer: jest.fn(() => ({ end: jest.fn() }))
+}));
+
+jest.unstable_mockModule('../taskService.js', () => ({
+  taskService: {
+    getTaskById: jest.fn(),
+    getTasksForUser: jest.fn()
+  }
+}));
+
+jest.unstable_mockModule('../../config/database.js', () => ({
+  database: { getCollection: jest.fn() }
 }));
 
 const { thanksMailService } = await import('../thanksMailService.js');
@@ -106,17 +118,21 @@ describe('thanksMailService', () => {
       global.fetch.mockRejectedValue(abortError);
 
       jest.useFakeTimers();
+      try {
+        const promise = thanksMailService.callOpenAI('Delayed prompt');
 
-      const promise = thanksMailService.callOpenAI('Delayed prompt');
+        // Advance past all three attempt timeouts (300000ms base + 50% per retry)
+        for (let i = 0; i < 3; i += 1) {
+          await Promise.resolve();
+          jest.advanceTimersByTime(600000);
+          await Promise.resolve();
+        }
 
-      await Promise.resolve();
-      jest.advanceTimersByTime(2000);
-      await Promise.resolve();
-      jest.advanceTimersByTime(4000);
-      await Promise.resolve();
-
-      await expect(promise).rejects.toThrow('Email generation took longer than expected. Please retry in a moment.');
-      expect(global.fetch).toHaveBeenCalledTimes(3);
+        await expect(promise).rejects.toThrow('Email generation took longer than expected. Please retry in a moment.');
+        expect(global.fetch).toHaveBeenCalledTimes(3);
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 });

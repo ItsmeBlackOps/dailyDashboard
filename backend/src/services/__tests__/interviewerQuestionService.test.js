@@ -3,7 +3,8 @@ import { jest } from '@jest/globals';
 const mockLogger = {
   info: jest.fn(),
   warn: jest.fn(),
-  error: jest.fn()
+  error: jest.fn(),
+  debug: jest.fn()
 };
 
 const mockCollection = {
@@ -181,18 +182,20 @@ describe('interviewerQuestionService', () => {
   describe('getInterviewerQuestions', () => {
     it('returns sanitized interviewer questions with rate limit info', async () => {
       const transcriptDoc = {
+        $id: 'doc-1',
         sentences: [
           { speaker_name: 'Interviewer', raw_text: 'Can you walk me through your portfolio?' },
           { speaker_name: 'Candidate', raw_text: 'Sure, starting with the latest project…' }
         ]
       };
 
-      mockCollection.findOne.mockImplementation(async (filter) => {
-        if (filter.title === 'Sample Subject') {
-          return transcriptDoc;
-        }
-        return null;
-      });
+      const mockDatabases = {
+        listDocuments: jest.fn().mockResolvedValue({ documents: [transcriptDoc] }),
+        createDocument: jest.fn().mockResolvedValue({})
+      };
+      interviewerQuestionService.databases = mockDatabases;
+      config.appwrite.databaseId = 'test-db';
+      config.appwrite.transcriptsCollectionId = 'test-transcripts';
 
       mockTaskService.getTaskById.mockResolvedValue({
         task: {
@@ -246,7 +249,7 @@ describe('interviewerQuestionService', () => {
       ]);
       expect(result.rateLimit.remaining).toBe(2);
       expect(result.generatedAt).toBeTruthy();
-      expect(mockCollection.findOne).toHaveBeenCalled();
+      expect(mockDatabases.listDocuments).toHaveBeenCalled();
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
   });

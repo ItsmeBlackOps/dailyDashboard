@@ -42,6 +42,20 @@ jest.unstable_mockModule('../profileService.js', () => ({
   profileService: mockProfileService
 }));
 
+jest.unstable_mockModule('../../config/database.js', () => ({
+  database: {
+    getCollection: jest.fn(() => ({
+      findOne: jest.fn().mockResolvedValue(null),
+      find: jest.fn(() => ({ toArray: jest.fn().mockResolvedValue([]) })),
+      insertOne: jest.fn().mockResolvedValue({ insertedId: 'test-id' }),
+      updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
+      deleteOne: jest.fn().mockResolvedValue({ deletedCount: 1 })
+    })),
+    getDatabase: jest.fn(),
+    isConnected: true
+  }
+}));
+
 const { supportRequestService } = await import('../supportRequestService.js');
 const { config } = await import('../../config/index.js');
 
@@ -353,7 +367,7 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
-  it('rejects same-day interviews scheduled within four hours', async () => {
+  it('accepts same-day interviews scheduled in the future', async () => {
     jest.useFakeTimers();
     const base = moment.tz('America/New_York').startOf('day').add(9, 'hours');
     jest.setSystemTime(base.toDate());
@@ -379,17 +393,41 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
         contact: '+1 555 4444'
       });
 
-      mockUserModel.getUserByEmail.mockReturnValue({ teamLead: 'Alice Leader', manager: 'Bob Manager' });
+      mockUserModel.getUserByEmail.mockImplementation((email) => {
+        if (email === 'recruiter@example.com') return { teamLead: 'Alice Leader', manager: 'Bob Manager', role: 'recruiter' };
+        if (email === 'alice.leader@example.com') return { teamLead: '', manager: 'Bob Manager', role: 'mlead' };
+        if (email === 'bob.manager@example.com') return { teamLead: '', manager: '', role: 'mam' };
+        return null;
+      });
       mockUserModel.getAllUsers.mockReturnValue([
         { email: 'alice.leader@example.com', role: 'mlead', teamLead: '', manager: 'Bob Manager' },
         { email: 'bob.manager@example.com', role: 'mam', teamLead: '', manager: '' },
         { email: 'recruiter@example.com', role: 'recruiter', teamLead: 'Alice Leader', manager: 'Bob Manager' }
       ]);
 
-       finally {
-        jest.useRealTimers();
-      }
-    });
+      mockGraphMailService.sendDelegatedMail.mockResolvedValue({});
+
+      const result = await supportRequestService.sendInterviewSupportRequest(
+        { email: 'recruiter@example.com', role: 'recruiter' },
+        {
+          candidateId: 'cand-4',
+          endClient: 'Acme',
+          jobTitle: 'Java Developer',
+          interviewRound: '1st Round',
+          interviewDateTime: soonIso,
+          duration: '60',
+          contactNumber: '555-1234',
+          customMessage: 'Need interview support'
+        },
+        {},
+        'user-token'
+      );
+
+      expect(result).toEqual({ success: true, message: 'Support request sent successfully' });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 
   it('excludes sender from cc and includes full chain when mam submits for another candidate', async () => {
     const futureLocal = moment().tz('America/New_York').add(5, 'hours').startOf('minute').format('YYYY-MM-DDTHH:mm');
@@ -416,11 +454,14 @@ describe('supportRequestService.sendInterviewSupportRequest', () => {
       if (email === 'recruiter@example.com') {
         return { teamLead: 'Alice Leader', manager: 'Bob Manager' };
       }
+      if (email === 'alice.leader@example.com') {
+        return { teamLead: '', manager: 'Bob Manager', role: 'mlead' };
+      }
       if (email === 'bob.manager@example.com') {
-        return { teamLead: '', manager: 'Carol Mm' };
+        return { teamLead: '', manager: 'Carol Mm', role: 'mam' };
       }
       if (email === 'carol.mm@example.com') {
-        return { teamLead: '', manager: '' };
+        return { teamLead: '', manager: '', role: 'mm' };
       }
       return null;
     });
@@ -486,11 +527,14 @@ describe('supportRequestService.sendMockInterviewRequest', () => {
       if (email === 'recruiter@example.com') {
         return { teamLead: 'Alice Leader', manager: 'Bob Manager' };
       }
+      if (email === 'alice.leader@example.com') {
+        return { teamLead: '', manager: 'Bob Manager', role: 'mlead' };
+      }
       if (email === 'bob.manager@example.com') {
-        return { teamLead: '', manager: 'Carol Mm' };
+        return { teamLead: '', manager: 'Carol Mm', role: 'mam' };
       }
       if (email === 'carol.mm@example.com') {
-        return { teamLead: '', manager: '' };
+        return { teamLead: '', manager: '', role: 'mm' };
       }
       return null;
     });

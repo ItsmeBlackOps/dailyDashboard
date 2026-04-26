@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
+process.env.SUPABASE_S3_BUCKET = process.env.SUPABASE_S3_BUCKET || 'test-bucket';
+process.env.SUPABASE_S3_ENDPOINT = process.env.SUPABASE_S3_ENDPOINT || 'https://test.supabase.co/storage/v1/s3';
+process.env.SUPABASE_S3_ACCESS_KEY_ID = process.env.SUPABASE_S3_ACCESS_KEY_ID || 'test-access-key';
+process.env.SUPABASE_S3_SECRET_ACCESS_KEY = process.env.SUPABASE_S3_SECRET_ACCESS_KEY || 'test-secret-key';
+process.env.SUPABASE_PROJECT_REF = process.env.SUPABASE_PROJECT_REF || 'testprojectref';
+
 const sendMock = jest.fn();
 
 jest.unstable_mockModule('@aws-sdk/client-s3', () => ({
