@@ -105,42 +105,42 @@ export default function ComponentAvatar() {
                     <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
                     <AvatarFallback>CN</AvatarFallback>
                   </Avatar>
-                  <div className="absolute -bottom-0 -right-0 h-3 w-3 rounded-full bg-green-500 border-2 border-background"></div>
+                  <div className="absolute -bottom-0 -right-0 h-3 w-3 rounded-full bg-aurora-emerald border-2 border-background"></div>
                 </div>
                 <div className="relative">
                   <Avatar>
                     <AvatarFallback>JD</AvatarFallback>
                   </Avatar>
-                  <div className="absolute -bottom-0 -right-0 h-3 w-3 rounded-full bg-yellow-500 border-2 border-background"></div>
+                  <div className="absolute -bottom-0 -right-0 h-3 w-3 rounded-full bg-aurora-amber border-2 border-background"></div>
                 </div>
                 <div className="relative">
                   <Avatar>
                     <AvatarFallback>AB</AvatarFallback>
                   </Avatar>
-                  <div className="absolute -bottom-0 -right-0 h-3 w-3 rounded-full bg-red-500 border-2 border-background"></div>
+                  <div className="absolute -bottom-0 -right-0 h-3 w-3 rounded-full bg-destructive border-2 border-background"></div>
                 </div>
                 <div className="relative">
                   <Avatar>
                     <AvatarFallback>XY</AvatarFallback>
                   </Avatar>
-                  <div className="absolute -bottom-0 -right-0 h-3 w-3 rounded-full bg-gray-500 border-2 border-background"></div>
+                  <div className="absolute -bottom-0 -right-0 h-3 w-3 rounded-full bg-muted-foreground border-2 border-background"></div>
                 </div>
               </div>
               <div className="mt-4 flex gap-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                  <div className="h-2 w-2 rounded-full bg-aurora-emerald"></div>
                   <span>Online</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-yellow-500"></div>
+                  <div className="h-2 w-2 rounded-full bg-aurora-amber"></div>
                   <span>Away</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-red-500"></div>
+                  <div className="h-2 w-2 rounded-full bg-destructive"></div>
                   <span>Busy</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-gray-500"></div>
+                  <div className="h-2 w-2 rounded-full bg-muted-foreground"></div>
                   <span>Offline</span>
                 </div>
               </div>

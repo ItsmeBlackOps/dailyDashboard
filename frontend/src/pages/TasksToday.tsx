@@ -1199,10 +1199,10 @@ export default function TasksToday() {
   const getStatusBadge = (status = "") =>
   ({
     completed: "bg-emerald-500 text-white",
-    cancelled: "bg-red-500 text-white",
-    acknowledged: "bg-amber-500 text-white",
-    pending: "bg-blue-500 text-white",
-  }[status.toLowerCase()] || "bg-gray-500 text-white");
+    cancelled: "bg-destructive text-white",
+    acknowledged: "bg-aurora-amber text-white",
+    pending: "bg-primary text-white",
+  }[status.toLowerCase()] || "bg-muted text-muted-foreground");
 
   const getRowClasses = (status = "") => {
     const base = status.toLowerCase();
@@ -4036,7 +4036,7 @@ export default function TasksToday() {
     <DashboardLayout>
 
       <div className="p-4 space-y-4">
-        {error && <p className="text-red-500">{error}</p>}
+        {error && <p className="text-destructive">{error}</p>}
 
 
         {canManageMeetings && account && needsConsent && !hideGrantConsentBanner && (
@@ -4153,7 +4153,7 @@ export default function TasksToday() {
         )}
 
         {teamLeadError && (normalizedRole === 'mm' || normalizedRole === 'mam') && (
-          <p className="text-sm text-red-500">{teamLeadError}</p>
+          <p className="text-sm text-destructive">{teamLeadError}</p>
         )}
 
         {isLoadingInitial ? (
@@ -4252,7 +4252,7 @@ export default function TasksToday() {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span
-                            className={`inline-flex h-3 w-3 rounded-full border border-border ${task.transcription ? 'bg-green-500' : 'bg-red-500'
+                            className={`inline-flex h-3 w-3 rounded-full border border-border ${task.transcription ? 'bg-aurora-emerald' : 'bg-destructive'
                               }`}
                             role="img"
                             aria-label={
@@ -4371,7 +4371,7 @@ export default function TasksToday() {
                               {user === "admin" && (
                                 <>
                                   <DropdownMenuItem
-                                    className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                    className="text-destructive focus:text-destructive focus:bg-destructive/10"
                                     onClick={() => setDeleteTaskDialog({ open: true, task })}
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
@@ -4436,7 +4436,7 @@ export default function TasksToday() {
           </DialogHeader>
           {mockPreview ? (
             <div className="space-y-4">
-              <p className="text-sm font-semibold text-red-600">
+              <p className="text-sm font-semibold text-destructive">
                 Complete the mock before the day of interview.
               </p>
               <p className="text-sm text-muted-foreground">
@@ -4546,7 +4546,7 @@ export default function TasksToday() {
                   placeholder="Paste any relevant JD text to include in the email."
                 />
               </div>
-              {mockError && <p className="text-sm text-red-600">{mockError}</p>}
+              {mockError && <p className="text-sm text-destructive">{mockError}</p>}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">Select a task to prepare the mock request.</p>
@@ -4622,7 +4622,7 @@ export default function TasksToday() {
                     : 'the next window'}.
                 </p>
               )}
-              {questionsError && <p className="text-sm text-red-600">{questionsError}</p>}
+              {questionsError && <p className="text-sm text-destructive">{questionsError}</p>}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
@@ -4714,7 +4714,7 @@ export default function TasksToday() {
                     : 'the next window'}.
                 </p>
               )}
-              {thanksMailError && <p className="text-sm text-red-600">{thanksMailError}</p>}
+              {thanksMailError && <p className="text-sm text-destructive">{thanksMailError}</p>}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">Select a task with TxAv to generate a thank-you email.</p>
@@ -4869,7 +4869,7 @@ export default function TasksToday() {
               {debriefStatusMessage && !debriefError && (
                 <p className="text-xs text-muted-foreground">{debriefStatusMessage}</p>
               )}
-              {debriefError && <p className="text-sm text-red-600">{debriefError}</p>}
+              {debriefError && <p className="text-sm text-destructive">{debriefError}</p>}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
@@ -4918,7 +4918,7 @@ export default function TasksToday() {
                     Loading transcript...
                   </p>
                 ) : transcriptDialogError ? (
-                  <p className="text-sm text-red-600">{transcriptDialogError}</p>
+                  <p className="text-sm text-destructive">{transcriptDialogError}</p>
                 ) : transcriptDialogContent ? (
                   <pre className="whitespace-pre-wrap text-sm text-foreground">{transcriptDialogContent}</pre>
                 ) : (

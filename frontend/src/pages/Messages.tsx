@@ -87,9 +87,9 @@ const Messages = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'online': return 'bg-green-500';
-      case 'away': return 'bg-yellow-500';
-      default: return 'bg-gray-500';
+      case 'online': return 'bg-aurora-emerald';
+      case 'away': return 'bg-aurora-amber';
+      default: return 'bg-muted-foreground';
     }
   };
 

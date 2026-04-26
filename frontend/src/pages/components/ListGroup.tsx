@@ -145,30 +145,30 @@ export default function ComponentListGroup() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'online': return 'bg-green-500';
-      case 'away': return 'bg-yellow-500';
-      case 'offline': return 'bg-gray-400';
-      default: return 'bg-gray-400';
+      case 'online': return 'bg-aurora-emerald';
+      case 'away': return 'bg-aurora-amber';
+      case 'offline': return 'bg-muted-foreground/40';
+      default: return 'bg-muted-foreground/40';
     }
   };
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
-      case 'success': return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'error': return <XCircle className="h-4 w-4 text-red-500" />;
-      case 'warning': return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-      case 'message': return <Mail className="h-4 w-4 text-blue-500" />;
-      default: return <Circle className="h-4 w-4 text-gray-500" />;
+      case 'success': return <CheckCircle className="h-4 w-4 text-aurora-emerald" />;
+      case 'error': return <XCircle className="h-4 w-4 text-destructive" />;
+      case 'warning': return <AlertCircle className="h-4 w-4 text-aurora-amber" />;
+      case 'message': return <Mail className="h-4 w-4 text-primary" />;
+      default: return <Circle className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
   const getFileIcon = (type: string) => {
     switch (type) {
-      case 'pdf': return <FileText className="h-5 w-5 text-red-500" />;
-      case 'design': return <Image className="h-5 w-5 text-purple-500" />;
-      case 'presentation': return <FileText className="h-5 w-5 text-orange-500" />;
-      case 'video': return <Video className="h-5 w-5 text-blue-500" />;
-      default: return <FileText className="h-5 w-5 text-gray-500" />;
+      case 'pdf': return <FileText className="h-5 w-5 text-destructive" />;
+      case 'design': return <Image className="h-5 w-5 text-aurora-violet" />;
+      case 'presentation': return <FileText className="h-5 w-5 text-aurora-amber" />;
+      case 'video': return <Video className="h-5 w-5 text-primary" />;
+      default: return <FileText className="h-5 w-5 text-muted-foreground" />;
     }
   };
 
@@ -299,7 +299,7 @@ export default function ComponentListGroup() {
                     key={notification.id}
                     className={cn(
                       "px-4 py-4 hover:bg-muted/50 transition-colors cursor-pointer",
-                      !notification.read && "bg-blue-50/50 border-l-4 border-l-blue-500"
+                      !notification.read && "bg-accent/50 border-l-4 border-l-primary"
                     )}
                   >
                     <div className="flex items-start space-x-3">
@@ -319,7 +319,7 @@ export default function ComponentListGroup() {
                               {notification.time}
                             </span>
                             {!notification.read && (
-                              <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                              <div className="w-2 h-2 bg-primary rounded-full" />
                             )}
                           </div>
                         </div>

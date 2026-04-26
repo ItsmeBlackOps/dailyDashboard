@@ -89,7 +89,7 @@ const STATUS_DOT: Record<string, string> = {
   'Hold':             'bg-amber-500',
   'Backout':          'bg-red-500',
   'Low Priority':     'bg-sky-400',
-  'Unassigned':       'bg-gray-400',
+  'Unassigned':       'bg-muted-foreground/40',
 };
 
 const TASK_STATUS_CLASS: Record<string, string> = {
@@ -402,11 +402,11 @@ export default function CandidateDetailPage() {
                           return (
                             <div key={i} className="flex gap-4 pb-5 relative">
                               <div className="shrink-0 w-4 flex flex-col items-center">
-                                <div className="w-3.5 h-3.5 rounded-full bg-blue-500 ring-2 ring-background z-10 mt-0.5" />
+                                <div className="w-3.5 h-3.5 rounded-full bg-primary ring-2 ring-background z-10 mt-0.5" />
                               </div>
                               <div className="flex-1 min-w-0 pt-0">
                                 <div className="text-[10px] text-muted-foreground font-mono">{formatDate(event.at)}</div>
-                                <div className="text-xs font-semibold text-blue-600 dark:text-blue-400 mt-0.5">
+                                <div className="text-xs font-semibold text-primary mt-0.5">
                                   {event.label}
                                 </div>
                               </div>
@@ -419,7 +419,7 @@ export default function CandidateDetailPage() {
                           return (
                             <div key={i} className={`flex gap-4 ${isLast ? '' : 'pb-5'} relative`}>
                               <div className="shrink-0 w-4 flex flex-col items-center">
-                                <div className={`w-3.5 h-3.5 rounded-full ring-2 ring-background z-10 mt-0.5 ${STATUS_DOT[event.status] ?? 'bg-gray-400'}`} />
+                                <div className={`w-3.5 h-3.5 rounded-full ring-2 ring-background z-10 mt-0.5 ${STATUS_DOT[event.status] ?? 'bg-muted-foreground/40'}`} />
                               </div>
                               <div className="flex-1 min-w-0 pt-0">
                                 <div className="text-[10px] text-muted-foreground font-mono">{formatDate(event.at)}</div>

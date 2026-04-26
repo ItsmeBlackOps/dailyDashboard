@@ -66,19 +66,19 @@ const Leads = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'new': return 'bg-blue-100 text-blue-800';
-      case 'contacted': return 'bg-yellow-100 text-yellow-800';
-      case 'qualified': return 'bg-green-100 text-green-800';
-      case 'unqualified': return 'bg-red-100 text-red-800';
-      case 'converted': return 'bg-purple-100 text-purple-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'new': return 'bg-accent text-primary';
+      case 'contacted': return 'bg-aurora-amber/10 text-aurora-amber';
+      case 'qualified': return 'bg-aurora-emerald/10 text-aurora-emerald';
+      case 'unqualified': return 'bg-destructive/10 text-destructive';
+      case 'converted': return 'bg-aurora-violet/10 text-aurora-violet';
+      default: return 'bg-muted/50 text-foreground';
     }
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-yellow-600';
-    return 'text-red-600';
+    if (score >= 80) return 'text-aurora-emerald';
+    if (score >= 60) return 'text-aurora-amber';
+    return 'text-destructive';
   };
 
   const filteredLeads = leads.filter(lead =>

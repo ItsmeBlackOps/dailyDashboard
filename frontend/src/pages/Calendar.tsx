@@ -143,11 +143,11 @@ const Calendar = () => {
 
   const getEventTypeColor = (type: string) => {
     switch (type) {
-      case 'meeting': return 'bg-blue-500';
-      case 'call': return 'bg-green-500';
-      case 'demo': return 'bg-purple-500';
-      case 'follow-up': return 'bg-orange-500';
-      default: return 'bg-gray-500';
+      case 'meeting': return 'bg-primary';
+      case 'call': return 'bg-aurora-emerald';
+      case 'demo': return 'bg-aurora-violet';
+      case 'follow-up': return 'bg-aurora-amber';
+      default: return 'bg-muted-foreground';
     }
   };
 

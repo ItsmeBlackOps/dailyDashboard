@@ -82,10 +82,10 @@ export default function ComponentSortable() {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'high': return 'bg-red-500';
-      case 'medium': return 'bg-yellow-500';
-      case 'low': return 'bg-blue-500';
-      default: return 'bg-gray-500';
+      case 'high': return 'bg-destructive';
+      case 'medium': return 'bg-aurora-amber';
+      case 'low': return 'bg-primary';
+      default: return 'bg-muted-foreground';
     }
   };
 

@@ -41,7 +41,7 @@ export default function ComponentAlerts() {
                 </AlertDescription>
               </Alert>
               
-              <Alert className="border-green-200 bg-green-50 text-green-900">
+              <Alert className="border-aurora-emerald/30 bg-aurora-emerald/10 text-foreground">
                 <CheckCircle className="h-4 w-4" />
                 <AlertTitle>Success</AlertTitle>
                 <AlertDescription>
@@ -67,7 +67,7 @@ export default function ComponentAlerts() {
             </CardHeader>
             <CardContent className="space-y-4">
               {dismissibleAlerts[0] && (
-                <Alert className="border-blue-200 bg-blue-50 text-blue-900">
+                <Alert className="border-primary/30 bg-accent text-foreground">
                   <Info className="h-4 w-4" />
                   <AlertTitle>New Feature Available</AlertTitle>
                   <AlertDescription>
@@ -85,7 +85,7 @@ export default function ComponentAlerts() {
               )}
               
               {dismissibleAlerts[1] && (
-                <Alert className="border-yellow-200 bg-yellow-50 text-yellow-900">
+                <Alert className="border-aurora-amber/30 bg-aurora-amber/10 text-foreground">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertTitle>System Maintenance</AlertTitle>
                   <AlertDescription>
@@ -103,7 +103,7 @@ export default function ComponentAlerts() {
               )}
               
               {dismissibleAlerts[2] && (
-                <Alert className="border-purple-200 bg-purple-50 text-purple-900">
+                <Alert className="border-aurora-violet/30 bg-aurora-violet/10 text-foreground">
                   <CheckCircle className="h-4 w-4" />
                   <AlertTitle>Welcome!</AlertTitle>
                   <AlertDescription>
@@ -129,7 +129,7 @@ export default function ComponentAlerts() {
               <CardDescription>Alerts with solid background colors for higher emphasis.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Alert className="bg-blue-600 text-white border-blue-600">
+              <Alert className="bg-primary text-primary-foreground border-primary">
                 <Info className="h-4 w-4" />
                 <AlertTitle>System Update</AlertTitle>
                 <AlertDescription>
@@ -137,7 +137,7 @@ export default function ComponentAlerts() {
                 </AlertDescription>
               </Alert>
               
-              <Alert className="bg-green-600 text-white border-green-600">
+              <Alert className="bg-aurora-emerald text-white border-aurora-emerald">
                 <CheckCircle className="h-4 w-4" />
                 <AlertTitle>Backup Complete</AlertTitle>
                 <AlertDescription>
@@ -145,7 +145,7 @@ export default function ComponentAlerts() {
                 </AlertDescription>
               </Alert>
               
-              <Alert className="bg-red-600 text-white border-red-600">
+              <Alert className="bg-destructive text-destructive-foreground border-destructive">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertTitle>Critical Error</AlertTitle>
                 <AlertDescription>

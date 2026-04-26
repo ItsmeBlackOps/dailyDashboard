@@ -87,9 +87,9 @@ export default function ComponentBadge() {
                 <Badge variant="secondary" className="rounded-full">Updated</Badge>
                 <Badge variant="outline" className="rounded-full">Featured</Badge>
                 <Badge variant="destructive" className="rounded-full">Limited</Badge>
-                <Badge className="rounded-full bg-green-600">Available</Badge>
-                <Badge className="rounded-full bg-blue-600">Popular</Badge>
-                <Badge className="rounded-full bg-purple-600">Premium</Badge>
+                <Badge className="rounded-full bg-aurora-emerald">Available</Badge>
+                <Badge className="rounded-full bg-primary">Popular</Badge>
+                <Badge className="rounded-full bg-aurora-violet">Premium</Badge>
               </div>
             </CardContent>
           </Card>
@@ -105,26 +105,26 @@ export default function ComponentBadge() {
                 <div className="space-y-2">
                   <h4 className="font-medium">Status Badges</h4>
                   <div className="flex flex-wrap gap-2">
-                    <Badge className="bg-green-600 hover:bg-green-700">Active</Badge>
-                    <Badge className="bg-yellow-600 hover:bg-yellow-700">Pending</Badge>
-                    <Badge className="bg-red-600 hover:bg-red-700">Inactive</Badge>
-                    <Badge className="bg-gray-600 hover:bg-gray-700">Draft</Badge>
+                    <Badge className="bg-aurora-emerald hover:bg-aurora-emerald/80">Active</Badge>
+                    <Badge className="bg-aurora-amber hover:bg-aurora-amber/80">Pending</Badge>
+                    <Badge className="bg-destructive hover:bg-destructive/80">Inactive</Badge>
+                    <Badge className="bg-muted text-muted-foreground hover:bg-muted/80">Draft</Badge>
                   </div>
                 </div>
                 
                 <div className="space-y-2">
                   <h4 className="font-medium">Priority Badges</h4>
                   <div className="flex flex-wrap gap-2">
-                    <Badge className="bg-red-600 hover:bg-red-700">High</Badge>
-                    <Badge className="bg-orange-600 hover:bg-orange-700">Medium</Badge>
-                    <Badge className="bg-blue-600 hover:bg-blue-700">Low</Badge>
+                    <Badge className="bg-destructive hover:bg-destructive/80">High</Badge>
+                    <Badge className="bg-aurora-amber hover:bg-aurora-amber/80">Medium</Badge>
+                    <Badge className="bg-primary hover:bg-primary/80">Low</Badge>
                   </div>
                 </div>
                 
                 <div className="space-y-2">
                   <h4 className="font-medium">Category Badges</h4>
                   <div className="flex flex-wrap gap-2">
-                    <Badge className="bg-purple-600 hover:bg-purple-700">
+                    <Badge className="bg-aurora-violet hover:bg-aurora-violet/80">
                       <Star className="h-3 w-3 mr-1" />
                       Premium
                     </Badge>

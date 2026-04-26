@@ -62,13 +62,13 @@ const Deals = () => {
 
   const getStageColor = (stage: string) => {
     switch (stage) {
-      case 'prospecting': return 'bg-gray-100 text-gray-800';
-      case 'qualification': return 'bg-blue-100 text-blue-800';
-      case 'proposal': return 'bg-yellow-100 text-yellow-800';
-      case 'negotiation': return 'bg-orange-100 text-orange-800';
-      case 'closed-won': return 'bg-green-100 text-green-800';
-      case 'closed-lost': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'prospecting': return 'bg-muted/50 text-foreground';
+      case 'qualification': return 'bg-accent text-primary';
+      case 'proposal': return 'bg-aurora-amber/10 text-aurora-amber';
+      case 'negotiation': return 'bg-aurora-amber/20 text-aurora-amber';
+      case 'closed-won': return 'bg-aurora-emerald/10 text-aurora-emerald';
+      case 'closed-lost': return 'bg-destructive/10 text-destructive';
+      default: return 'bg-muted/50 text-foreground';
     }
   };
 

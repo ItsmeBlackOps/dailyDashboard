@@ -115,11 +115,11 @@ const Support = () => {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'urgent': return 'bg-red-500';
-      case 'high': return 'bg-orange-500';
-      case 'medium': return 'bg-yellow-500';
-      case 'low': return 'bg-green-500';
-      default: return 'bg-gray-500';
+      case 'urgent': return 'bg-destructive';
+      case 'high': return 'bg-aurora-amber';
+      case 'medium': return 'bg-aurora-amber/70';
+      case 'low': return 'bg-aurora-emerald';
+      default: return 'bg-muted-foreground';
     }
   };
 
@@ -162,21 +162,21 @@ const Support = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardContent className="p-6 text-center">
-              <MessageSquare className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+              <MessageSquare className="h-8 w-8 mx-auto mb-2 text-primary" />
               <h3 className="font-medium">Live Chat</h3>
               <p className="text-sm text-muted-foreground">Chat with our support team</p>
             </CardContent>
           </Card>
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardContent className="p-6 text-center">
-              <Phone className="h-8 w-8 mx-auto mb-2 text-green-600" />
+              <Phone className="h-8 w-8 mx-auto mb-2 text-aurora-emerald" />
               <h3 className="font-medium">Phone Support</h3>
               <p className="text-sm text-muted-foreground">Call us at (555) 123-4567</p>
             </CardContent>
           </Card>
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardContent className="p-6 text-center">
-              <Mail className="h-8 w-8 mx-auto mb-2 text-purple-600" />
+              <Mail className="h-8 w-8 mx-auto mb-2 text-aurora-violet" />
               <h3 className="font-medium">Email Support</h3>
               <p className="text-sm text-muted-foreground">support@pulsecrm.com</p>
             </CardContent>
@@ -331,7 +331,7 @@ const Support = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <Card>
                 <CardHeader>
-                  <BookOpen className="h-8 w-8 text-blue-600 mb-2" />
+                  <BookOpen className="h-8 w-8 text-primary mb-2" />
                   <CardTitle>User Guide</CardTitle>
                   <CardDescription>Complete guide to using PulseCRM</CardDescription>
                 </CardHeader>
@@ -342,7 +342,7 @@ const Support = () => {
               
               <Card>
                 <CardHeader>
-                  <Video className="h-8 w-8 text-green-600 mb-2" />
+                  <Video className="h-8 w-8 text-aurora-emerald mb-2" />
                   <CardTitle>Video Tutorials</CardTitle>
                   <CardDescription>Watch step-by-step video guides</CardDescription>
                 </CardHeader>
@@ -353,7 +353,7 @@ const Support = () => {
               
               <Card>
                 <CardHeader>
-                  <Users className="h-8 w-8 text-purple-600 mb-2" />
+                  <Users className="h-8 w-8 text-aurora-violet mb-2" />
                   <CardTitle>Community Forum</CardTitle>
                   <CardDescription>Connect with other users</CardDescription>
                 </CardHeader>
@@ -372,14 +372,14 @@ const Support = () => {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between p-3 border rounded-lg">
                     <div className="flex items-center space-x-3">
-                      <CheckCircle className="h-5 w-5 text-green-600" />
+                      <CheckCircle className="h-5 w-5 text-aurora-emerald" />
                       <span>API Services</span>
                     </div>
                     <Badge variant="secondary">Operational</Badge>
                   </div>
                   <div className="flex items-center justify-between p-3 border rounded-lg">
                     <div className="flex items-center space-x-3">
-                      <CheckCircle className="h-5 w-5 text-green-600" />
+                      <CheckCircle className="h-5 w-5 text-aurora-emerald" />
                       <span>Database</span>
                     </div>
                     <Badge variant="secondary">Operational</Badge>

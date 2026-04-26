@@ -93,9 +93,9 @@ const Contacts = () => {
 
   const getStatusBadge = (status: string) => {
     const variants = {
-      active: 'bg-green-100 text-green-800',
-      inactive: 'bg-gray-100 text-gray-800',
-      lead: 'bg-blue-100 text-blue-800'
+      active: 'bg-aurora-emerald/10 text-aurora-emerald',
+      inactive: 'bg-muted/50 text-muted-foreground',
+      lead: 'bg-accent text-primary'
     };
     return variants[status as keyof typeof variants] || variants.active;
   };
@@ -302,7 +302,7 @@ const Contacts = () => {
                           </DropdownMenuItem>
                           <DropdownMenuItem 
                             onClick={() => handleDeleteContact(contact.id)}
-                            className="text-red-600"
+                            className="text-destructive"
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
                             Delete
