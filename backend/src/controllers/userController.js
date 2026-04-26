@@ -1,6 +1,13 @@
 import { userService } from '../services/userService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
+import { database } from '../config/database.js';
+
+function nameFromEmail(email) {
+  if (!email) return '';
+  const local = email.split('@')[0];
+  return local.split(/[._]/).filter(Boolean).map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
+}
 
 export class UserController {
   constructor() {
@@ -202,6 +209,37 @@ export class UserController {
       message: 'User service is healthy',
       timestamp: new Date().toISOString()
     });
+  });
+
+  getActiveUsers = asyncHandler(async (req, res) => {
+    try {
+      const db = database.getDatabase();
+      const roleParam = (req.query.role || '').toString().trim();
+      const filter = { active: true };
+      if (roleParam) {
+        const roles = roleParam.split(',').map(r => r.trim()).filter(Boolean);
+        filter.role = { $in: roles };
+      }
+      const docs = await db.collection('users')
+        .find(filter)
+        .project({ email: 1, role: 1, teamLead: 1, manager: 1, name: 1, displayName: 1 })
+        .toArray();
+      const users = docs.map(u => ({
+        email: u.email,
+        name: u.displayName || u.name || nameFromEmail(u.email),
+        role: u.role,
+        teamLead: u.teamLead || '',
+        manager: u.manager || '',
+      }));
+      const byRole = {};
+      for (const u of users) {
+        (byRole[u.role] = byRole[u.role] || []).push(u);
+      }
+      return res.json({ success: true, users, byRole });
+    } catch (error) {
+      logger.error('getActiveUsers failed', { error: error.message });
+      return res.status(500).json({ success: false, error: error.message });
+    }
   });
 }
 

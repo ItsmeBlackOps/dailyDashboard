@@ -9,6 +9,7 @@ router.use(authenticateHTTP);
 
 // General user routes
 router.get('/health', userController.healthCheck);
+router.get('/active', userController.getActiveUsers);
 router.get('/team', userController.getTeamMembers);
 router.get('/manageable', requireHTTPRole(['admin', 'manager', 'MM', 'MAM', 'mlead', 'lead', 'AM', 'am']), userController.getManageableUsers);
 router.get('/search', userController.searchUsers);
