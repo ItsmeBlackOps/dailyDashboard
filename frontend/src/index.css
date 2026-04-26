@@ -36,6 +36,20 @@
 
     --radius: 0.75rem;
 
+    /* Aurora Design System Tokens */
+    --ep-display: "Bricolage Grotesque", ui-serif, Georgia, serif;
+    --ep-sans: "Inter Tight", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --ep-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+    --ep-ink: #0c0a14;
+    --ep-ink-2: #1a1726;
+    --ep-paper: #fbfaf6;
+    --ep-violet: #8b5cf6;
+    --ep-cyan: #22d3ee;
+    --ep-lime: #a3e635;
+    --ep-rose: #fb7185;
+    --ep-amber: #fbbf24;
+    --ep-emerald: #34d399;
+
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 250 85% 60%;
@@ -88,6 +102,20 @@
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: 240 4% 16%;
     --sidebar-ring: 260 70% 60%;
+
+    /* Aurora Design System Tokens */
+    --ep-display: "Bricolage Grotesque", ui-serif, Georgia, serif;
+    --ep-sans: "Inter Tight", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --ep-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+    --ep-ink: #0c0a14;
+    --ep-ink-2: #1a1726;
+    --ep-paper: #fbfaf6;
+    --ep-violet: #8b5cf6;
+    --ep-cyan: #22d3ee;
+    --ep-lime: #a3e635;
+    --ep-rose: #fb7185;
+    --ep-amber: #fbbf24;
+    --ep-emerald: #34d399;
   }
 }
 
@@ -150,4 +178,35 @@
   .scroll-area::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* Aurora Design System Keyframes */
+@keyframes epSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes epPing {
+  0% { transform: scale(0.4); opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+@keyframes epShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes epAuroraDrift {
+  0%   { transform: translate3d(0,0,0) scale(1); }
+  50%  { transform: translate3d(-3%, 2%, 0) scale(1.08); }
+  100% { transform: translate3d(0,0,0) scale(1); }
+}
+@keyframes epScan {
+  0% { transform: translateY(-50%); }
+  100% { transform: translateY(2400%); }
+}
+@keyframes epScanShort {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(110%); }
+}
+@keyframes epFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
 }
