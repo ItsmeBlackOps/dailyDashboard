@@ -48,13 +48,13 @@ export function NotificationDetailModal() {
     // console.log("Change Details", changeDetails);
     return (
         <Dialog open={isModalOpen} onOpenChange={(open) => !open && closeModal()}>
-            <DialogContent className="sm:max-w-md md:max-w-lg lg:max-w-xl">
+            <DialogContent className="sm:max-w-md md:max-w-lg lg:max-w-xl bg-popover/95 backdrop-blur-xl border border-white/10 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)] rounded-xl">
                 <DialogHeader>
                     <div className="flex items-center gap-2">
-                        <DialogTitle>{title}</DialogTitle>
+                        <DialogTitle className="font-display tracking-tight">{title}</DialogTitle>
                         <Badge variant={type === 'batch' ? 'secondary' : 'outline'}>{type}</Badge>
                     </div>
-                    <DialogDescription className="pt-2">
+                    <DialogDescription className="pt-2 font-sans">
                         {description}
                     </DialogDescription>
                 </DialogHeader>
