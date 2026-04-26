@@ -176,6 +176,11 @@ const config = {
     };
   })(),
 
+  fireflies: {
+    apiKey: process.env.FIREFLIES_API_KEY || '',
+    graphqlUrl: process.env.FIREFLIES_URL || 'https://api.fireflies.ai/graphql',
+  },
+
   appwrite: {
     endpoint: process.env.APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1',
     projectId: process.env.APPWRITE_PROJECT_ID,
