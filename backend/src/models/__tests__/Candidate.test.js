@@ -26,7 +26,7 @@ describe('CandidateModel.createCandidate', () => {
 
     expect(insertOne).toHaveBeenCalledWith(
       expect.objectContaining({
-        status: 'active'
+        status: 'Active'
       })
     );
   });

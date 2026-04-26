@@ -52,7 +52,7 @@ describe('UserModel cache synchronization', () => {
       active: true
     });
 
-    findOne.mockResolvedValueOnce({
+    const userDoc = {
       email: 'lead@example.com',
       passwordHash: 'newhash',
       role: 'lead',
@@ -61,17 +61,23 @@ describe('UserModel cache synchronization', () => {
       active: false,
       profile: { location: 'Remote' },
       _id: 'xyz'
-    });
+    };
+
+    // First call: _id lookup; second call: refreshCacheForEmail
+    findOne.mockResolvedValueOnce(userDoc).mockResolvedValueOnce(userDoc);
 
     await model.updateUser('Lead@example.com', { role: 'lead', active: false });
 
     expect(updateOne).toHaveBeenCalledWith(
-      { email: 'lead@example.com' },
+      { _id: 'xyz' },
       expect.objectContaining({
         $set: expect.objectContaining({ role: 'lead', active: false })
       })
     );
-    expect(findOne).toHaveBeenCalledWith({ email: 'lead@example.com' });
+    expect(findOne).toHaveBeenCalledWith(
+      { email: 'lead@example.com' },
+      expect.objectContaining({ projection: { _id: 1 } })
+    );
     expect(model.cache.get('lead@example.com')).toMatchObject({
       passwordHash: 'newhash',
       role: 'lead',
@@ -85,9 +91,11 @@ describe('UserModel cache synchronization', () => {
   it('removes cache entries when users are deleted', async () => {
     model.cache.set('remove@example.com', { role: 'user' });
 
+    findOne.mockResolvedValueOnce({ _id: 'remove-id', email: 'remove@example.com' });
+
     await model.deleteUser('Remove@example.com');
 
-    expect(deleteOne).toHaveBeenCalledWith({ email: 'remove@example.com' });
+    expect(deleteOne).toHaveBeenCalledWith({ _id: 'remove-id' });
     expect(model.cache.has('remove@example.com')).toBe(false);
   });
 });

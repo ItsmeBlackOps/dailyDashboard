@@ -52,7 +52,7 @@ describe('UserModel profile metadata helpers', () => {
   });
 
   it('updates profile metadata and refreshes cache', async () => {
-    findOne.mockResolvedValueOnce({ email: 'user@example.com' });
+    findOne.mockResolvedValueOnce({ email: 'user@example.com', _id: 'user-id-1' });
 
     model.cache.set('user@example.com', {
       role: 'user',
@@ -65,7 +65,7 @@ describe('UserModel profile metadata helpers', () => {
     });
 
     expect(updateOne).toHaveBeenCalledWith(
-      { email: 'user@example.com' },
+      { _id: 'user-id-1' },
       expect.objectContaining({
         $set: expect.objectContaining({
           profile: expect.objectContaining({

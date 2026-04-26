@@ -47,8 +47,7 @@ describe('candidateService.getPendingExpertAssignments', () => {
     );
 
     expect(candidateModel.getCandidatesByWorkflowStatus).toHaveBeenCalledWith(
-      [WORKFLOW_STATUS.awaitingExpert, WORKFLOW_STATUS.needsResumeUnderstanding],
-      { limit: 50 }
+      [WORKFLOW_STATUS.awaitingExpert, WORKFLOW_STATUS.needsResumeUnderstanding]
     );
 
     expect(result.candidates).toHaveLength(1);

@@ -269,6 +269,7 @@ describe('UserService MM hierarchy rules', () => {
     expect(createUser).toHaveBeenCalledWith({
       email: 'priya.singh@vizvainc.com',
       password: 'secret1',
+      adminHash: null,
       role: 'MAM',
       teamLead: '',
       manager: 'Neha Malik',
