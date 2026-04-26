@@ -1,3 +1,4 @@
+import React from 'react';
 import { render, fireEvent, screen, cleanup, waitFor, act } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { vi, describe, it, expect, beforeAll, afterEach, beforeEach } from 'vitest';
@@ -24,6 +25,21 @@ vi.mock('socket.io-client', () => ({
   io: vi.fn(),
 }));
 
+vi.mock('@/contexts/MicrosoftConsentContext', () => ({
+  useMicrosoftConsent: () => ({
+    needsConsent: false,
+    checking: false,
+    error: '',
+    hasAccount: false,
+    grant: vi.fn().mockResolvedValue(false),
+    refresh: vi.fn().mockResolvedValue(undefined),
+    openConsentDialog: vi.fn(),
+    closeConsentDialog: vi.fn(),
+    isDialogOpen: false,
+  }),
+  MicrosoftConsentProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 vi.mock('@/context/NotificationContext', () => ({
   useNotifications: () => ({
     notifications: [],
@@ -34,6 +50,8 @@ vi.mock('@/context/NotificationContext', () => ({
     isModalOpen: false,
     openModal: vi.fn(),
     closeModal: vi.fn(),
+    pendingCallAlerts: [],
+    respondToCallAlert: vi.fn(),
   }),
 }));
 
@@ -144,6 +162,27 @@ describe('TasksToday', () => {
     getActiveAccountMock.mockClear();
     setActiveAccountMock.mockClear();
 
+    // Mock fetch for /api/users/active and any other REST calls the component makes
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/users/active')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ success: true, byRole: {} }),
+        } as Response);
+      }
+      if (typeof url === 'string' && url.includes('/api/tasks')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ success: true }),
+        } as Response);
+      }
+      // Default: return empty ok response
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as Response);
+    }));
+
     Object.defineProperty(document, 'visibilityState', {
       configurable: true,
       get: () => 'visible'
@@ -154,6 +193,7 @@ describe('TasksToday', () => {
     cleanup();
     localStorage.setItem('role', 'user');
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it('hides Subject by default and can toggle it', async () => {
