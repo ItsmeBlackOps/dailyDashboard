@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useHubFetch } from './useHubApi';
+import ConveyorChart from '@/components/shared/ConveyorChart';
 
 interface HubStats {
   kpi: { total: number; active: number; po: number; hold: number; backout: number; lowPriority: number; unassigned: number };
@@ -10,16 +11,17 @@ interface HubStats {
   statusBreakdown: { status: string; count: number }[];
 }
 
-interface Props { onNavigate?: (tab: string) => void }
+interface Props { onNavigate?: (tab: string, params?: Record<string, string>) => void }
 
+// status: undefined means navigate to tab directly; otherwise filters ProfilesTab by that status
 const KPI_CONFIG = [
-  { key: 'total',       label: 'Total Profiles', icon: Users,         color: 'text-primary',              bar: 'bg-primary',              tab: 'profiles'   },
-  { key: 'active',      label: 'Active',         icon: CheckCircle,   color: 'text-aurora-emerald',       bar: 'bg-aurora-emerald',       tab: 'profiles'   },
-  { key: 'po',          label: 'PO Placed',      icon: TrendingUp,    color: 'text-aurora-violet',        bar: 'bg-aurora-violet',        tab: 'po'         },
-  { key: 'hold',        label: 'Hold',           icon: Clock,         color: 'text-aurora-amber',         bar: 'bg-aurora-amber',         tab: 'alerts'     },
-  { key: 'backout',     label: 'Backout',        icon: XCircle,       color: 'text-destructive',          bar: 'bg-destructive',          tab: 'profiles'   },
-  { key: 'lowPriority', label: 'Low Priority',   icon: AlertTriangle, color: 'text-aurora-cyan',          bar: 'bg-aurora-cyan',          tab: 'profiles'   },
-  { key: 'unassigned',  label: 'Unassigned',     icon: HelpCircle,    color: 'text-muted-foreground/70',  bar: 'bg-muted-foreground',     tab: 'profiles'   },
+  { key: 'total',       label: 'Total Profiles', icon: Users,         color: 'text-primary',              bar: 'bg-primary',              tab: 'profiles',  status: undefined           },
+  { key: 'active',      label: 'Active',         icon: CheckCircle,   color: 'text-aurora-emerald',       bar: 'bg-aurora-emerald',       tab: 'profiles',  status: 'Active'            },
+  { key: 'po',          label: 'PO Placed',      icon: TrendingUp,    color: 'text-aurora-violet',        bar: 'bg-aurora-violet',        tab: 'po',        status: undefined           },
+  { key: 'hold',        label: 'Hold',           icon: Clock,         color: 'text-aurora-amber',         bar: 'bg-aurora-amber',         tab: 'alerts',    status: undefined           },
+  { key: 'backout',     label: 'Backout',        icon: XCircle,       color: 'text-destructive',          bar: 'bg-destructive',          tab: 'profiles',  status: 'Backout'           },
+  { key: 'lowPriority', label: 'Low Priority',   icon: AlertTriangle, color: 'text-aurora-cyan',          bar: 'bg-aurora-cyan',          tab: 'profiles',  status: 'Low Priority'      },
+  { key: 'unassigned',  label: 'Unassigned',     icon: HelpCircle,    color: 'text-muted-foreground/70',  bar: 'bg-muted-foreground',     tab: 'profiles',  status: 'Unassigned'        },
 ] as const;
 
 export default function OverviewTab({ onNavigate }: Props) {
@@ -46,15 +48,30 @@ export default function OverviewTab({ onNavigate }: Props) {
 
   return (
     <div className="space-y-4">
+      <ConveyorChart
+        title="This Week's Pipeline Activity"
+        height={220}
+        items={[
+          { label: 'Active',    value: kpi.active,      color: '#10b981' },
+          { label: 'PO',        value: kpi.po,          color: '#8b5cf6' },
+          { label: 'Hold',      value: kpi.hold,        color: '#fbbf24' },
+          { label: 'Backout',   value: kpi.backout,     color: '#fb7185' },
+          { label: 'Low Pri.',  value: kpi.lowPriority, color: '#22d3ee' },
+        ]}
+      />
+
       <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
-        {KPI_CONFIG.map(({ key, label, icon: Icon, color, bar, tab }) => {
+        {KPI_CONFIG.map(({ key, label, icon: Icon, color, bar, tab, status }) => {
           const value = kpi[key] ?? 0;
-          const clickable = !!onNavigate && tab !== 'profiles';
+          const clickable = !!onNavigate;
+          const handleClick = clickable
+            ? () => onNavigate?.(tab, status ? { status } : undefined)
+            : undefined;
           return (
             <Card
               key={key}
               className={`relative overflow-hidden transition-colors ${clickable ? 'cursor-pointer hover:bg-muted/40' : ''}`}
-              onClick={clickable ? () => onNavigate?.(tab) : undefined}
+              onClick={handleClick}
             >
               <CardContent className="p-4">
                 <div className={`mb-2 ${color}`}><Icon className="h-4 w-4" /></div>
@@ -94,13 +111,13 @@ export default function OverviewTab({ onNavigate }: Props) {
             <CardTitle className="text-sm font-semibold">Status Breakdown</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {KPI_CONFIG.slice(1).map(({ key, label, bar, tab }) => {
+            {KPI_CONFIG.slice(1).map(({ key, label, bar, tab, status }) => {
               const value = kpi[key] ?? 0;
               return (
                 <div
                   key={key}
                   className={`flex items-center gap-3 ${onNavigate ? 'cursor-pointer hover:opacity-80' : ''}`}
-                  onClick={() => onNavigate?.(tab)}
+                  onClick={() => onNavigate?.(tab, status ? { status } : undefined)}
                 >
                   <span className="w-28 text-xs text-muted-foreground truncate">{label}</span>
                   <div className="flex-1">

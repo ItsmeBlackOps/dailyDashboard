@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Search } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -28,9 +28,10 @@ const STATUSES: CandidateStatus[] = ['Active', 'Placement Offer', 'Hold', 'Backo
 
 export default function ProfilesTab() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [filterBranch, setFilterBranch] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStatus, setFilterStatus] = useState(() => searchParams.get('status') || 'all');
   const [page, setPage] = useState(1);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [total, setTotal] = useState(0);
@@ -61,6 +62,13 @@ export default function ProfilesTab() {
   }, [search, filterBranch, filterStatus, page]);
 
   useEffect(() => { setPage(1); }, [search, filterBranch, filterStatus]);
+  useEffect(() => {
+    setSearchParams(prev => {
+      if (filterStatus !== 'all') { prev.set('status', filterStatus); }
+      else { prev.delete('status'); }
+      return prev;
+    }, { replace: true });
+  }, [filterStatus]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { fetchProfiles(); }, [fetchProfiles]);
 
   const totalPages = Math.ceil(total / 50);

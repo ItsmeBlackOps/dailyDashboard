@@ -26,8 +26,12 @@ export default function ProfileHub() {
   const VALID_TABS = tabs.map(t => t.value);
   const raw = searchParams.get('tab');
   const activeTab = raw && VALID_TABS.includes(raw) ? raw : 'overview';
-  const setActiveTab = (value: string) =>
-    setSearchParams(prev => { prev.set('tab', value); return prev; }, { replace: true });
+  const setActiveTab = (tab: string, params?: Record<string, string>) =>
+    setSearchParams(prev => {
+      prev.set('tab', tab);
+      if (params) Object.entries(params).forEach(([k, v]) => prev.set(k, v));
+      return prev;
+    }, { replace: true });
 
   return (
     <div className="space-y-4">
