@@ -785,6 +785,38 @@ class CandidateController {
       return res.status(500).json({ success: false, error: 'Internal server error' });
     }
   }
+
+  async getDistinctClients(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const role = (user.role || '').trim().toLowerCase();
+      if (!MARKETING_ROLES.includes(role)) return res.status(403).json({ success: false, error: 'Access denied' });
+
+      const col = database.getCollection('candidateDetails');
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      const scope = await this._scopeFilter(user);
+      const filter = {
+        'End Client': { $exists: true, $nin: [null, '', undefined] },
+        ...scope,
+      };
+
+      let clients = await col.distinct('End Client', filter);
+
+      // Defensively strip empty/whitespace-only entries that slipped through
+      clients = clients.filter(c => typeof c === 'string' && c.trim().length > 0);
+
+      // Sort case-insensitively
+      clients.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+      res.set('Cache-Control', 'private, max-age=60');
+      return res.json({ success: true, clients });
+    } catch (error) {
+      logger.error('getDistinctClients failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
 }
 
 export const candidateController = new CandidateController();
