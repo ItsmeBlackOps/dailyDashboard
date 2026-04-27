@@ -94,11 +94,23 @@ log "Switching nginx upstream → ${TARGET}"
 cp "${NGINX_DIR}/frontend.${TARGET}.conf" "${NGINX_DIR}/frontend.active.conf"
 cp "${NGINX_DIR}/backend.${TARGET}.conf"  "${NGINX_DIR}/backend.active.conf"
 
-# Reload gateway nginx without dropping connections
-if docker ps --format '{{.Names}}' | grep -q dailydb-gateway; then
-  docker exec dailydb-gateway nginx -s reload || docker restart dailydb-gateway
+# Reload gateway nginx without dropping connections.
+# Tries: in-place reload → compose up → host nginx → noop (config already updated, will pick up later).
+if docker ps --format '{{.Names}}' | grep -q '^dailydb-gateway$'; then
+  log "Reloading dailydb-gateway nginx in-place"
+  docker exec dailydb-gateway nginx -s reload \
+    || { log "in-place reload failed; restarting gateway container"; docker restart dailydb-gateway; }
+elif docker ps -a --format '{{.Names}}' | grep -q '^dailydb-gateway$'; then
+  log "dailydb-gateway exists but is not running — starting it"
+  docker start dailydb-gateway || docker compose up -d gateway || true
+elif docker compose config --services 2>/dev/null | grep -q '^gateway$'; then
+  log "Bringing up gateway via compose"
+  docker compose up -d gateway || true
+elif command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nginx; then
+  log "Reloading host nginx via systemctl"
+  systemctl reload nginx || true
 else
-  docker compose up -d gateway
+  log "WARNING: no gateway container or host nginx detected — config is updated but reload skipped"
 fi
 
 log "Traffic now served by ${TARGET}"
