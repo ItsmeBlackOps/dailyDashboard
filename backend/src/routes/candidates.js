@@ -47,6 +47,7 @@ router.put('/hub-config',    (req, res) => candidateController.updateHubConfig(r
 router.get('/hub-aging',     (req, res) => candidateController.getHubAging(req, res));
 router.get('/hub-workload',  (req, res) => candidateController.getHubWorkload(req, res));
 router.get('/distinct-clients', (req, res) => candidateController.getDistinctClients(req, res));
+router.post('/end-clients', (req, res) => candidateController.addEndClient(req, res));
 router.get('/:id',            (req, res) => candidateController.getCandidateById(req, res));
 
 export default router;

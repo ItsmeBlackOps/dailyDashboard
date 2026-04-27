@@ -802,10 +802,48 @@ class CandidateController {
         ...scope,
       };
 
-      let clients = await col.distinct('End Client', filter);
+      let fromCandidates = await col.distinct('End Client', filter);
 
       // Defensively strip empty/whitespace-only entries that slipped through
-      clients = clients.filter(c => typeof c === 'string' && c.trim().length > 0);
+      fromCandidates = fromCandidates.filter(c => typeof c === 'string' && c.trim().length > 0);
+
+      // Pull curated names from endClients collection
+      const endClientsCol = database.getCollection('endClients');
+      let fromCurated = [];
+      if (endClientsCol) {
+        const docs = await endClientsCol.find({}, { projection: { name: 1, normalizedName: 1 } }).toArray();
+        fromCurated = docs.map(d => d.name).filter(n => typeof n === 'string' && n.trim().length > 0);
+      }
+
+      // Union: prefer curated canonical name when normalizedNames overlap
+      const curatedNormSet = new Set();
+      const curatedByNorm = {};
+      for (const name of fromCurated) {
+        const norm = name.toLowerCase();
+        curatedNormSet.add(norm);
+        curatedByNorm[norm] = name;
+      }
+
+      const seen = new Set();
+      const clients = [];
+
+      // Add curated names first (they are canonical)
+      for (const name of fromCurated) {
+        const norm = name.toLowerCase();
+        if (!seen.has(norm)) {
+          seen.add(norm);
+          clients.push(name);
+        }
+      }
+
+      // Add candidateDetails values only when not already covered by curated
+      for (const name of fromCandidates) {
+        const norm = name.toLowerCase();
+        if (!seen.has(norm)) {
+          seen.add(norm);
+          clients.push(name);
+        }
+      }
 
       // Sort case-insensitively
       clients.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
@@ -814,6 +852,86 @@ class CandidateController {
       return res.json({ success: true, clients });
     } catch (error) {
       logger.error('getDistinctClients failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  async addEndClient(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const role = (user.role || '').trim().toLowerCase();
+      if (!MARKETING_ROLES.includes(role)) return res.status(403).json({ success: false, error: 'Access denied' });
+
+      const rawName = (req.body?.name ?? '');
+
+      // Trim + collapse whitespace
+      const trimmed = rawName.trim().replace(/\s+/g, ' ');
+
+      if (!trimmed) {
+        return res.status(400).json({ success: false, error: 'name is required' });
+      }
+      if (trimmed.length > 200) {
+        return res.status(400).json({ success: false, error: 'name must be 200 characters or fewer' });
+      }
+
+      // Title-case: capitalize first letter of each word; preserve all-caps tokens ≤ 4 chars (e.g. "IBM")
+      const canonicalName = trimmed.split(' ').map((word, _i, _arr) => {
+        // Preserve short all-caps tokens like IBM, IT, US, etc.
+        if (word.length <= 4 && word === word.toUpperCase() && /^[A-Z]+$/.test(word)) {
+          return word;
+        }
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      }).join(' ');
+
+      const normalizedName = canonicalName.toLowerCase();
+
+      // Check uniqueness in endClients collection
+      const endClientsCol = database.getCollection('endClients');
+      if (endClientsCol) {
+        const existing = await endClientsCol.findOne({ normalizedName });
+        if (existing) {
+          return res.status(409).json({
+            success: false,
+            error: 'Company already exists',
+            existing: existing.name,
+          });
+        }
+      }
+
+      // Check uniqueness in candidateDetails distinct values (case-insensitive)
+      const candidateDetailsCol = database.getCollection('candidateDetails');
+      if (candidateDetailsCol) {
+        const candidateClients = await candidateDetailsCol.distinct('End Client', {
+          'End Client': { $exists: true, $nin: [null, ''] },
+        });
+        const matchInCandidates = candidateClients.find(
+          c => typeof c === 'string' && c.trim().toLowerCase() === normalizedName
+        );
+        if (matchInCandidates) {
+          return res.status(409).json({
+            success: false,
+            error: 'Company already exists',
+            existing: matchInCandidates,
+          });
+        }
+      }
+
+      // Insert into endClients collection
+      if (!endClientsCol) {
+        return res.status(503).json({ success: false, error: 'Database not ready' });
+      }
+
+      await endClientsCol.insertOne({
+        name: canonicalName,
+        normalizedName,
+        createdBy: user.email,
+        createdAt: new Date(),
+      });
+
+      return res.status(201).json({ success: true, client: canonicalName });
+    } catch (error) {
+      logger.error('addEndClient failed', { error: error.message });
       return res.status(500).json({ success: false, error: 'Internal server error' });
     }
   }

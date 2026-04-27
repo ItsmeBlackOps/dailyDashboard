@@ -2,15 +2,21 @@ import { jest } from '@jest/globals';
 
 // ── Shared mock state ─────────────────────────────────────────────────────────
 const mockDistinct = jest.fn();
+const mockEndClinetsToArray = jest.fn();
 
 const candidateDetailsCol = {
   distinct: mockDistinct,
+};
+
+const endClientsColMock = {
+  find: jest.fn(() => ({ toArray: mockEndClinetsToArray })),
 };
 
 jest.unstable_mockModule('../../config/database.js', () => ({
   database: {
     getCollection: jest.fn(name => {
       if (name === 'candidateDetails') return candidateDetailsCol;
+      if (name === 'endClients') return endClientsColMock;
       return null;
     }),
     getDatabase: jest.fn(() => ({ collection: jest.fn() })),
@@ -54,7 +60,12 @@ const RECRUITER_USER = { email: 'r@vizvainc.com',    role: 'recruiter' };
 
 // ── getDistinctClients ────────────────────────────────────────────────────────
 describe('candidateController.getDistinctClients', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Default: endClients collection returns empty
+    mockEndClinetsToArray.mockResolvedValue([]);
+    endClientsColMock.find.mockReturnValue({ toArray: mockEndClinetsToArray });
+  });
 
   it('calls distinct with a filter that excludes null/empty End Client values', async () => {
     mockDistinct.mockResolvedValue(['Acme']);
@@ -115,5 +126,30 @@ describe('candidateController.getDistinctClients', () => {
     await candidateController.getDistinctClients(req, res);
 
     expect(res.headers['Cache-Control']).toBe('private, max-age=60');
+  });
+
+  it('returns union of candidateDetails and endClients, deduplicating case-insensitively', async () => {
+    // candidateDetails has "acme corp" (lowercase) and "Globex"
+    mockDistinct.mockResolvedValue(['acme corp', 'Globex']);
+    // endClients curated collection has canonical "Acme Corp" (same company, different casing) + "Initech"
+    mockEndClinetsToArray.mockResolvedValue([
+      { name: 'Acme Corp', normalizedName: 'acme corp' },
+      { name: 'Initech', normalizedName: 'initech' },
+    ]);
+    endClientsColMock.find.mockReturnValue({ toArray: mockEndClinetsToArray });
+
+    const req = { user: ADMIN_USER };
+    const res = createRes();
+    await candidateController.getDistinctClients(req, res);
+
+    expect(res.body.success).toBe(true);
+    const clients = res.body.clients;
+    // Should have 3 unique entries (Acme Corp, Globex, Initech) — not 4
+    expect(clients).toHaveLength(3);
+    // Canonical curated name wins over candidateDetails lowercase version
+    expect(clients).toContain('Acme Corp');
+    expect(clients).not.toContain('acme corp');
+    expect(clients).toContain('Globex');
+    expect(clients).toContain('Initech');
   });
 });
