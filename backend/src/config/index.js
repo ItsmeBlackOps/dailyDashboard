@@ -184,6 +184,23 @@ const config = {
     graphqlUrl: process.env.FIREFLIES_URL || 'https://api.fireflies.ai/graphql',
   },
 
+  autoAssign: {
+    url: process.env.AUTO_ASSIGN_URL || '',
+  },
+
+  pica: {
+    secretKey: process.env.PICA_SECRET_KEY || '',
+    outlookConnectionKey: process.env.PICA_OUTLOOK_CONNECTION_KEY || '',
+    actionId: process.env.PICA_ACTION_ID || 'conn_mod_def::GCorx9pDnxY::58M00d9DQI-jjQJC7z7JaQ',
+    baseUrl: process.env.PICA_BASE_URL || 'https://api.picaos.com/v1/passthrough',
+    powerAutomateUrl: process.env.POWER_AUTOMATE_URL || '',
+  },
+
+  kafka: {
+    restUrl: process.env.KAFKA_REST_URL || '',
+    restAuth: process.env.KAFKA_REST_AUTH || '',
+  },
+
   appwrite: {
     endpoint: process.env.APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1',
     projectId: process.env.APPWRITE_PROJECT_ID,

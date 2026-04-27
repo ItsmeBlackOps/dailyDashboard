@@ -175,6 +175,9 @@ class Application {
     // Setup real-time task updates
     taskService.setupRealtimeUpdates(this.socketManager.getIO());
 
+    const { interviewSupportAdminService } = await import('./services/interviewSupportAdminService.js');
+    interviewSupportAdminService.setupRealtimeUpdates(this.socketManager.getIO());
+
     await this.notificationCenter.initialize(this.socketManager.getIO());
 
     logger.info('✅ Socket.IO configured');

@@ -50,6 +50,7 @@ async function adminPerformance(req, res) {
 
 import dashboardRoutes from './dashboardRoutes.js';
 import poRoutes from './po.js';
+import interviewSupportAdminRoutes from './interviewSupportAdmin.js';
 
 const router = express.Router();
 
@@ -133,6 +134,7 @@ router.get('/info', (req, res) => {
 
 // Admin performance endpoint
 router.get('/admin/performance', adminPerformance);
+router.use('/admin/interview-support', interviewSupportAdminRoutes);
 
 // Catch-all for undefined API routes (Express 5 requires handler without wildcard string)
 router.use((req, res) => {
