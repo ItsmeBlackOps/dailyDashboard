@@ -37,6 +37,7 @@ import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import { useNotifications } from "@/context/NotificationContext";
 import { ResumeDiscussionDrawer } from "@/components/resume/ResumeDiscussionDrawer";
 import { handleSupportInterviewSubmitError } from "@/components/dashboard/supportInterviewSubmitError";
+import { CompanyCombobox, invalidateClientsCache } from '@/components/shared/CompanyCombobox';
 
 interface BranchCandidatesProps {
   role: string;
@@ -1646,6 +1647,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           : 'Assessment support email sent successfully.',
       });
 
+      invalidateClientsCache();
       resetAssessmentState();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to send assessment support request';
@@ -1907,6 +1909,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           : 'Interview support request emailed successfully.',
       });
 
+      invalidateClientsCache();
       // [Harsh] Track Support
       posthog?.capture('support_submitted', {
         candidate: supportForm.candidateName,
@@ -2165,6 +2168,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         description: typeof resData?.message === 'string' ? resData.message : 'Mock interview request sent successfully.'
       });
 
+      invalidateClientsCache();
       resetMockState();
 
       posthog.capture('mock_request_submitted', {
@@ -4174,12 +4178,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="assessment-client">End Client</Label>
-                  <Input
-                    id="assessment-client"
+                  <CompanyCombobox
                     value={assessmentForm.endClient}
-                    onChange={(event) => handleAssessmentFieldChange('endClient', event.target.value)}
+                    onChange={(next) => handleAssessmentFieldChange('endClient', next)}
                     placeholder="Client name"
                     disabled={assessmentSubmitting}
+                    className="w-full"
                   />
                 </div>
                 <div className="space-y-2">
@@ -4406,12 +4410,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="support-client">End Client</Label>
-                  <Input
-                    id="support-client"
+                  <CompanyCombobox
                     value={supportForm.endClient}
-                    onChange={(event) => handleSupportFieldChange('endClient', event.target.value)}
+                    onChange={(next) => handleSupportFieldChange('endClient', next)}
                     placeholder="Client name"
                     disabled={supportSubmitting}
+                    className="w-full"
                   />
                 </div>
                 <div className="space-y-2">
@@ -4763,11 +4767,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>End Client</Label>
-                  <Input
+                  <CompanyCombobox
                     value={mockForm.endClient}
-                    onChange={(e) => setMockForm(prev => ({ ...prev, endClient: e.target.value }))}
+                    onChange={(next) => setMockForm(prev => ({ ...prev, endClient: next }))}
                     placeholder="Client Name"
                     disabled={mockSubmitting}
+                    className="w-full"
                   />
                 </div>
                 <div className="space-y-2">
