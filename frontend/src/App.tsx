@@ -21,6 +21,7 @@ import ProfileHubPage from './pages/ProfileHubPage';
 import CandidateDetailPage from './pages/CandidateDetailPage';
 import TaskDetailPage from './pages/TaskDetailPage';
 import AdminPerformance from './pages/AdminPerformance';
+import AdminInterviewSupport from './pages/AdminInterviewSupport';
 
 const queryClient = new QueryClient();
 
@@ -47,6 +48,7 @@ const App = () => (
             <Route path="/candidate/:id" element={<CandidateDetailPage />} />
             <Route path="/task/:taskId" element={<TaskDetailPage />} />
             <Route path="/admin/performance" element={<AdminPerformance />} />
+            <Route path="/admin/interview-support" element={<AdminInterviewSupport />} />
             {/* Add any other protected routes here */}
           </Route>
 

@@ -14,7 +14,8 @@ import {
   ClipboardCheck,
   BellRing,
   Sparkles,
-  Activity
+  Activity,
+  Headphones
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -471,6 +472,14 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   icon={Activity}
                   label="Performance"
                   href="/admin/performance"
+                  isOpen={isOpen}
+                />
+              )}
+              {normalizedRole === 'admin' && (
+                <NavItem
+                  icon={Headphones}
+                  label="Interview Support"
+                  href="/admin/interview-support"
                   isOpen={isOpen}
                 />
               )}
