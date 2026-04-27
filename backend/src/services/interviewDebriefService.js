@@ -336,6 +336,11 @@ class InterviewDebriefService {
   }
 
   ensureOpenAiEnabled() {
+    if (config.openai?.profileOnlyMode) {
+      const error = new Error('OpenAI usage temporarily limited to candidate profile extraction.');
+      error.statusCode = 503;
+      throw error;
+    }
     if (!config.openai?.apiKey) {
       const error = new Error('Interview debrief generation is not configured. Please set OPENAI_API_KEY.');
       error.statusCode = 503;

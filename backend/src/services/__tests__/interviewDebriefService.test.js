@@ -118,3 +118,35 @@ describe('interviewDebriefService', () => {
     expect(requestInit.method).toBe('POST');
   });
 });
+
+describe('interviewDebriefService — profileOnlyMode gate', () => {
+  it('throws when config.openai.profileOnlyMode is true', async () => {
+    const { config } = await import('../../config/index.js');
+    const saved = config.openai.profileOnlyMode;
+    config.openai.profileOnlyMode = true;
+
+    try {
+      expect(() => interviewDebriefService.ensureOpenAiEnabled()).toThrow(
+        'OpenAI usage temporarily limited to candidate profile extraction.'
+      );
+    } finally {
+      config.openai.profileOnlyMode = saved;
+    }
+  });
+
+  it('does not throw when config.openai.profileOnlyMode is false', async () => {
+    const { config } = await import('../../config/index.js');
+    const saved = config.openai.profileOnlyMode;
+    config.openai.profileOnlyMode = false;
+    // also set an apiKey so the next check passes
+    const savedKey = config.openai.apiKey;
+    config.openai.apiKey = 'sk-test-key';
+
+    try {
+      expect(() => interviewDebriefService.ensureOpenAiEnabled()).not.toThrow();
+    } finally {
+      config.openai.profileOnlyMode = saved;
+      config.openai.apiKey = savedKey;
+    }
+  });
+});

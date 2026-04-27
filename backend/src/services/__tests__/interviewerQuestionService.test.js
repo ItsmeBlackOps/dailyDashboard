@@ -181,6 +181,10 @@ describe('interviewerQuestionService', () => {
 
   describe('getInterviewerQuestions', () => {
     it('returns sanitized interviewer questions with rate limit info', async () => {
+      // Disable profileOnlyMode for this happy-path test
+      const savedProfileOnly = config.openai.profileOnlyMode;
+      config.openai.profileOnlyMode = false;
+      try {
       const transcriptDoc = {
         $id: 'doc-1',
         sentences: [
@@ -251,6 +255,40 @@ describe('interviewerQuestionService', () => {
       expect(result.generatedAt).toBeTruthy();
       expect(mockDatabases.listDocuments).toHaveBeenCalled();
       expect(global.fetch).toHaveBeenCalledTimes(1);
+      } finally {
+        config.openai.profileOnlyMode = savedProfileOnly;
+      }
     });
+  });
+});
+
+describe('interviewerQuestionService — profileOnlyMode gate', () => {
+  it('throws when config.openai.profileOnlyMode is true', async () => {
+    const { config } = await import('../../config/index.js');
+    const saved = config.openai.profileOnlyMode;
+    config.openai.profileOnlyMode = true;
+
+    try {
+      expect(() => interviewerQuestionService.ensureFeatureEnabled()).toThrow(
+        'OpenAI usage temporarily limited to candidate profile extraction.'
+      );
+    } finally {
+      config.openai.profileOnlyMode = saved;
+    }
+  });
+
+  it('does not throw when config.openai.profileOnlyMode is false and key is set', async () => {
+    const { config } = await import('../../config/index.js');
+    const saved = config.openai.profileOnlyMode;
+    const savedKey = config.openai.apiKey;
+    config.openai.profileOnlyMode = false;
+    config.openai.apiKey = 'sk-test-key';
+
+    try {
+      expect(() => interviewerQuestionService.ensureFeatureEnabled()).not.toThrow();
+    } finally {
+      config.openai.profileOnlyMode = saved;
+      config.openai.apiKey = savedKey;
+    }
   });
 });

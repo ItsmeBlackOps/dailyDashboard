@@ -88,7 +88,9 @@ const config = {
     baseUrl: process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE_URL || 'https://api.openai.com/v1',
     model: process.env.OPENAI_REPORTING_MODEL || 'gpt-4o',
     timeoutMs: Number.parseInt(process.env.OPENAI_TIMEOUT_MS || '300000', 10),
-    reasoningEffort: stripQuotes(process.env.OPENAI_REASONING_EFFORT || '')
+    reasoningEffort: stripQuotes(process.env.OPENAI_REASONING_EFFORT || ''),
+    // Feature flag: when true, only candidateProfileService may use OpenAI
+    profileOnlyMode: process.env.OPENAI_PROFILE_ONLY_MODE !== 'false', // default true
   },
 
   newRelic: {

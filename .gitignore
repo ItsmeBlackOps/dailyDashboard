@@ -10,3 +10,6 @@ yarn-error.log*
 backend/node_modules/
 frontend/dist/
 .env
+
+# One-time migration scripts (never commit)
+backend/scripts/extract-all-candidate-profiles.js

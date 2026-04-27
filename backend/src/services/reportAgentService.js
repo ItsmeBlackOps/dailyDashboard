@@ -117,6 +117,11 @@ class ReportAgentService {
   }
 
   ensureFeatureEnabled() {
+    if (config.openai?.profileOnlyMode) {
+      const error = new Error('OpenAI usage temporarily limited to candidate profile extraction.');
+      error.statusCode = 503;
+      throw error;
+    }
     if (!config.openai?.apiKey) {
       throw new Error('Report assistant is not configured. Please set OPENAI_API_KEY.');
     }

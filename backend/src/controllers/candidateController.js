@@ -1,4 +1,5 @@
 import { storageService } from '../services/storageService.js';
+import { candidateProfileService } from '../services/candidateProfileService.js';
 import { candidateModel } from '../models/Candidate.js';
 import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
@@ -94,6 +95,32 @@ class CandidateController {
         originalName: originalname,
         uploadedBy: user.email
       });
+
+      // Fire-and-forget: extract candidate profile asynchronously after upload
+      if (result.resumeLink && candidateProfileService.enabled) {
+        const db = database.db;
+        const candidateCollection = db?.collection('candidateDetails');
+        setImmediate(() => {
+          candidateCollection?.findOne({ email: { $regex: `^${user.email}$`, $options: 'i' } })
+            .then(candidateDoc => {
+              const doc = candidateDoc || { _id: null, email: user.email };
+              return candidateProfileService.extractFromResume({ resumeUrl: result.resumeLink, candidateDoc: doc });
+            })
+            .then(({ profile }) => {
+              const candidateId = profile.candidateId;
+              return db.collection('candidateProfiles').replaceOne(
+                { candidateId },
+                profile,
+                { upsert: true }
+              );
+            })
+            .catch(err => logger.error('Background profile extraction failed', {
+              uploaderEmail: user.email,
+              resumeLink: result.resumeLink,
+              err: err.message,
+            }));
+        });
+      }
 
       return res.status(201).json({
         success: true,
