@@ -1,6 +1,26 @@
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
+/**
+ * Resume Tailor service — calls the hosted ResumeForge endpoint.
+ *
+ * Default URL: https://resumeforge.silverspace.tech/tailor
+ * Override via FORGE_AI_SERVICE_URL env var (e.g. http://localhost:8787 for local dev).
+ *
+ * Request body (per API spec):
+ *   {
+ *     candidate: {
+ *       slug?, name, location?, contact: { email, phone, linkedin },
+ *       education?: [...], companies: [...], baseline_skills: [...], projects?: [...]
+ *     },
+ *     jd_text: string,
+ *     must_haves?: string[]
+ *   }
+ *
+ * Response:
+ *   { resume: {...}, meta: {...}, history: [...], validation: {...}, keyword_coverage?: {...} }
+ */
+
 class ForgeAiRequestError extends Error {
   constructor(message, status, responseBody) {
     super(message);
@@ -12,25 +32,25 @@ class ForgeAiRequestError extends Error {
 
 class ResumeTailorService {
   /**
-   * Call the forge-ai service to tailor a resume for a job.
-   *
    * @param {object} params
    * @param {string} params.candidateId
-   * @param {object} params.candidate  - forge-ai candidate schema object
+   * @param {object} params.candidate            forge-ai candidate object (see API spec)
    * @param {string} params.jobTitle
    * @param {string} params.company
    * @param {string} params.jobDescription
    * @param {string} [params.jobUrl]
    * @param {string[]} [params.mustHaveSkills]
-   * @returns {{ tailoredResumeUrl: string, tailoredResumeText: string, tailoredResumeJson: object, runDir: string }}
+   * @returns {{ tailoredResumeUrl, tailoredResumeText, tailoredResumeJson, meta, validation, keywordCoverage }}
    */
   async tailor({ candidateId, candidate, jobTitle, company, jobDescription, jobUrl, mustHaveSkills }) {
     const url = config.forgeAiService.url + '/tailor';
 
     const body = {
       candidate,
-      jdText: jobDescription || `${jobTitle} at ${company}\n\n${jobUrl || ''}`,
-      jdMustHaves: Array.isArray(mustHaveSkills) ? mustHaveSkills : undefined,
+      jd_text: jobDescription || `${jobTitle} at ${company}\n\n${jobUrl || ''}`,
+      ...(Array.isArray(mustHaveSkills) && mustHaveSkills.length
+        ? { must_haves: mustHaveSkills }
+        : {}),
     };
 
     let response;
@@ -58,11 +78,17 @@ class ResumeTailorService {
 
     const json = await response.json();
 
+    if (!json?.resume) {
+      throw new ForgeAiRequestError('forge-ai response missing `resume` field', 200, json);
+    }
+
     return {
-      tailoredResumeUrl: '', // forge-ai writes locally; no public URL
+      tailoredResumeUrl: '',                            // hosted service does not return a URL
       tailoredResumeText: JSON.stringify(json.resume, null, 2),
       tailoredResumeJson: json.resume,
-      runDir: json.runDir,
+      meta: json.meta || {},
+      validation: json.validation || null,
+      keywordCoverage: json.keyword_coverage || null,
     };
   }
 }

@@ -1,0 +1,85 @@
+<h2>Generated PO Mail Template</h2>
+<p class="subtitle">After saving the draft, clicking "Generate Mail Template" produces this. It copies to clipboard or opens in email client.</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px;">
+
+  <!-- Option A: Formatted email preview with copy -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f172a;border-radius:8px;padding:10px;font-family:sans-serif;">
+      <div style="background:#1e293b;border-radius:6px;padding:10px;height:150px;overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div style="color:#e2e8f0;font-size:9px;font-weight:700;">📋 PO Mail Template — Anita Verma</div>
+          <div style="background:#3b82f6;color:#fff;border-radius:3px;padding:2px 6px;font-size:8px;">Copy</div>
+        </div>
+        <div style="background:#0f172a;border-radius:5px;padding:8px;font-size:8px;color:#94a3b8;line-height:1.6;">
+          <div style="color:#e2e8f0;margin-bottom:4px;">Hello Team,</div>
+          <div style="margin-bottom:4px;">Kindly find the attached PO details of <span style="color:#bfdbfe;">Anita Verma</span></div>
+          <div style="color:#6ee7b7;margin-bottom:3px;font-weight:600;">Name: Anita Verma</div>
+          <div>SST/Vizva · VCS · Branch: GGR</div>
+          <div>PO Count: Total – 12 · GGR – 8 · LKN – 4</div>
+          <div style="color:#c4b5fd;">Rate: $85,000 / Annum</div>
+          <div>Signup: 09/26/2025 · Joining: 05/18/2026</div>
+          <div>Agreement: 14% · 5 months · $1500 (NR)</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — In-app preview + Copy</h3>
+      <p>Shows the formatted email inside the app. One click copies it to clipboard. Paste into Outlook/Gmail manually.</p>
+    </div>
+  </div>
+
+  <!-- Option B: Opens as mailto: draft -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f172a;border-radius:8px;padding:10px;font-family:sans-serif;">
+      <div style="background:#1e293b;border-radius:6px;padding:10px;height:150px;overflow:hidden;">
+        <div style="color:#e2e8f0;font-size:9px;font-weight:700;margin-bottom:6px;">✉️ Opens in your email client</div>
+        <div style="background:#0f172a;border-radius:5px;padding:8px;">
+          <div style="display:flex;gap:6px;margin-bottom:5px;">
+            <div style="color:#64748b;font-size:8px;width:24px;">To:</div>
+            <div style="background:#1e293b;flex:1;border-radius:3px;padding:3px 5px;font-size:8px;color:#94a3b8;">team@vizvainc.com</div>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:5px;">
+            <div style="color:#64748b;font-size:8px;width:24px;">Sub:</div>
+            <div style="background:#1e293b;flex:1;border-radius:3px;padding:3px 5px;font-size:8px;color:#e2e8f0;">PO Details — Anita Verma</div>
+          </div>
+          <div style="background:#1e293b;border-radius:3px;padding:5px;font-size:7px;color:#94a3b8;line-height:1.5;">
+            Hello Team,<br/>
+            Kindly find the PO details of Anita Verma<br/>
+            <span style="color:#bfdbfe;">Client: Wipro · Rate: $85K · GGR</span>
+          </div>
+        </div>
+        <div style="margin-top:5px;color:#64748b;font-size:8px;">→ Outlook / Gmail opens with pre-filled draft</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Open in email client</h3>
+      <p>Fires a <code>mailto:</code> link. Opens Outlook or Gmail with the template pre-filled. User sends from their account.</p>
+    </div>
+  </div>
+
+</div>
+
+<div style="background:#0f172a;border-radius:8px;padding:12px;margin-top:12px;">
+  <div style="color:#fbbf24;font-size:10px;font-weight:600;margin-bottom:6px;">📄 Template format — same for both options</div>
+  <div style="background:#1e293b;border-radius:6px;padding:10px;font-size:9px;color:#94a3b8;line-height:1.8;font-family:monospace;">
+    <span style="color:#64748b;">Subject:</span> <span style="color:#e2e8f0;">PO Details — {Candidate Name}</span><br/>
+    <br/>
+    Hello Team,<br/>
+    Kindly find the attached PO details of <span style="color:#bfdbfe;">{Candidate Name}</span><br/>
+    <br/>
+    <span style="color:#6ee7b7;">Name of Candidate:</span> {name} · {SST/VCS} · {Branch}<br/>
+    <span style="color:#6ee7b7;">PO Count:</span> Total – {n} · {branch breakdown}<br/>
+    <span style="color:#6ee7b7;">Email ID:</span> {email}<br/>
+    <span style="color:#6ee7b7;">Position:</span> {role} · {End Client}<br/>
+    <span style="color:#6ee7b7;">Vendor:</span> {vendor}<br/>
+    <span style="color:#6ee7b7;">Rate:</span> {rate}<br/>
+    <span style="color:#6ee7b7;">Job Type:</span> {W2/C2C/FTE}<br/>
+    <span style="color:#6ee7b7;">Signup Date:</span> {date} · <span style="color:#6ee7b7;">Joining Date:</span> {date}<br/>
+    <span style="color:#6ee7b7;">Agreement:</span> {pct}% in {n} months / Upfront – ${amt} (NR)<br/>
+    <br/>
+    <span style="color:#c4b5fd;">Marketing: {recruiter} | IS: {expert} | Manager: {mgr}</span>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:12px;">Pick A or B for how the template is delivered, then reply in terminal.</p>

@@ -1,0 +1,281 @@
+{
+  "actor": "fantastic-jobs/career-site-job-listing-api",
+  "parsed_count": 25,
+  "samples": [
+    {
+      "title": "Senior Data Engineer (Health Research Team)",
+      "company": "Milliman",
+      "location": "Chicago, Illinois, United States",
+      "remote_type": "hybrid",
+      "ats": "ultipro",
+      "url": "https://recruiting2.ultipro.com/MIL1017/JobBoard/f54234e9-dfde-b183-fd20-4fbdb19cba7a/OpportunityDetail?opportunityId=2b01d085-a252-422f-a4ef-92d660e26e52",
+      "date_posted": "2026-04-27T21:57:25.768",
+      "skills": [],
+      "snippet": "Individuals must be legally authorized to work in the United States without the\nneed for immigration support or sponsorship from Milliman now or in the\nfuture. Milliman\u2019s Health Research Team (HRT) is"
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "Asana",
+      "location": "Vancouver, British Columbia, Canada",
+      "remote_type": "hybrid",
+      "ats": "greenhouse",
+      "url": "https://www.asana.com/jobs/apply/7859222?gh_jid=7859222",
+      "date_posted": "2026-04-27T20:33:18",
+      "skills": [],
+      "snippet": "The Data Engineering team\u2019s mission is to ensure high-quality data to enable data-informed decision-making across Asana. You will build data artifacts that are leveraged by Product and Business Data S"
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "Thrive Market",
+      "location": "Los Angeles, California, United States",
+      "remote_type": "hybrid",
+      "ats": "greenhouse",
+      "url": "https://thrivemarketjobs.com/job_posting.html?id=4233437009&gh_jid=4233437009",
+      "date_posted": "2026-04-27T17:32:03",
+      "skills": [],
+      "snippet": "ABOUT THRIVE MARKET Thrive Market was founded in 2014 with a mission to make healthy and sustainable living easy and affordable for everyone. As an online, membership-based market, we deliver the high"
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "Quilt LLC",
+      "location": "Provo, Utah, United States",
+      "remote_type": "onsite",
+      "ats": "greenhouse",
+      "url": "https://job-boards.greenhouse.io/quiltllc/jobs/4689306005",
+      "date_posted": "2026-04-27T17:20:16",
+      "skills": [],
+      "snippet": "About the Role\nWe\u2019re looking for a Senior Data Engineer to design, build, and optimize our data platforms so teams across the company can make fast, reliable, data-driven decisions. You\u2019ll be a key te"
+    },
+    {
+      "title": "Senior Data Engineer - Project Accounting & Finance (St. Louis)",
+      "company": "World Wide Technology Healthcare Solutions",
+      "location": "Jenks, Oklahoma, United States",
+      "remote_type": "remote",
+      "ats": "adp",
+      "url": "https://myjobs.adp.com/wwtexternalcareersite/cx/job-details?reqId=5001191881006",
+      "date_posted": "2026-04-27T16:18:12.912",
+      "skills": [],
+      "snippet": "* Bachelor\u2019s degree \u2013 Computer Science or a minimum of 5 years\u2019 progressive experience in a related field. * 5+ years of experience in analytics, SQL, and/or ETL development. * Proficiency in data war"
+    },
+    {
+      "title": "Lead Data Engineer",
+      "company": "Next Plc",
+      "location": "Enderby, England, United Kingdom",
+      "remote_type": "onsite",
+      "ats": "oraclecloud",
+      "url": "https://ekeq.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_3001/job/70331",
+      "date_posted": "2026-04-27T16:05:44",
+      "skills": [],
+      "snippet": "We are looking for a Lead Data Engineer to join our eCommerce Data team at NEXT.\nBased from NEXT Head Office in Leicestershire with a competitive salary range of\n\u00a364,000 - \u00a379,000 with great benefits!"
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "Pandora",
+      "location": "London, England, United Kingdom",
+      "remote_type": "hybrid",
+      "ats": "successfactors",
+      "url": "https://careers.pandoragroup.com/senior-data-engineer/job/AA2F663EABE3261B0F8603A7DCDBBBEB",
+      "date_posted": "2026-04-27T16:03:01.571774",
+      "skills": [],
+      "snippet": "Are you passionate about data engineering and do you want to be a part of data driven growth at the world\u2019s largest jewelry brand? As our new Senior Data Engineer in London, you will take end-to-end o"
+    },
+    {
+      "title": "Staff Data Engineer (Data Platform)",
+      "company": "Quince",
+      "location": "Bengaluru, Karnataka, India",
+      "remote_type": "onsite",
+      "ats": "greenhouse",
+      "url": "https://job-boards.greenhouse.io/quince/jobs/5148647008",
+      "date_posted": "2026-04-27T14:44:35",
+      "skills": [],
+      "snippet": "ABOUT QUINCE Founded in 2018, Quince was built to challenge the idea that nice things have to cost a lot. Our mission is simple: to make really high quality essentials for really low prices, produced "
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "Reconomy",
+      "location": "Bucharest, Romania",
+      "remote_type": "hybrid",
+      "ats": "pinpoint",
+      "url": "https://reconomy.pinpointhq.com/en/postings/0708b672-1a96-453f-9323-d49eee3f7911",
+      "date_posted": "2026-04-27T12:19:08",
+      "skills": [],
+      "snippet": "Senior Data Engineer\nDepartment: Technology\nEmployment Type: Permanent - Full Time\nLocation: Bucharest\nReporting To: Daniel Badoi Description\nRecoTek is Reconomy\u2019s new centralized technology hub locat"
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "Synoptek",
+      "location": "Pune, Maharashtra, India",
+      "remote_type": "remote",
+      "ats": "icims",
+      "url": "https://careers.synoptek.com/jobs/4758",
+      "date_posted": "2026-04-27T11:06:00",
+      "skills": [],
+      "snippet": "Overview Synoptek\nWe are seeking a highly skilled Senior Analyst, BI & Data Insights to join our growing team. In this critical role, you will play a key role in building and maintaining a best-in-cla"
+    },
+    {
+      "title": "Senior Data Engineer - Data Factory (f/m/d)",
+      "company": "Decathlon Digital FR",
+      "location": "Villeneuve-d'Ascq, Hauts-de-France, France",
+      "remote_type": "hybrid",
+      "ats": "greenhouse",
+      "url": "https://job-boards.eu.greenhouse.io/decathlontechnology/jobs/4697999101",
+      "date_posted": "2026-04-27T09:00:33",
+      "skills": [],
+      "snippet": "Notre Team Data Observability recherche un\u00b7e Senior Data Engineer bas\u00e9\u00b7e \u00e0 Lille ou Paris. Chez Decathlon, nous croyons au pouvoir du sport pour unir et inspirer. Notre mission : rendre le sport acces"
+    },
+    {
+      "title": "Senior Data Engineer (Databricks + Snowflake)",
+      "company": "Mindera",
+      "location": "Chennai, Tamil Nadu, India",
+      "remote_type": "hybrid",
+      "ats": "workable",
+      "url": "https://jobs.workable.com/view/ta38hmQaRkyNDeXtzDTHFL/hybrid-senior-data-engineer-(databricks-%2B-snowflake)-in-chennai-at-mindera",
+      "date_posted": "2026-04-27T08:32:25.599",
+      "skills": [],
+      "snippet": "Job Summary\nWe are seeking a highly skilled Senior Data Engineer with strong expertise in Databricks, Snowflake, and modern data engineering practices. The ideal candidate should have hands-on experie"
+    },
+    {
+      "title": "Senior Data Engineer (Databricks + Snowflake)",
+      "company": "Mindera",
+      "location": "Bengaluru, Karnataka, India",
+      "remote_type": "hybrid",
+      "ats": "workable",
+      "url": "https://jobs.workable.com/view/qc8BY4xqaLvipqGRQQeYEn/hybrid-senior-data-engineer-(databricks-%2B-snowflake)-in-bengaluru-at-mindera",
+      "date_posted": "2026-04-27T08:29:24.775",
+      "skills": [],
+      "snippet": "Job Summary\nWe are seeking a highly skilled Senior Data Engineer with strong expertise in Databricks, Snowflake, and modern data engineering practices. The ideal candidate should have hands-on experie"
+    },
+    {
+      "title": "Marketing and Analytics Engineer",
+      "company": "Intelligent Lending",
+      "location": null,
+      "remote_type": "hybrid",
+      "ats": "hibob",
+      "url": "https://intelligentlending.careers.hibob.com/jobs/9a295869-72ff-449e-8133-6056614009b2",
+      "date_posted": "2026-04-27T06:42:19.805818",
+      "skills": [],
+      "snippet": "Join Our Team\nAt Binq we're hiring a Marketing and Analytics Engineer to sit at the intersection of data engineering, analytics and marketing. You'll turn events flowing through our internal data plat"
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "Thakral One",
+      "location": "Manila, Metro Manila, Philippines",
+      "remote_type": "onsite",
+      "ats": "manatal",
+      "url": "https://careers-page.com/thakral-one-4/job/5WR97WY3",
+      "date_posted": "2026-04-27T03:13:50.77",
+      "skills": [],
+      "snippet": "As a Senior Cloud Data Engineer, you will design, build, and optimise cloud-based data pipelines for a Microsoft Fabric-powered data lakehouse, enabling large-scale data integration across multiple en"
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "Questrade Financial Group",
+      "location": null,
+      "remote_type": "hybrid",
+      "ats": "dayforce",
+      "url": "https://jobs.dayforcehcm.com/en-US/qfg/FlexitiCAREERS/jobs/16124",
+      "date_posted": "2026-04-27T03:00:00",
+      "skills": [],
+      "snippet": "Questrade Financial Group (QFG), through its companies - Questrade, Questbank, Questrade Wealth Management, Community Trust Company, Zolo, and Flexiti, provides securities and foreign currency investm"
+    },
+    {
+      "title": "Sr. Analytics Engineer",
+      "company": "Nature's Sunshine Products",
+      "location": "Lehi, Utah, United States",
+      "remote_type": "onsite",
+      "ats": "applicantpro",
+      "url": "https://naturessunshine.applicantpro.com/jobs/4068573",
+      "date_posted": "2026-04-27T00:00:00",
+      "skills": [],
+      "snippet": "We're building an enterprise data platform on Microsoft Fabric to standardize how data is modeled, defined, and used across the organization. Today, key metrics are inconsistently defined, business lo"
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "General Motors",
+      "location": "Austin, Texas, United States",
+      "remote_type": "hybrid",
+      "ats": "workday",
+      "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Austin-Texas-United-States-of-America/Senior-Data-Engineer_JR-202524346",
+      "date_posted": "2026-04-27T00:00:00",
+      "skills": [],
+      "snippet": "Job Description This role is categorized as hybrid. This means the successful candidate is expected to report to Austin Technical Center in Austin, TX or GM Global Tech Center in Michigan, MI three ti"
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "Makpar",
+      "location": "Washington, District of Columbia, United States",
+      "remote_type": "hybrid",
+      "ats": "lever.co",
+      "url": "https://jobs.lever.co/makpar/c980356f-b7bc-40c7-b67e-76047e32a7c6",
+      "date_posted": "2026-04-27T00:00:00",
+      "skills": [],
+      "snippet": "Who we are: Makpar is a comprehensive professional and technical solutions provider for the Federal government. We combine functional and technical expertise in cloud engineering, data management, cyb"
+    },
+    {
+      "title": "Senior Analytics Engineer",
+      "company": "Playbook",
+      "location": null,
+      "remote_type": "remote",
+      "ats": "ashby",
+      "url": "https://jobs.ashbyhq.com/Playbook/d8065248-0eec-48e6-88fc-8507ce459952",
+      "date_posted": "2026-04-27T00:00:00",
+      "skills": [],
+      "snippet": "About Us\nWe are Playbook, a leading creator platform for fitness, health, and wellness. Our mission is to help fitness creators build sustainable businesses, while enabling hundreds of thousands of us"
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "Guidehouse",
+      "location": "San Antonio, Texas, United States",
+      "remote_type": "onsite",
+      "ats": "workday",
+      "url": "https://guidehouse.wd1.myworkdayjobs.com/External/job/US---TX-San-Antonio/Senior-Data-Engineer_38390-1",
+      "date_posted": "2026-04-27T00:00:00",
+      "skills": [],
+      "snippet": "Job Family: Data Engineering & Architecture Consulting Travel Required: None Clearance Required: Ability to Obtain Public Trust What You Will Do: Design, build, and operate Azure Lakehouse architectur"
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "Capita",
+      "location": "pune, Maharashtra, India",
+      "remote_type": "hybrid",
+      "ats": "workday",
+      "url": "https://capita.wd3.myworkdayjobs.com/CapitaGlobal/job/Pune/Senior-Data-Engineer_10119012-1",
+      "date_posted": "2026-04-27T00:00:00",
+      "skills": [],
+      "snippet": "A Senior Data Engineer designs and leads the implementation of data flows to connect operational systems, data for analytics and business intelligence (BI) systems. Monitors data platforms activity, c"
+    },
+    {
+      "title": "Principal Data Engineer",
+      "company": "Ippon Technologies",
+      "location": "Melbourne, Victoria, Australia",
+      "remote_type": "hybrid",
+      "ats": "lever.co",
+      "url": "https://jobs.lever.co/ippon/40fe37f9-fec0-4f67-b36e-faea74512003",
+      "date_posted": "2026-04-27T00:00:00",
+      "skills": [],
+      "snippet": "Ippon Australia is a team of true technologists who leverage contemporary thinking and tools to enhance the way our clients drive value. Whether it\u2019s a bespoke platform to improve employee engagement "
+    },
+    {
+      "title": "Team Lead Analytics Engineering & Self-service",
+      "company": "SIX",
+      "location": "Warsaw, Masovian Voivodeship, Poland",
+      "remote_type": "hybrid",
+      "ats": "successfactors",
+      "url": "https://jobs.six-group.com/job/Madrid-Team-Lead-Analytics-Engineering-&-Self-service/1290274801/",
+      "date_posted": "2026-04-03T02:00:00",
+      "skills": [],
+      "snippet": "BME - Bolsas y Mercados Espa\u00f1oles - drives the transformation of financial markets and belongs to SIX, the third largest exchange group in Europe. What sets us apart drives us ahead: between local roo"
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "CanCap Management Inc.",
+      "location": "Toronto, Ontario, Canada",
+      "remote_type": "hybrid",
+      "ats": "adp",
+      "url": "https://workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?cid=d6d433d2-a726-40aa-8c82-69d07ffce0d4&jobId=568944",
+      "date_posted": "2026-01-16T22:24:00",
+      "skills": [],
+      "snippet": "Location: Downtown Toronto (Hybrid) The Evolution: A Canadian Success Story CanCap is a Canadian success story. We established our reputation as a significant player in the Canadian automotive lending"
+    }
+  ]
+}

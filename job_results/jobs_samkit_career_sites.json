@@ -1,0 +1,72 @@
+{
+  "actor": "fantastic-jobs/career-site-job-listing-api",
+  "parsed_count": 6,
+  "samples": [
+    {
+      "title": "Data Analyst",
+      "company": "OneMagnify",
+      "location": "Michigan, United States",
+      "remote_type": "remote",
+      "ats": "workday",
+      "url": "https://onemagnify.wd5.myworkdayjobs.com/OneMagnify_Careers/job/Remote/Data-Analyst_R2167",
+      "date_posted": "2026-04-27T00:00:00",
+      "skills": [],
+      "snippet": "OneMagnify is an AI native, platform-enabled B2B digital agency operating at the intersection of data, technology, and creativity. We help complex organizations drive measurable business outcomes by b"
+    },
+    {
+      "title": "Operations Data Analyst",
+      "company": "General Dynamics Information Technology",
+      "location": "GA, United States",
+      "remote_type": "remote",
+      "ats": "workday",
+      "url": "https://gdit.wd5.myworkdayjobs.com/External_Career_Site/job/Any-Location--Remote/Operations-Data-Analyst_RQ217415-2",
+      "date_posted": "2026-04-27T00:00:00",
+      "skills": [],
+      "snippet": "Type of Requisition: Regular Clearance Level Must Currently Possess: None Clearance Level Must Be Able to Obtain: None Public Trust/Other Required: MBI (T2) Job Family: Data Science and Data Engineeri"
+    },
+    {
+      "title": "Senior Data Analyst - RCM",
+      "company": "Spire Orthopedic Partners",
+      "location": "Stamford, Connecticut, United States",
+      "remote_type": "onsite",
+      "ats": "paycom",
+      "url": "https://www.paycomonline.net/v4/ats/web.php/portal/CADAF8561A3604A9A8F473FBA51362C9/jobs/225344",
+      "date_posted": "2026-04-24T00:00:00",
+      "skills": [],
+      "snippet": "Job DetailsLevel: ExperiencedJob Location: Stamford, CT 06905Position Type: Full TimeEducation Level: Not SpecifiedSalary Range: $102,900.00 - $154,300.00 SalaryTravel Percentage: NoneJob Shift: DayJo"
+    },
+    {
+      "title": "Senior Data Analyst - Operations",
+      "company": "Spire Orthopedic Partners",
+      "location": "Stamford, Connecticut, United States",
+      "remote_type": "onsite",
+      "ats": "paycom",
+      "url": "https://www.paycomonline.net/v4/ats/web.php/portal/CADAF8561A3604A9A8F473FBA51362C9/jobs/225332",
+      "date_posted": "2026-04-24T00:00:00",
+      "skills": [],
+      "snippet": "Job DetailsLevel: ExperiencedJob Location: Stamford, CT 06905Position Type: Full TimeEducation Level: Not SpecifiedSalary Range: $102,900.00 - $154,300.00 SalaryTravel Percentage: NoneJob Shift: DayJo"
+    },
+    {
+      "title": "Data Analyst",
+      "company": "Midwest Express Clinic",
+      "location": "Chicago, Illinois, United States",
+      "remote_type": "onsite",
+      "ats": "jazzhr",
+      "url": "https://midwestexpressclinic.applytojob.com/apply/O1gfBvRZWx/Data-Analyst",
+      "date_posted": "2026-04-24T00:00:00",
+      "skills": [],
+      "snippet": "About the Company\nMidwest Express Clinic is the provider of urgent and primary care centers for individuals in the Midwest, focused on an affordable approach to delivering urgent and primary care serv"
+    },
+    {
+      "title": "Data Analyst",
+      "company": "Amalgamated Bank of NY",
+      "location": "New York, New York, United States",
+      "remote_type": "onsite",
+      "ats": "adp",
+      "url": "https://workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?cid=1b4164c0-a7ce-4c7b-8525-41e0f23310d4&jobId=573058",
+      "date_posted": "2025-12-18T17:15:00",
+      "skills": [],
+      "snippet": "Purpose of Position: The Data Analyst will play a critical role in transforming how the Finance team leverages data, technology, and automation. Reporting to the Director of Finance Data & Analytics, "
+    }
+  ]
+}

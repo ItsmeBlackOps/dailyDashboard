@@ -397,13 +397,38 @@ class JobSearchService {
       const candidateCol = database.getDb().collection('candidateDetails');
       const candidateDoc = await candidateCol.findOne({ _id: new ObjectId(candidateId) });
 
-      const candidateForge = {
+      // Build candidate object in the ResumeForge API schema.
+      // Prefer a structured `forgeProfile` field on the candidate doc if available
+      // (richer history). Otherwise fall back to a minimal stub built from
+      // candidateDetails primitives — pipeline still works but bullets are sparse.
+      const stored = candidateDoc?.forgeProfile;
+      const fallbackTechs = String(candidateDoc?.Technology || '')
+        .split(/[,;|/]/).map((s) => s.trim()).filter(Boolean);
+      const candidateForge = stored && typeof stored === 'object' ? stored : {
+        slug: String(candidateId),
         name: candidateDoc?.['Candidate Name'] || candidateName || '',
-        email: candidateDoc?.['Email ID'] || '',
-        phone: candidateDoc?.['Contact No'] || '',
-        technology: candidateDoc?.Technology || '',
-        end_client: candidateDoc?.['End Client'] || '',
-        resume_url: candidateDoc?.resumeLink || '',
+        location: candidateDoc?.Branch || '',
+        contact: {
+          email: candidateDoc?.['Email ID'] || '',
+          phone: candidateDoc?.['Contact No'] || '',
+          linkedin: candidateDoc?.linkedin || '',
+        },
+        education: [],
+        companies: [
+          {
+            name: candidateDoc?.['End Client'] || 'Recent Employer',
+            title: candidateDoc?.Technology ? `${candidateDoc.Technology} Engineer` : 'Software Engineer',
+            industry: '',
+            start: 'Jan 2024',
+            end: 'Present',
+            location: candidateDoc?.Branch || '',
+            team_context: '',
+            achievements: [
+              `Working as a ${candidateDoc?.Technology || 'software'} engineer`,
+            ],
+          },
+        ],
+        baseline_skills: fallbackTechs.length ? fallbackTechs : ['Software Development'],
       };
 
       // Update candidateId in tailor row
@@ -419,7 +444,7 @@ class JobSearchService {
       );
 
       // Call resume tailor
-      const { tailoredResumeUrl, tailoredResumeText, tailoredResumeJson, runDir } = await resumeTailorService.tailor({
+      const tailorResult = await resumeTailorService.tailor({
         candidateId,
         candidate: candidateForge,
         jobTitle: job.title,
@@ -433,10 +458,12 @@ class JobSearchService {
         {
           $set: {
             status: 'complete',
-            tailoredResumeUrl,
-            tailoredResumeText,
-            tailoredResumeJson,
-            runDir,
+            tailoredResumeUrl: tailorResult.tailoredResumeUrl || '',
+            tailoredResumeText: tailorResult.tailoredResumeText,
+            tailoredResumeJson: tailorResult.tailoredResumeJson,
+            forgeMeta: tailorResult.meta || null,
+            forgeValidation: tailorResult.validation || null,
+            keywordCoverage: tailorResult.keywordCoverage || null,
             completedAt: new Date(),
           },
         }

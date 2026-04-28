@@ -217,8 +217,8 @@ const config = {
   },
 
   forgeAiService: {
-    url: process.env.FORGE_AI_SERVICE_URL || 'http://forge-ai:8002',
-    timeoutMs: Number.parseInt(process.env.FORGE_AI_SERVICE_TIMEOUT_MS || '600000', 10),
+    url: process.env.FORGE_AI_SERVICE_URL || 'https://resumeforge.silverspace.tech',
+    timeoutMs: Number.parseInt(process.env.FORGE_AI_SERVICE_TIMEOUT_MS || '300000', 10),
   },
 
   jobSearch: {

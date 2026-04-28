@@ -88,18 +88,5 @@ services:
       - default
     restart: unless-stopped
 
-  forge-ai:
-    build:
-      context: ./forge-ai
-      dockerfile: Dockerfile
-    container_name: dailydb-forge-ai
-    env_file:
-      - .env
-    expose:
-      - "8002"
-    networks:
-      - default
-    restart: unless-stopped
-
 volumes:
   scraper-state:

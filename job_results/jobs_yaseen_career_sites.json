@@ -1,0 +1,171 @@
+{
+  "actor": "fantastic-jobs/career-site-job-listing-api",
+  "parsed_count": 15,
+  "samples": [
+    {
+      "title": "Senior Data Engineer",
+      "company": "BDIPlus",
+      "location": "New York, New York, United States",
+      "remote_type": "onsite",
+      "ats": "trinet",
+      "url": "https://app.trinethire.com/companies/521402-bdiplus/jobs/119744-senior-data-engineer",
+      "date_posted": "2026-04-27T01:22:00.948",
+      "skills": [],
+      "snippet": "OVERVIEW BDIPlus is seeking a Senior Data Engineer to support a Fortune 100 financial services client\u2019s real-time intelligence initiatives. In this role, You\u2019ll work in a virtualization-first architec"
+    },
+    {
+      "title": "Data Analyst",
+      "company": "OneMagnify",
+      "location": "Michigan, United States",
+      "remote_type": "remote",
+      "ats": "workday",
+      "url": "https://onemagnify.wd5.myworkdayjobs.com/OneMagnify_Careers/job/Remote/Data-Analyst_R2167",
+      "date_posted": "2026-04-27T00:00:00",
+      "skills": [],
+      "snippet": "OneMagnify is an AI native, platform-enabled B2B digital agency operating at the intersection of data, technology, and creativity. We help complex organizations drive measurable business outcomes by b"
+    },
+    {
+      "title": "Operations Data Analyst",
+      "company": "General Dynamics Information Technology",
+      "location": "GA, United States",
+      "remote_type": "remote",
+      "ats": "workday",
+      "url": "https://gdit.wd5.myworkdayjobs.com/External_Career_Site/job/Any-Location--Remote/Operations-Data-Analyst_RQ217415-2",
+      "date_posted": "2026-04-27T00:00:00",
+      "skills": [],
+      "snippet": "Type of Requisition: Regular Clearance Level Must Currently Possess: None Clearance Level Must Be Able to Obtain: None Public Trust/Other Required: MBI (T2) Job Family: Data Science and Data Engineeri"
+    },
+    {
+      "title": "Securities Lending Technology Business Analyst (Equity Finance Technology) - Vice President - NYC",
+      "company": "Citi",
+      "location": "New York, New York, United States",
+      "remote_type": "onsite",
+      "ats": "eightfold",
+      "url": "https://citi.eightfold.ai/careers/job/859034968467-securities-lending-technology-business-analyst-equity-finance-technology-vice-president-nyc-new-york-new-york-united-states-of-america",
+      "date_posted": "2026-04-26T00:00:00",
+      "skills": [],
+      "snippet": "Overview\nCiti is a world-leading global bank. We have approximately 200 million customer accounts and a presence in more than 160 countries and jurisdictions worldwide. We provide consumers, corporati"
+    },
+    {
+      "title": "Securities Lending Technology Business Analyst (Equity Finance Technology) - Vice President - NYC",
+      "company": "Citi",
+      "location": "New York, New York, United States",
+      "remote_type": "hybrid",
+      "ats": "workday",
+      "url": "https://citi.wd5.myworkdayjobs.com/2/job/New-York-New-York-United-States/Securities-Lending-Technology-Business-Analyst--Equity-Finance-Technology----Vice-President---NYC_26956126-1",
+      "date_posted": "2026-04-26T00:00:00",
+      "skills": [],
+      "snippet": "Overview Citi is a world-leading global bank. We have approximately 200 million customer accounts and a presence in more than 160 countries and jurisdictions worldwide. We provide consumers, corporati"
+    },
+    {
+      "title": "Senior Data Engineer",
+      "company": "Humana",
+      "location": "Nashville, Tennessee, United States",
+      "remote_type": "hybrid",
+      "ats": "workday",
+      "url": "https://humana.wd5.myworkdayjobs.com/Humana_External_Career_Site/job/Louisville-KY/Senior-Data-Engineer_R-414070-1",
+      "date_posted": "2026-04-26T00:00:00",
+      "skills": [],
+      "snippet": "Become a part of our caring community We are looking for talented Senior Data Engineer who loves building and pioneering in space technology. Team player who enjoys solving complex problems in fast pa"
+    },
+    {
+      "title": "Data Engineer \u2013 Development & Analytics (Bedford, MA)",
+      "company": "Philips",
+      "location": "Bedford, Massachusetts, United States",
+      "remote_type": "onsite",
+      "ats": "workday",
+      "url": "https://philips.wd3.myworkdayjobs.com/jobs-and-careers/job/Bedford-Massachusetts-United-States/Data-Engineer---Development---Analytics--Bedford--MA-_582453",
+      "date_posted": "2026-04-26T00:00:00",
+      "skills": [],
+      "snippet": "Job Title Data Engineer \u2013 Development & Analytics (Bedford, MA) Job Description Data Engineer \u2013 Development & Analytics (Bedford, MA) You will join a high-performing team focused on Advanced Imaging p"
+    },
+    {
+      "title": "Senior Data Analyst - RCM",
+      "company": "Spire Orthopedic Partners",
+      "location": "Stamford, Connecticut, United States",
+      "remote_type": "onsite",
+      "ats": "paycom",
+      "url": "https://www.paycomonline.net/v4/ats/web.php/portal/CADAF8561A3604A9A8F473FBA51362C9/jobs/225344",
+      "date_posted": "2026-04-24T00:00:00",
+      "skills": [],
+      "snippet": "Job DetailsLevel: ExperiencedJob Location: Stamford, CT 06905Position Type: Full TimeEducation Level: Not SpecifiedSalary Range: $102,900.00 - $154,300.00 SalaryTravel Percentage: NoneJob Shift: DayJo"
+    },
+    {
+      "title": "Senior Data Analyst - Operations",
+      "company": "Spire Orthopedic Partners",
+      "location": "Stamford, Connecticut, United States",
+      "remote_type": "onsite",
+      "ats": "paycom",
+      "url": "https://www.paycomonline.net/v4/ats/web.php/portal/CADAF8561A3604A9A8F473FBA51362C9/jobs/225332",
+      "date_posted": "2026-04-24T00:00:00",
+      "skills": [],
+      "snippet": "Job DetailsLevel: ExperiencedJob Location: Stamford, CT 06905Position Type: Full TimeEducation Level: Not SpecifiedSalary Range: $102,900.00 - $154,300.00 SalaryTravel Percentage: NoneJob Shift: DayJo"
+    },
+    {
+      "title": "Data Analyst",
+      "company": "Midwest Express Clinic",
+      "location": "Chicago, Illinois, United States",
+      "remote_type": "onsite",
+      "ats": "jazzhr",
+      "url": "https://midwestexpressclinic.applytojob.com/apply/O1gfBvRZWx/Data-Analyst",
+      "date_posted": "2026-04-24T00:00:00",
+      "skills": [],
+      "snippet": "About the Company\nMidwest Express Clinic is the provider of urgent and primary care centers for individuals in the Midwest, focused on an affordable approach to delivering urgent and primary care serv"
+    },
+    {
+      "title": "Business Analyst",
+      "company": "Blue Stream Fiber",
+      "location": null,
+      "remote_type": "remote",
+      "ats": "pinpoint",
+      "url": "https://bluestreamfiber.pinpointhq.com/en/postings/f0e90e94-99ef-4a58-ac8c-3c0b19b9ad8b",
+      "date_posted": "2026-04-23T14:49:03",
+      "skills": [],
+      "snippet": "Business Analyst\nDepartment: Transformation\nEmployment Type: Full Time\nLocation: Remote Reporting To: Director, Product Management Description\nThe Business Analyst plays a key role in supporting the e"
+    },
+    {
+      "title": "BI Analyst",
+      "company": "Zift Solutions",
+      "location": "New York, South Carolina, United States",
+      "remote_type": "remote",
+      "ats": "adp",
+      "url": "https://workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?cid=60b19d1a-d276-4923-9df1-35419884864b&jobId=564778",
+      "date_posted": "2026-04-23T09:51:00",
+      "skills": [],
+      "snippet": "Position Title: BI Analyst Job Description Reports To (Title): VP of Engineering Employment Status (Full-Time, Part-Time, Intern): Full-Time Department: 416 Operations & Service US Only - FLSA Status "
+    },
+    {
+      "title": "Data Engineer",
+      "company": "Sennos",
+      "location": "Durham, North Carolina, United States",
+      "remote_type": "remote",
+      "ats": "rippling",
+      "url": "https://ats.rippling.com/sennos/jobs/a9ff8979-8727-4787-9c99-969b3ad7254b",
+      "date_posted": "2026-03-16T13:46:16.978",
+      "skills": [],
+      "snippet": "Position Summary\nThe Data Engineer sits within the Data & Analytics organization and supports the development and ongoing improvement of Sennos' modern data platform. This role focuses on building and"
+    },
+    {
+      "title": "Staff/ Principal Data Scientist",
+      "company": "Tunnl",
+      "location": null,
+      "remote_type": "hybrid",
+      "ats": "ashby",
+      "url": "https://jobs.ashbyhq.com/tunnl/779c017f-5243-4f73-9c5d-9096ebbc5364",
+      "date_posted": "2026-03-06T00:00:00",
+      "skills": [],
+      "snippet": "About Tunnl\nTunnl is building a future where artificial intelligence enables organizations to connect meaningfully with the people who matter most. We help organizations conduct research at scale, def"
+    },
+    {
+      "title": "Data Analyst",
+      "company": "Amalgamated Bank of NY",
+      "location": "New York, New York, United States",
+      "remote_type": "onsite",
+      "ats": "adp",
+      "url": "https://workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?cid=1b4164c0-a7ce-4c7b-8525-41e0f23310d4&jobId=573058",
+      "date_posted": "2025-12-18T17:15:00",
+      "skills": [],
+      "snippet": "Purpose of Position: The Data Analyst will play a critical role in transforming how the Finance team leverages data, technology, and automation. Reporting to the Director of Finance Data & Analytics, "
+    }
+  ]
+}

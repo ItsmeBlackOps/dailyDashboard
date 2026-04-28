@@ -1,0 +1,94 @@
+<h2>Task View — How should it open?</h2>
+<p class="subtitle">When you click a task row anywhere in the app, which layout feels right?</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f172a;border-radius:8px;padding:12px;font-size:11px;color:#94a3b8;font-family:monospace;">
+      <div style="display:flex;gap:8px;height:140px;">
+        <div style="flex:1;background:#1e293b;border-radius:6px;padding:8px;">
+          <div style="color:#64748b;font-size:9px;margin-bottom:6px;">TASKS TABLE</div>
+          <div style="background:#334155;border-radius:4px;padding:5px;margin-bottom:4px;font-size:10px;color:#e2e8f0;">Raj Sharma — TCS</div>
+          <div style="background:#1e40af;border-radius:4px;padding:5px;margin-bottom:4px;font-size:10px;color:#bfdbfe;">▶ Anita Verma — Wipro</div>
+          <div style="background:#334155;border-radius:4px;padding:5px;font-size:10px;color:#e2e8f0;">Priya Nair — Infosys</div>
+        </div>
+        <div style="width:220px;background:#1e293b;border-radius:6px;padding:8px;border:1px solid #3b82f6;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="color:#e2e8f0;font-size:10px;font-weight:bold;">Anita Verma</div>
+            <div style="color:#64748b;font-size:9px;">✕</div>
+          </div>
+          <div style="color:#64748b;font-size:9px;margin-bottom:3px;">STATUS</div>
+          <div style="background:#064e3b;color:#6ee7b7;border-radius:3px;padding:2px 6px;font-size:9px;display:inline-block;margin-bottom:6px;">Completed</div>
+          <div style="color:#64748b;font-size:9px;margin-bottom:3px;">CLIENT · ROUND · DATE</div>
+          <div style="color:#cbd5e1;font-size:9px;margin-bottom:6px;">Wipro · R2 · Apr 24</div>
+          <div style="color:#64748b;font-size:9px;margin-bottom:3px;">EMAIL THREAD (3)</div>
+          <div style="background:#0f172a;border-radius:4px;padding:5px;font-size:8px;color:#94a3b8;">📧 Original + 2 replies…</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Side Panel (Dialog)</h3>
+      <p>Opens next to the table. Stays in context. Good for quick reference without leaving the page.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f172a;border-radius:8px;padding:12px;font-size:11px;color:#94a3b8;font-family:monospace;">
+      <div style="height:140px;position:relative;overflow:hidden;">
+        <div style="background:#1e293b;border-radius:6px;padding:8px;opacity:0.5;">
+          <div style="background:#334155;border-radius:4px;padding:5px;margin-bottom:4px;font-size:10px;color:#e2e8f0;">Raj Sharma — TCS</div>
+          <div style="background:#334155;border-radius:4px;padding:5px;margin-bottom:4px;font-size:10px;color:#e2e8f0;">Anita Verma — Wipro</div>
+        </div>
+        <div style="position:absolute;right:0;top:0;width:260px;height:100%;background:#1e293b;border-radius:6px;padding:10px;border-left:2px solid #3b82f6;box-shadow:-8px 0 20px rgba(0,0,0,0.5);">
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <div style="color:#e2e8f0;font-size:10px;font-weight:bold;">Anita Verma</div>
+            <div style="color:#64748b;font-size:9px;">← Back</div>
+          </div>
+          <div style="color:#64748b;font-size:9px;margin-bottom:3px;">STATUS · CLIENT · ROUND</div>
+          <div style="color:#cbd5e1;font-size:9px;margin-bottom:6px;">Completed · Wipro · R2 · Apr 24, 10:00–11:00</div>
+          <div style="background:#0f172a;border-radius:4px;padding:6px;margin-bottom:4px;">
+            <div style="color:#64748b;font-size:8px;margin-bottom:2px;">ORIGINAL EMAIL</div>
+            <div style="color:#94a3b8;font-size:8px;">Kindly arrange the interview…</div>
+          </div>
+          <div style="background:#0f172a;border-radius:4px;padding:6px;">
+            <div style="color:#64748b;font-size:8px;margin-bottom:2px;">REPLY 1</div>
+            <div style="color:#94a3b8;font-size:8px;">Confirmed. We'll join at 10…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Slide-in Sheet (Right Drawer)</h3>
+      <p>Slides in from the right edge. More space for email thread. Background dims slightly.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f172a;border-radius:8px;padding:12px;font-size:11px;color:#94a3b8;font-family:monospace;">
+      <div style="height:140px;">
+        <div style="background:#1e293b;border-radius:6px;padding:8px;">
+          <div style="background:#334155;border-radius:4px;padding:5px;margin-bottom:4px;font-size:10px;color:#e2e8f0;">Raj Sharma — TCS</div>
+          <div style="background:#1e3a5f;border-radius:4px;padding:5px;border:1px solid #3b82f6;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+              <div style="font-size:10px;color:#e2e8f0;font-weight:bold;">▼ Anita Verma — Wipro</div>
+              <div style="background:#064e3b;color:#6ee7b7;border-radius:3px;padding:1px 5px;font-size:8px;">Completed</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
+              <div style="background:#0f172a;border-radius:3px;padding:4px;font-size:8px;color:#94a3b8;">R2 · Apr 24 · 10–11am</div>
+              <div style="background:#0f172a;border-radius:3px;padding:4px;font-size:8px;color:#94a3b8;">Expert: Arjun</div>
+            </div>
+            <div style="background:#0f172a;border-radius:3px;padding:4px;font-size:8px;color:#94a3b8;">📧 3 messages in thread</div>
+          </div>
+          <div style="background:#334155;border-radius:4px;padding:5px;margin-top:4px;font-size:10px;color:#e2e8f0;">Priya Nair — Infosys</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Inline Expand</h3>
+      <p>Row expands in place to show details + thread. Everything stays in the same view without overlays.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Click your preferred layout, then reply in the terminal.</p>
