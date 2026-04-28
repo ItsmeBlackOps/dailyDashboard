@@ -24,3 +24,4 @@ scraper/*.pyc
 forge-ai/.env
 forge-ai/node_modules/
 forge-ai/output/
+resume-templates/output/

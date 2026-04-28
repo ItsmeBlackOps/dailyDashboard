@@ -1,0 +1,57 @@
+[
+  {
+    "id": "job-1",
+    "title": "Senior Software Engineer (Backend)",
+    "company": "Stripe",
+    "location": "New York, NY",
+    "remote_type": "hybrid",
+    "ats": "greenhouse",
+    "url": "https://example.com/jobs/1",
+    "snippet": "Building payment infrastructure at scale. Java, Spring Boot, microservices, AWS, Kafka.",
+    "must_haves": ["Java", "Spring Boot", "AWS", "Microservices", "Kafka"]
+  },
+  {
+    "id": "job-2",
+    "title": "Full-Stack Software Engineer",
+    "company": "Shopify",
+    "location": "Remote",
+    "remote_type": "remote",
+    "ats": "lever",
+    "url": "https://example.com/jobs/2",
+    "snippet": "Build and maintain e-commerce platform features across frontend and backend. React, Node.js, Java, REST APIs, PostgreSQL.",
+    "must_haves": ["React", "Node.js", "Java", "PostgreSQL", "REST"]
+  },
+  {
+    "id": "job-3",
+    "title": "Platform Engineer",
+    "company": "Databricks",
+    "location": "San Francisco, CA",
+    "remote_type": "hybrid",
+    "ats": "workday",
+    "url": "https://example.com/jobs/3",
+    "snippet": "Design and operate cloud-native platform infrastructure. Kubernetes, Docker, Terraform, AWS, CI/CD.",
+    "must_haves": ["Kubernetes", "Docker", "Terraform", "AWS", "CI/CD"]
+  },
+  {
+    "id": "job-4",
+    "title": "Healthcare Software Engineer",
+    "company": "Cigna",
+    "location": "Bloomfield, CT",
+    "remote_type": "hybrid",
+    "ats": "taleo",
+    "url": "https://example.com/jobs/4",
+    "snippet": "Develop and maintain healthcare claims and benefits systems. Java, Spring Boot, HIPAA, PostgreSQL, microservices.",
+    "must_haves": ["Java", "Spring Boot", "HIPAA", "PostgreSQL", "microservices"]
+  },
+  {
+    "id": "job-5",
+    "title": "Software Engineer (Full-Stack)",
+    "company": "Linear",
+    "location": "Remote",
+    "remote_type": "remote",
+    "ats": "ashby",
+    "url": "https://example.com/jobs/5",
+    "snippet": "Startup building the next-gen project management tool. TypeScript, React, Node.js, GraphQL, PostgreSQL, AWS.",
+    "must_haves": ["TypeScript", "React", "Node.js", "GraphQL", "PostgreSQL"]
+  }
+]
