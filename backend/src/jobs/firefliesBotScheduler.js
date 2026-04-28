@@ -6,6 +6,30 @@ import { logger } from '../utils/logger.js';
 const TICK_INTERVAL_MS = 60_000;
 const TIMEZONE = 'America/New_York';
 
+// Match common video-conference URLs found in interview emails.
+// Order matters — more specific patterns first.
+const MEETING_LINK_PATTERNS = [
+  /https?:\/\/[a-z0-9.-]*zoom\.us\/[^\s<>"')]+/i,
+  /https?:\/\/meet\.google\.com\/[a-z0-9-]+/i,
+  /https?:\/\/teams\.microsoft\.com\/[^\s<>"')]+/i,
+  /https?:\/\/teams\.live\.com\/[^\s<>"')]+/i,
+  /https?:\/\/[a-z0-9.-]*webex\.com\/[^\s<>"')]+/i,
+  /https?:\/\/[a-z0-9.-]*whereby\.com\/[^\s<>"')]+/i,
+  /https?:\/\/[a-z0-9.-]*bluejeans\.com\/[^\s<>"')]+/i,
+  /https?:\/\/[a-z0-9.-]*gotomeeting\.com\/[^\s<>"')]+/i,
+];
+
+export function extractMeetingLink(body) {
+  if (!body || typeof body !== 'string') return null;
+  // Strip HTML entities that often wrap URLs in email bodies
+  const cleaned = body.replace(/&amp;/g, '&').replace(/&#x?\d+;/g, '');
+  for (const re of MEETING_LINK_PATTERNS) {
+    const m = cleaned.match(re);
+    if (m) return m[0].replace(/[.,);]+$/, '');
+  }
+  return null;
+}
+
 // interviewDateTime is stored as 'YYYY-MM-DDTHH:mm' in EST (America/New_York)
 function getMinutesUntil(task) {
   const raw = task.interviewDateTime;
@@ -19,9 +43,27 @@ async function processTask(collection, task) {
   const minutesUntil = getMinutesUntil(task);
   if (minutesUntil === null) return;
 
-  const { _id, meetingLink, meetingPassword, botStatus = 'pending', botInviteAttempts = 0 } = task;
+  let { _id, meetingLink, meetingPassword, botStatus = 'pending', botInviteAttempts = 0 } = task;
   const candidateName = task['Candidate Name'] || 'Candidate';
   const now = new Date();
+
+  // Auto-extract meeting link from email body if not already set.
+  if (!meetingLink && task.body) {
+    const extracted = extractMeetingLink(task.body);
+    if (extracted) {
+      meetingLink = extracted;
+      await collection.updateOne(
+        { _id },
+        { $set: { meetingLink: extracted, meetingLinkAutoExtractedAt: now } }
+      );
+      logger.info('Fireflies scheduler: auto-extracted meeting link from body', {
+        taskId: _id,
+        link: extracted,
+      });
+    }
+  }
+
+  if (!meetingLink) return; // nothing to do without a link
 
   // Stage A — Precheck invite (T-20 to T-5)
   if (botStatus === 'pending' && minutesUntil <= 20 && minutesUntil > 5) {
@@ -170,7 +212,11 @@ async function tick() {
 
     const candidates = await collection
       .find({
-        meetingLink: { $exists: true, $ne: null, $ne: '' },
+        // Either an already-saved meetingLink, OR a body we can scan for one
+        $or: [
+          { meetingLink: { $exists: true, $ne: null, $ne: '' } },
+          { body: { $exists: true, $ne: '' } },
+        ],
         botStatus: { $nin: ['main_joined', 'main_failed', 'completed'] },
         interviewDateTime: { $gte: cutoffStart, $lte: cutoffEnd },
       })

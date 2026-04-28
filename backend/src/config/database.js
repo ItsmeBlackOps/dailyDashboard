@@ -60,6 +60,11 @@ class Database {
     return this.getDatabase().collection(name);
   }
 
+  // Back-compat alias used widely across controllers, services, and jobs.
+  getDb() {
+    return this.getDatabase();
+  }
+
   async healthCheck() {
     try {
       await this.db.admin().ping();

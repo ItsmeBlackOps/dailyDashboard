@@ -3,8 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, User, MapPin, Briefcase, Mail, Phone, Calendar, ExternalLink,
   Clock, CheckCircle2, AlertCircle, Pause, TrendingDown, Star, HelpCircle,
-  ChevronDown, ChevronUp, Building2, Layers, Users,
+  ChevronDown, ChevronUp, Building2, Layers, Users, Sparkles, RefreshCw,
 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +27,16 @@ interface Candidate {
   updatedAt: string | null; resumeLink: string | null;
   statusHistory: { status: string; changedAt: string; changedBy: string }[];
   workflowStatus: string;
+}
+
+interface ForgeProfile {
+  titles?: string[];
+  keywords?: string[];
+  years_min?: number;
+  years_max?: number;
+  baseline_skills?: string[];
+  derivedFrom?: string;
+  derivedAt?: string | null;
 }
 
 interface Interview {
@@ -217,6 +228,10 @@ export default function CandidateDetailPage() {
   const [poPrefill, setPoPrefill] = useState<TaskSheetPrefill | null>(null);
   const [poSheetOpen, setPoSheetOpen] = useState(false);
   const [findJobsOpen, setFindJobsOpen] = useState(false);
+  const [forgeProfile, setForgeProfile] = useState<ForgeProfile | null>(null);
+  const [forgeLoading, setForgeLoading] = useState(false);
+  const [deriving, setDeriving] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!id) return;
@@ -231,6 +246,35 @@ export default function CandidateDetailPage() {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [id, authFetch]);
+
+  // Fetch cached forge profile
+  useEffect(() => {
+    if (!id) return;
+    setForgeLoading(true);
+    authFetch(`${API_URL}/api/candidates/${id}/forge-profile`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.success) setForgeProfile(json.forgeProfile || null);
+      })
+      .catch(() => { /* non-fatal */ })
+      .finally(() => setForgeLoading(false));
+  }, [id, authFetch]);
+
+  async function handleDeriveProfile() {
+    if (!id || deriving) return;
+    setDeriving(true);
+    try {
+      const r = await authFetch(`${API_URL}/api/candidates/${id}/derive-profile`, { method: 'POST' });
+      const json = await r.json();
+      if (!json.success) throw new Error(json.error || 'Derivation failed');
+      setForgeProfile(json.forgeProfile || null);
+      toast({ title: 'Search profile updated', description: 'Re-derived from current resume.' });
+    } catch (e: any) {
+      toast({ title: 'Derivation failed', description: e?.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setDeriving(false);
+    }
+  }
 
   // Build merged chronological timeline
   const timeline: TimelineEvent[] = [];
@@ -384,6 +428,89 @@ export default function CandidateDetailPage() {
                     </div>
                   )}
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* ── Search Profile (forgeProfile) ── */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  Search Profile
+                  <span className="text-xs font-normal text-muted-foreground ml-auto">
+                    {forgeProfile?.derivedAt
+                      ? `derived ${formatDate(forgeProfile.derivedAt)}`
+                      : 'not derived'}
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-5 pt-1">
+                {forgeLoading ? (
+                  <Skeleton className="h-16 w-full" />
+                ) : forgeProfile ? (
+                  <div className="space-y-3">
+                    {forgeProfile.titles?.length ? (
+                      <div>
+                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Titles</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {forgeProfile.titles.map((t) => (
+                            <Badge key={t} variant="secondary" className="text-[10px] font-normal">{t}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {forgeProfile.keywords?.length ? (
+                      <div>
+                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Keywords</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {forgeProfile.keywords.map((k) => (
+                            <Badge key={k} variant="outline" className="text-[10px] font-normal">{k}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Years of Experience</div>
+                        <div className="text-xs font-medium">
+                          {forgeProfile.years_min ?? '?'}–{forgeProfile.years_max ?? '?'} yrs
+                        </div>
+                      </div>
+                      {forgeProfile.baseline_skills?.length ? (
+                        <div>
+                          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Baseline Skills</div>
+                          <div className="text-xs font-medium">{forgeProfile.baseline_skills.length} tracked</div>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="pt-2 border-t flex justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs gap-1.5"
+                        onClick={handleDeriveProfile}
+                        disabled={deriving || !candidate?.resumeLink}
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${deriving ? 'animate-spin' : ''}`} />
+                        {deriving ? 'Re-deriving…' : 'Re-derive from Resume'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3 py-2">
+                    <p className="text-xs text-muted-foreground">No search profile yet.</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs gap-1.5"
+                      onClick={handleDeriveProfile}
+                      disabled={deriving || !candidate?.resumeLink}
+                    >
+                      <Sparkles className={`h-3.5 w-3.5 ${deriving ? 'animate-pulse' : ''}`} />
+                      {deriving ? 'Deriving…' : 'Derive Now'}
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
