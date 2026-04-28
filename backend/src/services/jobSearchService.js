@@ -4,6 +4,7 @@ import { config } from '../config/index.js';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import { resumeTailorService } from './resumeTailorService.js';
+import { resumeProfileService } from './resumeProfileService.js';
 
 // ── Collection name constants ──────────────────────────────────────────────
 const COL_CACHE = 'jobSearchCache';
@@ -116,7 +117,7 @@ class JobSearchService {
    * scraper service and persist the results.
    *
    * @param {object} filters
-   * @param {{ candidateId: string, resumeUrl: string }} ctx
+   * @param {{ candidateId: string, resumeUrl: string, forgeProfile?: object }} ctx
    */
   async getOrFetchListings(filters, ctx = {}) {
     await this._ensureIndexes();
@@ -130,7 +131,12 @@ class JobSearchService {
     }
 
     logger.debug('jobSearchService: cache miss, calling scraper', { hash });
-    const rawResults = await this.callScraper({ candidateId: ctx.candidateId, resumeUrl: ctx.resumeUrl, filters });
+    const rawResults = await this.callScraper({
+      candidateId: ctx.candidateId,
+      resumeUrl: ctx.resumeUrl,
+      filters,
+      forgeProfile: ctx.forgeProfile,
+    });
     const results = this._filterToUS(rawResults);
     logger.debug('jobSearchService: US filter applied', { before: rawResults.length, after: results.length });
 
@@ -158,7 +164,7 @@ class JobSearchService {
   /**
    * POST to the scraper service and return a normalised job array.
    */
-  async callScraper({ candidateId, resumeUrl, filters }) {
+  async callScraper({ candidateId, resumeUrl, filters, forgeProfile }) {
     const url = config.scraperService.url + '/find-jobs';
 
     const body = {
@@ -171,6 +177,11 @@ class JobSearchService {
       location: filters.location || null,
       remote: filters.remote || 'remote',
       first_run: filters.firstRun || false,
+      // Pre-derived from resume — bypasses the scraper's internal LLM derivation:
+      ...(forgeProfile?.titles?.length   && { override_titles:   forgeProfile.titles }),
+      ...(forgeProfile?.keywords?.length && { override_keywords: forgeProfile.keywords }),
+      ...(forgeProfile?.years_min != null && { years_min: forgeProfile.years_min }),
+      ...(forgeProfile?.years_max != null && { years_max: forgeProfile.years_max }),
     };
 
     let response;
@@ -281,9 +292,28 @@ class JobSearchService {
         throw new Error('candidate has no resumeLink');
       }
 
+      // Ensure forgeProfile is populated; derive if missing or stale
+      let forgeProfile = candidateDoc.forgeProfile;
+      if (!forgeProfile || forgeProfile.derivedFrom !== candidateDoc.resumeLink) {
+        try {
+          forgeProfile = await resumeProfileService.deriveAndStore({
+            candidateId: session.candidateId,
+            resumeUrl: candidateDoc.resumeLink,
+            force: false,
+          });
+        } catch (profileErr) {
+          logger.warn('jobSearchService: forgeProfile derivation failed, continuing without it', {
+            sessionId,
+            error: profileErr.message,
+          });
+          forgeProfile = null;
+        }
+      }
+
       const results = await this.getOrFetchListings(session.filters, {
         candidateId: session.candidateId,
         resumeUrl: candidateDoc.resumeLink,
+        forgeProfile,
       });
 
       await db.collection(COL_SESSIONS).updateOne(

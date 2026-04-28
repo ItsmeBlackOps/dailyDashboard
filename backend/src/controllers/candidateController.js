@@ -1,5 +1,5 @@
 import { storageService } from '../services/storageService.js';
-import { candidateProfileService } from '../services/candidateProfileService.js';
+import { resumeProfileService } from '../services/resumeProfileService.js';
 import { candidateModel } from '../models/Candidate.js';
 import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
@@ -96,25 +96,20 @@ class CandidateController {
         uploadedBy: user.email
       });
 
-      // Fire-and-forget: extract candidate profile asynchronously after upload
-      if (result.resumeLink && candidateProfileService.enabled) {
+      // Fire-and-forget: derive search profile asynchronously after upload
+      if (result.resumeLink && resumeProfileService.enabled) {
         const db = database.db;
         const candidateCollection = db?.collection('candidateDetails');
         setImmediate(() => {
           candidateCollection?.findOne({ email: { $regex: `^${user.email}$`, $options: 'i' } })
             .then(candidateDoc => {
-              const doc = candidateDoc || { _id: null, email: user.email };
-              return candidateProfileService.extractFromResume({ resumeUrl: result.resumeLink, candidateDoc: doc });
+              if (!candidateDoc?._id) return null;
+              return resumeProfileService.deriveAndStore({
+                candidateId: candidateDoc._id.toString(),
+                resumeUrl: result.resumeLink,
+              });
             })
-            .then(({ profile }) => {
-              const candidateId = profile.candidateId;
-              return db.collection('candidateProfiles').replaceOne(
-                { candidateId },
-                profile,
-                { upsert: true }
-              );
-            })
-            .catch(err => logger.error('Background profile extraction failed', {
+            .catch(err => logger.warn('resumeProfileService failed (non-blocking)', {
               uploaderEmail: user.email,
               resumeLink: result.resumeLink,
               err: err.message,
@@ -960,6 +955,45 @@ class CandidateController {
     } catch (error) {
       logger.error('addEndClient failed', { error: error.message });
       return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+  // ── Admin: manually re-derive search profile ──────────────────────────────
+
+  async deriveProfile(req, res) {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      const normalizedRole = (user.role || '').trim().toLowerCase();
+      if (!['admin', 'mm', 'mam', 'mlead', 'manager', 'recruiter'].includes(normalizedRole)) {
+        return res.status(403).json({ success: false, error: 'Insufficient permissions' });
+      }
+
+      const { id } = req.params;
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, error: 'Invalid candidate ID' });
+      }
+
+      const db = database.getDb();
+      const candidateDoc = await db.collection('candidateDetails').findOne({ _id: new ObjectId(id) });
+      if (!candidateDoc) {
+        return res.status(404).json({ success: false, error: 'Candidate not found' });
+      }
+      if (!candidateDoc.resumeLink) {
+        return res.status(422).json({ success: false, error: 'Candidate has no resumeLink' });
+      }
+
+      const forgeProfile = await resumeProfileService.deriveAndStore({
+        candidateId: id,
+        resumeUrl: candidateDoc.resumeLink,
+        force: true,
+      });
+
+      return res.status(200).json({ success: true, forgeProfile });
+    } catch (error) {
+      logger.error('deriveProfile failed', { error: error.message, candidateId: req.params?.id });
+      return res.status(500).json({ success: false, error: error.message });
     }
   }
 }

@@ -70,6 +70,14 @@ jest.unstable_mockModule('../resumeTailorService.js', () => ({
   },
 }));
 
+jest.unstable_mockModule('../resumeProfileService.js', () => ({
+  resumeProfileService: {
+    enabled: false,
+    deriveAndStore: jest.fn().mockResolvedValue(null),
+    getCached: jest.fn().mockResolvedValue(null),
+  },
+}));
+
 // ── Import module under test (after mocks) ────────────────────────────────────
 
 const { jobSearchService } = await import('../jobSearchService.js');

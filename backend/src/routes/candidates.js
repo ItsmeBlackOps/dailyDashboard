@@ -48,6 +48,7 @@ router.get('/hub-aging',     (req, res) => candidateController.getHubAging(req, 
 router.get('/hub-workload',  (req, res) => candidateController.getHubWorkload(req, res));
 router.get('/distinct-clients', (req, res) => candidateController.getDistinctClients(req, res));
 router.post('/end-clients', (req, res) => candidateController.addEndClient(req, res));
+router.post('/:id/derive-profile', (req, res) => candidateController.deriveProfile(req, res));
 router.get('/:id',            (req, res) => candidateController.getCandidateById(req, res));
 
 export default router;

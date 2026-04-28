@@ -22,6 +22,11 @@ class FindJobsRequest(BaseModel):
     years_min: float | None = None
     years_max: float | None = None
     first_run: bool = False
+    # Dashboard-derived profile overrides (set by resumeProfileService.js).
+    # When provided, these bypass the scraper's internal LLM-based title/keyword
+    # derivation and are forwarded as env vars to scrape_with_resume.py.
+    override_titles: list[str] | None = None
+    override_keywords: list[str] | None = None
 
 @app.post("/find-jobs")
 async def find_jobs(req: FindJobsRequest):
@@ -59,6 +64,13 @@ async def find_jobs(req: FindJobsRequest):
     # across multiple titles — no extra loop needed here.
     if req.multi_title:
         env["RESUME_SCRAPE_MULTI_TITLE"] = "1"
+    # Dashboard-derived profile overrides from resumeProfileService.js.
+    # These env vars let the scraper script skip its own LLM derivation step
+    # when titles/keywords have already been computed from the candidate's resume.
+    if req.override_titles:
+        env["RESUME_SCRAPE_OVERRIDE_TITLES"] = ",".join(req.override_titles)
+    if req.override_keywords:
+        env["RESUME_SCRAPE_OVERRIDE_KEYWORDS"] = ",".join(req.override_keywords)
 
     # ── Canonical Apify actor filter defaults (per product spec) ──
     # These env vars are picked up inside scrape_with_resume.py and forwarded
