@@ -1,0 +1,145 @@
+export function render(resume) {
+  const { name, title, contact, summary, skills, experience, education, projects, certifications } = resume;
+
+  const contactParts = [
+    contact.phone,
+    contact.email,
+    contact.location,
+    contact.linkedin ? `<a href="${contact.linkedin}">${contact.linkedin}</a>` : '',
+    contact.github ? `<a href="${contact.github}">${contact.github}</a>` : '',
+    contact.website ? `<a href="${contact.website}">${contact.website}</a>` : '',
+  ].filter(Boolean).join(' | ');
+
+  const skillsHtml = Object.entries(skills).map(([cat, list]) =>
+    `<p><strong>${cat}:</strong> ${list.join(', ')}</p>`
+  ).join('\n');
+
+  const expHtml = experience.map(e => `
+    <article>
+      <h3>${e.company} - ${e.role}</h3>
+      <p class="meta">${e.location} | ${e.startDate} to ${e.endDate}</p>
+      <ul>${e.bullets.map(b => `<li>${b}</li>`).join('\n')}</ul>
+    </article>`
+  ).join('\n');
+
+  const eduHtml = education.map(e => `
+    <article>
+      <h3>${e.school}</h3>
+      <p class="meta">${e.degree}, ${e.location}</p>
+      <p class="meta">Dates: ${e.startDate} to ${e.endDate}</p>
+    </article>`
+  ).join('\n');
+
+  // Academic CV: projects rendered as publications/research work
+  const projHtml = projects && projects.length ? `
+    <section>
+      <h2>Projects</h2>
+      ${projects.map((p, i) => `
+        <article>
+          <p class="pub-entry">
+            <strong>[${i + 1}]</strong> <strong>${p.name}</strong>.
+            Technologies: ${p.technologies.join(', ')}.
+          </p>
+          <ul>${p.bullets.map(b => `<li>${b}</li>`).join('\n')}</ul>
+        </article>`).join('\n')}
+    </section>` : '';
+
+  const certHtml = certifications && certifications.length ? `
+    <section>
+      <h2>Certifications</h2>
+      ${certifications.map(c => `<p>${c}</p>`).join('\n')}
+    </section>` : '';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>${name} - Curriculum Vitae</title>
+<style>
+  @page { size: Letter; margin: 0.6in 0.75in; }
+  html, body {
+    background: #fff;
+    color: #111;
+    font-family: "Times New Roman", Times, serif;
+    font-size: 11pt;
+    line-height: 1.5;
+  }
+  body { max-width: 7.0in; margin: 0 auto; }
+  header {
+    text-align: center;
+    margin-bottom: 14pt;
+    padding-bottom: 10pt;
+    border-bottom: 1px solid #555;
+  }
+  h1 {
+    font-size: 18pt;
+    margin: 0 0 4pt;
+    font-family: Georgia, "Times New Roman", serif;
+    font-style: normal;
+  }
+  .tagline { font-size: 11pt; color: #444; margin: 0 0 6pt; font-style: italic; }
+  .meta-contact { font-size: 9.5pt; color: #555; margin: 0; }
+  h2 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 13pt;
+    font-style: italic;
+    border-bottom: 1px solid #777;
+    margin: 18pt 0 7pt;
+    padding-bottom: 3pt;
+    font-weight: normal;
+  }
+  h3 {
+    font-size: 11pt;
+    margin: 10pt 0 2pt;
+    font-weight: bold;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  p, li { margin: 0 0 4pt; }
+  ul { margin: 3pt 0 8pt 22pt; padding: 0; list-style: disc; }
+  .meta { color: #555; font-size: 10pt; font-style: italic; }
+  .pub-entry { margin: 0 0 3pt; }
+  a { color: #1a4fa6; text-decoration: none; }
+  section { margin-bottom: 4pt; }
+  article { margin-bottom: 8pt; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>${name}</h1>
+    <p class="tagline">${title}</p>
+    <p class="meta-contact">${contactParts}</p>
+  </header>
+
+  <section>
+    <h2>Summary</h2>
+    <p>${summary}</p>
+  </section>
+
+  <section>
+    <h2>Education</h2>
+    ${eduHtml}
+  </section>
+
+  <section>
+    <h2>Experience</h2>
+    ${expHtml}
+  </section>
+
+  ${projHtml}
+
+  <section>
+    <h2>Skills</h2>
+    ${skillsHtml}
+  </section>
+
+  ${certHtml}
+</body>
+</html>`;
+}
+
+export const meta = {
+  id: '20-research-academic',
+  label: 'Research Academic',
+  vibe: 'academic CV style, publications-format projects, longer-form',
+  density: 'airy',
+};
