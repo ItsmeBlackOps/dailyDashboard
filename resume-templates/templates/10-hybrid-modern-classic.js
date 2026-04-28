@@ -8,7 +8,7 @@ export function render(resume) {
     contact.linkedin ? `<a href="${contact.linkedin}">${contact.linkedin}</a>` : '',
     contact.github ? `<a href="${contact.github}">${contact.github}</a>` : '',
     contact.website ? `<a href="${contact.website}">${contact.website}</a>` : '',
-  ].filter(Boolean).join(' &middot; ');
+  ].filter(Boolean).join(' | ');
 
   const skillsHtml = Object.entries(skills).map(([cat, list]) =>
     `<p><strong>${cat}:</strong> ${list.join(', ')}</p>`
@@ -17,7 +17,7 @@ export function render(resume) {
   const expHtml = experience.map(e => `
     <article>
       <h3>${e.company} - ${e.role}</h3>
-      <p class="meta">${e.location} &middot; ${e.startDate} - ${e.endDate}</p>
+      <p class="meta">${e.location} | ${e.startDate} - ${e.endDate}</p>
       <ul>${e.bullets.map(b => `<li>${b}</li>`).join('\n')}</ul>
     </article>`
   ).join('\n');
@@ -25,7 +25,7 @@ export function render(resume) {
   const eduHtml = education.map(e => `
     <article>
       <h3>${e.school} - ${e.degree}</h3>
-      <p class="meta">${e.location} &middot; ${e.startDate} - ${e.endDate}</p>
+      <p class="meta">${e.location} | ${e.startDate} - ${e.endDate}</p>
     </article>`
   ).join('\n');
 
@@ -43,7 +43,7 @@ export function render(resume) {
   const certHtml = certifications && certifications.length ? `
     <section>
       <h2>Certifications</h2>
-      <p>${certifications.join(' &middot; ')}</p>
+      <p>${certifications.join(' | ')}</p>
     </section>` : '';
 
   return `<!DOCTYPE html>
@@ -59,29 +59,28 @@ export function render(resume) {
     /* Body text in Georgia (serif) for classic feel */
     font-family: Georgia, "Times New Roman", serif;
     font-size: 10.5pt;
-    line-height: 1.42;
+    line-height: 1.3;
   }
   body { max-width: 7.3in; margin: 0 auto; }
 
   /* Name and header in Helvetica/sans for modern feel */
   header {
     border-bottom: 2px solid #222;
-    padding-bottom: 8pt;
-    margin-bottom: 12pt;
+    padding-bottom: 6pt;
+    margin-bottom: 8pt;
   }
   h1 {
     font-family: Helvetica, Arial, sans-serif;
-    font-size: 18pt;
+    font-size: 17pt;
     font-weight: 700;
-    margin: 0 0 2pt;
-    letter-spacing: 0.5pt;
+    margin: 0 0 1pt;
     color: #111;
   }
   .tagline {
     font-family: Helvetica, Arial, sans-serif;
     font-size: 10pt;
     color: #555;
-    margin: 0 0 4pt;
+    margin: 0 0 2pt;
     font-weight: 400;
   }
   .meta-contact {
@@ -94,14 +93,13 @@ export function render(resume) {
   /* Section headings: Helvetica small-caps style, overline accent */
   h2 {
     font-family: Helvetica, Arial, sans-serif;
-    font-size: 11pt;
+    font-size: 10.5pt;
     font-weight: 700;
     font-variant: small-caps;
-    letter-spacing: 1.5pt;
     border-top: 1px solid #bbb;
     border-bottom: 1px solid #bbb;
     padding: 2pt 0;
-    margin: 14pt 0 6pt;
+    margin: 10pt 0 5pt;
     color: #222;
   }
 
@@ -109,13 +107,13 @@ export function render(resume) {
   h3 {
     font-family: Helvetica, Arial, sans-serif;
     font-size: 10.5pt;
-    margin: 8pt 0 1pt;
+    margin: 5pt 0 1pt;
     font-weight: 700;
   }
 
   /* Body text (bullets, paragraphs) inherits Georgia */
-  p, li { margin: 0 0 3pt; }
-  ul { margin: 2pt 0 6pt 18pt; padding: 0; list-style: disc; }
+  p, li { margin: 0 0 2pt; }
+  ul { margin: 1pt 0 4pt 18pt; padding: 0; list-style: disc; }
   .meta {
     font-family: Helvetica, Arial, sans-serif;
     color: #666;

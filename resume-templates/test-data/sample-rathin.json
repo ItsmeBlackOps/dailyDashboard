@@ -7,17 +7,15 @@
     "linkedin": "linkedin.com/in/rathin-pothani-a26161318",
     "location": "Little Rock, AR"
   },
-  "summary": "Full-stack Software Engineer with 7+ years of experience delivering end-to-end solutions using Java, Spring Boot, Hibernate, JPA, and modern frontend frameworks (React, Angular, Vue.js). Proven track record optimizing application performance through database indexing, CI/CD pipelines (Jenkins, GitHub Actions, Docker), and cloud deployments on AWS, Azure, and GCP. Skilled in building scalable data solutions with MySQL, PostgreSQL, MongoDB, and Cassandra, with rigorous testing via JUnit, Mockito, and Cypress. Collaborative Agile practitioner who mentors junior developers and leads code reviews to drive reliability and code quality.",
+  "summary": "Full-stack Software Engineer with 7+ years of experience. Skilled in Java, Spring Boot, React, AWS, Docker, and Kubernetes. Built scalable microservices, CI/CD pipelines, and cloud-native healthcare and fintech systems. Agile practitioner with a strong record of measurable impact.",
   "skills": {
-    "Languages": ["Java", "Python", "C++", "SQL", "Bash/Shell Scripting", "JavaScript (ES6+)", "TypeScript"],
-    "Frameworks": ["Spring Boot", "Spring MVC", "Hibernate ORM", "Node.js", "Express.js", "Django", "Flask", "React.js", "Angular (2+)", "Vue.js", "HTML5", "CSS3", "SCSS", "Bootstrap"],
-    "DevOps & CI/CD": ["Docker", "Kubernetes", "Jenkins", "GitHub Actions", "AWS CodePipeline", "Terraform", "Ansible"],
-    "Cloud": ["AWS (EC2, S3, Lambda, RDS, DynamoDB, API Gateway, CloudWatch)", "Google Cloud Platform (GCP)", "Azure"],
+    "Languages": ["Java", "Python", "JavaScript", "TypeScript", "SQL"],
+    "Frameworks": ["Spring Boot", "React.js", "Angular", "Node.js", "Hibernate ORM"],
+    "DevOps": ["Docker", "Kubernetes", "Jenkins", "GitHub Actions", "Terraform"],
+    "Cloud": ["AWS (EC2, S3, Lambda, RDS, API Gateway)", "GCP", "Azure"],
     "Databases": ["MySQL", "PostgreSQL", "MongoDB", "DynamoDB", "Redis"],
-    "Testing": ["JUnit", "Mockito", "Selenium", "Cypress", "Jest", "PyTest"],
-    "Version Control": ["Git", "GitHub", "GitLab", "Bitbucket"],
-    "API Development": ["RESTful APIs", "GraphQL", "gRPC", "API Gateway"],
-    "Agile & Tools": ["Agile (Scrum, Kanban)", "JIRA", "Confluence", "Trello"]
+    "Testing": ["JUnit", "Mockito", "Jest", "Cypress"],
+    "Tools": ["Git", "JIRA", "GraphQL", "Kafka", "REST APIs"]
   },
   "experience": [
     {
@@ -27,13 +25,11 @@
       "startDate": "Jul 2024",
       "endDate": "Current",
       "bullets": [
-        "Engineered 50+ T-SQL queries for database performance tuning, indexing, and query optimization for large-scale databases with over 1 million records.",
-        "Built microservices and RESTful APIs using Spring Boot and Java, improving scalability and backend performance for large-scale healthcare applications.",
-        "Integrated Spring Security to enforce role-based access control (RBAC) and token-based authentication, securing sensitive healthcare endpoints and ensuring HIPAA compliance across services.",
-        "Developed custom authentication providers and JWT-based login flows, improving login speed and enabling stateless session management across microservices.",
-        "Implemented CI/CD pipelines using Jenkins, Terraform, Docker, and Kubernetes, reducing deployment times by 40%.",
-        "Leveraged AWS (Lambda, EC2, API Gateway, CloudFormation, Fargate) for cloud-native deployments, ensuring high system availability and performance.",
-        "Assembled Kubernetes orchestration to improve reliability and scalability of containerized applications, while monitoring using Prometheus and CloudWatch."
+        "Engineered 50+ T-SQL queries for performance tuning across databases with 1M+ records.",
+        "Built microservices and RESTful APIs with Spring Boot, improving scalability for large-scale healthcare apps.",
+        "Implemented CI/CD pipelines using Jenkins, Terraform, Docker, and Kubernetes, cutting deployment time by 40%.",
+        "Leveraged AWS (Lambda, EC2, API Gateway) for cloud-native deployments with high availability.",
+        "Integrated Spring Security for RBAC and JWT-based authentication, ensuring HIPAA compliance."
       ]
     },
     {
@@ -43,25 +39,10 @@
       "startDate": "Jan 2024",
       "endDate": "May 2024",
       "bullets": [
-        "Mentored over 100 master's students on Java, AJAX, JSON, jQuery, and Spring Boot MVC, guiding them through web development concepts and tools.",
-        "Conducted online classes, hands-on labs, and project reviews, helping students build web applications using Spring Boot MVC and RESTful APIs.",
-        "Supported course delivery and provided technical support during labs, resolving issues related to AJAX, JSON, and Hibernate for seamless development.",
-        "Evaluated student projects, offering feedback on code quality, design, and the use of Spring Boot and Hibernate for backend optimization.",
-        "Collaborated with the professor to create assignments that integrated Spring Boot, AJAX, and JSON for data-driven web applications."
-      ]
-    },
-    {
-      "company": "Molina Healthcare",
-      "role": "Software Engineer",
-      "location": "USA",
-      "startDate": "May 2023",
-      "endDate": "Jul 2023",
-      "bullets": [
-        "Formulated 20+ scalable RESTful APIs using Java 8, AWS, MVC, and DynamoDB to facilitate data processing between microservices, reducing latency by 50ms and enhancing data consistency across systems.",
-        "Engineered responsive web applications using Angular, constructing modular components and connecting them with backend APIs, ensuring smooth data flow and elevating the overall user experience.",
-        "Formulated 100+ unit tests and integration tests using JUnit and Mockito for bug detection and critical error handling, ensuring comprehensive test coverage in projects with 5000+ lines of code.",
-        "Implemented a CI/CD pipeline using AWS CDK, Git, and CloudFormation for automating builds and deployments, ensuring production-readiness of the code.",
-        "Orchestrated containerized services using Docker and Kubernetes, improving scalability and reliability of microservices."
+        "Mentored 100+ master's students on Java, Spring Boot, AJAX, and RESTful APIs.",
+        "Conducted hands-on labs and code reviews, guiding students through full-stack web development.",
+        "Evaluated student projects, providing feedback on Spring Boot, Hibernate, and backend design.",
+        "Created assignments integrating Spring Boot, AJAX, and JSON for data-driven web apps."
       ]
     },
     {
@@ -71,13 +52,10 @@
       "startDate": "Feb 2020",
       "endDate": "Jul 2022",
       "bullets": [
-        "Deployed an internal audit automation platform using Java and Spring Boot, reducing manual data entry time for audit teams by an average of 80 hours/month, while integrating MySQL for secure storage of over 3 years of historical data.",
-        "Automated 4 ETL pipelines for finance reporting, cutting month-end report processing time from 3 days to under 5 hours, enabling near real-time insights for decision-makers.",
-        "Collaborated with UI developers to deliver a real-time Angular dashboard for tracking team utilization and project margins, used daily by 500+ consultants across departments.",
-        "Migrated 6 internal databases to AWS RDS within 6 months, improving data access times and reducing server maintenance hours by 40+ hours per month.",
-        "Refactored and optimized 40+ complex SQL queries, reducing report generation time from 2-3 minutes to under 15 seconds, enabling faster access to regulatory and tax audit data.",
-        "Supported role-based access control (RBAC) deployment for KPMG's enterprise data lake, managing access across 12 departments, and aligning with SOX/GDPR compliance guidelines.",
-        "Devised integration services to connect HRMS and CRM systems via internal APIs, automating 10+ manual employee workflows, and reducing HR operational delays by 2-3 days per cycle."
+        "Built internal audit automation with Java and Spring Boot, saving 80 hours/month of manual effort.",
+        "Automated 4 ETL pipelines cutting month-end reporting from 3 days to under 5 hours.",
+        "Delivered Angular dashboard used daily by 500+ consultants for project tracking.",
+        "Optimized 40+ SQL queries, reducing report generation from 2-3 minutes to under 15 seconds."
       ]
     },
     {
@@ -87,11 +65,10 @@
       "startDate": "Dec 2018",
       "endDate": "Jan 2020",
       "bullets": [
-        "Developed a responsive React.js banking portal from scratch, adding account management features and secure transaction filters, which led to a 30% increase in customer self-service logins within 6 months.",
-        "Built 12 RESTful APIs for real-time banking operations using Node.js and MongoDB, achieving sub-200ms response times under peak load (~1,200 daily transactions) and ensuring uptime.",
-        "Migrated over 50,000 customer records from legacy AS/400 systems to a modern MongoDB cluster in 3 months, significantly reducing reconciliation errors and meeting GDPR data audit requirements.",
-        "Executed a unit testing strategy for the payments module using Jest, increasing test coverage to 85%, and catching critical bugs 3-4 days earlier in QA cycles.",
-        "Delivered 8 compliance features in collaboration with the risk and finance teams (SOX thresholds, daily transaction caps) in 4 Agile sprints, which passed regulatory audit reviews with zero major findings."
+        "Built a React.js banking portal driving 30% increase in customer self-service logins in 6 months.",
+        "Developed 12 RESTful APIs with Node.js and MongoDB achieving sub-200ms response times.",
+        "Migrated 50,000+ customer records from legacy AS/400 systems to MongoDB, meeting GDPR audit requirements.",
+        "Increased payments module test coverage to 85% using Jest, catching bugs 3-4 days earlier in QA."
       ]
     }
   ],
@@ -114,17 +91,17 @@
   "projects": [
     {
       "name": "Healthcare Claims Management System",
-      "technologies": ["Spring Boot", "Hibernate ORM", "PostgreSQL", "AWS Lambda", "AWS S3", "AWS EC2", "React.js", "Jenkins"],
+      "technologies": ["Spring Boot", "AWS Lambda", "PostgreSQL", "React.js", "Jenkins"],
       "bullets": [
-        "Built a microservices-based claims management system with Spring Boot, AWS Lambda, and React.js, automating 10,000+ daily claims and reducing manual effort by 4 hours daily."
+        "Automated 10,000+ daily claims using microservices with Spring Boot and AWS Lambda, saving 4 hours daily."
       ]
     },
     {
-      "name": "E-commerce Inventory Management System",
-      "technologies": ["React.js", "Node.js", "MongoDB", "RESTful APIs", "Bootstrap", "Docker"],
+      "name": "E-commerce Inventory Management",
+      "technologies": ["React.js", "Node.js", "MongoDB", "REST APIs", "Docker"],
       "bullets": [
-        "Created a RESTful API for inventory management with Node.js and MongoDB, processing 1,000+ daily transactions and automating stock updates in real time.",
-        "Designed a responsive interface using React.js and Bootstrap, enhancing customer satisfaction with faster navigation and reducing downtime during stock migrations."
+        "Built REST API for inventory management with Node.js and MongoDB, handling 1,000+ daily transactions.",
+        "Designed responsive UI with React.js, improving navigation speed and reducing downtime during migrations."
       ]
     }
   ],

@@ -20,7 +20,7 @@ export function render(resume) {
     contact.linkedin ? `<a href="${contact.linkedin}">${contact.linkedin}</a>` : '',
     contact.github ? `<a href="${contact.github}">${contact.github}</a>` : '',
     contact.website ? `<a href="${contact.website}">${contact.website}</a>` : '',
-  ].filter(Boolean).join(' &middot; ');
+  ].filter(Boolean).join(' | ');
 
   const skillsHtml = Object.entries(skills).map(([cat, list]) =>
     `<p><strong>${cat}:</strong> ${list.join(', ')}</p>`
@@ -66,31 +66,31 @@ export function render(resume) {
 <meta charset="UTF-8">
 <title>${name} - Curriculum Vitae</title>
 <style>
-  @page { size: Letter; margin: 0.6in 0.7in; }
+  @page { size: Letter; margin: 0.5in 0.6in; }
   html, body {
     background: #fff;
     color: #111;
     font-family: Georgia, "Times New Roman", serif;
-    font-size: 11pt;
-    line-height: 1.5;
+    font-size: 10.5pt;
+    line-height: 1.3;
   }
-  body { max-width: 7.1in; margin: 0 auto; }
-  header { text-align: center; margin-bottom: 16pt; }
-  h1 { font-size: 18pt; font-weight: bold; margin: 0 0 3pt; }
-  .tagline { font-size: 11pt; color: #444; margin: 0 0 4pt; font-style: italic; }
-  .meta-contact { font-size: 10pt; color: #555; margin: 0; }
+  body { max-width: 7.3in; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 10pt; }
+  h1 { font-size: 17pt; font-weight: bold; margin: 0 0 2pt; }
+  .tagline { font-size: 10pt; color: #444; margin: 0 0 3pt; font-style: italic; }
+  .meta-contact { font-size: 9.5pt; color: #555; margin: 0; }
   h2 {
-    font-size: 11pt;
+    font-size: 10.5pt;
     font-weight: bold;
     border-bottom: 1px solid #555;
-    padding-bottom: 3pt;
-    margin: 16pt 0 8pt;
+    padding-bottom: 2pt;
+    margin: 10pt 0 5pt;
     font-style: normal;
   }
-  h3 { font-size: 11pt; margin: 10pt 0 1pt; font-weight: bold; font-style: italic; }
-  .company { font-size: 10.5pt; color: #333; margin: 0 0 1pt; }
-  p, li { margin: 0 0 4pt; }
-  ul { margin: 4pt 0 8pt 20pt; padding: 0; list-style: disc; }
+  h3 { font-size: 10.5pt; margin: 6pt 0 1pt; font-weight: bold; font-style: italic; }
+  .company { font-size: 10pt; color: #333; margin: 0 0 1pt; }
+  p, li { margin: 0 0 2pt; }
+  ul { margin: 2pt 0 4pt 20pt; padding: 0; list-style: disc; }
   .meta { color: #666; font-size: 10pt; font-style: italic; }
   a { color: #1a4fa6; text-decoration: none; }
   section { margin-bottom: 4pt; }

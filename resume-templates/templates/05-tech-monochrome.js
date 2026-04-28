@@ -63,30 +63,28 @@ export function render(resume) {
   body { max-width: 7.3in; margin: 0 auto; }
   header {
     border: 2px solid #111;
-    padding: 8pt 10pt;
-    margin-bottom: 10pt;
+    padding: 6pt 8pt;
+    margin-bottom: 8pt;
   }
   h1 {
-    font-size: 18pt;
+    font-size: 16pt;
     font-weight: bold;
-    margin: 0 0 2pt;
-    letter-spacing: 3pt;
+    margin: 0 0 1pt;
     text-transform: uppercase;
   }
-  .tagline { font-size: 9pt; color: #555; margin: 0 0 3pt; text-transform: uppercase; letter-spacing: 1.5pt; }
+  .tagline { font-size: 9pt; color: #555; margin: 0 0 2pt; text-transform: uppercase; }
   .meta-contact { font-size: 9pt; color: #444; margin: 0; }
   h2 {
     font-size: 10pt;
     font-weight: bold;
     text-transform: uppercase;
-    letter-spacing: 2pt;
-    margin: 12pt 0 4pt;
+    margin: 9pt 0 3pt;
     border-bottom: 1px dashed #555;
     padding-bottom: 2pt;
   }
-  h3 { font-size: 10pt; margin: 7pt 0 1pt; font-weight: bold; }
+  h3 { font-size: 10pt; margin: 5pt 0 1pt; font-weight: bold; }
   p, li { margin: 0 0 2pt; font-size: 10pt; }
-  ul { margin: 2pt 0 5pt 18pt; padding: 0; list-style: disc; }
+  ul { margin: 1pt 0 3pt 18pt; padding: 0; list-style: disc; }
   .meta { color: #666; font-size: 9pt; text-transform: uppercase; letter-spacing: 0.5pt; }
   a { color: #1a4fa6; text-decoration: none; }
   section { margin-bottom: 2pt; }

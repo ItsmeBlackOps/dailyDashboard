@@ -58,24 +58,24 @@ export function render(resume) {
     color: #111;
     font-family: Arial, Helvetica, sans-serif;
     font-size: 10.5pt;
-    line-height: 1.35;
+    line-height: 1.3;
   }
   body { max-width: 7.3in; margin: 0 auto; }
-  header { margin-bottom: 10pt; }
-  h1 { font-size: 18pt; margin: 0 0 2pt; font-weight: bold; }
-  .tagline { font-size: 10pt; color: #444; margin: 0 0 4pt; }
+  header { margin-bottom: 8pt; }
+  h1 { font-size: 17pt; margin: 0 0 2pt; font-weight: bold; }
+  .tagline { font-size: 10pt; color: #444; margin: 0 0 3pt; }
   .meta-contact { font-size: 9.5pt; color: #555; margin: 0; }
   h2 {
-    font-size: 11pt;
+    font-size: 10.5pt;
     font-weight: bold;
     border-bottom: 1.5px solid #333;
     padding-bottom: 2pt;
-    margin: 12pt 0 5pt;
+    margin: 10pt 0 4pt;
     text-transform: none;
   }
-  h3 { font-size: 10.5pt; margin: 7pt 0 2pt; font-weight: bold; }
-  p, li { margin: 0 0 3pt; }
-  ul { margin: 2pt 0 5pt 18pt; padding: 0; list-style: disc; }
+  h3 { font-size: 10.5pt; margin: 6pt 0 1pt; font-weight: bold; }
+  p, li { margin: 0 0 2pt; }
+  ul { margin: 1pt 0 4pt 18pt; padding: 0; list-style: disc; }
   .meta { color: #555; font-size: 9.5pt; }
   a { color: #1a4fa6; text-decoration: none; }
   section { margin-bottom: 2pt; }

@@ -58,36 +58,34 @@ export function render(resume) {
     color: #111;
     font-family: Arial, Helvetica, sans-serif;
     font-size: 10.5pt;
-    line-height: 1.4;
+    line-height: 1.3;
   }
   body { max-width: 7.3in; margin: 0 auto; }
   header {
-    margin-bottom: 8pt;
-    padding-bottom: 6pt;
+    margin-bottom: 6pt;
+    padding-bottom: 4pt;
     border-bottom: 3px solid #e63c2f;
   }
   h1 {
-    font-size: 18pt;
-    margin: 0 0 2pt;
+    font-size: 16pt;
+    margin: 0 0 1pt;
     font-weight: 900;
     text-transform: uppercase;
-    letter-spacing: 1pt;
   }
-  .tagline { font-size: 10pt; color: #e63c2f; margin: 0 0 4pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5pt; }
+  .tagline { font-size: 10pt; color: #e63c2f; margin: 0 0 2pt; font-weight: 700; text-transform: uppercase; }
   .meta-contact { font-size: 9pt; color: #555; margin: 0; }
   h2 {
     font-size: 10pt;
     text-transform: uppercase;
-    letter-spacing: 2pt;
     color: #e63c2f;
     border-bottom: 1px solid #e63c2f;
-    margin: 12pt 0 5pt;
+    margin: 9pt 0 4pt;
     padding-bottom: 2pt;
     font-weight: 700;
   }
-  h3 { font-size: 10.5pt; margin: 7pt 0 2pt; font-weight: bold; }
-  p, li { margin: 0 0 3pt; }
-  ul { margin: 2pt 0 6pt 18pt; padding: 0; list-style: disc; }
+  h3 { font-size: 10.5pt; margin: 5pt 0 1pt; font-weight: bold; }
+  p, li { margin: 0 0 2pt; }
+  ul { margin: 1pt 0 4pt 18pt; padding: 0; list-style: disc; }
   .meta { color: #666; font-size: 9.5pt; }
   a { color: #e63c2f; text-decoration: none; }
   section { margin-bottom: 2pt; }

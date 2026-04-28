@@ -8,7 +8,7 @@ export function render(resume) {
     contact.linkedin ? `<a href="${contact.linkedin}">${contact.linkedin}</a>` : '',
     contact.github ? `<a href="${contact.github}">${contact.github}</a>` : '',
     contact.website ? `<a href="${contact.website}">${contact.website}</a>` : '',
-  ].filter(Boolean).join(' &bull; ');
+  ].filter(Boolean).join(' | ');
 
   const skillsHtml = Object.entries(skills).map(([cat, list]) =>
     `<p><strong>${cat}:</strong> ${list.join(', ')}</p>`
@@ -17,7 +17,7 @@ export function render(resume) {
   const expHtml = experience.map(e => `
     <article>
       <h3>${e.company} - ${e.role}</h3>
-      <p class="meta">${e.location} &bull; ${e.startDate} - ${e.endDate}</p>
+      <p class="meta">${e.location} | ${e.startDate} - ${e.endDate}</p>
       <ul>${e.bullets.map(b => `<li>${b}</li>`).join('\n')}</ul>
     </article>`
   ).join('\n');
@@ -25,7 +25,7 @@ export function render(resume) {
   const eduHtml = education.map(e => `
     <article>
       <h3>${e.school} - ${e.degree}</h3>
-      <p class="meta">${e.location} &bull; ${e.startDate} - ${e.endDate}</p>
+      <p class="meta">${e.location} | ${e.startDate} - ${e.endDate}</p>
     </article>`
   ).join('\n');
 
@@ -43,7 +43,7 @@ export function render(resume) {
   const certHtml = certifications && certifications.length ? `
     <section>
       <h2>Certifications</h2>
-      <p>${certifications.join(' &bull; ')}</p>
+      <p>${certifications.join(' | ')}</p>
     </section>` : '';
 
   return `<!DOCTYPE html>
@@ -64,32 +64,30 @@ export function render(resume) {
   header {
     background: #111;
     color: #fff;
-    padding: 10pt 12pt;
-    margin-bottom: 10pt;
+    padding: 7pt 10pt;
+    margin-bottom: 8pt;
   }
   h1 {
-    font-size: 18pt;
+    font-size: 17pt;
     font-weight: 900;
-    margin: 0 0 2pt;
+    margin: 0 0 1pt;
     color: #fff;
-    letter-spacing: 0.5pt;
   }
-  .tagline { font-size: 10pt; color: #ccc; margin: 0 0 4pt; font-weight: 400; }
+  .tagline { font-size: 9.5pt; color: #ccc; margin: 0 0 2pt; font-weight: 400; }
   .meta-contact { font-size: 9pt; color: #bbb; margin: 0; }
   .meta-contact a { color: #aac4ff; }
   h2 {
-    font-size: 11pt;
+    font-size: 10.5pt;
     font-weight: 900;
     text-transform: uppercase;
-    letter-spacing: 1.5pt;
     background: #f0f0f0;
-    padding: 3pt 6pt;
-    margin: 10pt 0 5pt;
+    padding: 2pt 6pt;
+    margin: 8pt 0 4pt;
     border-left: 4pt solid #111;
   }
-  h3 { font-size: 10.5pt; margin: 7pt 0 1pt; font-weight: 700; }
+  h3 { font-size: 10pt; margin: 5pt 0 1pt; font-weight: 700; }
   p, li { margin: 0 0 2pt; }
-  ul { margin: 2pt 0 5pt 18pt; padding: 0; list-style: disc; }
+  ul { margin: 1pt 0 4pt 18pt; padding: 0; list-style: disc; }
   .meta { color: #555; font-size: 9pt; }
   a { color: #1a4fa6; text-decoration: none; }
   section { margin-bottom: 2pt; }

@@ -58,42 +58,40 @@ export function render(resume) {
     color: #111;
     font-family: Calibri, Arial, Helvetica, sans-serif;
     font-size: 10.5pt;
-    line-height: 1.4;
+    line-height: 1.3;
   }
   body { max-width: 7.3in; margin: 0 auto; }
-  header { margin-bottom: 8pt; padding-bottom: 6pt; border-bottom: 3px solid #1a1a1a; }
-  h1 { font-size: 18pt; margin: 0 0 2pt; font-weight: 900; }
-  .tagline { font-size: 10pt; color: #333; margin: 0 0 4pt; font-weight: 600; }
+  header { margin-bottom: 6pt; padding-bottom: 4pt; border-bottom: 2px solid #1a1a1a; }
+  h1 { font-size: 16pt; margin: 0 0 1pt; font-weight: 900; }
+  .tagline { font-size: 10pt; color: #333; margin: 0 0 2pt; font-weight: 600; }
   .meta-contact { font-size: 9pt; color: #555; margin: 0; }
   .summary-block {
     background: #1a1a1a;
     color: #fff;
-    padding: 10pt 12pt;
-    margin: 10pt 0 12pt;
-    font-size: 10.5pt;
+    padding: 6pt 10pt;
+    margin: 6pt 0 8pt;
+    font-size: 10pt;
     font-weight: 600;
-    line-height: 1.5;
+    line-height: 1.35;
   }
   .summary-block .summary-label {
     font-size: 8pt;
     text-transform: uppercase;
-    letter-spacing: 1.5pt;
     color: #aaa;
     display: block;
-    margin-bottom: 4pt;
+    margin-bottom: 2pt;
   }
   h2 {
-    font-size: 11pt;
+    font-size: 10.5pt;
     text-transform: uppercase;
-    letter-spacing: 1pt;
     border-bottom: 2px solid #1a1a1a;
-    margin: 12pt 0 5pt;
+    margin: 10pt 0 4pt;
     padding-bottom: 2pt;
     font-weight: 700;
   }
-  h3 { font-size: 10.5pt; margin: 7pt 0 2pt; font-weight: bold; }
-  p, li { margin: 0 0 3pt; }
-  ul { margin: 2pt 0 6pt 18pt; padding: 0; list-style: disc; }
+  h3 { font-size: 10.5pt; margin: 5pt 0 1pt; font-weight: bold; }
+  p, li { margin: 0 0 2pt; }
+  ul { margin: 1pt 0 4pt 18pt; padding: 0; list-style: disc; }
   .meta { color: #555; font-size: 9.5pt; }
   a { color: #4a90d9; text-decoration: none; }
   section { margin-bottom: 2pt; }

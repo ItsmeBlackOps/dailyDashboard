@@ -52,42 +52,40 @@ export function render(resume) {
 <meta charset="UTF-8">
 <title>${name} - Resume</title>
 <style>
-  @page { size: Letter; margin: 0.75in 0.75in; }
+  @page { size: Letter; margin: 0.5in 0.6in; }
   html, body {
     background: #fff;
     color: #111;
     font-family: Calibri, Arial, Helvetica, sans-serif;
-    font-size: 12pt;
-    line-height: 1.55;
+    font-size: 10.5pt;
+    line-height: 1.3;
   }
-  body { max-width: 7.0in; margin: 0 auto; }
+  body { max-width: 7.3in; margin: 0 auto; }
   header {
     text-align: center;
-    margin-bottom: 24pt;
-    padding-bottom: 14pt;
-    border-bottom: 3px double #222;
+    margin-bottom: 10pt;
+    padding-bottom: 8pt;
+    border-bottom: 2px solid #222;
   }
   h1 {
-    font-size: 22pt;
-    margin: 0 0 5pt;
-    letter-spacing: 2pt;
+    font-size: 17pt;
+    margin: 0 0 2pt;
     font-weight: 700;
     text-transform: uppercase;
   }
-  .tagline { font-size: 13pt; color: #444; margin: 0 0 8pt; font-style: italic; }
-  .meta-contact { font-size: 10pt; color: #555; margin: 0; }
+  .tagline { font-size: 10pt; color: #444; margin: 0 0 3pt; font-style: italic; }
+  .meta-contact { font-size: 9.5pt; color: #555; margin: 0; }
   h2 {
-    font-size: 12pt;
+    font-size: 10.5pt;
     text-transform: uppercase;
-    letter-spacing: 2pt;
-    border-bottom: 2px solid #222;
-    margin: 22pt 0 10pt;
-    padding-bottom: 4pt;
+    border-bottom: 1.5px solid #222;
+    margin: 10pt 0 5pt;
+    padding-bottom: 2pt;
     font-weight: 700;
   }
-  h3 { font-size: 12pt; margin: 14pt 0 3pt; font-weight: 700; }
-  p, li { margin: 0 0 5pt; }
-  ul { margin: 4pt 0 10pt 20pt; padding: 0; list-style: disc; }
+  h3 { font-size: 10.5pt; margin: 6pt 0 2pt; font-weight: 700; }
+  p, li { margin: 0 0 2pt; }
+  ul { margin: 2pt 0 4pt 20pt; padding: 0; list-style: disc; }
   .meta { color: #555; font-size: 10pt; font-style: italic; }
   a { color: #1a4fa6; text-decoration: none; }
   section { margin-bottom: 6pt; }

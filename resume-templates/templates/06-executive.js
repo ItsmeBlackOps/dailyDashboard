@@ -8,7 +8,7 @@ export function render(resume) {
     contact.linkedin ? `<a href="${contact.linkedin}">${contact.linkedin}</a>` : '',
     contact.github ? `<a href="${contact.github}">${contact.github}</a>` : '',
     contact.website ? `<a href="${contact.website}">${contact.website}</a>` : '',
-  ].filter(Boolean).join(' &nbsp;&bull;&nbsp; ');
+  ].filter(Boolean).join(' &nbsp;|&nbsp; ');
 
   const skillsHtml = Object.entries(skills).map(([cat, list]) =>
     `<p><strong>${cat}:</strong> ${list.join(', ')}</p>`
@@ -18,7 +18,7 @@ export function render(resume) {
     <article>
       <h3>${e.role}</h3>
       <p class="company">${e.company}</p>
-      <p class="meta">${e.location} &nbsp;&bull;&nbsp; ${e.startDate} - ${e.endDate}</p>
+      <p class="meta">${e.location} &nbsp;|&nbsp; ${e.startDate} - ${e.endDate}</p>
       <ul>${e.bullets.map(b => `<li>${b}</li>`).join('\n')}</ul>
     </article>`
   ).join('\n');
@@ -27,7 +27,7 @@ export function render(resume) {
     <article>
       <h3>${e.degree}</h3>
       <p class="company">${e.school}</p>
-      <p class="meta">${e.location} &nbsp;&bull;&nbsp; ${e.startDate} - ${e.endDate}</p>
+      <p class="meta">${e.location} &nbsp;|&nbsp; ${e.startDate} - ${e.endDate}</p>
     </article>`
   ).join('\n');
 
@@ -45,7 +45,7 @@ export function render(resume) {
   const certHtml = certifications && certifications.length ? `
     <section>
       <h2>Certifications</h2>
-      <p>${certifications.join(' &nbsp;&bull;&nbsp; ')}</p>
+      <p>${certifications.join(' &nbsp;|&nbsp; ')}</p>
     </section>` : '';
 
   return `<!DOCTYPE html>
@@ -54,33 +54,32 @@ export function render(resume) {
 <meta charset="UTF-8">
 <title>${name} - Resume</title>
 <style>
-  @page { size: Letter; margin: 0.65in 0.75in; }
+  @page { size: Letter; margin: 0.5in 0.6in; }
   html, body {
     background: #fff;
     color: #1a1a1a;
     font-family: Georgia, "Times New Roman", serif;
-    font-size: 11pt;
-    line-height: 1.5;
+    font-size: 10.5pt;
+    line-height: 1.3;
   }
-  body { max-width: 7in; margin: 0 auto; }
-  header { text-align: center; border-bottom: 1pt solid #888; padding-bottom: 10pt; margin-bottom: 14pt; }
-  h1 { font-size: 18pt; font-weight: normal; margin: 0 0 3pt; letter-spacing: 2pt; }
-  .tagline { font-size: 11pt; color: #555; margin: 0 0 5pt; font-variant: small-caps; letter-spacing: 1pt; }
+  body { max-width: 7.3in; margin: 0 auto; }
+  header { text-align: center; border-bottom: 1pt solid #888; padding-bottom: 6pt; margin-bottom: 10pt; }
+  h1 { font-size: 17pt; font-weight: normal; margin: 0 0 2pt; }
+  .tagline { font-size: 10pt; color: #555; margin: 0 0 3pt; font-variant: small-caps; }
   .meta-contact { font-size: 9.5pt; color: #555; margin: 0; }
   h2 {
-    font-size: 11pt;
+    font-size: 10.5pt;
     font-weight: bold;
     font-variant: small-caps;
-    letter-spacing: 1.5pt;
     border-bottom: 0.5pt solid #999;
-    padding-bottom: 3pt;
-    margin: 16pt 0 8pt;
+    padding-bottom: 2pt;
+    margin: 10pt 0 5pt;
     color: #333;
   }
-  h3 { font-size: 11pt; margin: 10pt 0 1pt; font-weight: bold; }
-  .company { font-size: 10.5pt; font-style: italic; color: #444; margin: 0 0 1pt; }
-  p, li { margin: 0 0 3pt; }
-  ul { margin: 4pt 0 8pt 20pt; padding: 0; list-style: disc; }
+  h3 { font-size: 10.5pt; margin: 6pt 0 1pt; font-weight: bold; }
+  .company { font-size: 10pt; font-style: italic; color: #444; margin: 0 0 1pt; }
+  p, li { margin: 0 0 2pt; }
+  ul { margin: 2pt 0 4pt 20pt; padding: 0; list-style: disc; }
   .meta { color: #666; font-size: 9.5pt; }
   a { color: #1a4fa6; text-decoration: none; }
   section { margin-bottom: 4pt; }

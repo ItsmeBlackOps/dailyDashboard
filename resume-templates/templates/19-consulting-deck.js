@@ -54,58 +54,55 @@ export function render(resume) {
 <meta charset="UTF-8">
 <title>${name} - Resume</title>
 <style>
-  @page { size: Letter; margin: 0.55in 0.65in; }
+  @page { size: Letter; margin: 0.5in 0.6in; }
   html, body {
     background: #fff;
     color: #111;
     font-family: Georgia, "Times New Roman", serif;
     font-size: 10.5pt;
-    line-height: 1.4;
+    line-height: 1.3;
   }
-  body { max-width: 7.2in; margin: 0 auto; }
+  body { max-width: 7.3in; margin: 0 auto; }
   header {
-    margin-bottom: 10pt;
-    padding-bottom: 8pt;
+    margin-bottom: 8pt;
+    padding-bottom: 6pt;
     border-bottom: 1px solid #bbb;
   }
   h1 {
-    font-size: 18pt;
-    margin: 0 0 3pt;
+    font-size: 17pt;
+    margin: 0 0 2pt;
     font-family: Arial, Helvetica, sans-serif;
     font-variant: small-caps;
-    letter-spacing: 1.5pt;
   }
   .tagline {
     font-size: 10pt;
     color: #444;
-    margin: 0 0 4pt;
+    margin: 0 0 2pt;
     font-family: Arial, Helvetica, sans-serif;
     font-variant: small-caps;
-    letter-spacing: 0.5pt;
   }
   .meta-contact { font-size: 9pt; color: #555; margin: 0; }
   h2 {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 11pt;
+    font-size: 10.5pt;
     text-transform: uppercase;
-    letter-spacing: 2pt;
-    margin: 14pt 0 2pt;
+    margin: 10pt 0 2pt;
     padding-bottom: 0;
     font-variant: small-caps;
   }
   hr.section-rule {
     border: none;
     border-top: 1px solid #888;
-    margin: 2pt 0 6pt;
+    margin: 2pt 0 4pt;
   }
   h3 {
     font-size: 10.5pt;
-    margin: 7pt 0 2pt;
+    margin: 5pt 0 1pt;
     font-weight: bold;
     font-family: Arial, Helvetica, sans-serif;
   }
-  p, li { margin: 0 0 3pt; }
-  ul { margin: 2pt 0 6pt 18pt; padding: 0; list-style: disc; }
+  p, li { margin: 0 0 2pt; }
+  ul { margin: 1pt 0 4pt 18pt; padding: 0; list-style: disc; }
   .meta { color: #555; font-size: 9.5pt; font-style: italic; }
   a { color: #1a4fa6; text-decoration: none; }
   section { margin-bottom: 2pt; }

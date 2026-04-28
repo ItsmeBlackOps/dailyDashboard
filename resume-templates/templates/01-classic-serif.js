@@ -8,7 +8,7 @@ export function render(resume) {
     contact.linkedin ? `<a href="${contact.linkedin}">${contact.linkedin}</a>` : '',
     contact.github ? `<a href="${contact.github}">${contact.github}</a>` : '',
     contact.website ? `<a href="${contact.website}">${contact.website}</a>` : '',
-  ].filter(Boolean).join(' &middot; ');
+  ].filter(Boolean).join(' | ');
 
   const skillsHtml = Object.entries(skills).map(([cat, list]) =>
     `<p><strong>${cat}:</strong> ${list.join(', ')}</p>`
@@ -16,8 +16,8 @@ export function render(resume) {
 
   const expHtml = experience.map(e => `
     <article>
-      <h3>${e.company} &mdash; ${e.role}</h3>
-      <p class="meta">${e.location} &nbsp;&bull;&nbsp; ${e.startDate} - ${e.endDate}</p>
+      <h3>${e.company} - ${e.role}</h3>
+      <p class="meta">${e.location} &nbsp;|&nbsp; ${e.startDate} - ${e.endDate}</p>
       <ul>${e.bullets.map(b => `<li>${b}</li>`).join('\n')}</ul>
     </article>`
   ).join('\n');
@@ -25,7 +25,7 @@ export function render(resume) {
   const eduHtml = education.map(e => `
     <article>
       <h3>${e.school}</h3>
-      <p class="meta">${e.degree} &nbsp;&bull;&nbsp; ${e.location} &nbsp;&bull;&nbsp; ${e.startDate} - ${e.endDate}</p>
+      <p class="meta">${e.degree} &nbsp;|&nbsp; ${e.location} &nbsp;|&nbsp; ${e.startDate} - ${e.endDate}</p>
     </article>`
   ).join('\n');
 
@@ -43,7 +43,7 @@ export function render(resume) {
   const certHtml = certifications && certifications.length ? `
     <section>
       <h2>Certifications</h2>
-      <p>${certifications.join(' &middot; ')}</p>
+      <p>${certifications.join(' | ')}</p>
     </section>` : '';
 
   return `<!DOCTYPE html>
@@ -58,25 +58,24 @@ export function render(resume) {
     color: #111;
     font-family: Georgia, "Times New Roman", serif;
     font-size: 10.5pt;
-    line-height: 1.4;
+    line-height: 1.3;
   }
   body { max-width: 7.3in; margin: 0 auto; }
-  header { text-align: center; margin-bottom: 10pt; border-bottom: 2px solid #111; padding-bottom: 8pt; }
-  h1 { font-size: 18pt; margin: 0 0 3pt; letter-spacing: 1pt; }
-  .tagline { font-size: 10.5pt; color: #333; font-style: italic; margin: 0 0 5pt; }
+  header { text-align: center; margin-bottom: 8pt; border-bottom: 2px solid #111; padding-bottom: 6pt; }
+  h1 { font-size: 17pt; margin: 0 0 2pt; }
+  .tagline { font-size: 10pt; color: #333; font-style: italic; margin: 0 0 3pt; }
   .meta-contact { font-size: 9.5pt; color: #444; margin: 0; }
   h2 {
-    font-size: 11pt;
+    font-size: 10.5pt;
     text-transform: uppercase;
-    letter-spacing: 1pt;
-    border-top: 2px solid #111;
+    border-top: 1.5px solid #111;
     border-bottom: 1px solid #111;
-    padding: 3pt 0;
-    margin: 14pt 0 6pt;
+    padding: 2pt 0;
+    margin: 10pt 0 5pt;
   }
-  h3 { font-size: 10.5pt; margin: 8pt 0 2pt; font-weight: bold; }
-  p, li { margin: 0 0 3pt; }
-  ul { margin: 2pt 0 6pt 18pt; padding: 0; list-style: disc; }
+  h3 { font-size: 10.5pt; margin: 6pt 0 1pt; font-weight: bold; }
+  p, li { margin: 0 0 2pt; }
+  ul { margin: 1pt 0 4pt 18pt; padding: 0; list-style: disc; }
   .meta { color: #555; font-size: 9.5pt; font-style: italic; }
   a { color: #1a4fa6; text-decoration: none; }
   section { margin-bottom: 2pt; }

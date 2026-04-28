@@ -59,25 +59,23 @@ export function render(resume) {
   body { max-width: 7.3in; margin: 0 auto; }
   header { margin-bottom: 6pt; padding-bottom: 4pt; border-bottom: 2px solid #222; }
   h1 {
-    font-size: 18pt;
-    margin: 0 0 2pt;
+    font-size: 15pt;
+    margin: 0 0 1pt;
     font-family: Arial, Helvetica, sans-serif;
-    letter-spacing: 0.5pt;
   }
-  .tagline { font-size: 9.5pt; color: #444; margin: 0 0 3pt; font-family: Arial, Helvetica, sans-serif; }
+  .tagline { font-size: 9pt; color: #444; margin: 0 0 2pt; font-family: Arial, Helvetica, sans-serif; }
   .meta-contact { font-size: 8.5pt; color: #555; margin: 0; }
   h2 {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 11pt;
+    font-size: 10pt;
     text-transform: uppercase;
-    letter-spacing: 1pt;
     border-bottom: 1px solid #555;
-    margin: 10pt 0 4pt;
-    padding-bottom: 2pt;
+    margin: 7pt 0 3pt;
+    padding-bottom: 1pt;
   }
   h3 {
     font-size: 9.5pt;
-    margin: 6pt 0 1pt;
+    margin: 4pt 0 1pt;
     font-family: Arial, Helvetica, sans-serif;
   }
   .tech { font-weight: normal; color: #555; font-size: 8.5pt; }

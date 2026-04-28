@@ -60,6 +60,7 @@ for (let i = 0; i < templates.length; i++) {
     sizeKB: pdfV ? Math.round(pdfV.size / 1024) : null,
     htmlIssues: htmlOk.issues,
     pdfIssues: pdfV?.issues || [],
+    warnings: pdfV?.warnings || [],
   });
 }
 
@@ -68,7 +69,8 @@ console.log('| # | Template | Job | Status | Pages | Size | Issues |');
 console.log('|---|---|---|---|---|---|---|');
 results.forEach((r, i) => {
   const issues = [...(r.htmlIssues || []), ...(r.pdfIssues || [])].slice(0,2).join('; ').slice(0, 80) || '-';
-  console.log(`| ${i+1} | ${r.label || r.tpl} | ${r.job} | ${r.status} | ${r.pages || '?'} | ${r.sizeKB ? r.sizeKB+'KB' : '?'} | ${issues} |`);
+  const warns = (r.warnings || []).join('; ').slice(0, 60) || '';
+  console.log(`| ${i+1} | ${r.label || r.tpl} | ${r.job} | ${r.status} | ${r.pages || '?'} | ${r.sizeKB ? r.sizeKB+'KB' : '?'} | ${issues} | ${warns} |`);
 });
 
 console.log(`\n${passCount} PASS · ${failCount} FAIL · ${templates.length} total`);

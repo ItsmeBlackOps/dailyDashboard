@@ -56,46 +56,46 @@ export function render(resume) {
 <meta charset="UTF-8">
 <title>${name} - Curriculum Vitae</title>
 <style>
-  @page { size: Letter; margin: 0.6in 0.75in; }
+  @page { size: Letter; margin: 0.5in 0.6in; }
   html, body {
     background: #fff;
     color: #111;
     font-family: "Times New Roman", Times, serif;
-    font-size: 11pt;
-    line-height: 1.5;
+    font-size: 10.5pt;
+    line-height: 1.3;
   }
-  body { max-width: 7.0in; margin: 0 auto; }
+  body { max-width: 7.3in; margin: 0 auto; }
   header {
     text-align: center;
-    margin-bottom: 14pt;
-    padding-bottom: 10pt;
+    margin-bottom: 8pt;
+    padding-bottom: 6pt;
     border-bottom: 1px solid #555;
   }
   h1 {
-    font-size: 18pt;
-    margin: 0 0 4pt;
+    font-size: 17pt;
+    margin: 0 0 2pt;
     font-family: Georgia, "Times New Roman", serif;
     font-style: normal;
   }
-  .tagline { font-size: 11pt; color: #444; margin: 0 0 6pt; font-style: italic; }
+  .tagline { font-size: 10pt; color: #444; margin: 0 0 3pt; font-style: italic; }
   .meta-contact { font-size: 9.5pt; color: #555; margin: 0; }
   h2 {
     font-family: Georgia, "Times New Roman", serif;
-    font-size: 13pt;
+    font-size: 11pt;
     font-style: italic;
     border-bottom: 1px solid #777;
-    margin: 18pt 0 7pt;
-    padding-bottom: 3pt;
+    margin: 10pt 0 5pt;
+    padding-bottom: 2pt;
     font-weight: normal;
   }
   h3 {
-    font-size: 11pt;
-    margin: 10pt 0 2pt;
+    font-size: 10.5pt;
+    margin: 6pt 0 1pt;
     font-weight: bold;
     font-family: Arial, Helvetica, sans-serif;
   }
-  p, li { margin: 0 0 4pt; }
-  ul { margin: 3pt 0 8pt 22pt; padding: 0; list-style: disc; }
+  p, li { margin: 0 0 2pt; }
+  ul { margin: 2pt 0 4pt 22pt; padding: 0; list-style: disc; }
   .meta { color: #555; font-size: 10pt; font-style: italic; }
   .pub-entry { margin: 0 0 3pt; }
   a { color: #1a4fa6; text-decoration: none; }
