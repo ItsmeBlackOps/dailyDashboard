@@ -13,3 +13,14 @@ frontend/dist/
 
 # One-time migration scripts (never commit)
 backend/scripts/extract-all-candidate-profiles.js
+
+# Vendored services
+scraper/.env
+scraper/__pycache__/
+scraper/data/
+scraper/logs/
+scraper/.venv/
+scraper/*.pyc
+forge-ai/.env
+forge-ai/node_modules/
+forge-ai/output/

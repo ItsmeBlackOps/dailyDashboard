@@ -1,0 +1,38 @@
+Senior Software Engineer — Payments
+JPMorgan Chase · New York, NY (Hybrid)
+
+About the role
+We are hiring a Senior Engineer on the Merchant Services Payments team. You
+will work on the core authorization pipeline — the code that decides whether
+a payment authorization is approved, routed, or declined. The stack is Java 17,
+Spring Boot, Kafka, PostgreSQL, Oracle, and AWS. The business moves billions
+of dollars per day through this pipeline.
+
+What you'll do
+- Own Java / Spring Boot services in the authorization path
+- Build and operate Kafka-based event flows (exactly-once semantics, DLQ handling)
+- Tune PostgreSQL and Oracle queries — this is a high-write, high-consistency system
+- Design REST and gRPC APIs consumed by partner banks and merchants
+- Participate in architecture reviews and partner with Compliance / Risk teams
+- Mentor mid-level engineers, own on-call for tier-0 flows
+
+What we're looking for
+Must-have:
+- 5+ years Java and Spring Boot in production
+- Deep Kafka experience — not just "I've used it", but "I've tuned broker configs
+  and recovered from a consumer-group storm"
+- PostgreSQL at scale — partitioning, indexing, replication lag mitigation
+- REST API design; gRPC is a bonus
+- AWS (EC2, S3, IAM, SQS)
+- Kubernetes in production
+
+Nice to have:
+- Payments domain (ISO 8583, card networks, authorization flows)
+- Oracle experience
+- Compliance-heavy environments (PCI DSS, SOX)
+- OpenTelemetry, Datadog
+
+Culture
+Banking moves deliberately. We prioritize correctness over velocity, write
+runbooks that actually get read, and run postmortems without blame. Expect
+strong peer review and clear escalation paths.

@@ -73,3 +73,33 @@ services:
     restart: unless-stopped
     depends_on:
       - backend-green
+  scraper:
+    build:
+      context: ./scraper
+      dockerfile: Dockerfile
+    container_name: dailydb-scraper
+    env_file:
+      - .env
+    expose:
+      - "8001"
+    volumes:
+      - scraper-state:/app/data/find_jobs_state
+    networks:
+      - default
+    restart: unless-stopped
+
+  forge-ai:
+    build:
+      context: ./forge-ai
+      dockerfile: Dockerfile
+    container_name: dailydb-forge-ai
+    env_file:
+      - .env
+    expose:
+      - "8002"
+    networks:
+      - default
+    restart: unless-stopped
+
+volumes:
+  scraper-state:

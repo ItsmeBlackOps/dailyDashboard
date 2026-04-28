@@ -1,0 +1,21 @@
+{
+  "name": "resumeforge-ai",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Multi-agent resume generation pipeline (JD + candidate skeleton -> tailored resume via critic-revise loop)",
+  "main": "src/index.js",
+  "bin": {
+    "forge": "src/cli.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node src/cli.js test",
+    "validate": "node src/cli.js validate",
+    "dry-run": "node --check src/cli.js && node --check src/orchestrator.js && echo OK"
+  },
+  "dependencies": {
+    "openai": "^4.71.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

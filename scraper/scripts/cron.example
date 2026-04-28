@@ -1,0 +1,12 @@
+# Example crontab — runs the scraper every day at 08:00 local time.
+# Install with: crontab -e   (Linux/macOS)
+# Windows: use Task Scheduler and point it at run_daily.py
+
+# Linux / macOS (pyenv-style shebang path; adjust to your venv)
+0 8 * * * cd /path/to/scraper && /path/to/scraper/.venv/bin/python run_daily.py >> logs/cron.log 2>&1
+
+# ----- Windows Task Scheduler equivalent -----
+# Program/script:  C:\path\to\scraper\.venv\Scripts\python.exe
+# Arguments:       run_daily.py
+# Start in:        C:\path\to\scraper
+# Trigger:         Daily @ 08:00
