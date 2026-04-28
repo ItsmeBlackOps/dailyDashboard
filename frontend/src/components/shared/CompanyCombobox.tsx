@@ -25,7 +25,7 @@ export function invalidateClientsCache() {
 async function fetchClients(): Promise<string[]> {
   if (cachedClients) return cachedClients;
   if (inflightFetch) return inflightFetch;
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('accessToken');
   inflightFetch = fetch('/api/candidates/distinct-clients', {
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -121,7 +121,7 @@ export function CompanyCombobox({
     setSaving(true);
     setAddError('');
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const res = await fetch('/api/candidates/end-clients', {
         method: 'POST',
         headers: {

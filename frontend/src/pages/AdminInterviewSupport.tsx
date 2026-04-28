@@ -32,6 +32,7 @@ import { useAuth, API_URL } from '@/hooks/useAuth';
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_URL } from '@/hooks/useAuth';
 import InterviewSupportTaskList from '@/components/admin/InterviewSupportTaskList';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -120,6 +121,7 @@ function AdminInterviewSupportContent({
   }, [refreshAccessToken, queryClient]);
 
   return (
+    <DashboardLayout>
     <div className="p-6 space-y-4 max-w-7xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold">Interview Support</h1>
@@ -151,6 +153,7 @@ function AdminInterviewSupportContent({
         </TabsContent>
       </Tabs>
     </div>
+    </DashboardLayout>
   );
 }
 

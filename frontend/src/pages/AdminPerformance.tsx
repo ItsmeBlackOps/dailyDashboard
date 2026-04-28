@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth, API_URL } from '@/hooks/useAuth';
 
 interface PerfRow {
@@ -89,6 +90,7 @@ export default function AdminPerformance() {
   const arrow = (key: SortKey) => sortKey === key ? (sortAsc ? ' ▲' : ' ▼') : '';
 
   return (
+    <DashboardLayout>
     <div className="p-6 space-y-4 max-w-6xl mx-auto">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
@@ -173,5 +175,6 @@ export default function AdminPerformance() {
         </CardContent>
       </Card>
     </div>
+    </DashboardLayout>
   );
 }

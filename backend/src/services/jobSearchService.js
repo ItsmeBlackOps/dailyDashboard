@@ -164,10 +164,12 @@ class JobSearchService {
     const body = {
       resume_url: resumeUrl,
       profile_id: candidateId,
-      max_per_source: filters.maxPerSource ?? 100,
+      max_per_source: filters.max_per_source ?? filters.maxPerSource ?? 100,
+      linkedin_only: filters.linkedin_only ?? true,
+      multi_title: filters.multi_title ?? true,
       keyword: filters.keyword || null,
       location: filters.location || null,
-      remote: filters.remote || null,
+      remote: filters.remote || 'remote',
       first_run: filters.firstRun || false,
     };
 
@@ -222,6 +224,17 @@ class JobSearchService {
   async startSearch({ candidateId, candidateName, filters, requestedBy }) {
     await this._ensureIndexes();
     const db = database.getDb();
+
+    // Apply canonical defaults when no filters (or empty filters) are supplied.
+    // User overrides (if any) win via the spread at the end.
+    const canonicalFilters = {
+      remote: 'remote',
+      max_per_source: 100,
+      linkedin_only: true,
+      multi_title: true,
+      ...filters,
+    };
+    filters = canonicalFilters;
 
     const filterHash = this.computeFilterHash(filters);
     const now = new Date();

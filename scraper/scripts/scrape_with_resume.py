@@ -328,7 +328,21 @@ def main(argv: Optional[list[str]] = None) -> int:
                         "jobs posted since the last run.")
     p.add_argument("--first-run", action="store_true",
                    help="Force time_range=7d and reset incremental state.")
+    p.add_argument("--json-output", action="store_true",
+                   help="Emit a single JSON object to stdout (jobs + discovered "
+                        "plan info) instead of human-readable text. Used by "
+                        "the HTTP wrapper (server.py).")
     args = p.parse_args(argv)
+
+    # When emitting machine-readable JSON to stdout, redirect all informational
+    # print() calls (that don't already specify file=sys.stderr) to stderr so
+    # that stdout contains only the final JSON envelope.
+    if args.json_output:
+        import builtins as _builtins
+        _real_print = _builtins.print
+        def _stderr_print(*a, file=None, **kw):  # noqa: E306
+            _real_print(*a, file=file if file is not None else sys.stderr, **kw)
+        _builtins.print = _stderr_print
 
     if not args.resume.exists():
         print(f"Resume file not found: {args.resume}", file=sys.stderr)
@@ -491,6 +505,48 @@ def main(argv: Optional[list[str]] = None) -> int:
     })
     state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     print(f"State saved → {state_path} (next run will fetch jobs posted after {new_run_at})")
+
+    if args.json_output:
+        # Emit a single JSON envelope to stdout for the HTTP wrapper.
+        # Use dataclasses.asdict for JobPosting serialization; datetime → str.
+        from dataclasses import asdict
+        import datetime as _dt
+
+        def _serialise(obj):
+            if isinstance(obj, _dt.datetime):
+                return obj.isoformat()
+            raise TypeError(f"Not serialisable: {type(obj)}")
+
+        jobs_payload = []
+        for j in jobs:
+            try:
+                d = asdict(j)
+            except Exception:
+                # Fallback: build a minimal dict from known attributes.
+                d = {
+                    "title": getattr(j, "job_title", ""),
+                    "company": getattr(j, "company_name", ""),
+                    "url": getattr(j, "source_url", "") or getattr(j, "apply_url", ""),
+                    "location": getattr(j, "location", None),
+                    "remote_type": getattr(j, "remote_type", None),
+                    "source": getattr(j, "source_platform", ""),
+                    "snippet": getattr(j, "job_description_snippet", ""),
+                    "date_posted": getattr(j, "date_posted_raw", None),
+                }
+            jobs_payload.append(d)
+
+        envelope = {
+            "jobs": jobs_payload,
+            "discovered": {
+                "titles": list({t.replace(":*", "").strip() for t in (plan.linkedin_titles + plan.fantastic_titles) if t}),
+                "years_min": plan.years_min,
+                "years_max": plan.years_max,
+                "skills": plan.skills,
+            },
+        }
+        sys.stdout.write(json.dumps(envelope, default=_serialise) + "\n")
+        sys.stdout.flush()
+        return 0
 
     if args.no_ingest:
         return 0
