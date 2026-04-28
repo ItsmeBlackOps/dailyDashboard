@@ -4,17 +4,13 @@ import { jest } from '@jest/globals';
 
 jest.unstable_mockModule('../../config/index.js', () => ({
   config: {
-    apify: {
-      token: 'test-apify-token',
-      baseUrl: 'https://api.apify.com',
-      jobsActor: 'fantastic-jobs/advanced-linkedin-job-search-api',
-      jobsActorCareerSites: 'fantastic-jobs/advanced-linkedin-job-search-api',
-      timeoutMs: 120000,
+    scraperService: {
+      url: 'http://scraper:8001',
+      timeoutMs: 600000,
     },
-    resumeEditor: {
-      url: 'https://resume-editor.example.com',
-      apiKey: 'test-editor-key',
-      timeoutMs: 180000,
+    forgeAiService: {
+      url: 'http://forge-ai:8002',
+      timeoutMs: 600000,
     },
     jobSearch: {
       cacheTtlHours: 24,
@@ -85,6 +81,7 @@ function mockFetch(overrides = {}) {
     ok: true,
     status: 200,
     text: () => Promise.resolve(JSON.stringify([])),
+    json: () => Promise.resolve([]),
   };
   return jest.fn().mockResolvedValue({ ...defaults, ...overrides });
 }
@@ -163,11 +160,12 @@ describe('jobSearchService', () => {
       expect(global.fetch).not.toHaveBeenCalled();
     });
 
-    it('calls Apify on cache miss and stores results', async () => {
-      const apifyJobs = [
+    it('calls scraper on cache miss and stores results', async () => {
+      const scraperJobs = [
         { title: 'Dev', company: 'Corp', location: 'NYC', remote_type: 'remote', ats: 'linkedin',
           url: 'https://linkedin.com/jobs/1', date_posted: '2026-01-01', skills: ['js'], snippet: 'Good job' },
       ];
+      const scraperResponse = { success: true, result: { samples: scraperJobs }, stderr_tail: '' };
 
       mockCollections['jobSearchCache'] = makeCollection({
         findOne: jest.fn().mockResolvedValue(null), // cache miss
@@ -175,18 +173,23 @@ describe('jobSearchService', () => {
       });
 
       global.fetch = mockFetch({
-        text: () => Promise.resolve(JSON.stringify(apifyJobs)),
+        json: () => Promise.resolve(scraperResponse),
       });
 
-      const results = await jobSearchService.getOrFetchListings({ keyword: 'dev' });
+      const results = await jobSearchService.getOrFetchListings(
+        { keyword: 'dev' },
+        { candidateId: 'cand-1', resumeUrl: 'https://example.com/resume.pdf' }
+      );
 
       expect(global.fetch).toHaveBeenCalledTimes(1);
+      const [calledUrl] = global.fetch.mock.calls[0];
+      expect(calledUrl).toBe('http://scraper:8001/find-jobs');
       expect(results).toHaveLength(1);
       expect(results[0].title).toBe('Dev');
       expect(mockCollections['jobSearchCache'].updateOne).toHaveBeenCalled();
     });
 
-    it('calls Apify when cached record is expired', async () => {
+    it('calls scraper when cached record is expired', async () => {
       const pastDate = new Date(Date.now() - 60 * 60 * 1000); // 1h ago
       mockCollections['jobSearchCache'] = makeCollection({
         findOne: jest.fn().mockResolvedValue({
@@ -197,9 +200,14 @@ describe('jobSearchService', () => {
         updateOne: jest.fn().mockResolvedValue({}),
       });
 
-      global.fetch = mockFetch({ text: () => Promise.resolve(JSON.stringify([])) });
+      global.fetch = mockFetch({
+        json: () => Promise.resolve({ success: true, result: { samples: [] }, stderr_tail: '' }),
+      });
 
-      await jobSearchService.getOrFetchListings({ keyword: 'manager' });
+      await jobSearchService.getOrFetchListings(
+        { keyword: 'manager' },
+        { candidateId: 'cand-1', resumeUrl: 'https://example.com/resume.pdf' }
+      );
 
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });

@@ -109,13 +109,16 @@ class JobSearchService {
       }, {});
   }
 
-  // ── Cache / Apify ────────────────────────────────────────────────────────
+  // ── Cache / Scraper ──────────────────────────────────────────────────────
 
   /**
-   * Return cached results if still within TTL, otherwise fetch from Apify
-   * and persist the results.
+   * Return cached results if still within TTL, otherwise fetch from the
+   * scraper service and persist the results.
+   *
+   * @param {object} filters
+   * @param {{ candidateId: string, resumeUrl: string }} ctx
    */
-  async getOrFetchListings(filters) {
+  async getOrFetchListings(filters, ctx = {}) {
     await this._ensureIndexes();
     const db = database.getDb();
     const hash = this.computeFilterHash(filters);
@@ -126,8 +129,8 @@ class JobSearchService {
       return cached.results;
     }
 
-    logger.debug('jobSearchService: cache miss, calling Apify', { hash });
-    const rawResults = await this.callApify(filters);
+    logger.debug('jobSearchService: cache miss, calling scraper', { hash });
+    const rawResults = await this.callScraper({ candidateId: ctx.candidateId, resumeUrl: ctx.resumeUrl, filters });
     const results = this._filterToUS(rawResults);
     logger.debug('jobSearchService: US filter applied', { before: rawResults.length, after: results.length });
 
@@ -153,73 +156,62 @@ class JobSearchService {
   }
 
   /**
-   * POST to Apify's run-sync-get-dataset-items endpoint and return the
-   * normalised job array.
+   * POST to the scraper service and return a normalised job array.
    */
-  async callApify(filters) {
-    const { token, baseUrl, jobsActor, timeoutMs } = config.apify;
+  async callScraper({ candidateId, resumeUrl, filters }) {
+    const url = config.scraperService.url + '/find-jobs';
 
-    const actor = encodeURIComponent(jobsActor);
-    const url = `${baseUrl}/v2/acts/${actor}/run-sync-get-dataset-items?token=${token}`;
-
-    const body = this._buildApifyBody(filters);
+    const body = {
+      resume_url: resumeUrl,
+      profile_id: candidateId,
+      max_per_source: filters.maxPerSource ?? 100,
+      keyword: filters.keyword || null,
+      location: filters.location || null,
+      remote: filters.remote || null,
+      first_run: filters.firstRun || false,
+    };
 
     let response;
     try {
       response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(config.scraperService.timeoutMs),
       });
     } catch (err) {
-      logger.error('Apify request failed (network/timeout)', { error: err.message });
-      throw new Error(`Apify request failed: ${err.message}`);
-    }
-
-    const text = await response.text();
-    let items;
-    try {
-      items = text ? JSON.parse(text) : [];
-    } catch {
-      items = [];
+      logger.error('scraper request failed (network/timeout)', { error: err.message });
+      throw new Error(`scraper request failed: ${err.message}`);
     }
 
     if (!response.ok) {
-      logger.error('Apify returned non-OK status', { status: response.status, body: text });
-      throw new Error(`Apify error ${response.status}`);
+      const text = await response.text();
+      logger.error('scraper returned non-OK status', { status: response.status, body: text });
+      throw new Error(`scraper ${response.status}: ${text.slice(0, 500)}`);
     }
 
-    if (!Array.isArray(items)) {
-      logger.warn('Apify response was not an array', { type: typeof items });
-      return [];
-    }
-
-    return items.map((item) => ({
-      title: item.title || '',
-      company: item.company || '',
-      location: item.location || null,
-      remote_type: item.remote_type || null,
-      ats: item.ats || null,
-      url: item.url || '',
-      date_posted: item.date_posted || null,
-      skills: Array.isArray(item.skills) ? item.skills : [],
-      snippet: item.snippet || '',
-    }));
+    const json = await response.json();
+    return this._normaliseJobs(json.result);
   }
 
-  _buildApifyBody(filters) {
-    const body = {};
-    if (filters.keyword) body.keyword = filters.keyword;
-    if (filters.location) body.location = filters.location;
-    if (filters.remote !== undefined) body.remote = filters.remote;
-    if (filters.page_count !== undefined) body.page_count = filters.page_count;
-    // Pass any extra filter keys through unchanged
-    const known = new Set(['keyword', 'location', 'remote', 'page_count']);
-    for (const [k, v] of Object.entries(filters)) {
-      if (!known.has(k)) body[k] = v;
-    }
-    return body;
+  _normaliseJobs(rawResult) {
+    const list = Array.isArray(rawResult) ? rawResult :
+                 Array.isArray(rawResult?.samples) ? rawResult.samples :
+                 Array.isArray(rawResult?.jobs) ? rawResult.jobs :
+                 Array.isArray(rawResult?.results) ? rawResult.results :
+                 [];
+    return list.map((j, i) => ({
+      id: j.url || j.id || `job-${i}`,
+      title: j.title || '',
+      company: j.company || '',
+      location: j.location || null,
+      remote_type: j.remote_type || (j.remote ? 'remote' : null),
+      ats: j.ats || j.source || 'unknown',
+      url: j.url || '',
+      date_posted: j.date_posted || j.posted_at || null,
+      snippet: j.snippet || j.description || '',
+      skills: Array.isArray(j.skills) ? j.skills : [],
+    }));
   }
 
   // ── Sessions ─────────────────────────────────────────────────────────────
@@ -271,7 +263,15 @@ class JobSearchService {
       const session = await db.collection(COL_SESSIONS).findOne({ _id });
       if (!session) throw new Error('Session not found');
 
-      const results = await this.getOrFetchListings(session.filters);
+      const candidateDoc = await db.collection('candidateDetails').findOne({ _id: new ObjectId(session.candidateId) });
+      if (!candidateDoc?.resumeLink) {
+        throw new Error('candidate has no resumeLink');
+      }
+
+      const results = await this.getOrFetchListings(session.filters, {
+        candidateId: session.candidateId,
+        resumeUrl: candidateDoc.resumeLink,
+      });
 
       await db.collection(COL_SESSIONS).updateOne(
         { _id },
@@ -393,13 +393,18 @@ class JobSearchService {
       const job = (cache?.results || []).find((j) => j.url === jobId || j.url === jobId);
       if (!job) throw new Error(`Job not found in cache: ${jobId}`);
 
-      // Load candidate resume link
+      // Load full candidate doc for forge-ai schema
       const candidateCol = database.getDb().collection('candidateDetails');
-      const candidate = await candidateCol.findOne(
-        { _id: new ObjectId(candidateId) },
-        { projection: { resumeLink: 1 } }
-      );
-      const resumeUrl = candidate?.resumeLink || '';
+      const candidateDoc = await candidateCol.findOne({ _id: new ObjectId(candidateId) });
+
+      const candidateForge = {
+        name: candidateDoc?.['Candidate Name'] || candidateName || '',
+        email: candidateDoc?.['Email ID'] || '',
+        phone: candidateDoc?.['Contact No'] || '',
+        technology: candidateDoc?.Technology || '',
+        end_client: candidateDoc?.['End Client'] || '',
+        resume_url: candidateDoc?.resumeLink || '',
+      };
 
       // Update candidateId in tailor row
       await db.collection(COL_TAILORED).updateOne(
@@ -414,14 +419,13 @@ class JobSearchService {
       );
 
       // Call resume tailor
-      const { tailoredResumeUrl, tailoredResumeText } = await resumeTailorService.tailor({
+      const { tailoredResumeUrl, tailoredResumeText, tailoredResumeJson, runDir } = await resumeTailorService.tailor({
         candidateId,
-        candidateName,
-        resumeUrl,
-        jobDescription: job.snippet || '',
+        candidate: candidateForge,
         jobTitle: job.title,
         company: job.company,
-        location: job.location || '',
+        jobDescription: job.snippet || '',
+        jobUrl: job.url || '',
       });
 
       await db.collection(COL_TAILORED).updateOne(
@@ -431,6 +435,8 @@ class JobSearchService {
             status: 'complete',
             tailoredResumeUrl,
             tailoredResumeText,
+            tailoredResumeJson,
+            runDir,
             completedAt: new Date(),
           },
         }

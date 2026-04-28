@@ -211,18 +211,14 @@ const config = {
     interviewDebriefCollectionId: process.env.APPWRITE_COLLECTION_ID_INTERVIEW_DEBRIEF
   },
 
-  apify: {
-    token: process.env.APIFY_TOKEN || '',
-    baseUrl: process.env.APIFY_BASE_URL || 'https://api.apify.com',
-    jobsActor: process.env.APIFY_JOBS_ACTOR || 'fantastic-jobs/advanced-linkedin-job-search-api',
-    jobsActorCareerSites: process.env.APIFY_JOBS_ACTOR_CAREER || 'fantastic-jobs/advanced-linkedin-job-search-api',
-    timeoutMs: Number.parseInt(process.env.APIFY_TIMEOUT_MS || '120000', 10),
+  scraperService: {
+    url: process.env.SCRAPER_SERVICE_URL || 'http://scraper:8001',
+    timeoutMs: Number.parseInt(process.env.SCRAPER_SERVICE_TIMEOUT_MS || '600000', 10),
   },
 
-  resumeEditor: {
-    url: process.env.RESUME_EDITOR_URL || '',
-    apiKey: process.env.RESUME_EDITOR_API_KEY || '',
-    timeoutMs: Number.parseInt(process.env.RESUME_EDITOR_TIMEOUT_MS || '180000', 10),
+  forgeAiService: {
+    url: process.env.FORGE_AI_SERVICE_URL || 'http://forge-ai:8002',
+    timeoutMs: Number.parseInt(process.env.FORGE_AI_SERVICE_TIMEOUT_MS || '600000', 10),
   },
 
   jobSearch: {
