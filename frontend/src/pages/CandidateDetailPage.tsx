@@ -16,6 +16,7 @@ import { statusColors, type CandidateStatus } from '@/components/profile-hub/moc
 import { TaskSheet } from '@/components/shared/TaskSheet';
 import { PODraftSheet } from '@/components/shared/PODraftSheet';
 import type { TaskSheetPrefill } from '@/components/shared/TaskSheet';
+import FindJobsDialog from '@/components/jobs/FindJobsDialog';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Candidate {
@@ -215,6 +216,7 @@ export default function CandidateDetailPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [poPrefill, setPoPrefill] = useState<TaskSheetPrefill | null>(null);
   const [poSheetOpen, setPoSheetOpen] = useState(false);
+  const [findJobsOpen, setFindJobsOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -334,6 +336,14 @@ export default function CandidateDetailPage() {
                         + Create PO Draft
                       </Button>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs gap-1.5"
+                      onClick={() => setFindJobsOpen(true)}
+                    >
+                      <Briefcase className="h-3.5 w-3.5" /> Find Jobs
+                    </Button>
                     {candidate.resumeLink && (
                       <a href={candidate.resumeLink} target="_blank" rel="noopener noreferrer">
                         <Button variant="outline" size="sm" className="text-xs gap-1.5">
@@ -505,6 +515,14 @@ export default function CandidateDetailPage() {
         onClose={() => { setPoSheetOpen(false); setPoPrefill(null); }}
         prefill={poPrefill}
       />
+      {candidate && (
+        <FindJobsDialog
+          open={findJobsOpen}
+          onOpenChange={setFindJobsOpen}
+          candidateId={candidate.id}
+          candidateName={candidate.name}
+        />
+      )}
     </DashboardLayout>
   );
 }

@@ -22,6 +22,9 @@ import CandidateDetailPage from './pages/CandidateDetailPage';
 import TaskDetailPage from './pages/TaskDetailPage';
 import AdminPerformance from './pages/AdminPerformance';
 import AdminInterviewSupport from './pages/AdminInterviewSupport';
+import JobsPage from './pages/JobsPage';
+import CandidateJobsListPage from './pages/CandidateJobsListPage';
+import JobsListPage from './pages/JobsListPage';
 
 const queryClient = new QueryClient();
 
@@ -49,6 +52,9 @@ const App = () => (
             <Route path="/task/:taskId" element={<TaskDetailPage />} />
             <Route path="/admin/performance" element={<AdminPerformance />} />
             <Route path="/admin/interview-support" element={<AdminInterviewSupport />} />
+            <Route path="/jobs" element={<JobsListPage />} />
+            <Route path="/jobs/:sessionId" element={<JobsPage />} />
+            <Route path="/candidate/:candidateId/jobs" element={<CandidateJobsListPage />} />
             {/* Add any other protected routes here */}
           </Route>
 

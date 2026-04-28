@@ -15,7 +15,8 @@ import {
   BellRing,
   Sparkles,
   Activity,
-  Headphones
+  Headphones,
+  Briefcase,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -416,6 +417,14 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   icon={Database}
                   label="Branch Candidates"
                   href="/branch-candidates"
+                  isOpen={isOpen}
+                />
+              )}
+              {['admin', 'mm', 'mam', 'mlead', 'lead', 'user', 'am', 'recruiter', 'manager'].includes(normalizedRole) && (
+                <NavItem
+                  icon={Briefcase}
+                  label="Jobs"
+                  href="/jobs"
                   isOpen={isOpen}
                 />
               )}
