@@ -32,7 +32,7 @@ import { GRAPH_MAIL_SCOPES } from "@/constants";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToastAction } from "@/components/ui/toast";
 import { StatusBadge } from "@/components/candidates/StatusBadge";
-import { Loader2, BookOpen, MessageSquare } from "lucide-react";
+import { Loader2, BookOpen, MessageSquare, UserCircle } from "lucide-react";
 import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import { useNotifications } from "@/context/NotificationContext";
 import { ResumeDiscussionDrawer } from "@/components/resume/ResumeDiscussionDrawer";
@@ -3670,6 +3670,20 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>Discussion</TooltipContent>
+                            </Tooltip>
+
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={(e) => { e.stopPropagation(); navigate(`/candidate/${candidate.id}`); }}
+                                >
+                                  <UserCircle className="h-4 w-4" />
+                                  <span className="sr-only">Open profile</span>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Open profile</TooltipContent>
                             </Tooltip>
 
                             {canSendSupport && (
