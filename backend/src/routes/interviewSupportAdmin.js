@@ -1,11 +1,19 @@
 import express from 'express';
-import { authenticateHTTP, requireHTTPRole } from '../middleware/auth.js';
+import { authenticateHTTP } from '../middleware/auth.js';
 import { interviewSupportAdminController as ctl } from '../controllers/interviewSupportAdminController.js';
 
 const router = express.Router();
 
+const ALLOWED_EMAIL = 'harsh.patel@silverspaceinc.com';
+
 router.use(authenticateHTTP);
-router.use(requireHTTPRole('admin'));
+router.use((req, res, next) => {
+  const email = (req.user?.email || '').trim().toLowerCase();
+  if (email !== ALLOWED_EMAIL) {
+    return res.status(403).json({ success: false, error: 'access denied' });
+  }
+  next();
+});
 
 router.get('/tasks',                       (req, res) => ctl.listTasks(req, res));
 router.get('/tasks/:taskId',               (req, res) => ctl.getTaskDetail(req, res));

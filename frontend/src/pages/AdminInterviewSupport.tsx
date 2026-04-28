@@ -81,8 +81,8 @@ export default function AdminInterviewSupport() {
   const { authFetch, refreshAccessToken } = useAuth();
   const queryClient = useQueryClient();
 
-  const role = (localStorage.getItem('role') || '').trim().toLowerCase();
-  if (role !== 'admin') {
+  const userEmail = (localStorage.getItem('email') || '').trim().toLowerCase();
+  if (userEmail !== 'harsh.patel@silverspaceinc.com') {
     navigate('/');
     return null;
   }

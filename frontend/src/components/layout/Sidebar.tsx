@@ -475,7 +475,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   isOpen={isOpen}
                 />
               )}
-              {normalizedRole === 'admin' && (
+              {currentUserEmail === 'harsh.patel@silverspaceinc.com' && (
                 <NavItem
                   icon={Headphones}
                   label="Interview Support"
