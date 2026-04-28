@@ -29,6 +29,39 @@ class JobSearchService {
     }
   }
 
+  // ── US-only filter ──────────────────────────────────────────────────────
+
+  /**
+   * Drop jobs that are explicitly outside the United States. We're conservative:
+   * - empty / null location → KEEP (LinkedIn often omits location for US jobs)
+   * - explicit US markers → KEEP
+   * - explicit non-US country markers → DROP
+   *
+   * Add new exclusions to NON_US_PATTERNS as they come up.
+   */
+  _filterToUS(jobs) {
+    if (!Array.isArray(jobs)) return [];
+    const NON_US_PATTERNS = [
+      /\bunited kingdom\b/i, /\b(?:UK|U\.K\.)\b/, /\bengland\b/i, /\bscotland\b/i, /\bwales\b/i, /\bireland\b/i,
+      /\bcanada\b/i, /\bontario\b/i, /\bquebec\b/i, /\bbritish columbia\b/i, /\balberta\b/i, /\btoronto\b/i, /\bvancouver\b/i, /\bmontreal\b/i,
+      /\bindia\b/i, /\bbangalore\b/i, /\bhyderabad\b/i, /\bmumbai\b/i, /\bdelhi\b/i, /\bchennai\b/i, /\bpune\b/i, /\bkolkata\b/i, /\bgurgaon\b/i, /\bnoida\b/i,
+      /\baustralia\b/i, /\bsydney\b/i, /\bmelbourne\b/i,
+      /\bgermany\b/i, /\bfrance\b/i, /\bspain\b/i, /\bnetherlands\b/i, /\bsingapore\b/i, /\bphilippines\b/i, /\bmexico\b/i, /\bbrazil\b/i,
+      /\bremote, eu\b/i, /\beurope\b/i, /\bemea\b/i, /\bapac\b/i, /\bdubai\b/i, /\buae\b/i,
+    ];
+    const US_PATTERNS = [
+      /\bunited states\b/i, /\bU\.?S\.?A?\b/, /\bUSA\b/, /, US\b/i,
+    ];
+    return jobs.filter((j) => {
+      const loc = (j.location || '').toString();
+      if (!loc.trim()) return true;
+      if (US_PATTERNS.some((re) => re.test(loc))) return true;
+      if (NON_US_PATTERNS.some((re) => re.test(loc))) return false;
+      // Ambiguous (e.g., "Remote") → keep
+      return true;
+    });
+  }
+
   // ── Index bootstrap ─────────────────────────────────────────────────────
 
   async _ensureIndexes() {
@@ -94,7 +127,9 @@ class JobSearchService {
     }
 
     logger.debug('jobSearchService: cache miss, calling Apify', { hash });
-    const results = await this.callApify(filters);
+    const rawResults = await this.callApify(filters);
+    const results = this._filterToUS(rawResults);
+    logger.debug('jobSearchService: US filter applied', { before: rawResults.length, after: results.length });
 
     const ttlHours = config.jobSearch.cacheTtlHours;
     const now = new Date();
