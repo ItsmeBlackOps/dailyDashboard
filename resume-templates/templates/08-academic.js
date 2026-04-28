@@ -1,0 +1,138 @@
+export function render(resume) {
+  const { name, title, contact, summary, skills, experience, education, projects, certifications } = resume;
+
+  // Expand short date format to longer form for academic style
+  function expandDate(d) {
+    if (!d) return d;
+    if (d.toLowerCase() === 'current' || d.toLowerCase() === 'present') return 'Present';
+    const months = {
+      Jan: 'January', Feb: 'February', Mar: 'March', Apr: 'April',
+      May: 'May', Jun: 'June', Jul: 'July', Aug: 'August',
+      Sep: 'September', Oct: 'October', Nov: 'November', Dec: 'December',
+    };
+    return d.replace(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/, m => months[m] || m);
+  }
+
+  const contactParts = [
+    contact.phone,
+    contact.email,
+    contact.location,
+    contact.linkedin ? `<a href="${contact.linkedin}">${contact.linkedin}</a>` : '',
+    contact.github ? `<a href="${contact.github}">${contact.github}</a>` : '',
+    contact.website ? `<a href="${contact.website}">${contact.website}</a>` : '',
+  ].filter(Boolean).join(' &middot; ');
+
+  const skillsHtml = Object.entries(skills).map(([cat, list]) =>
+    `<p><strong>${cat}:</strong> ${list.join(', ')}</p>`
+  ).join('\n');
+
+  const expHtml = experience.map(e => `
+    <article>
+      <h3><em>${e.role}</em></h3>
+      <p class="company">${e.company}, ${e.location}</p>
+      <p class="meta">${expandDate(e.startDate)} - ${expandDate(e.endDate)}</p>
+      <ul>${e.bullets.map(b => `<li>${b}</li>`).join('\n')}</ul>
+    </article>`
+  ).join('\n');
+
+  const eduHtml = education.map(e => `
+    <article>
+      <h3>${e.degree}</h3>
+      <p class="company">${e.school}, ${e.location}</p>
+      <p class="meta">${expandDate(e.startDate)} - ${expandDate(e.endDate)}</p>
+    </article>`
+  ).join('\n');
+
+  const projHtml = projects && projects.length ? `
+    <section>
+      <h2>Projects</h2>
+      ${projects.map(p => `
+        <article>
+          <h3>${p.name}</h3>
+          <p class="meta"><em>Technologies employed:</em> ${p.technologies.join(', ')}</p>
+          <ul>${p.bullets.map(b => `<li>${b}</li>`).join('\n')}</ul>
+        </article>`).join('\n')}
+    </section>` : '';
+
+  const certHtml = certifications && certifications.length ? `
+    <section>
+      <h2>Certifications</h2>
+      ${certifications.map(c => `<p>${c}</p>`).join('\n')}
+    </section>` : '';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>${name} - Curriculum Vitae</title>
+<style>
+  @page { size: Letter; margin: 0.6in 0.7in; }
+  html, body {
+    background: #fff;
+    color: #111;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 11pt;
+    line-height: 1.5;
+  }
+  body { max-width: 7.1in; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 16pt; }
+  h1 { font-size: 18pt; font-weight: bold; margin: 0 0 3pt; }
+  .tagline { font-size: 11pt; color: #444; margin: 0 0 4pt; font-style: italic; }
+  .meta-contact { font-size: 10pt; color: #555; margin: 0; }
+  h2 {
+    font-size: 11pt;
+    font-weight: bold;
+    border-bottom: 1px solid #555;
+    padding-bottom: 3pt;
+    margin: 16pt 0 8pt;
+    font-style: normal;
+  }
+  h3 { font-size: 11pt; margin: 10pt 0 1pt; font-weight: bold; font-style: italic; }
+  .company { font-size: 10.5pt; color: #333; margin: 0 0 1pt; }
+  p, li { margin: 0 0 4pt; }
+  ul { margin: 4pt 0 8pt 20pt; padding: 0; list-style: disc; }
+  .meta { color: #666; font-size: 10pt; font-style: italic; }
+  a { color: #1a4fa6; text-decoration: none; }
+  section { margin-bottom: 4pt; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>${name}</h1>
+    <p class="tagline">${title}</p>
+    <p class="meta-contact">${contactParts}</p>
+  </header>
+
+  <section>
+    <h2>Summary</h2>
+    <p>${summary}</p>
+  </section>
+
+  <section>
+    <h2>Experience</h2>
+    ${expHtml}
+  </section>
+
+  <section>
+    <h2>Skills</h2>
+    ${skillsHtml}
+  </section>
+
+  ${projHtml}
+
+  <section>
+    <h2>Education</h2>
+    ${eduHtml}
+  </section>
+
+  ${certHtml}
+</body>
+</html>`;
+}
+
+export const meta = {
+  id: '08-academic',
+  label: 'Academic CV',
+  vibe: 'academic',
+  density: 'airy',
+};
