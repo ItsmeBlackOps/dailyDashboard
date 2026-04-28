@@ -957,6 +957,26 @@ class CandidateController {
       return res.status(500).json({ success: false, error: 'Internal server error' });
     }
   }
+  // ── Read cached forge search profile ──────────────────────────────────────
+
+  async getForgeProfile(req, res) {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      const { id } = req.params;
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, error: 'Invalid candidate ID' });
+      }
+      const forgeProfile = await resumeProfileService.getCached(id);
+      return res.status(200).json({ success: true, forgeProfile: forgeProfile || null });
+    } catch (error) {
+      logger.error('getForgeProfile failed', { error: error.message, candidateId: req.params?.id });
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
   // ── Admin: manually re-derive search profile ──────────────────────────────
 
   async deriveProfile(req, res) {
