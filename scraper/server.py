@@ -60,6 +60,24 @@ async def find_jobs(req: FindJobsRequest):
     if req.multi_title:
         env["RESUME_SCRAPE_MULTI_TITLE"] = "1"
 
+    # ── Canonical Apify actor filter defaults (per product spec) ──
+    # These env vars are picked up inside scrape_with_resume.py and forwarded
+    # to the Fantastic Jobs Apify actor. Host-level env wins; we only set
+    # defaults the host hasn't already specified.
+    spec_defaults = {
+        "FANTASTIC_JOBS_REMOVE_AGENCY":         "true",
+        "FANTASTIC_JOBS_INCLUDE_AI":            "true",
+        "FANTASTIC_JOBS_INCLUDE_LINKEDIN":      "false",   # use the dedicated LinkedIn actor instead
+        "FANTASTIC_JOBS_DESCRIPTION_TYPE":      "text",
+        "FANTASTIC_JOBS_AI_EMPLOYMENT_TYPES":   "FULL_TIME,CONTRACTOR",
+        "FANTASTIC_JOBS_AI_WORK_ARRANGEMENTS": "On-site,Hybrid,Remote OK,Remote Solely",
+        "FANTASTIC_JOBS_COUNTRY":               "United States",
+        # LinkedIn actor knobs
+        "LINKEDIN_NO_DIRECT_APPLY":             "true",   # exclude Easy Apply
+    }
+    for k, v in spec_defaults.items():
+        env.setdefault(k, v)
+
     try:
         proc = subprocess.run(args, env=env, capture_output=True, text=True, timeout=600, cwd=str(ROOT))
     except subprocess.TimeoutExpired:
