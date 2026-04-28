@@ -13,7 +13,7 @@ class FindJobsRequest(BaseModel):
     resume_url: str
     profile_id: str  # stable id, e.g. candidateId
     max_per_source: int = 100
-    linkedin_only: bool = True
+    linkedin_only: bool = False  # default: search BOTH LinkedIn AND career sites
     multi_title: bool = True
     # legacy / override fields — respected when multi_title=False or overrides needed:
     keyword: str | None = None

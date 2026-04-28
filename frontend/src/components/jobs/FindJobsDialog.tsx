@@ -74,9 +74,9 @@ export default function FindJobsDialog({
                 and skill fingerprint.
               </p>
               <p>
-                Then we'll search <span className="font-medium text-foreground">LinkedIn</span> for
+                Then we'll search <span className="font-medium text-foreground">LinkedIn and all career-site portals</span> for
                 the top&nbsp;<span className="font-medium text-foreground">100 remote matches</span>{' '}
-                per title and merge the results into one deduplicated list.
+                per source and merge the results into one deduplicated list.
               </p>
             </div>
           </DialogDescription>

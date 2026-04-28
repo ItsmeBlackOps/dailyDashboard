@@ -165,7 +165,7 @@ class JobSearchService {
       resume_url: resumeUrl,
       profile_id: candidateId,
       max_per_source: filters.max_per_source ?? filters.maxPerSource ?? 100,
-      linkedin_only: filters.linkedin_only ?? true,
+      linkedin_only: filters.linkedin_only ?? false,
       multi_title: filters.multi_title ?? true,
       keyword: filters.keyword || null,
       location: filters.location || null,
@@ -230,7 +230,7 @@ class JobSearchService {
     const canonicalFilters = {
       remote: 'remote',
       max_per_source: 100,
-      linkedin_only: true,
+      linkedin_only: false,    // search BOTH LinkedIn AND career-site portals
       multi_title: true,
       ...filters,
     };
