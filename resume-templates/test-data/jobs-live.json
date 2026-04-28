@@ -1,0 +1,122 @@
+[
+  {
+    "id": "job-1",
+    "title": "Senior Backend Engineer",
+    "company": "Stripe",
+    "location": "San Francisco, CA",
+    "remote_type": "hybrid",
+    "ats": "greenhouse",
+    "url": "https://stripe.com/jobs/listing/senior-backend-engineer",
+    "snippet": "Build and scale distributed payment infrastructure powering millions of transactions per day using Java and microservices.",
+    "jd_text": "Stripe is looking for a Senior Backend Engineer to join our Payments Infrastructure team. In this role, you will design and implement highly available, fault-tolerant distributed systems that process billions of dollars in transactions daily.\n\nResponsibilities:\n- Architect and build scalable microservices using Java and Spring Boot that power core payment flows\n- Design distributed systems with strong consistency guarantees, including consensus algorithms and distributed locking\n- Optimize system performance through profiling, caching strategies (Redis), and database query tuning\n- Build robust event-driven pipelines using Kafka for asynchronous payment processing\n- Partner with product and platform teams to define technical roadmaps and ensure operational excellence\n- Lead code reviews, mentor engineers, and drive engineering best practices across the team\n\nRequirements:\n- 5+ years of backend engineering experience with Java in a production environment\n- Deep expertise in distributed systems concepts: consistency models, partitioning, replication\n- Experience with microservices architecture and container orchestration (Docker, Kubernetes)\n- Strong understanding of relational databases (PostgreSQL, MySQL) and caching layers (Redis)\n- Familiarity with cloud platforms, preferably AWS (EC2, RDS, SQS, Lambda)\n- Experience with event streaming platforms such as Kafka or Kinesis\n\nNice to haves:\n- Experience with gRPC or Thrift for service-to-service communication\n- Knowledge of PCI DSS compliance requirements\n- Prior fintech or payments domain experience",
+    "must_haves": ["Java", "microservices", "distributed systems", "Spring Boot", "Kafka", "PostgreSQL", "Redis", "AWS"]
+  },
+  {
+    "id": "job-2",
+    "title": "Full Stack Engineer",
+    "company": "Shopify",
+    "location": "Toronto, Canada",
+    "remote_type": "remote",
+    "ats": "lever",
+    "url": "https://www.shopify.com/careers/full-stack-engineer",
+    "snippet": "Build merchant-facing commerce experiences using React, Node.js, and GraphQL at massive scale.",
+    "jd_text": "Shopify is seeking a Full Stack Engineer to help build the tools that power millions of merchants worldwide. You will work across the stack, from React-based merchant dashboards to Node.js backend services and GraphQL APIs.\n\nResponsibilities:\n- Build responsive, performant merchant-facing UIs using React and TypeScript\n- Design and implement GraphQL APIs that power the Shopify Admin and storefront experiences\n- Develop Node.js microservices handling real-time inventory, order management, and analytics\n- Collaborate with product designers to ship delightful experiences at scale\n- Write comprehensive tests using Jest, Cypress, and React Testing Library\n- Participate in on-call rotations and incident response for production systems\n- Contribute to frontend architecture decisions including state management and performance optimization\n\nRequirements:\n- 4+ years of full-stack engineering experience\n- Strong proficiency in React and modern JavaScript/TypeScript (ES6+)\n- Solid experience with Node.js and REST or GraphQL API design\n- Experience with relational databases and query optimization\n- Familiarity with containerization (Docker) and CI/CD pipelines\n- Understanding of web performance, accessibility, and security best practices\n\nNice to haves:\n- Experience with Ruby on Rails (Shopify's primary backend stack)\n- Familiarity with Kubernetes and cloud infrastructure on GCP or AWS\n- E-commerce domain knowledge",
+    "must_haves": ["React", "Node.js", "GraphQL", "TypeScript", "JavaScript", "Jest", "Cypress", "REST APIs"]
+  },
+  {
+    "id": "job-3",
+    "title": "Platform Engineer",
+    "company": "Databricks",
+    "location": "Seattle, WA",
+    "remote_type": "hybrid",
+    "ats": "workday",
+    "url": "https://databricks.com/company/careers/platform-engineer",
+    "snippet": "Build the cloud-native platform infrastructure that runs the Databricks Lakehouse across AWS, Azure, and GCP.",
+    "jd_text": "Databricks is looking for a Platform Engineer to join the Cloud Infrastructure team. You will be responsible for designing, building, and operating the core platform services that power the Databricks Lakehouse Platform across three major cloud providers.\n\nResponsibilities:\n- Design and implement cloud-native infrastructure using Kubernetes, Terraform, and AWS/Azure/GCP\n- Build and maintain CI/CD pipelines using GitHub Actions and Jenkins that deploy across multi-region, multi-cloud environments\n- Develop internal platform tooling and automation to enable thousands of engineers to ship faster\n- Implement observability solutions using Prometheus, Grafana, and distributed tracing\n- Scale Apache Spark workloads and optimize compute costs across cloud providers\n- Partner with security teams to enforce compliance and implement zero-trust networking\n\nRequirements:\n- 4+ years of platform or infrastructure engineering experience\n- Expert-level proficiency in Kubernetes including cluster administration and custom operators\n- Strong experience with AWS (EKS, EC2, S3, IAM, CloudWatch) and infrastructure-as-code (Terraform)\n- Proficiency in at least one scripting language (Python, Bash, Go)\n- Experience with Apache Spark or distributed computing frameworks\n- Solid understanding of CI/CD best practices and GitOps workflows\n\nNice to haves:\n- Contributions to open-source projects in the cloud-native space\n- Experience with Delta Lake or Apache Iceberg\n- Multi-cloud (Azure AKS, GCP GKE) deployment experience",
+    "must_haves": ["Kubernetes", "AWS", "Terraform", "Docker", "CI/CD", "Spark", "Python", "Prometheus"]
+  },
+  {
+    "id": "job-4",
+    "title": "Healthcare Software Engineer",
+    "company": "Cigna",
+    "location": "Bloomfield, CT",
+    "remote_type": "hybrid",
+    "ats": "workday",
+    "url": "https://cigna.com/careers/healthcare-software-engineer",
+    "snippet": "Build HIPAA-compliant healthcare applications using Java and Spring Boot powering claims processing and member services.",
+    "jd_text": "Cigna is seeking a Healthcare Software Engineer to join the Digital Health Engineering team. You will build secure, HIPAA-compliant backend systems that power claims adjudication, member portals, and provider network management for millions of members.\n\nResponsibilities:\n- Develop Java and Spring Boot microservices for claims processing, eligibility verification, and prior authorization workflows\n- Implement Spring Security configurations to enforce HIPAA-compliant access controls and audit logging\n- Design RESTful APIs consumed by web and mobile member-facing applications\n- Optimize PostgreSQL and Oracle database queries for high-volume transaction processing\n- Integrate with external payer systems via HL7 FHIR APIs and EDI 837/835 transactions\n- Participate in security reviews and threat modeling for PHI data flows\n- Build automated testing suites with JUnit and Mockito ensuring 80%+ coverage\n\nRequirements:\n- 4+ years of Java backend development experience\n- Strong experience with Spring Boot, Spring MVC, and Spring Security\n- Knowledge of HIPAA compliance requirements and healthcare data standards\n- Experience with relational databases (PostgreSQL, Oracle) and Hibernate ORM\n- Familiarity with containerization (Docker) and cloud platforms (AWS)\n- Experience with RESTful API design and integration testing\n\nNice to haves:\n- Knowledge of HL7 FHIR, EDI 837/835, or CCD/CCR formats\n- Experience with healthcare interoperability platforms\n- AWS certifications or hands-on experience with EKS, Lambda, and RDS",
+    "must_haves": ["Java", "Spring Boot", "HIPAA", "Spring Security", "PostgreSQL", "Hibernate", "JUnit", "microservices"]
+  },
+  {
+    "id": "job-5",
+    "title": "Backend Engineer",
+    "company": "Linear",
+    "location": "San Francisco, CA",
+    "remote_type": "remote",
+    "ats": "ashby",
+    "url": "https://linear.app/careers/backend-engineer",
+    "snippet": "Build the fast, reliable backend powering Linear's project management platform with Java microservices and event-driven architecture.",
+    "jd_text": "Linear is a startup building the world's best project management tool, and we are looking for a Backend Engineer to scale our core platform. You will work on the systems that power real-time collaboration, notifications, integrations, and data sync for teams at companies like Vercel, Pitch, and OpenAI.\n\nResponsibilities:\n- Design and build Java-based microservices handling real-time sync, webhooks, and third-party integrations\n- Implement event-driven workflows using message queues to decouple services and improve reliability\n- Optimize API performance to maintain Linear's reputation for speed (sub-100ms response times)\n- Build robust data pipelines for analytics and user-facing dashboards using PostgreSQL and Redis\n- Improve system observability through structured logging, distributed tracing, and alerting\n- Conduct thorough code reviews and mentor junior engineers\n- Collaborate closely with the product team to ship meaningful features quickly\n\nRequirements:\n- 3+ years of backend engineering experience with strong Java fundamentals\n- Experience building and operating microservices in production at scale\n- Solid understanding of API design, REST principles, and async communication patterns\n- Hands-on experience with PostgreSQL, Redis, and query optimization\n- Comfort deploying to cloud environments (AWS or GCP) using Docker and Kubernetes\n- Strong debugging skills and experience with production incident response\n\nNice to haves:\n- Experience at a fast-growing B2B SaaS startup\n- GraphQL API experience\n- Contribution to developer tooling or productivity software",
+    "must_haves": ["Java", "microservices", "REST APIs", "PostgreSQL", "Redis", "Docker", "Kubernetes", "event-driven"]
+  },
+  {
+    "id": "job-6",
+    "title": "Cloud Engineer",
+    "company": "Atlassian",
+    "location": "Austin, TX",
+    "remote_type": "remote",
+    "ats": "greenhouse",
+    "url": "https://atlassian.com/company/careers/cloud-engineer",
+    "snippet": "Build and scale cloud infrastructure for Jira, Confluence, and Bitbucket serving 300,000+ customers using AWS and Terraform.",
+    "jd_text": "Atlassian is looking for a Cloud Engineer to join the Platform Engineering team supporting Jira, Confluence, Bitbucket, and Trello. You will design and operate the cloud infrastructure that powers 300,000+ enterprise customers worldwide.\n\nResponsibilities:\n- Design and implement cloud infrastructure on AWS using Terraform and CloudFormation IaC\n- Build and maintain CI/CD pipelines using Jenkins, GitHub Actions, and Bitbucket Pipelines\n- Implement auto-scaling, load balancing, and multi-region failover strategies\n- Develop internal developer platform tooling to simplify deployment and operations\n- Monitor and optimize cloud costs using AWS Cost Explorer and tagging strategies\n- Lead security hardening initiatives including IAM policies, VPC design, and secrets management\n- Collaborate with SRE teams to define SLOs and implement error budgets\n\nRequirements:\n- 4+ years of cloud engineering or DevOps experience\n- Expert knowledge of AWS (EC2, EKS, RDS, S3, IAM, CloudWatch, Route53)\n- Strong proficiency with Terraform and infrastructure-as-code principles\n- Experience with CI/CD tooling (Jenkins, GitHub Actions, or similar)\n- Proficiency in scripting with Python or Bash for automation\n- Understanding of networking fundamentals, VPC design, and security groups\n\nNice to haves:\n- AWS Solutions Architect or DevOps Professional certification\n- Experience with Kubernetes and Helm chart management\n- Familiarity with Atlassian product ecosystem (Jira, Confluence, Bitbucket)",
+    "must_haves": ["AWS", "Terraform", "CI/CD", "Jenkins", "Docker", "Kubernetes", "Python", "infrastructure-as-code"]
+  },
+  {
+    "id": "job-7",
+    "title": "Senior Software Engineer",
+    "company": "JPMorgan Chase",
+    "location": "New York, NY",
+    "remote_type": "hybrid",
+    "ats": "workday",
+    "url": "https://careers.jpmorgan.com/senior-software-engineer",
+    "snippet": "Develop high-performance Java applications for trading, risk, and portfolio management systems within the Corporate Investment Bank.",
+    "jd_text": "JPMorgan Chase is seeking a Senior Software Engineer to join the Corporate Investment Bank Technology division. You will build mission-critical applications supporting electronic trading, risk management, and regulatory reporting for one of the world's largest financial institutions.\n\nResponsibilities:\n- Design and implement high-throughput Java applications for trade execution, position management, and P&L reporting\n- Build RESTful and event-driven APIs integrated with market data feeds, clearing systems, and regulatory platforms\n- Optimize database performance (Oracle, PostgreSQL) for financial transaction processing at microsecond latency\n- Implement Spring Security controls to meet SOX, MiFID II, and internal audit requirements\n- Conduct code reviews and contribute to architecture decisions for core banking systems\n- Work within Agile Scrum teams, participating in sprint planning, refinement, and retrospectives\n- Mentor junior engineers on Java best practices, design patterns, and financial domain knowledge\n\nRequirements:\n- 5+ years of Java development experience in enterprise environments\n- Strong Spring Boot and Spring Framework expertise\n- Experience with financial systems, trading platforms, or risk management applications preferred\n- Solid database skills (SQL, Oracle, PostgreSQL) and ORM experience (Hibernate)\n- Understanding of SOX compliance and audit trail requirements\n- Experience with messaging systems (Kafka, IBM MQ, or ActiveMQ)\n\nNice to haves:\n- Knowledge of FIX protocol, SWIFT messaging, or financial industry standards\n- AWS or Azure cloud experience\n- CFA or financial industry certifications",
+    "must_haves": ["Java", "Spring Boot", "Spring Framework", "Hibernate", "PostgreSQL", "Kafka", "SOX", "RESTful APIs"]
+  },
+  {
+    "id": "job-8",
+    "title": "Microservices Engineer",
+    "company": "Capital One",
+    "location": "McLean, VA",
+    "remote_type": "hybrid",
+    "ats": "workday",
+    "url": "https://capitalone.com/tech/software-engineering/microservices-engineer",
+    "snippet": "Build event-driven microservices using Java, Spring Boot, and Kafka for Capital One's digital banking platform.",
+    "jd_text": "Capital One is looking for a Microservices Engineer to join the Digital Banking Platform team. You will architect and build event-driven, cloud-native microservices that power account management, payments, and fraud detection for 65 million customers.\n\nResponsibilities:\n- Design and implement Java Spring Boot microservices handling billions of financial events per day\n- Build event-driven architectures using Kafka for real-time fraud detection, transaction streaming, and audit trails\n- Implement Spring Security and OAuth 2.0 to secure banking APIs and enforce PCI DSS compliance\n- Deploy and operate containerized services on Kubernetes (EKS) with Terraform infrastructure-as-code\n- Optimize microservice performance through profiling, caching with Redis, and database tuning\n- Build CI/CD pipelines with Jenkins and GitHub Actions for continuous deployment\n- Perform security code reviews and threat modeling for sensitive financial data flows\n\nRequirements:\n- 4+ years of Java backend development experience\n- Strong expertise in Spring Boot, Spring Security, and microservices design patterns\n- Hands-on experience with Apache Kafka for event streaming and messaging\n- Experience with Docker, Kubernetes, and cloud platforms (AWS preferred)\n- Solid understanding of PCI DSS, SOX compliance, and financial data security\n- Proficiency with PostgreSQL or MySQL and Hibernate ORM\n\nNice to haves:\n- Experience with AWS Lambda, API Gateway, and serverless architectures\n- Knowledge of chaos engineering principles\n- Capital One tech blog contributions or open-source involvement",
+    "must_haves": ["Java", "Spring Boot", "Kafka", "microservices", "Kubernetes", "Spring Security", "AWS", "Docker"]
+  },
+  {
+    "id": "job-9",
+    "title": "Backend Engineer",
+    "company": "Databricks",
+    "location": "San Francisco, CA",
+    "remote_type": "hybrid",
+    "ats": "greenhouse",
+    "url": "https://databricks.com/company/careers/backend-engineer-python",
+    "snippet": "Build Python-based backend services and distributed data processing pipelines for the Databricks Lakehouse Platform.",
+    "jd_text": "Databricks is seeking a Backend Engineer to join the Data Platform Engineering team. You will build Python-based microservices and distributed processing pipelines that power the Unity Catalog, Delta Lake, and ML Runtime experiences for thousands of enterprise customers.\n\nResponsibilities:\n- Design and build Python microservices (FastAPI, Django) handling metadata management, governance, and catalog operations\n- Implement distributed data processing workflows using Apache Spark and Delta Lake\n- Build and optimize REST APIs consumed by CLI, SDK clients, and the Databricks web UI\n- Develop data validation, lineage tracking, and audit logging systems at petabyte scale\n- Collaborate with ML and data engineering teams to define platform APIs and SDKs\n- Implement observability with Prometheus, OpenTelemetry, and distributed tracing\n- Deploy services using Docker and Kubernetes with Terraform on AWS and Azure\n\nRequirements:\n- 4+ years of backend engineering experience with Python\n- Strong experience building REST APIs using FastAPI, Django, or Flask\n- Hands-on experience with Apache Spark and distributed computing concepts\n- Proficiency with SQL and relational/columnar databases (PostgreSQL, Delta Lake)\n- Experience with Docker, Kubernetes, and cloud deployments on AWS or Azure\n- Understanding of data governance, metadata management, or catalog systems\n\nNice to haves:\n- Experience with Delta Lake, Apache Iceberg, or Hudi\n- Familiarity with MLflow or ML pipeline orchestration\n- Java or Scala experience for JVM-based Spark components",
+    "must_haves": ["Python", "distributed systems", "REST APIs", "Spark", "Docker", "Kubernetes", "AWS", "PostgreSQL"]
+  },
+  {
+    "id": "job-10",
+    "title": "API Engineer",
+    "company": "Plaid",
+    "location": "San Francisco, CA",
+    "remote_type": "hybrid",
+    "ats": "lever",
+    "url": "https://plaid.com/careers/api-engineer",
+    "snippet": "Build the secure financial APIs that connect millions of apps to bank accounts, powering a new generation of fintech applications.",
+    "jd_text": "Plaid is looking for an API Engineer to help build and scale the financial data APIs connecting 12,000+ fintech applications to 11,000+ financial institutions. You will work on the core API platform that hundreds of millions of end users interact with daily.\n\nResponsibilities:\n- Design and implement RESTful APIs in Java that connect to bank systems, credit bureaus, and investment platforms\n- Build OAuth 2.0 and OpenID Connect authentication flows for secure third-party data access\n- Implement rate limiting, request signing, and API key management for developer-facing APIs\n- Ensure API security through threat modeling, penetration test remediation, and security code reviews\n- Build developer-facing SDKs and maintain API documentation using OpenAPI 3.0\n- Monitor API availability and latency SLOs, responding to incidents and optimizing performance\n- Work with compliance teams to implement GDPR, CCPA, and financial data privacy requirements\n\nRequirements:\n- 4+ years of API engineering experience with Java\n- Deep understanding of REST API design principles, versioning, and backward compatibility\n- Strong expertise in OAuth 2.0, JWT, and API security best practices\n- Experience with high-availability distributed systems (microservices, load balancing, caching)\n- Proficiency with relational databases (PostgreSQL, MySQL) and caching layers (Redis)\n- Hands-on experience with AWS and containerized deployments (Docker, Kubernetes)\n\nNice to haves:\n- Open banking (PSD2, FDX, or FHIR) experience\n- Knowledge of banking protocols (ACH, SWIFT, FIX)\n- Experience building developer platforms or API marketplaces",
+    "must_haves": ["Java", "REST APIs", "OAuth", "JWT", "security", "microservices", "PostgreSQL", "AWS"]
+  }
+]

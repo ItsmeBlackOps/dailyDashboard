@@ -1,0 +1,127 @@
+{
+  "slug": "rathin",
+  "name": "Rathin Pothani",
+  "location": "Little Rock, AR",
+  "contact": {
+    "email": "rathinpothani@gmail.com",
+    "phone": "(501) 712-0661",
+    "linkedin": "linkedin.com/in/rathin-pothani-a26161318"
+  },
+  "education": [
+    {
+      "degree": "M.S. in Computer and Information Science",
+      "school": "University of Arkansas at Little Rock",
+      "location": "Little Rock, AR",
+      "graduated": "May 2024"
+    },
+    {
+      "degree": "B.S. in Mechatronics Engineering",
+      "school": "Lovely Professional University",
+      "location": "Punjab, India",
+      "graduated": "May 2018"
+    }
+  ],
+  "companies": [
+    {
+      "company": "Trinity Techno Labs",
+      "title": "Software Engineer",
+      "location": "India",
+      "start": "Dec 2018",
+      "end": "Jan 2020",
+      "achievements": [
+        "Developed a responsive React.js banking portal from scratch, adding account management features and secure transaction filters, resulting in a 30% increase in customer self-service logins within 6 months.",
+        "Built 12 RESTful APIs for real-time banking operations using Node.js and MongoDB, achieving sub-200ms response times under peak load (~1,200 daily transactions) and ensuring uptime.",
+        "Migrated over 50,000 customer records from legacy AS/400 systems to a modern MongoDB cluster in 3 months, significantly reducing reconciliation errors and meeting GDPR data audit requirements.",
+        "Executed a unit testing strategy for the payments module using Jest, increasing test coverage to 85%, and catching critical bugs 3-4 days earlier in QA cycles.",
+        "Delivered 8 compliance features in collaboration with the risk and finance teams (SOX thresholds, daily transaction caps) in 4 Agile sprints, which passed regulatory audit reviews with zero major findings."
+      ]
+    },
+    {
+      "company": "KPMG",
+      "title": "Software Engineer",
+      "location": "India",
+      "start": "Feb 2020",
+      "end": "Jul 2022",
+      "achievements": [
+        "Deployed an internal audit automation platform using Java and Spring Boot, reducing manual data entry time for audit teams by an average of 80 hours/month, while integrating MySQL for secure storage of over 3 years of historical data.",
+        "Automated 4 ETL pipelines for finance reporting, cutting month-end report processing time from 3 days to under 5 hours, enabling near real-time insights for decision-makers.",
+        "Collaborated with UI developers to deliver a real-time Angular dashboard for tracking team utilization and project margins, used daily by 500+ consultants across departments.",
+        "Migrated 6 internal databases to AWS RDS within 6 months, improving data access times and reducing server maintenance hours by 40+ hours per month.",
+        "Refactored and optimized 40+ complex SQL queries, reducing report generation time from 2-3 minutes to under 15 seconds, enabling faster access to regulatory and tax audit data.",
+        "Supported role-based access control (RBAC) deployment for KPMG enterprise data lake, managing access across 12 departments and aligning with SOX/GDPR compliance guidelines.",
+        "Devised integration services to connect HRMS and CRM systems via internal APIs, automating 10+ manual employee workflows and reducing HR operational delays by 2-3 days per cycle."
+      ]
+    },
+    {
+      "company": "Molina Healthcare",
+      "title": "Software Engineer",
+      "location": "USA",
+      "start": "May 2023",
+      "end": "Jul 2023",
+      "achievements": [
+        "Formulated 20+ scalable RESTful APIs using Java 8, AWS, MVC, and DynamoDB to facilitate data processing between microservices, reducing latency by 50ms, balancing traffic distribution, and enhancing data consistency across systems.",
+        "Engineered responsive web applications using Angular, constructing modular components and connecting them with backend APIs, ensuring smooth data flow and elevating the overall user experience across diverse platforms.",
+        "Formulated 100+ unit tests and integration tests using JUnit and Mockito for bug detection and critical error handling, ensuring comprehensive test coverage and maintaining code reliability in projects with 5000+ lines of code.",
+        "Implemented a CI/CD pipeline using AWS CDK, Git, and CloudFormation for automating builds and deployments, ensuring production-readiness of the code and participating in code reviews to maintain high code quality.",
+        "Orchestrated containerized services using Docker and Kubernetes, improving scalability and reliability of microservices."
+      ]
+    },
+    {
+      "company": "University of Arkansas at Little Rock",
+      "title": "Graduate Assistant",
+      "location": "Little Rock, AR",
+      "start": "Jan 2024",
+      "end": "May 2024",
+      "achievements": [
+        "Mentored over 100+ master's students on Java, AJAX, JSON, jQuery, and Spring Boot MVC, guiding them through web development concepts and tools.",
+        "Conducted online classes, hands-on labs, and project reviews, helping students build web applications using Spring Boot MVC and RESTful APIs.",
+        "Supported course delivery and provided technical support during labs, resolving issues related to AJAX, JSON, and Hibernate for seamless development.",
+        "Evaluated student projects, offering feedback on code quality, design, and the use of Spring Boot and Hibernate for backend optimization.",
+        "Collaborated with the professor to create assignments that integrated Spring Boot, AJAX, and JSON for data-driven web applications."
+      ]
+    },
+    {
+      "company": "Blue Cross Blue Shield",
+      "title": "Software Engineer",
+      "location": "USA",
+      "start": "Jul 2024",
+      "end": "Present",
+      "achievements": [
+        "Engineered 50+ T-SQL queries for database performance tuning, indexing, and query optimization for large-scale databases with over 1 million records.",
+        "Built microservices and RESTful APIs using Spring Boot and Java, improving scalability and backend performance for large-scale healthcare applications.",
+        "Integrated Spring Security to enforce role-based access control (RBAC) and token-based authentication, securing sensitive healthcare endpoints and ensuring HIPAA compliance across services.",
+        "Developed custom authentication providers and JWT-based login flows, improving login speed and enabling stateless session management across microservices.",
+        "Implemented CI/CD pipelines using Jenkins, Terraform, Docker, and Kubernetes, reducing deployment times by 40%.",
+        "Leveraged AWS (Lambda, EC2, API Gateway, CloudFormation, Fargate) for cloud-native deployments, ensuring high system availability and performance.",
+        "Assembled Kubernetes orchestration to improve reliability and scalability of containerized applications, while monitoring using Prometheus and CloudWatch."
+      ]
+    }
+  ],
+  "baseline_skills": [
+    "Java", "Python", "JavaScript", "TypeScript", "SQL", "Bash",
+    "Spring Boot", "Spring MVC", "Spring Security", "Hibernate ORM", "JPA",
+    "Node.js", "Express.js", "React.js", "Angular", "Vue.js", "HTML5", "CSS3",
+    "RESTful APIs", "GraphQL", "gRPC", "Microservices",
+    "AWS", "EC2", "S3", "Lambda", "RDS", "DynamoDB", "API Gateway", "CloudWatch", "CloudFormation", "Fargate",
+    "Docker", "Kubernetes", "Jenkins", "Terraform", "Ansible", "GitHub Actions", "AWS CodePipeline",
+    "MySQL", "PostgreSQL", "MongoDB", "Redis", "Cassandra",
+    "JUnit", "Mockito", "Cypress", "Jest", "Selenium", "PyTest",
+    "Git", "JIRA", "Confluence", "Agile", "Scrum",
+    "JWT", "OAuth", "RBAC", "HIPAA", "GDPR", "SOX",
+    "Prometheus", "Kafka"
+  ],
+  "projects": [
+    {
+      "name": "Healthcare Claims Management System",
+      "tech": ["Spring Boot", "Hibernate ORM", "PostgreSQL", "AWS Lambda", "AWS S3", "AWS EC2", "React.js", "Jenkins"],
+      "description": "Microservices-based claims management system automating 10,000+ daily claims and reducing manual effort by 4 hours daily.",
+      "outcome": "Automated 10,000+ daily claims processing using Spring Boot and AWS Lambda, reducing manual review time by 4 hours per day and improving claims accuracy by 35%."
+    },
+    {
+      "name": "E-commerce Inventory Management System",
+      "tech": ["React.js", "Node.js", "MongoDB", "RESTful APIs", "Bootstrap", "Docker"],
+      "description": "Full-stack inventory management system processing 1,000+ daily transactions with real-time stock updates.",
+      "outcome": "Built RESTful API with Node.js and MongoDB processing 1,000+ daily transactions, designed responsive React.js interface reducing downtime during stock migrations by 60%."
+    }
+  ]
+}
