@@ -45,6 +45,7 @@ import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler.j
 
 // Import jobs
 import { startFirefliesBotScheduler } from './jobs/firefliesBotScheduler.js';
+import { ensurePerformanceIndexes } from './jobs/ensurePerfIndexes.js';
 
 // Import routes and socket manager
 import apiRoutes from './routes/index.js';
@@ -76,6 +77,9 @@ class Application {
 
       // Initialize models
       await this.initializeModels();
+
+      // Ensure MongoDB performance indexes (idempotent, non-blocking on failure)
+      ensurePerformanceIndexes().catch(() => { /* already logged inside */ });
 
       // One-time backfill: ensure all candidates have a task_created activity
       await candidateService.backfillTaskCreatedActivities();
