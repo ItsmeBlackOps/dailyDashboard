@@ -52,12 +52,12 @@ export function render(resume) {
 <meta charset="UTF-8">
 <title>${name} - Resume</title>
 <style>
-  @page { size: Letter; margin: 0.5in 0.6in; }
+  @page { size: Letter; margin: 0.4in 0.45in; }
   html, body {
     background: #fff;
     color: #111;
     font-family: "Times New Roman", Times, serif;
-    font-size: 10.5pt;
+    font-size: 11pt;
     line-height: 1.3;
   }
   body { max-width: 7.3in; margin: 0 auto; }
@@ -67,25 +67,25 @@ export function render(resume) {
     border-bottom: 1px solid #888;
   }
   h1 { font-size: 17pt; margin: 0 0 2pt; font-family: Arial, Helvetica, sans-serif; }
-  .tagline { font-size: 10pt; color: #333; margin: 0 0 3pt; font-style: italic; }
-  .meta-contact { font-size: 9.5pt; color: #555; margin: 0; }
+  .tagline { font-size: 10.5pt; color: #333; margin: 0 0 3pt; font-style: italic; }
+  .meta-contact { font-size: 10pt; color: #555; margin: 0; }
   h2 {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 10.5pt;
+    font-size: 11pt;
     text-transform: uppercase;
     border-bottom: 1.5px solid #333;
     margin: 10pt 0 5pt;
     padding-bottom: 2pt;
   }
   h3 {
-    font-size: 10.5pt;
+    font-size: 11pt;
     margin: 6pt 0 1pt;
     font-weight: bold;
     font-family: Arial, Helvetica, sans-serif;
   }
   p, li { margin: 0 0 2pt; }
   ul { margin: 2pt 0 4pt 20pt; padding: 0; list-style: disc; }
-  .meta { color: #555; font-size: 9.5pt; font-style: italic; }
+  .meta { color: #555; font-size: 10pt; font-style: italic; }
   a { color: #1a4fa6; text-decoration: none; }
   section { margin-bottom: 2pt; }
   article { margin-bottom: 4pt; }

@@ -324,6 +324,22 @@ async function main() {
   const apiLatencies = [];
 
   const apiTasks = jobs.map(async (job) => {
+    // Skip API call if a valid cached response already exists on disk.
+    // A cached file is valid when it parses, has `resume`, and is > 1KB.
+    const cachedPath = path.join(outTailored, `${job.id}.json`);
+    if (fs.existsSync(cachedPath)) {
+      try {
+        const stat = fs.statSync(cachedPath);
+        if (stat.size > 1024) {
+          const cached = JSON.parse(fs.readFileSync(cachedPath, 'utf-8'));
+          if (cached?.resume) {
+            console.log(`[API] CACHED: ${job.id} (using existing tailored JSON, ${stat.size} bytes)`);
+            apiResults[job.id] = cached;
+            return;
+          }
+        }
+      } catch {}
+    }
     const release = await acquire();
     const t0 = Date.now();
     console.log(`[API] Starting: ${job.id} - ${job.title} @ ${job.company}`);

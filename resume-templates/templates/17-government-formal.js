@@ -55,12 +55,12 @@ export function render(resume) {
 <meta charset="UTF-8">
 <title>${name} - Resume</title>
 <style>
-  @page { size: Letter; margin: 0.5in 0.6in; }
+  @page { size: Letter; margin: 0.4in 0.45in; }
   html, body {
     background: #fff;
     color: #000;
     font-family: "Times New Roman", Times, serif;
-    font-size: 10.5pt;
+    font-size: 11pt;
     line-height: 1.3;
   }
   body { max-width: 7.3in; margin: 0 auto; }
@@ -76,11 +76,11 @@ export function render(resume) {
     text-transform: uppercase;
     font-family: Arial, Helvetica, sans-serif;
   }
-  .tagline { font-size: 10pt; color: #222; margin: 0 0 3pt; }
-  .meta-contact { font-size: 9.5pt; color: #333; margin: 0; }
+  .tagline { font-size: 10.5pt; color: #222; margin: 0 0 3pt; }
+  .meta-contact { font-size: 10pt; color: #333; margin: 0; }
   h2 {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 10.5pt;
+    font-size: 11pt;
     text-transform: uppercase;
     border-top: 1.5px solid #000;
     border-bottom: 1px solid #000;
@@ -88,14 +88,14 @@ export function render(resume) {
     margin: 10pt 0 5pt;
   }
   h3 {
-    font-size: 10.5pt;
+    font-size: 11pt;
     margin: 6pt 0 1pt;
     font-weight: bold;
     font-family: Arial, Helvetica, sans-serif;
   }
   p, li { margin: 0 0 2pt; }
   ul { margin: 2pt 0 4pt 22pt; padding: 0; list-style: disc; }
-  .meta { color: #333; font-size: 9.5pt; }
+  .meta { color: #333; font-size: 10pt; }
   a { color: #000; text-decoration: underline; }
   section { margin-bottom: 2pt; }
   article { margin-bottom: 4pt; }

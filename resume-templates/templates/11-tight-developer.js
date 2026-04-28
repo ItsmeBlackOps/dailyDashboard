@@ -48,12 +48,12 @@ export function render(resume) {
 <meta charset="UTF-8">
 <title>${name} - Resume</title>
 <style>
-  @page { size: Letter; margin: 0.5in 0.6in; }
+  @page { size: Letter; margin: 0.4in 0.45in; }
   html, body {
     background: #fff;
     color: #111;
     font-family: "Courier New", Courier, monospace;
-    font-size: 9.5pt;
+    font-size: 10pt;
     line-height: 1.25;
   }
   body { max-width: 7.3in; margin: 0 auto; }
@@ -67,14 +67,14 @@ export function render(resume) {
   .meta-contact { font-size: 8.5pt; color: #555; margin: 0; }
   h2 {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 10pt;
+    font-size: 10.5pt;
     text-transform: uppercase;
     border-bottom: 1px solid #555;
     margin: 7pt 0 3pt;
     padding-bottom: 1pt;
   }
   h3 {
-    font-size: 9.5pt;
+    font-size: 10pt;
     margin: 4pt 0 1pt;
     font-family: Arial, Helvetica, sans-serif;
   }

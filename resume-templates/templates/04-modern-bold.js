@@ -52,12 +52,12 @@ export function render(resume) {
 <meta charset="UTF-8">
 <title>${name} - Resume</title>
 <style>
-  @page { size: Letter; margin: 0.5in 0.6in; }
+  @page { size: Letter; margin: 0.4in 0.45in; }
   html, body {
     background: #fff;
     color: #111;
     font-family: Helvetica, Arial, sans-serif;
-    font-size: 10pt;
+    font-size: 10.5pt;
     line-height: 1.3;
   }
   body { max-width: 7.3in; margin: 0 auto; }
@@ -73,11 +73,11 @@ export function render(resume) {
     margin: 0 0 1pt;
     color: #fff;
   }
-  .tagline { font-size: 9.5pt; color: #ccc; margin: 0 0 2pt; font-weight: 400; }
+  .tagline { font-size: 10pt; color: #ccc; margin: 0 0 2pt; font-weight: 400; }
   .meta-contact { font-size: 9pt; color: #bbb; margin: 0; }
   .meta-contact a { color: #aac4ff; }
   h2 {
-    font-size: 10.5pt;
+    font-size: 11pt;
     font-weight: 900;
     text-transform: uppercase;
     background: #f0f0f0;
@@ -85,7 +85,7 @@ export function render(resume) {
     margin: 8pt 0 4pt;
     border-left: 4pt solid #111;
   }
-  h3 { font-size: 10pt; margin: 5pt 0 1pt; font-weight: 700; }
+  h3 { font-size: 10.5pt; margin: 5pt 0 1pt; font-weight: 700; }
   p, li { margin: 0 0 2pt; }
   ul { margin: 1pt 0 4pt 18pt; padding: 0; list-style: disc; }
   .meta { color: #555; font-size: 9pt; }
