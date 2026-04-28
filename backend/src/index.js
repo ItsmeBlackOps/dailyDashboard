@@ -178,6 +178,9 @@ class Application {
     const { interviewSupportAdminService } = await import('./services/interviewSupportAdminService.js');
     interviewSupportAdminService.setupRealtimeUpdates(this.socketManager.getIO());
 
+    const { jobSearchService } = await import('./services/jobSearchService.js');
+    jobSearchService.setupRealtimeUpdates(this.socketManager.getIO());
+
     await this.notificationCenter.initialize(this.socketManager.getIO());
 
     logger.info('✅ Socket.IO configured');

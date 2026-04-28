@@ -51,6 +51,7 @@ async function adminPerformance(req, res) {
 import dashboardRoutes from './dashboardRoutes.js';
 import poRoutes from './po.js';
 import interviewSupportAdminRoutes from './interviewSupportAdmin.js';
+import jobsRoutes from './jobs.js';
 
 const router = express.Router();
 
@@ -67,6 +68,7 @@ router.use('/permissions', permissionRoutes);
 router.use('/transcript-requests', transcriptRequestRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/po', poRoutes);
+router.use('/jobs', jobsRoutes);
 router.use('/', docsRoutes);
 
 // Health check endpoint

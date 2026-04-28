@@ -209,7 +209,25 @@ const config = {
     transcriptsCollectionId: process.env.APPWRITE_COLLECTION_ID_TRANSCRIPTS,
     generatedContentCollectionId: process.env.APPWRITE_COLLECTION_ID_GENERATED_CONTENT,
     interviewDebriefCollectionId: process.env.APPWRITE_COLLECTION_ID_INTERVIEW_DEBRIEF
-  }
+  },
+
+  apify: {
+    token: process.env.APIFY_TOKEN || '',
+    baseUrl: process.env.APIFY_BASE_URL || 'https://api.apify.com',
+    jobsActor: process.env.APIFY_JOBS_ACTOR || 'fantastic-jobs/advanced-linkedin-job-search-api',
+    jobsActorCareerSites: process.env.APIFY_JOBS_ACTOR_CAREER || 'fantastic-jobs/advanced-linkedin-job-search-api',
+    timeoutMs: Number.parseInt(process.env.APIFY_TIMEOUT_MS || '120000', 10),
+  },
+
+  resumeEditor: {
+    url: process.env.RESUME_EDITOR_URL || '',
+    apiKey: process.env.RESUME_EDITOR_API_KEY || '',
+    timeoutMs: Number.parseInt(process.env.RESUME_EDITOR_TIMEOUT_MS || '180000', 10),
+  },
+
+  jobSearch: {
+    cacheTtlHours: Number.parseInt(process.env.JOB_SEARCH_CACHE_TTL_HOURS || '24', 10),
+  },
 };
 
 // Validate required configuration
