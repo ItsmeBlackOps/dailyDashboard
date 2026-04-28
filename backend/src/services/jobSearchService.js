@@ -320,18 +320,23 @@ class JobSearchService {
     };
   }
 
-  async listSessions({ candidateId, limit = 20, page = 1 }) {
+  async listSessions({ candidateId, requestedBy, limit = 20, page = 1 }) {
     const db = database.getDb();
     const skip = (page - 1) * limit;
 
+    // Filter precedence: candidateId > requestedBy > all
+    const filter = candidateId ? { candidateId }
+                 : requestedBy ? { requestedBy }
+                 : {};
+
     const [sessions, total] = await Promise.all([
       db.collection(COL_SESSIONS)
-        .find({ candidateId })
+        .find(filter)
         .sort({ requestedAt: -1 })
         .skip(skip)
         .limit(limit)
         .toArray(),
-      db.collection(COL_SESSIONS).countDocuments({ candidateId }),
+      db.collection(COL_SESSIONS).countDocuments(filter),
     ]);
 
     return { sessions, total, page, limit };

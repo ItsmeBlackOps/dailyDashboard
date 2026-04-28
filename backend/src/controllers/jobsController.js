@@ -38,11 +38,11 @@ class JobsController {
    */
   listSessions = asyncHandler(async (req, res) => {
     const { candidateId, limit, page } = req.query;
-    if (!candidateId) {
-      return res.status(400).json({ success: false, error: 'candidateId is required' });
-    }
+    // candidateId is now optional — without it, we return ALL sessions visible to the caller
+    // (for the user's "my recent searches" landing page).
     const result = await jobSearchService.listSessions({
-      candidateId,
+      candidateId: candidateId || null,
+      requestedBy: req.user?.email || null,
       limit: limit ? Number.parseInt(limit, 10) : 20,
       page: page ? Number.parseInt(page, 10) : 1,
     });

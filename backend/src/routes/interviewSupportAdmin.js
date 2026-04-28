@@ -24,4 +24,9 @@ router.post('/unprocessed/push',           (req, res) => ctl.pushUnprocessed(req
 router.get('/failed-assigns',              (req, res) => ctl.getFailedAssigns(req, res));
 router.get('/stats',                       (req, res) => ctl.getStats(req, res));
 
+// Aliases used by the current frontend bundle (kept for back-compat — same handlers)
+router.post('/scan-outlook', (req, res) => ctl.getUnprocessed(req, res));
+router.post('/push-kafka',   (req, res) => ctl.pushUnprocessed(req, res));
+router.get('/logs',          (req, res) => ctl.getStats(req, res));
+
 export default router;
