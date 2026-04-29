@@ -1004,15 +1004,31 @@ class CandidateController {
         return res.status(422).json({ success: false, error: 'Candidate has no resumeLink' });
       }
 
+      logger.info('deriveProfile: starting', {
+        candidateId: id,
+        triggeredBy: user.email,
+        resumeLink: candidateDoc.resumeLink,
+        model: process.env.RESUME_PROFILE_MODEL || 'gpt-4o-mini',
+      });
       const forgeProfile = await resumeProfileService.deriveAndStore({
         candidateId: id,
         resumeUrl: candidateDoc.resumeLink,
         force: true,
       });
+      logger.info('deriveProfile: complete', {
+        candidateId: id,
+        titles: forgeProfile?.titles?.length || 0,
+        keywords: forgeProfile?.keywords?.length || 0,
+        years: `${forgeProfile?.years_min}-${forgeProfile?.years_max}`,
+      });
 
       return res.status(200).json({ success: true, forgeProfile });
     } catch (error) {
-      logger.error('deriveProfile failed', { error: error.message, candidateId: req.params?.id });
+      logger.error('deriveProfile failed', {
+        error: error.message,
+        stack: error.stack?.split('\n').slice(0, 5).join('\n'),
+        candidateId: req.params?.id,
+      });
       return res.status(500).json({ success: false, error: error.message });
     }
   }

@@ -116,6 +116,12 @@ class ResumeProfileService {
       : resumeText;
 
     // 3. Call OpenAI with structured outputs (json_schema)
+    logger.info('resumeProfileService: calling OpenAI', {
+      candidateId,
+      model: this.model,
+      resumeChars: truncated.length,
+    });
+    const t0 = Date.now();
     const completion = await this.client.chat.completions.create({
       model: this.model,
       messages: [
@@ -134,6 +140,15 @@ class ResumeProfileService {
     });
 
     const rawContent = completion.choices[0]?.message?.content;
+    logger.info('resumeProfileService: OpenAI returned', {
+      candidateId,
+      ms: Date.now() - t0,
+      tokensIn: completion.usage?.prompt_tokens,
+      tokensOut: completion.usage?.completion_tokens,
+      modelReturned: completion.model,
+      finishReason: completion.choices[0]?.finish_reason,
+      contentLen: rawContent?.length || 0,
+    });
     if (!rawContent) {
       throw new Error('OpenAI did not return content for resume profile derivation.');
     }
