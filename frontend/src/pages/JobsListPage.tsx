@@ -7,8 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth, API_URL } from '@/hooks/useAuth';
 import type { JobSession } from '@/components/jobs/types';
 
-function formatDate(s: string) {
-  return new Date(s).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' });
+function formatDate(s?: string | null) {
+  if (!s) return '—';
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' });
 }
 
 const STATUS_CLASS: Record<string, string> = {
@@ -67,12 +70,17 @@ export default function JobsListPage() {
           >
             <div className="flex-1 min-w-0">
               <div className="text-[13px] font-medium text-foreground truncate">
-                Session — {formatDate(s.createdAt)}
+                Session — {formatDate(s.requestedAt ?? s.createdAt)}
               </div>
               <div className="text-[11.5px] text-muted-foreground mt-0.5">
-                {s.totalFound != null ? `${s.totalFound} results` : 'In progress…'}
+                {s.totalFound != null ? `${s.totalFound} results` : s.status === 'error' ? 'Failed' : 'In progress…'}
                 {s.completedAt && ` · Completed ${formatDate(s.completedAt)}`}
               </div>
+              {s.status === 'error' && s.error && (
+                <div className="text-[11px] text-destructive mt-1 line-clamp-2" title={s.error}>
+                  {s.error}
+                </div>
+              )}
             </div>
             <Badge
               variant="outline"
