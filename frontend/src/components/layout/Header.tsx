@@ -22,6 +22,7 @@ import { useUserProfile, formatPhoneDraft, formatPhoneCanonical } from '@/contex
 import { useMicrosoftConsent } from '@/contexts/MicrosoftConsentContext';
 import { useNotifications } from '@/context/NotificationContext';
 import PerformancePill from '@/components/shared/PerformancePill';
+import HelpGuideButton from '@/components/help/HelpGuideButton';
 interface HeaderProps {
   toggleSidebar: () => void;
   openSettings?: () => void; // keep if you plan to use it later
@@ -159,6 +160,7 @@ export function Header({ toggleSidebar }: HeaderProps) {
 
       <div className="ml-auto flex items-center gap-2">
         <PerformancePill />
+        <HelpGuideButton />
         <ThemeToggle />
 
         {/* Notification Bell */}
