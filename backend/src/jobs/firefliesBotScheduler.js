@@ -47,33 +47,22 @@ async function processTask(collection, task) {
   const candidateName = task['Candidate Name'] || 'Candidate';
   const now = new Date();
 
-  // Auto-extract meeting link from email body OR replies if not already set.
-  // Most interview invites land as a follow-up reply, not the original
-  // request email — scan newest reply first, then older, then the body.
-  if (!meetingLink) {
-    const candidates = [];
-    if (Array.isArray(task.replies)) {
-      // newest reply first
-      for (const r of [...task.replies].reverse()) {
-        if (r && typeof r.body === 'string') candidates.push(r.body);
-      }
-    }
-    if (typeof task.body === 'string') candidates.push(task.body);
-
-    for (const text of candidates) {
-      const extracted = extractMeetingLink(text);
-      if (extracted) {
-        meetingLink = extracted;
-        await collection.updateOne(
-          { _id },
-          { $set: { meetingLink: extracted, meetingLinkAutoExtractedAt: now } }
-        );
-        logger.info('Fireflies scheduler: auto-extracted meeting link', {
-          taskId: _id,
-          link: extracted,
-        });
-        break;
-      }
+  // Fallback only: scan the original email body for a meeting URL.
+  // The primary path is the "Create meeting" flow which persists the
+  // link directly to taskBody.meetingLink. Replies are NOT scanned —
+  // links never land there.
+  if (!meetingLink && typeof task.body === 'string') {
+    const extracted = extractMeetingLink(task.body);
+    if (extracted) {
+      meetingLink = extracted;
+      await collection.updateOne(
+        { _id },
+        { $set: { meetingLink: extracted, meetingLinkAutoExtractedAt: now } }
+      );
+      logger.info('Fireflies scheduler: auto-extracted meeting link from body', {
+        taskId: _id,
+        link: extracted,
+      });
     }
   }
 
@@ -230,7 +219,6 @@ async function tick() {
         $or: [
           { meetingLink: { $exists: true, $ne: null, $ne: '' } },
           { body: { $exists: true, $ne: '' } },
-          { replies: { $exists: true, $not: { $size: 0 } } },
         ],
         botStatus: { $nin: ['main_joined', 'main_failed', 'completed'] },
         interviewDateTime: { $gte: cutoffStart, $lte: cutoffEnd },
