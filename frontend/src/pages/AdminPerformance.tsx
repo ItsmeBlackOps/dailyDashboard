@@ -40,7 +40,10 @@ export default function AdminPerformance() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const role = (localStorage.getItem('role') || '').trim().toLowerCase();
-  if (role !== 'admin') {
+  const email = (localStorage.getItem('email') || '').trim().toLowerCase();
+  // Allow admin role OR the platform-owner allow-list.
+  const PERF_ALLOWLIST = new Set(['harsh.patel@silverspaceinc.com']);
+  if (role !== 'admin' && !PERF_ALLOWLIST.has(email)) {
     navigate('/');
     return null;
   }

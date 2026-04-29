@@ -132,6 +132,57 @@ class GraphMeetingService {
 
     return parsed;
   }
+
+  /**
+   * Search the signed-in user's mailbox for every message whose subject
+   * matches `subject`. Returns up to `top` results from the last `days`
+   * days, sorted oldest-first so consumers can replay them in order.
+   *
+   * @param {string} userAssertion - Bearer token (OBO assertion).
+   * @param {string} subject - exact-ish subject to search for.
+   * @param {number} days - how far back to look (default 90).
+   * @param {number} top - max messages (default 50).
+   */
+  async searchMessagesBySubject(userAssertion, subject, days = 90, top = 50) {
+    if (!subject || typeof subject !== 'string') {
+      throw new Error('subject is required');
+    }
+    const accessToken = await this.acquireOnBehalfOfToken(userAssertion, this.scopes);
+
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    // Use $filter (not $search) so we can combine with receivedDateTime range
+    // and so we can request the body. Quote and escape the subject string.
+    const escaped = subject.replace(/'/g, "''");
+    const params = new URLSearchParams({
+      $filter: `receivedDateTime ge ${since} and subject eq '${escaped}'`,
+      $select: 'id,subject,from,receivedDateTime,body',
+      $top: String(top),
+      $orderby: 'receivedDateTime asc',
+    });
+    const url = `https://graph.microsoft.com/v1.0/me/messages?${params.toString()}`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Prefer: 'outlook.body-content-type="text"',
+      },
+    });
+
+    const text = await response.text();
+    let parsed;
+    try {
+      parsed = text ? JSON.parse(text) : {};
+    } catch (error) {
+      logger.error('Failed to parse Graph search response', { error: error.message });
+      throw new GraphRequestError('Graph search returned non-JSON', response.status, text);
+    }
+
+    if (!response.ok) {
+      throw new GraphRequestError('Graph search failed', response.status, parsed);
+    }
+
+    return Array.isArray(parsed.value) ? parsed.value : [];
+  }
 }
 
 export const graphMeetingService = new GraphMeetingService();
