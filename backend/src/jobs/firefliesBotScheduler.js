@@ -47,6 +47,20 @@ async function processTask(collection, task) {
   const candidateName = task['Candidate Name'] || 'Candidate';
   const now = new Date();
 
+  // Adopt joinUrl/joinWebUrl from the Create meeting flow when meetingLink
+  // wasn't persisted (PR #41 path). Fixes tasks where Teams URL exists but
+  // the scheduler/UI was looking only at meetingLink.
+  if (!meetingLink && (task.joinUrl || task.joinWebUrl)) {
+    meetingLink = task.joinUrl || task.joinWebUrl;
+    await collection.updateOne(
+      { _id },
+      { $set: { meetingLink, meetingLinkAutoExtractedAt: now } }
+    );
+    logger.info('Fireflies scheduler: adopted Teams joinUrl as meetingLink', {
+      taskId: _id,
+    });
+  }
+
   // Fallback only: scan the original email body for a meeting URL.
   // The primary path is the "Create meeting" flow which persists the
   // link directly to taskBody.meetingLink. Replies are NOT scanned —
@@ -218,7 +232,9 @@ async function tick() {
         // Either an already-saved meetingLink, OR a body we can scan for one
         $or: [
           { meetingLink: { $exists: true, $ne: null, $ne: '' } },
-          { body: { $exists: true, $ne: '' } },
+          { joinUrl:     { $exists: true, $ne: null, $ne: '' } },
+          { joinWebUrl:  { $exists: true, $ne: null, $ne: '' } },
+          { body:        { $exists: true, $ne: '' } },
         ],
         botStatus: { $nin: ['main_joined', 'main_failed', 'completed'] },
         interviewDateTime: { $gte: cutoffStart, $lte: cutoffEnd },

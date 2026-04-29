@@ -57,6 +57,8 @@ interface TaskFull {
   replies: TaskReply[];
   subject: string;
   meetingLink: string | null;
+  joinUrl?: string | null;
+  joinWebUrl?: string | null;
   meetingPassword: string | null;
   botStatus: string | null;
   botInviteAttempts: number | null;
@@ -298,13 +300,16 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
                 <h4 className="text-sm font-semibold">Meeting Link</h4>
                 <BotStatusBadge status={task.botStatus ?? undefined} attempts={task.botInviteAttempts ?? undefined} error={task.botLastError} />
               </div>
-              {task.meetingLink ? (
-                <a href={task.meetingLink} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline break-all">
-                  {task.meetingLink}
-                </a>
-              ) : (
-                <p className="text-xs text-muted-foreground">No meeting link set yet</p>
-              )}
+              {(() => {
+                const link = task.meetingLink || task.joinUrl || task.joinWebUrl;
+                return link ? (
+                  <a href={link} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline break-all">
+                    {link}
+                  </a>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No meeting link set yet</p>
+                );
+              })()}
               {task.botLastError && (
                 <p className="text-xs text-aurora-rose">⚠️ {task.botLastError}</p>
               )}
