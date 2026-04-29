@@ -23,6 +23,8 @@ router.get('/unprocessed',                 (req, res) => ctl.getUnprocessed(req,
 router.post('/unprocessed/push',           (req, res) => ctl.pushUnprocessed(req, res));
 router.get('/failed-assigns',              (req, res) => ctl.getFailedAssigns(req, res));
 router.get('/stats',                       (req, res) => ctl.getStats(req, res));
+router.get('/audit',                       (req, res) => ctl.getSubjectAudit(req, res));
+router.post('/subjects/reprocess',         (req, res) => ctl.reprocessSubject(req, res));
 
 // Aliases used by the current frontend bundle (kept for back-compat — same handlers)
 router.post('/scan-outlook', (req, res) => ctl.getUnprocessed(req, res));

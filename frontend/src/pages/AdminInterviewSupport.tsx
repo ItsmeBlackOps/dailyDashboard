@@ -32,6 +32,7 @@ import { useAuth, API_URL } from '@/hooks/useAuth';
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_URL } from '@/hooks/useAuth';
 import InterviewSupportTaskList from '@/components/admin/InterviewSupportTaskList';
+import SubjectLogsTab from '@/components/admin/SubjectLogsTab';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -128,12 +129,15 @@ function AdminInterviewSupportContent({
         <p className="text-xs text-muted-foreground mt-0.5">Admin — manage interview support tasks, email processing, and audit logs</p>
       </div>
 
-      <Tabs defaultValue="all-tasks">
+      <Tabs defaultValue={
+        new URLSearchParams(window.location.search).get('subject') ? 'subject-logs' : 'all-tasks'
+      }>
         <TabsList>
           <TabsTrigger value="all-tasks">All Tasks</TabsTrigger>
           <TabsTrigger value="unprocessed">Unprocessed</TabsTrigger>
           <TabsTrigger value="failed">Failed Auto-Assigns</TabsTrigger>
           <TabsTrigger value="logs">Processing Logs</TabsTrigger>
+          <TabsTrigger value="subject-logs">Subject Logs</TabsTrigger>
         </TabsList>
 
         <TabsContent value="all-tasks" className="mt-4">
@@ -150,6 +154,10 @@ function AdminInterviewSupportContent({
 
         <TabsContent value="logs" className="mt-4">
           <LogsTab authFetch={authFetch} />
+        </TabsContent>
+
+        <TabsContent value="subject-logs" className="mt-4">
+          <SubjectLogsTab />
         </TabsContent>
       </Tabs>
     </div>

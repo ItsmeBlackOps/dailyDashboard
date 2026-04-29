@@ -245,19 +245,19 @@ class InterviewSupportAdminService {
         }
 
         // Push to Kafka REST
-        const kafkaPayload = {
-          records: [
-            {
-              value: {
-                subject:          email.subject || email.Subject || '',
-                from:             email.from?.emailAddress?.address || email.sender || '',
-                receivedDateTime: email.receivedDateTime || new Date().toISOString(),
-                body:             cleanedBody,
-                emailId:          email.id || '',
-              },
-            },
-          ],
+        const kafkaValue = {
+          subject:          email.subject || email.Subject || '',
+          from:             email.from?.emailAddress?.address || email.sender || '',
+          receivedDateTime: email.receivedDateTime || new Date().toISOString(),
+          body:             cleanedBody,
+          emailId:          email.id || '',
         };
+        // Honoured by Intervue's reprocess guard — when true, app.py creates
+        // the task and stops before submitting to the auto-assign executor.
+        if (email.skip_auto_assign === true) {
+          kafkaValue.skip_auto_assign = true;
+        }
+        const kafkaPayload = { records: [{ value: kafkaValue }] };
 
         const kafkaResp = await fetch(`${config.kafka.restUrl}/records`, {
           method:  'POST',
@@ -358,6 +358,101 @@ class InterviewSupportAdminService {
       failedAutoAssignsToday: failedAssigns,
       auditEntriesCount:      auditToday.length,
       auditEntries:           auditToday,
+    };
+  }
+
+  // -----------------------------------------------------------------------
+  // getSubjectAudit — every auditLog row for a given subject, oldest-first.
+  // Unified view of Intervue + Auto-Assign activity since Intervue records
+  // Auto-Assign HTTP responses into auditLog (AUTO_ASSIGN_5XX/SUCCESS/FAILED).
+  // -----------------------------------------------------------------------
+  async getSubjectAudit(subject, limit = 200) {
+    if (!subject) return { subject, rows: [] };
+    const auditCol = database.getCollection('auditLog');
+    const rows = await auditCol
+      .find({ subject })
+      .sort({ createdAt: 1 })
+      .limit(Math.max(1, Math.min(1000, parseInt(limit, 10) || 200)))
+      .toArray();
+    return { subject, rows };
+  }
+
+  // -----------------------------------------------------------------------
+  // reprocessSubject — wipe + republish a subject through Kafka/Intervue.
+  // mode='assign'    → normal flow, expert auto-assigned.
+  // mode='no-assign' → adds skip_auto_assign:true so Intervue's guard at
+  //                    app.py:461 creates the task without assigning.
+  // -----------------------------------------------------------------------
+  async reprocessSubject({ subject, mode = 'assign', userAssertion, adminEmail }) {
+    if (!subject || typeof subject !== 'string') {
+      throw new Error('subject is required');
+    }
+    if (!['assign', 'no-assign'].includes(mode)) {
+      throw new Error('mode must be assign or no-assign');
+    }
+    if (!userAssertion) {
+      throw new Error('user assertion (Bearer token) is required for Graph search');
+    }
+
+    const { graphMeetingService } = await import('./graphMeetingService.js');
+    const messages = await graphMeetingService.searchMessagesBySubject(userAssertion, subject, 90, 50);
+
+    if (messages.length === 0) {
+      return {
+        subject,
+        mode,
+        deletedTask: 0,
+        deletedAuditRows: 0,
+        pushed: 0,
+        failed: 0,
+        results: [],
+        warning: 'No messages found in your mailbox for this subject in the last 90 days',
+      };
+    }
+
+    const taskCol  = database.getCollection('taskBody');
+    const auditCol = database.getCollection('auditLog');
+
+    const deletedTask  = await taskCol.deleteMany({ $or: [{ Subject: subject }, { subject }] });
+    const deletedAudit = await auditCol.deleteMany({ subject });
+
+    const skipFlag = mode === 'no-assign';
+    const adapted = messages.map(m => ({
+      id:               m.id,
+      subject:          m.subject || subject,
+      from:             m.from,
+      receivedDateTime: m.receivedDateTime,
+      body:             m.body,
+      rawBody:          typeof m.body?.content === 'string' ? m.body.content : '',
+      skip_auto_assign: skipFlag,
+    }));
+
+    const kafkaResult = await this.pushUnprocessedToKafka(adapted);
+
+    await auditCol.insertOne({
+      subject,
+      action:         'REPROCESS_TRIGGERED',
+      phase:          'REPROCESS_TRIGGERED',
+      adminEmail,
+      mode,
+      messagesPushed: kafkaResult.pushed,
+      messagesFailed: kafkaResult.failed,
+      createdAt:      new Date(),
+      level:          'info',
+    });
+
+    if (this.io) {
+      this.io.emit('interviewSupportTaskUpdated', { subject, action: 'REPROCESS_TRIGGERED' });
+    }
+
+    return {
+      subject,
+      mode,
+      deletedTask:      deletedTask.deletedCount || 0,
+      deletedAuditRows: deletedAudit.deletedCount || 0,
+      pushed:           kafkaResult.pushed,
+      failed:           kafkaResult.failed,
+      results:          kafkaResult.results,
     };
   }
 }

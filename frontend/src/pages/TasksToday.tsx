@@ -351,7 +351,7 @@ const MAX_DELAY = 2147483647; // ~24.85 days (2^31 - 1)
 
 import { SubjectValidationBadge } from "@/components/tasks/SubjectValidationBadge";
 import { DeleteTaskDialog } from "@/components/tasks/DeleteTaskDialog";
-import { Trash2 } from "lucide-react";
+import { Trash2, RefreshCw } from "lucide-react";
 import { TaskSheet } from '@/components/shared/TaskSheet';
 import { PODraftSheet } from '@/components/shared/PODraftSheet';
 import type { TaskSheetPrefill } from '@/components/shared/TaskSheet';
@@ -575,6 +575,52 @@ export default function TasksToday() {
     open: false,
     task: null
   });
+
+  // Reprocess Subject Dialog State (admin only — wipes & re-pushes via Kafka/Intervue).
+  const [reprocessDialog, setReprocessDialog] = useState<{ open: boolean; task: Task | null; busy: boolean }>({
+    open: false,
+    task: null,
+    busy: false,
+  });
+
+  const handleReprocessSubject = useCallback(async (mode: 'assign' | 'no-assign') => {
+    const task = reprocessDialog.task;
+    const subject = (task as Task & { Subject?: string; subject?: string } | null)?.Subject
+                  || (task as Task & { Subject?: string; subject?: string } | null)?.subject
+                  || '';
+    if (!task || !subject) {
+      toast({ title: 'No subject on this task', variant: 'destructive' });
+      return;
+    }
+    setReprocessDialog((p) => ({ ...p, busy: true }));
+    try {
+      const res = await authFetch(`${API_URL}/api/interview-support-admin/subjects/reprocess`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject, mode }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Reprocess failed');
+      }
+      toast({
+        title: 'Reprocess triggered',
+        description: data.warning
+          ? data.warning
+          : `Wiped ${data.deletedTask} task + ${data.deletedAuditRows} audit rows · pushed ${data.pushed} message(s) to Kafka`,
+      });
+      setReprocessDialog({ open: false, task: null, busy: false });
+      // Deep-link admin to the Subject Logs tab.
+      navigate(`/interview-support?subject=${encodeURIComponent(subject)}`);
+    } catch (err) {
+      toast({
+        title: 'Reprocess failed',
+        description: err instanceof Error ? err.message : String(err),
+        variant: 'destructive',
+      });
+      setReprocessDialog((p) => ({ ...p, busy: false }));
+    }
+  }, [reprocessDialog.task, authFetch, navigate, toast]);
 
 
   const storedResumeAvailable = useMemo(() => {
@@ -3816,7 +3862,11 @@ export default function TasksToday() {
     return map;
   }, [teamLeadData]);
 
-  // === Multi-select filter options (active users ∩ loaded tasks) ===
+  // === Multi-select filter options ===
+  // Show every recruiter that appears on a visible task. Enrich with the
+  // active-users record when present (gives email + sublabel); fall back
+  // to a name-only entry so recruiters whose user record is missing or
+  // inactive in the users collection still show up in the filter.
   const recruiterOptions = useMemo(() => {
     const activeRecruiters = activeUsersByRole.recruiter || [];
     const activeMap = new Map(activeRecruiters.map((u) => [u.name.toLowerCase(), u]));
@@ -3824,8 +3874,13 @@ export default function TasksToday() {
     const result: { value: string; label: string; sublabel?: string }[] = [];
     for (const name of uniqueNames) {
       const u = activeMap.get(name.toLowerCase());
-      if (!u) continue;
-      result.push({ value: u.email, label: u.name, sublabel: u.teamLead ? `Under ${u.teamLead}` : '' });
+      if (u) {
+        result.push({ value: u.email, label: u.name, sublabel: u.teamLead ? `Under ${u.teamLead}` : '' });
+      } else {
+        // Fall back to name-as-value so the filter still works for recruiters
+        // whose user doc is inactive or has a different role string.
+        result.push({ value: name, label: name, sublabel: 'Inactive or unmapped' });
+      }
     }
     return result.sort((a, b) => a.label.localeCompare(b.label));
   }, [tasks, activeUsersByRole]);
@@ -3929,9 +3984,11 @@ export default function TasksToday() {
       const checks: boolean[] = [];
 
       if (selectedRecruiters.length) {
-        const match = selectedRecruiters.some((email) => {
-          const u = activeRecruitersByEmail.get(email);
-          return u ? u.name.toLowerCase() === taskRecruiterName : false;
+        const match = selectedRecruiters.some((value) => {
+          const u = activeRecruitersByEmail.get(value);
+          if (u) return u.name.toLowerCase() === taskRecruiterName;
+          // Fallback option (recruiter not in active users): value is the name.
+          return value.toLowerCase() === taskRecruiterName;
         });
         checks.push(match);
       }
@@ -4381,6 +4438,12 @@ export default function TasksToday() {
                               )}
                               {user === "admin" && (
                                 <>
+                                  <DropdownMenuItem
+                                    onClick={() => setReprocessDialog({ open: true, task, busy: false })}
+                                  >
+                                    <RefreshCw className="mr-2 h-4 w-4" />
+                                    Reprocess subject
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem
                                     className="text-destructive focus:text-destructive focus:bg-destructive/10"
                                     onClick={() => setDeleteTaskDialog({ open: true, task })}
@@ -4960,6 +5023,61 @@ export default function TasksToday() {
         task={deleteTaskDialog.task}
         onConfirm={handleDeleteTask}
       />
+
+      <Dialog
+        open={reprocessDialog.open}
+        onOpenChange={(open) => !reprocessDialog.busy && setReprocessDialog((p) => ({ ...p, open }))}
+      >
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Reprocess subject</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              This will <span className="font-semibold text-foreground">delete</span> the existing
+              taskBody + audit log rows for this subject and re-publish every Outlook message
+              for the subject (last 90 days) to Kafka so Intervue rebuilds the task from scratch.
+            </p>
+            <div className="rounded-md border bg-card/40 p-3 text-xs">
+              <div className="text-muted-foreground">Subject</div>
+              <div className="font-mono break-all mt-1">
+                {(reprocessDialog.task as Task & { Subject?: string; subject?: string } | null)?.Subject
+                  || (reprocessDialog.task as Task & { Subject?: string; subject?: string } | null)?.subject
+                  || '(no subject)'}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Choose <span className="font-semibold text-foreground">Reprocess + Assign</span> to run
+              the standard flow (Intervue auto-assigns the expert). Choose
+              <span className="font-semibold text-foreground"> No-Assign</span> to rebuild the task
+              + replies without auto-assigning — useful when the assignment is already correct.
+            </p>
+          </div>
+          <DialogFooter className="gap-2 flex-col sm:flex-row">
+            <Button
+              variant="ghost"
+              onClick={() => setReprocessDialog({ open: false, task: null, busy: false })}
+              disabled={reprocessDialog.busy}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleReprocessSubject('no-assign')}
+              disabled={reprocessDialog.busy}
+            >
+              {reprocessDialog.busy ? 'Working…' : 'Reprocess (no-assign)'}
+            </Button>
+            <Button
+              onClick={() => handleReprocessSubject('assign')}
+              disabled={reprocessDialog.busy}
+              className="bg-gradient-to-r from-aurora-violet to-aurora-cyan text-white"
+            >
+              {reprocessDialog.busy ? 'Working…' : 'Reprocess + Assign'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <TaskSheet
         taskId={sheetTaskId}
         onClose={() => setSheetTaskId(null)}
