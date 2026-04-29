@@ -215,7 +215,9 @@ export class UserController {
     try {
       const db = database.getDatabase();
       const roleParam = (req.query.role || '').toString().trim();
-      const filter = { active: true };
+      // Treat missing `active` as truthy — legacy user docs predate the flag.
+      // Excludes only docs with active === false.
+      const filter = { $or: [{ active: true }, { active: { $exists: false } }] };
       if (roleParam) {
         const roles = roleParam.split(',').map(r => r.trim()).filter(Boolean);
         filter.role = { $in: roles };
