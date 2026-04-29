@@ -1147,12 +1147,11 @@ export default function TasksToday() {
   }, [normalizedRole, authFetch, buildTeamLeadMapping, toast]);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    fetch('/api/users/active', { headers: { Authorization: `Bearer ${token}` } })
+    authFetch(`${API_URL}/api/users/active`)
       .then((r) => r.json())
       .then((data) => { if (data.success) setActiveUsersByRole(data.byRole || {}); })
       .catch(() => {});
-  }, []);
+  }, [authFetch]);
 
   // === Storage helpers ===
   const readScheduled = (): Record<string, string> => {

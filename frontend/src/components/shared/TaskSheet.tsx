@@ -198,7 +198,7 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
     if (!taskId || !linkDraft.trim()) return;
     setSavingLink(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const res = await fetch(`/api/tasks/${taskId}/meeting-link`, {
         method: 'PATCH',
         headers: {
