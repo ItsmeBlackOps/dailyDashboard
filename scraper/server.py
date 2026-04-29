@@ -84,8 +84,10 @@ async def find_jobs(req: FindJobsRequest):
         "FANTASTIC_JOBS_AI_EMPLOYMENT_TYPES":   "FULL_TIME,CONTRACTOR",
         "FANTASTIC_JOBS_AI_WORK_ARRANGEMENTS": "On-site,Hybrid,Remote OK,Remote Solely",
         "FANTASTIC_JOBS_COUNTRY":               "United States",
+        "FANTASTIC_JOBS_TIME_RANGE":            "7d",
         # LinkedIn actor knobs
         "LINKEDIN_NO_DIRECT_APPLY":             "true",   # exclude Easy Apply
+        "LINKEDIN_TIME_RANGE":                  "7d",
     }
     for k, v in spec_defaults.items():
         env.setdefault(k, v)

@@ -256,6 +256,7 @@ def run_scrapers(
             descriptions=plan.linkedin_descriptions,
             max_items=max_per_source,
             date_posted_after=os.getenv("LINKEDIN_DATE_POSTED_AFTER") or None,
+            time_range=os.getenv("LINKEDIN_TIME_RANGE") or None,
         )
         log.info("scrape_with_resume.linkedin.run",
                  titles=plan.linkedin_titles,
@@ -274,6 +275,7 @@ def run_scrapers(
             years_max=plan.years_max or None,
             max_items=max_per_source,
             date_posted_after=os.getenv("FANTASTIC_JOBS_DATE_POSTED_AFTER") or None,
+            time_range=os.getenv("FANTASTIC_JOBS_TIME_RANGE") or None,
         )
         log.info(
             "scrape_with_resume.fantastic.run",

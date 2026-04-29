@@ -25,3 +25,13 @@ forge-ai/.env
 forge-ai/node_modules/
 forge-ai/output/
 resume-templates/output/
+
+# Cleanup additions
+.claude/launch.json
+.superpowers/
+frontend/.env.development
+backend/newrelic_agent.log
+backend/newrelic_agent.log.*
+**/__pycache__/
+*.pyc
+*.pyo
