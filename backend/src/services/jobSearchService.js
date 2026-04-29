@@ -167,8 +167,14 @@ class JobSearchService {
   async callScraper({ candidateId, resumeUrl, filters, forgeProfile }) {
     const url = config.scraperService.url + '/find-jobs';
 
+    // When forgeProfile gives us titles + a YoE range, the scraper has
+    // everything it needs and doesn't have to download/parse the PDF.
+    // Skip resume_url so the scraper container doesn't need pypdf and
+    // we save ~3-5s per search.
+    const haveOverrides =
+      Array.isArray(forgeProfile?.titles) && forgeProfile.titles.length > 0;
     const body = {
-      resume_url: resumeUrl,
+      ...(haveOverrides ? {} : { resume_url: resumeUrl }),
       profile_id: candidateId,
       max_per_source: filters.max_per_source ?? filters.maxPerSource ?? 100,
       linkedin_only: filters.linkedin_only ?? false,

@@ -10,7 +10,10 @@ ROOT = Path(__file__).resolve().parent
 SCRIPT = ROOT / "scripts" / "scrape_with_resume.py"
 
 class FindJobsRequest(BaseModel):
-    resume_url: str
+    # resume_url is now optional — when override_titles is supplied the
+    # scraper skips PDF read + LLM derive and uses the dashboard's
+    # gpt-4o-mini-derived plan directly.
+    resume_url: str | None = None
     profile_id: str  # stable id, e.g. candidateId
     max_per_source: int = 100
     linkedin_only: bool = False  # default: search BOTH LinkedIn AND career sites
@@ -30,17 +33,30 @@ class FindJobsRequest(BaseModel):
 
 @app.post("/find-jobs")
 async def find_jobs(req: FindJobsRequest):
-    # Download resume to /tmp
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.get(req.resume_url)
-            r.raise_for_status()
-            f.write(r.content)
-        resume_path = f.name
+    has_overrides = bool(req.override_titles and len(req.override_titles) > 0)
 
-    # Build CLI args
-    args = [
-        "python", str(SCRIPT), resume_path,
+    # Skip PDF download entirely when overrides are provided. The dashboard
+    # already derived titles/keywords/years_min/years_max via gpt-4o-mini.
+    resume_path: str | None = None
+    if not has_overrides:
+        if not req.resume_url:
+            raise HTTPException(
+                400,
+                "either resume_url or override_titles must be provided",
+            )
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            async with httpx.AsyncClient(timeout=30) as client:
+                r = await client.get(req.resume_url)
+                r.raise_for_status()
+                f.write(r.content)
+            resume_path = f.name
+
+    # Build CLI args. resume positional is omitted when we have overrides
+    # (scrape_with_resume.py treats it as optional in that case).
+    args = ["python", str(SCRIPT)]
+    if resume_path:
+        args.append(resume_path)
+    args += [
         "--no-ingest",
         "--json-output",
         "--max-per-source", str(req.max_per_source),
@@ -69,6 +85,12 @@ async def find_jobs(req: FindJobsRequest):
     # when titles/keywords have already been computed from the candidate's resume.
     if req.override_titles:
         env["RESUME_SCRAPE_OVERRIDE_TITLES"] = ",".join(req.override_titles)
+    # Forward years range as override env vars too — the script's override
+    # branch reads these instead of running the LLM derivation.
+    if req.years_min is not None:
+        env["RESUME_SCRAPE_OVERRIDE_YEARS_MIN"] = str(req.years_min)
+    if req.years_max is not None:
+        env["RESUME_SCRAPE_OVERRIDE_YEARS_MAX"] = str(req.years_max)
     if req.override_keywords:
         env["RESUME_SCRAPE_OVERRIDE_KEYWORDS"] = ",".join(req.override_keywords)
 

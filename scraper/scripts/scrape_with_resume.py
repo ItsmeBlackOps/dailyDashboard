@@ -299,7 +299,10 @@ def ingest(jobs: list[Any]) -> dict[str, Any]:
 
 def main(argv: Optional[list[str]] = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("resume", type=Path, help="Path to resume file (.txt/.md/.pdf)")
+    p.add_argument("resume", type=Path, nargs="?", default=None,
+                   help="Path to resume file (.txt/.md/.pdf). Optional when "
+                        "RESUME_SCRAPE_OVERRIDE_TITLES env is set — the dashboard "
+                        "already derived the plan and the script bypasses LLM.")
     p.add_argument("--dry-run", action="store_true",
                    help="Derive plan + print, but do not call Apify")
     p.add_argument("--linkedin-only", action="store_true")
@@ -346,25 +349,63 @@ def main(argv: Optional[list[str]] = None) -> int:
             _real_print(*a, file=file if file is not None else sys.stderr, **kw)
         _builtins.print = _stderr_print
 
-    if not args.resume.exists():
-        print(f"Resume file not found: {args.resume}", file=sys.stderr)
-        return 2
+    has_overrides = bool(os.getenv("RESUME_SCRAPE_OVERRIDE_TITLES", "").strip())
+
+    # Only require the resume file when we don't have an override plan.
+    if not has_overrides:
+        if args.resume is None:
+            print("Resume path is required (or set RESUME_SCRAPE_OVERRIDE_TITLES)",
+                  file=sys.stderr)
+            return 2
+        if not args.resume.exists():
+            print(f"Resume file not found: {args.resume}", file=sys.stderr)
+            return 2
 
     configure_logging()
     log = get_logger("scrape_with_resume")
 
-    if not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")):
+    # LLM key only needed when we still have to derive the plan.
+    if not has_overrides and not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")):
         print("Set ANTHROPIC_API_KEY or OPENAI_API_KEY", file=sys.stderr)
         return 2
 
-    resume_text = load_resume(args.resume)
-    hints = {
-        "location": os.getenv("RESUME_SCRAPE_LOCATION", ""),
-        "remote": os.getenv("RESUME_SCRAPE_REMOTE", ""),
-    }
-    log.info("scrape_with_resume.plan.start",
-             resume_chars=len(resume_text), model=args.model)
-    plan = derive_plan(resume_text, hints, model=args.model)
+    # ── Override path: dashboard already derived titles/keywords/years via
+    # gpt-4o-mini in resumeProfileService — skip PDF read + LLM call here.
+    # Triggered when RESUME_SCRAPE_OVERRIDE_TITLES env is set.
+    override_titles_raw = os.getenv("RESUME_SCRAPE_OVERRIDE_TITLES", "").strip()
+    if override_titles_raw:
+        def _split(env: str) -> list[str]:
+            return [t.strip() for t in env.split(",") if t.strip()]
+        titles = _split(override_titles_raw)
+        keywords = _split(os.getenv("RESUME_SCRAPE_OVERRIDE_KEYWORDS", ""))
+        skills = _split(os.getenv("RESUME_SCRAPE_OVERRIDE_SKILLS", ""))
+        try:
+            ymin_env = float(os.getenv("RESUME_SCRAPE_OVERRIDE_YEARS_MIN") or 0)
+            ymax_env = float(os.getenv("RESUME_SCRAPE_OVERRIDE_YEARS_MAX") or 0)
+        except ValueError:
+            ymin_env, ymax_env = 0.0, 0.0
+        plan = ScrapePlan(
+            linkedin_titles=titles,
+            fantastic_titles=titles,
+            linkedin_descriptions=keywords,
+            fantastic_descriptions=keywords,
+            years_min=ymin_env,
+            years_max=ymax_env,
+            skills=skills or keywords,
+            rationale="overrides supplied by dashboard (resumeProfileService)",
+        )
+        log.info("scrape_with_resume.plan.override",
+                 titles=len(titles), keywords=len(keywords),
+                 years_min=ymin_env, years_max=ymax_env)
+    else:
+        resume_text = load_resume(args.resume)
+        hints = {
+            "location": os.getenv("RESUME_SCRAPE_LOCATION", ""),
+            "remote": os.getenv("RESUME_SCRAPE_REMOTE", ""),
+        }
+        log.info("scrape_with_resume.plan.start",
+                 resume_chars=len(resume_text), model=args.model)
+        plan = derive_plan(resume_text, hints, model=args.model)
 
     print("\n=== Derived ScrapePlan ===")
     print(json.dumps(plan.model_dump(), indent=2))
@@ -396,7 +437,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     # ---- Incremental state: only fetch jobs posted since last run ----
     import hashlib
     profile_id = args.profile_id or hashlib.sha1(
-        str(args.resume.resolve()).encode("utf-8")).hexdigest()[:12]
+        str((args.resume.resolve() if args.resume else "no-resume")).encode("utf-8")).hexdigest()[:12]
     state_dir = ROOT / "data" / "find_jobs_state"
     state_dir.mkdir(parents=True, exist_ok=True)
     state_path = state_dir / f"{profile_id}.json"
@@ -502,7 +543,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         "last_run_at": new_run_at,
         "years_min": plan.years_min,
         "years_max": plan.years_max,
-        "resume_path": str(args.resume.resolve()),
+        "resume_path": str(args.resume.resolve()) if args.resume else None,
         "kept_count": len(jobs),
     })
     state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
