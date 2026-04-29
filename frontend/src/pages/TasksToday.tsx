@@ -2951,6 +2951,18 @@ export default function TasksToday() {
 
         const resolvedLink = extractJoinLink({ ...task, joinUrl, joinWebUrl });
         if (resolvedLink) {
+          // Persist on the task so the Fireflies scheduler picks it up
+          // without having to scrape the email body.
+          try {
+            await authFetch(`${API_URL}/api/tasks/${task._id}/meeting-link`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ meetingLink: resolvedLink }),
+            });
+          } catch (err) {
+            console.warn('Failed to persist meeting link to task', err);
+          }
+
           try {
             await navigator.clipboard.writeText(resolvedLink);
             toast({
