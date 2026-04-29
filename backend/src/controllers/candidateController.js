@@ -699,6 +699,9 @@ class CandidateController {
       return res.json({
         success: true,
         task: {
+          // Both naming conventions — TaskSheet reads task._id, older
+          // surfaces read task.taskId. Keep both so we don't break either.
+          _id:          doc._id.toString(),
           taskId:       doc._id.toString(),
           candidateId,
           candidateName: doc['Candidate Name'] || '',
@@ -717,6 +720,16 @@ class CandidateController {
           assignedAt:   doc.assignedAt || null,
           suggestions:  Array.isArray(doc.suggestions) ? doc.suggestions : [],
           receivedAt:   doc.receivedDateTime || null,
+          // Meeting link + bot fields used by TaskSheet's Meeting Link panel.
+          // Without these the panel always rendered "No meeting link set yet".
+          meetingLink:        doc.meetingLink || null,
+          joinUrl:            doc.joinUrl || null,
+          joinWebUrl:         doc.joinWebUrl || null,
+          meetingPassword:    doc.meetingPassword || null,
+          botStatus:          doc.botStatus || null,
+          botInviteAttempts:  typeof doc.botInviteAttempts === 'number' ? doc.botInviteAttempts : null,
+          botJoinedAt:        doc.botJoinedAt || null,
+          botLastError:       doc.botLastError || null,
           // Full mode extras
           body:    full ? (doc.body || doc.textBody || '') : undefined,
           replies: full ? replies : undefined,
