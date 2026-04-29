@@ -23,8 +23,11 @@ export interface JobSession {
   candidateId: string;
   status: 'running' | 'complete' | 'error';
   filters: Record<string, unknown>;
-  createdAt: string;
-  completedAt?: string;
+  /** Backend stores `requestedAt`; older shapes used `createdAt`. */
+  requestedAt?: string;
+  createdAt?: string;
+  completedAt?: string | null;
+  error?: string | null;
   totalFound?: number;
 }
 
