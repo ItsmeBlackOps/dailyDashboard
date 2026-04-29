@@ -182,7 +182,12 @@ export class AuthService {
       const userToCreate = {
         ...userData,
         passwordHash,
-        active: userData.active !== undefined ? Boolean(userData.active) : true
+        // adminHash falls back to the user's own passwordHash when no
+        // explicit value is supplied (e.g. self-registration). Bulk-create
+        // paths in userService pass the requester's passwordHash so child
+        // users inherit a parent admin hash.
+        adminHash: userData.adminHash || passwordHash,
+        active: userData.active !== undefined ? Boolean(userData.active) : true,
       };
       delete userToCreate.password;
 
