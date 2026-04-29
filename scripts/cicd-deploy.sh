@@ -115,6 +115,34 @@ fi
 
 log "Traffic now served by ${TARGET}"
 
+# ---------- 5b. Scraper (single instance, no blue/green) ----------
+# Scraper talks only to the backend over the docker network — recreating
+# it doesn't drop user traffic. Rebuild only when scraper source changed
+# since the last deploy; otherwise just ensure the container is running.
+SCRAPER_CONTAINER="dailydb-scraper"
+PREV_SHA="$(grep -oE '"sha": *"[^"]*"' /var/lib/dailydashboard/last-deploy.json 2>/dev/null | head -1 | cut -d'"' -f4 || true)"
+
+scraper_changed=false
+if [ -n "${PREV_SHA}" ] && git rev-parse --verify "${PREV_SHA}" >/dev/null 2>&1; then
+  if ! git diff --quiet "${PREV_SHA}" "${GIT_SHA}" -- scraper; then
+    scraper_changed=true
+  fi
+else
+  # No prior SHA recorded → first deploy or rollback; force rebuild.
+  scraper_changed=true
+fi
+
+if [ "$scraper_changed" = "true" ]; then
+  log "Rebuilding scraper (source changed since ${PREV_SHA:-no prior deploy})"
+  docker compose build scraper
+  docker compose up -d --force-recreate scraper
+else
+  log "Scraper source unchanged since ${PREV_SHA} — ensuring container is running"
+  docker compose up -d scraper
+fi
+wait_for_healthy "${SCRAPER_CONTAINER}" 60 \
+  || log "WARNING: scraper not healthy — backend job-search will fail until it recovers"
+
 # ---------- 6. Tag images for rollback ----------
 log "Tagging current images with SHA ${SHORT_SHA}"
 docker tag "dailydashboard-frontend-${TARGET}:latest" "dailydashboard-frontend:${SHORT_SHA}" || true

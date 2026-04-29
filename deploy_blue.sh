@@ -44,7 +44,7 @@ if [ -n "$clash" ] && ! echo "$clash" | grep -q "dailydb-gateway"; then
 fi
 
 # Bring up target stack first so nginx can resolve upstream names.
-docker compose up -d backend-blue frontend-blue
+docker compose up -d backend-blue frontend-blue scraper
 
 wait_for_healthy dailydb-backend-blue
 wait_for_healthy dailydb-frontend-blue
