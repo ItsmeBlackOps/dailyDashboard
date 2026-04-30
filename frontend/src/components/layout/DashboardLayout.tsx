@@ -9,6 +9,7 @@ import { NotificationDetailModal } from '@/components/ui/notification-modal';
 import { RoleDetailRequiredDialog } from './RoleDetailRequiredDialog';
 import { RecruiterCallAlertDialog } from './RecruiterCallAlertDialog';
 import { ContactNumberRequiredDialog } from './ContactNumberRequiredDialog';
+import MissingResumeAlert from '@/components/dashboard/MissingResumeAlert';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -83,6 +84,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <NotificationDetailModal />
           <MicrosoftConsentDialog />
           <RecruiterCallAlertDialog />
+          <MissingResumeAlert />
         </div>
       </UserProfileProvider>
     </ThemeProvider>

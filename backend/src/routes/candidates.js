@@ -35,6 +35,7 @@ router.get('/po-missing-date', (req, res) =>
   candidateController.getPOMissingDate(req, res)
 );
 
+router.get('/missing-resumes', (req, res) => candidateController.getMissingResumes(req, res));
 router.get('/hub-stats',      (req, res) => candidateController.getHubStats(req, res));
 router.get('/hub-profiles',   (req, res) => candidateController.getHubProfiles(req, res));
 router.get('/hub-recruiters', (req, res) => candidateController.getHubRecruiters(req, res));
