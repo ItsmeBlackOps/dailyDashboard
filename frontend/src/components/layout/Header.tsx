@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Building2, Globe, Loader2, Menu, Phone, User, UserCog, LogOut, ChevronDown, CheckCircle2, AlertTriangle, Bell, Info, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { timeAgo as formatNotifTime } from '@/utils/timeAgo';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -32,16 +33,7 @@ import { usePostHog } from 'posthog-js/react';
 
 const DEFAULT_ROLE_OPTIONS = ['DATA', 'DEVELOPER', 'DEVOPS'];
 
-function formatNotifTime(timestamp: string): string {
-  const date = new Date(timestamp);
-  const diffMs = Date.now() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-}
+// Shared helper — see frontend/src/utils/timeAgo.ts
 
 export function Header({ toggleSidebar }: HeaderProps) {
   const { logout } = useAuth();

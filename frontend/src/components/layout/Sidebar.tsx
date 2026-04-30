@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useDidUpdate } from "@/hooks/useDidUpdate";
 import { Separator } from "@/components/ui/separator";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Badge } from "@/components/ui/badge";
@@ -202,13 +203,10 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
 
   // Auto-close on mobile when the route changes — otherwise the sidebar
   // stays over the page content until the user clicks the backdrop.
-  const lastPathRef = useRef(location.pathname);
-  useEffect(() => {
-    if (lastPathRef.current !== location.pathname) {
-      lastPathRef.current = location.pathname;
-      if (isMobile && isOpen) toggleSidebar();
-    }
-  }, [location.pathname, isMobile, isOpen, toggleSidebar]);
+  // useDidUpdate skips the initial mount so we don't slam-close on load.
+  useDidUpdate(() => {
+    if (isMobile && isOpen) toggleSidebar();
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!showResumeNav) {

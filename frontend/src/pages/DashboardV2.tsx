@@ -23,19 +23,26 @@ interface OverviewStats {
 export default function DashboardV2() {
     const { user, authFetch } = useAuth();
     // Filters persist in URL search params so refreshing / switching tabs /
-    // sharing a link preserves the selection.
-    const initialParams = (() => {
-        try { return new URLSearchParams(window.location.search); } catch { return new URLSearchParams(); }
-    })();
-    const todayMonth = new Date().toISOString().slice(0, 7);
-    const todayDate  = new Date().toISOString().slice(0, 10);
-    const [dateBasis,    setDateBasis]    = useState<string>(initialParams.get('dateBasis') || 'interview');
-    const [dateMode,     setDateMode]     = useState<'month' | 'week' | 'date'>(
-        (initialParams.get('period') as 'month' | 'week' | 'date') || 'month'
+    // sharing a link preserves the selection. Use lazy initializers so the
+    // URLSearchParams reads + Date construction only happen on mount, not
+    // on every render.
+    const todayMonth = () => new Date().toISOString().slice(0, 7);
+    const todayDate  = () => new Date().toISOString().slice(0, 10);
+    const [dateBasis,    setDateBasis]    = useState<string>(
+        () => new URLSearchParams(window.location.search).get('dateBasis') || 'interview'
     );
-    const [selectedMonth, setSelectedMonth] = useState<string>(initialParams.get('month') || todayMonth);
-    const [selectedWeek,  setSelectedWeek]  = useState<string>(initialParams.get('week')  || todayDate);
-    const [selectedDate,  setSelectedDate]  = useState<string>(initialParams.get('date')  || todayDate);
+    const [dateMode,     setDateMode]     = useState<'month' | 'week' | 'date'>(
+        () => (new URLSearchParams(window.location.search).get('period') as 'month' | 'week' | 'date') || 'month'
+    );
+    const [selectedMonth, setSelectedMonth] = useState<string>(
+        () => new URLSearchParams(window.location.search).get('month') || todayMonth()
+    );
+    const [selectedWeek,  setSelectedWeek]  = useState<string>(
+        () => new URLSearchParams(window.location.search).get('week')  || todayDate()
+    );
+    const [selectedDate,  setSelectedDate]  = useState<string>(
+        () => new URLSearchParams(window.location.search).get('date')  || todayDate()
+    );
     const [overviewStats, setOverviewStats] = useState<OverviewStats | null>(null);
     const [loadingOverview, setLoadingOverview] = useState(true);
 
