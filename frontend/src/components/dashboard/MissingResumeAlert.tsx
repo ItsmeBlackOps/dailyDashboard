@@ -42,7 +42,8 @@ export default function MissingResumeAlert() {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<MissingResumeResponse | null>(null);
 
-  const role = (localStorage.getItem('role') || '').trim().toLowerCase();
+  // role is set once at signin — read it once on mount instead of every render.
+  const role = useMemo(() => (localStorage.getItem('role') || '').trim().toLowerCase(), []);
   const isMarketing = MARKETING_ROLES.has(role);
 
   useEffect(() => {
