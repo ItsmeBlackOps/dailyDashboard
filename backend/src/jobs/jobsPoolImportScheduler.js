@@ -88,9 +88,13 @@ export function startJobsPoolImportScheduler() {
     return;
   }
 
+  // Default 1h now that the importer filters by postedAt high-water mark
+  // — each cycle only enriches genuinely new postings, so frequent runs
+  // are cheap. Fractional hours allowed via JOBS_POOL_IMPORT_INTERVAL_HOURS=0.5
+  // for 30-minute polling.
   const intervalHours = Math.max(
-    1,
-    parseInt(process.env.JOBS_POOL_IMPORT_INTERVAL_HOURS || '6', 10)
+    0.25,
+    parseFloat(process.env.JOBS_POOL_IMPORT_INTERVAL_HOURS || '1')
   );
 
   // Boot run with delay so DB / scraper settle.
