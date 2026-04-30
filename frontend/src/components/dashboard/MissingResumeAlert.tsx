@@ -29,11 +29,10 @@ interface MissingResumeResponse {
 
 const SESSION_KEY = 'missingResumeAlertDismissed';
 
-// Marketing team only — admin manages globally and gets flooded.
-// Recruiters are excluded too (they upload via Branch Candidates row,
-// not via a top-level prompt). This matches the backend role gate
+// Marketing team — mm / mam / mlead / recruiter. Admin is excluded
+// (manages globally, would be flooded). Matches backend role gate
 // in candidateController.getMissingResumes.
-const MARKETING_ROLES = new Set(['mm', 'mam', 'mlead']);
+const MARKETING_ROLES = new Set(['mm', 'mam', 'mlead', 'recruiter']);
 
 /**
  * One-time per session prompt for marketing-team users with active
