@@ -1468,28 +1468,20 @@ export class DashboardController {
             const candidateScopedMatch = await this.getScopedMatchForCandidates(user, {});
             candidatePipeline.push({ $match: candidateScopedMatch });
 
-            // Total candidates (scoped)
-            const totalPipeline = [...candidatePipeline, { $count: "count" }];
-
-            // PostHog: Log candidate pipeline
-            logger.info('Dashboard: getOverviewStats - Candidate Pipeline', {
-                endpoint: 'getOverviewStats',
-                userEmail: user?.email,
-                fullPipeline: JSON.stringify(totalPipeline),
-                message: 'Candidate aggregation pipeline'
-            });
-
-            const totalResult = await this.candidateCollection.aggregate(totalPipeline).toArray();
-            const totalCandidates = totalResult[0]?.count || 0;
-
-            // Active candidates (scoped)
-            const activePipeline = [
+            // Faceted aggregation — total + active in one pass over the
+            // same scoped pipeline (was two separate aggregations).
+            const candidateMetricsPipeline = [
                 ...candidatePipeline,
-                { $match: { status: { $regex: /^active$/i } } },
-                { $count: "count" }
+                {
+                    $facet: {
+                        total:  [{ $count: 'n' }],
+                        active: [
+                            { $match: { status: { $regex: /^active$/i } } },
+                            { $count: 'n' },
+                        ],
+                    },
+                },
             ];
-            const activeResult = await this.candidateCollection.aggregate(activePipeline).toArray();
-            const activeCandidates = activeResult[0]?.count || 0;
 
 
             // Fix: Replace countDocuments with aggregation for task scoping
@@ -1554,37 +1546,45 @@ export class DashboardController {
             const taskScopedMatch = await this.getScopedMatchForTasks(user, {});
             taskBasePipeline.push({ $match: taskScopedMatch });
 
-            // Total interviews
-            const totalInterviewsPipeline = [...taskBasePipeline, { $count: "count" }];
+            // Faceted task aggregation — total + completed + pending in
+            // ONE pass over the heavy taskBasePipeline (which has a
+            // $lookup into candidateDetails and a date-coerced $addFields).
+            // Was running 3 separate aggregations end-to-end.
+            const taskMetricsPipeline = [
+                ...taskBasePipeline,
+                {
+                    $facet: {
+                        total:     [{ $count: 'n' }],
+                        completed: [
+                            { $match: { status: { $in: ['Completed', 'Done', 'completed', 'done'] } } },
+                            { $count: 'n' },
+                        ],
+                        pending: [
+                            { $match: { status: { $in: ['Pending', 'Assigned', 'Acknowledged', 'pending', 'assigned', 'acknowledged'] } } },
+                            { $count: 'n' },
+                        ],
+                    },
+                },
+            ];
 
-            // PostHog: Log task pipeline
-            logger.info('Dashboard: getOverviewStats - Task Pipeline', {
+            // Run candidate + task aggregations in parallel — they're
+            // independent so the slowest dominates instead of sum.
+            logger.info('Dashboard: getOverviewStats - Task Pipeline (faceted, parallel)', {
                 endpoint: 'getOverviewStats',
                 userEmail: user?.email,
-                fullPipeline: JSON.stringify(totalInterviewsPipeline),
-                message: 'Task aggregation pipeline'
             });
+            const [candidateFacet, taskFacet] = await Promise.all([
+                this.candidateCollection.aggregate(candidateMetricsPipeline).toArray(),
+                this.taskCollection.aggregate(taskMetricsPipeline).toArray(),
+            ]);
 
-            const totalInterviewsResult = await this.taskCollection.aggregate(totalInterviewsPipeline).toArray();
-            const totalInterviews = totalInterviewsResult[0]?.count || 0;
-
-            // Completed interviews
-            const completedPipeline = [
-                ...taskBasePipeline,
-                { $match: { status: { $in: ['Completed', 'Done', 'completed', 'done'] } } },
-                { $count: "count" }
-            ];
-            const completedResult = await this.taskCollection.aggregate(completedPipeline).toArray();
-            const completedInterviews = completedResult[0]?.count || 0;
-
-            // Pending tasks
-            const pendingPipeline = [
-                ...taskBasePipeline,
-                { $match: { status: { $in: ['Pending', 'Assigned', 'Acknowledged', 'pending', 'assigned', 'acknowledged'] } } },
-                { $count: "count" }
-            ];
-            const pendingResult = await this.taskCollection.aggregate(pendingPipeline).toArray();
-            const pendingTasks = pendingResult[0]?.count || 0;
+            const cF = candidateFacet[0] || {};
+            const tF = taskFacet[0] || {};
+            const totalCandidates    = cF.total?.[0]?.n     || 0;
+            const activeCandidates   = cF.active?.[0]?.n    || 0;
+            const totalInterviews    = tF.total?.[0]?.n     || 0;
+            const completedInterviews= tF.completed?.[0]?.n || 0;
+            const pendingTasks       = tF.pending?.[0]?.n   || 0;
 
             // PostHog: Log final output
             logger.info('Dashboard: getOverviewStats - Response Sent', {
