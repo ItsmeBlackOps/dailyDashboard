@@ -1,4 +1,5 @@
 import { jobsPoolService } from '../services/jobsPoolService.js';
+import { poolRefresherService } from '../services/poolRefresherService.js';
 import { _runImporter as runImporterNow } from '../jobs/jobsPoolImportScheduler.js';
 import { logger } from '../utils/logger.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
@@ -34,6 +35,28 @@ class JobsPoolController {
       logger.error('jobsPool list failed', { error: err.message });
       return res.status(400).json({ success: false, error: err.message });
     }
+  });
+
+  triggerRefresh = asyncHandler(async (req, res) => {
+    const role = (req.user?.role || '').trim().toLowerCase();
+    if (role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'admin only' });
+    }
+    const which = String(req.query.actor || 'fantastic').toLowerCase();
+    try {
+      const r = which.startsWith('linkedin')
+        ? await poolRefresherService.triggerLinkedIn()
+        : await poolRefresherService.triggerFantasticJobs();
+      return res.json({ success: true, actor: which, ...r });
+    } catch (err) {
+      logger.error('jobsPool triggerRefresh failed', { actor: which, error: err.message });
+      return res.status(500).json({ success: false, actor: which, error: err.message });
+    }
+  });
+
+  refreshStats = asyncHandler(async (_req, res) => {
+    const s = await poolRefresherService.stats();
+    return res.json({ success: true, state: s });
   });
 
   pruneNonUS = asyncHandler(async (req, res) => {

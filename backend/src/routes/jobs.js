@@ -18,6 +18,8 @@ router.get('/pool/stats',                    poolCtl.stats);
 router.get('/pool/list',                     poolCtl.list);
 router.post('/pool/import',                  poolCtl.triggerImport);
 router.post('/pool/prune-non-us',            poolCtl.pruneNonUS);
+router.post('/pool/refresh',                 poolCtl.triggerRefresh);
+router.get('/pool/refresh/state',            poolCtl.refreshStats);
 router.get('/matched/:candidateId',          poolCtl.matchForCandidate);
 
 export default router;

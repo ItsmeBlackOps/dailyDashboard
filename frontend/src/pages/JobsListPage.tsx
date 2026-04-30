@@ -60,6 +60,7 @@ export default function JobsListPage() {
   const [candidateId, setCandidateId] = useState<string>('all');
   const [searchDraft, setSearchDraft] = useState('');
   const [search, setSearch] = useState('');
+  const [appliedFilter, setAppliedFilter] = useState<'all' | 'applied' | 'not-applied'>('all');
 
   // Active candidates for the filter dropdown — lightweight {id,name}[]
   // endpoint avoids pulling the full /grouped payload just to populate
@@ -90,7 +91,32 @@ export default function JobsListPage() {
     refetchOnWindowFocus: false,
   });
 
-  const jobs = data?.jobs ?? [];
+  // Applied-jobIds Set for the filter — only fetched when a single
+  // candidate is selected (per-candidate scoped collection).
+  const { data: appliedData } = useQuery<{ appliedJobIds: string[] }>({
+    queryKey: ['job-applications-set', candidateId],
+    enabled: candidateId !== 'all',
+    queryFn: async () => {
+      const res = await authFetch(
+        `${API_URL}/api/jobs/applications?candidateId=${candidateId}`
+      );
+      if (!res.ok) throw new Error('Failed to load applications');
+      return res.json();
+    },
+    staleTime: 60 * 1000,
+  });
+  const appliedSet = useMemo(
+    () => new Set(appliedData?.appliedJobIds ?? []),
+    [appliedData]
+  );
+
+  const allJobs = data?.jobs ?? [];
+  const jobs = useMemo(() => {
+    if (candidateId === 'all' || appliedFilter === 'all') return allJobs;
+    return allJobs.filter((j) =>
+      appliedFilter === 'applied' ? appliedSet.has(j.id) : !appliedSet.has(j.id)
+    );
+  }, [allJobs, appliedFilter, appliedSet, candidateId]);
   const candidateLabel = useMemo(() => {
     if (candidateId === 'all') return 'All candidates';
     return candidates.find((c) => c.id === candidateId)?.name ?? candidateId;
@@ -121,6 +147,19 @@ export default function JobsListPage() {
               ))}
             </SelectContent>
           </Select>
+
+          {candidateId !== 'all' && (
+            <Select value={appliedFilter} onValueChange={(v) => setAppliedFilter(v as typeof appliedFilter)}>
+              <SelectTrigger className="w-full md:w-[180px] text-sm">
+                <SelectValue placeholder="Applied state" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All jobs</SelectItem>
+                <SelectItem value="not-applied">Not applied</SelectItem>
+                <SelectItem value="applied">Applied</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
 
           <div className="flex items-center gap-1.5 flex-1">
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -199,6 +238,15 @@ export default function JobsListPage() {
                 {j.ats && <span>via {ATS_LABEL[j.ats] ?? j.ats}</span>}
                 <ExternalLink className="h-3 w-3 ml-auto opacity-60" />
               </div>
+
+              {/* Applied indicator (only shown when scoped to one candidate) */}
+              {candidateId !== 'all' && appliedSet.has(j.id) && (
+                <div className="mt-2">
+                  <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-400">
+                    ✓ Applied
+                  </Badge>
+                </div>
+              )}
 
               {/* Matching-candidate badges */}
               {j.matchingCandidateCount > 0 && (
