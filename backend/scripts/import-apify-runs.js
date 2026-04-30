@@ -42,10 +42,18 @@ if (!APIFY_TOKEN) {
 }
 
 function parseArgs(argv) {
-  const out = { since: null, limit: 200, enrich: 'on', concurrency: 5, dry: false };
+  const out = {
+    since: null,
+    postedAfter: null,    // ISO date — items with postedAt <= this get skipped
+    limit: 200,
+    enrich: 'on',
+    concurrency: 5,
+    dry: false,
+  };
   for (const a of argv.slice(2)) {
     if (a === '--dry') out.dry = true;
     else if (a.startsWith('--since=')) out.since = a.slice(8);
+    else if (a.startsWith('--posted-after=')) out.postedAfter = a.slice(15);
     else if (a.startsWith('--limit=')) out.limit = parseInt(a.slice(8), 10) || 200;
     else if (a.startsWith('--enrich=')) out.enrich = a.slice(9).toLowerCase();
     else if (a.startsWith('--concurrency=')) out.concurrency = parseInt(a.slice(14), 10) || 5;
@@ -203,10 +211,27 @@ async function main() {
     `(${runs.length - todoRuns.length} skipped — already in jobsPoolImportLog)`
   );
 
+  // Resolve the postedAt cutoff. Explicit --posted-after wins; otherwise
+  // use the pool's high-water mark (max postedAt) so each cycle picks up
+  // only postings genuinely newer than what we already have.
+  let postedAfter = null;
+  if (args.postedAfter) {
+    const d = new Date(args.postedAfter);
+    if (!Number.isNaN(d.getTime())) postedAfter = d;
+  } else {
+    postedAfter = await jobsPoolService.getHighWaterMark();
+  }
+  if (postedAfter) {
+    console.log(`[import] postedAt cutoff: ${postedAfter.toISOString()} (items posted at/before this will be skipped)`);
+  } else {
+    console.log('[import] no postedAt cutoff (pool empty / no --posted-after) — taking all items');
+  }
+
   let totalRaw = 0;
   let totalAdapted = 0;
   let totalNew = 0;
   let totalUpserted = 0;
+  let totalSkippedOld = 0;
 
   // Helper: mark this run done in jobsPoolImportLog so we never touch
   // it again. Records every outcome (imported / empty / error / dry).
@@ -239,8 +264,19 @@ async function main() {
     }
     totalRaw += items.length;
 
-    const adapted = items.map((it) => adaptApifyItem(it, run)).filter(Boolean);
+    let adapted = items.map((it) => adaptApifyItem(it, run)).filter(Boolean);
     totalAdapted += adapted.length;
+
+    // Per-item cutoff: skip postings whose postedAt is at or before
+    // the high-water mark. Items with no postedAt pass through (we
+    // can't tell if they're old or new — the dedupeKey check below
+    // is the second line of defense).
+    if (postedAfter) {
+      const beforeCount = adapted.length;
+      adapted = adapted.filter((j) => !j.postedAt || j.postedAt > postedAfter);
+      const skipped = beforeCount - adapted.length;
+      if (skipped > 0) totalSkippedOld += skipped;
+    }
 
     // Drop ones whose dedupeKey is already in the pool — saves enrichment cost.
     const existingKeys = new Set(
@@ -316,6 +352,7 @@ async function main() {
   console.log(`  runs imported:  ${todoRuns.length}`);
   console.log(`  raw items:      ${totalRaw}`);
   console.log(`  adapted:        ${totalAdapted}`);
+  console.log(`  skipped (old):  ${totalSkippedOld}`);
   console.log(`  new (not dup):  ${totalNew}`);
   console.log(`  upserted:       ${totalUpserted}`);
 

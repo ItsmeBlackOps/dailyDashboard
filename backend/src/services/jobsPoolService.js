@@ -323,6 +323,31 @@ class JobsPoolService {
   }
 
   /**
+   * High-water mark for incremental imports. Returns the most-recent
+   * `postedAt` we've stored in the pool, or null if pool is empty.
+   *
+   * Used by the importer's per-item filter:
+   *   for each Apify dataset item, skip if item.postedAt <= highWaterMark
+   *
+   * That's how we go hourly without re-enriching jobs we already
+   * have — even when the same Apify run is returned in a fresh list
+   * call, only postings newer than this cutoff trigger a JD-enrich
+   * + upsert.
+   */
+  async getHighWaterMark() {
+    const db = database.getDb();
+    await ensureIndexes(db);
+    const top = await db
+      .collection(COL)
+      .find({ postedAt: { $type: 'date' } })
+      .sort({ postedAt: -1 })
+      .limit(1)
+      .project({ postedAt: 1, _id: 0 })
+      .toArray();
+    return top[0]?.postedAt || null;
+  }
+
+  /**
    * Return the set of Apify runIds we've ALREADY processed (any
    * outcome: imported, empty, error). The importer uses this to
    * skip already-touched runs in O(1) lookup.
