@@ -37,7 +37,8 @@ import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import { useNotifications } from "@/context/NotificationContext";
 import { ResumeDiscussionDrawer } from "@/components/resume/ResumeDiscussionDrawer";
 import { handleSupportInterviewSubmitError } from "@/components/dashboard/supportInterviewSubmitError";
-import { CompanyCombobox, invalidateClientsCache } from '@/components/shared/CompanyCombobox';
+import { invalidateClientsCache } from '@/components/shared/CompanyCombobox';
+import { CompanyComboboxSafe as CompanyCombobox } from '@/components/shared/CompanyComboboxSafe';
 
 interface BranchCandidatesProps {
   role: string;
