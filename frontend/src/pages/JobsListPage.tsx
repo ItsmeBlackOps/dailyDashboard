@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Briefcase, Loader2 } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -61,9 +62,11 @@ export default function JobsListPage() {
         )}
 
         {!isLoading && sessions.length === 0 && (
-          <div className="text-center py-20 text-muted-foreground text-sm">
-            No job search sessions yet. Open a candidate profile and click "Find Jobs" to start one.
-          </div>
+          <EmptyState
+            icon={<Briefcase className="h-6 w-6" />}
+            title="No job searches yet"
+            description='Open a candidate profile and click "Find Jobs" to start one. Results will appear here.'
+          />
         )}
 
         {sessions.map((s) => (
