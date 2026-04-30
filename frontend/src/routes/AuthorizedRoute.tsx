@@ -4,8 +4,8 @@ import { NotificationProvider } from '@/context/NotificationContext';
 import { MicrosoftConsentProvider } from '@/contexts/MicrosoftConsentContext';
 
 const PROFILE_HUB_ROLES = ['admin', 'mam', 'mm', 'mlead', 'recruiter'];
-// Marketing-team-only pages — must match Sidebar visibility rules.
-const JOBS_ROLES = ['admin', 'mm', 'mam', 'mlead'];
+// Jobs page — must match Sidebar visibility rules. Marketing team + recruiters.
+const JOBS_ROLES = ['admin', 'mm', 'mam', 'mlead', 'recruiter'];
 
 const isAuthed = () => Boolean(localStorage.getItem('accessToken'));
 const isAdmin = () => (localStorage.getItem('role') || '').trim().toLowerCase() === 'admin';
