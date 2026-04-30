@@ -45,6 +45,7 @@ import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler.j
 
 // Import jobs
 import { startFirefliesBotScheduler } from './jobs/firefliesBotScheduler.js';
+import { startActiveJobScrapeScheduler } from './jobs/activeJobScrapeScheduler.js';
 import { ensurePerformanceIndexes } from './jobs/ensurePerfIndexes.js';
 
 // Import routes and socket manager
@@ -292,6 +293,7 @@ class Application {
         }
 
         startFirefliesBotScheduler();
+        startActiveJobScrapeScheduler();
       });
     } catch (error) {
       logger.error('❌ Failed to start server', { error: error.message });
