@@ -42,3 +42,8 @@ backend/newrelic_agent.log.*
 # which made every deploy build the same color repeatedly.
 nginx/conf.d/upstreams/frontend.active.conf
 nginx/conf.d/upstreams/backend.active.conf
+
+# Local diagnostic dumps from Apify API exploration
+.apify_runs.json
+.input*.json
+.a*.json
