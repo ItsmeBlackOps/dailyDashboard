@@ -35,3 +35,10 @@ backend/newrelic_agent.log.*
 **/__pycache__/
 *.pyc
 *.pyo
+
+# Blue/green deploy active state — VM-local only. The cicd-deploy.sh
+# script writes whichever color is currently serving traffic to these
+# files; committing them caused 'git reset --hard' to wipe every flip,
+# which made every deploy build the same color repeatedly.
+nginx/conf.d/upstreams/frontend.active.conf
+nginx/conf.d/upstreams/backend.active.conf

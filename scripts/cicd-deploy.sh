@@ -34,8 +34,36 @@ chmod +x scripts/*.sh 2>/dev/null || true
 log "On commit $(git rev-parse --short HEAD) (${GIT_SHA})"
 
 # ---------- 2. Detect active color ----------
+# Active state lives in a VM-local file — NOT in git — because the
+# previous design read it from nginx/conf.d/upstreams/frontend.active.conf
+# which is part of the working tree. `git reset --hard origin/main` at
+# step 1 wiped any previous flip, so every deploy detected the same
+# committed value and built the same TARGET color every time. Now:
+#   1) Prefer state file at /var/lib/dailydashboard/active-color.
+#   2) Fall back to live docker ps inspection (which container is up).
+#   3) Last resort: read frontend.active.conf as before.
+ACTIVE_STATE_FILE="/var/lib/dailydashboard/active-color"
+mkdir -p "$(dirname "${ACTIVE_STATE_FILE}")" 2>/dev/null || true
+
+detect_active_color() {
+  if [ -f "${ACTIVE_STATE_FILE}" ]; then
+    cat "${ACTIVE_STATE_FILE}" | tr -d '[:space:]'
+    return
+  fi
+  # Fallback: ask docker. Whichever frontend container is "running" wins.
+  for c in blue green; do
+    if docker ps --format '{{.Names}}' | grep -q "^dailydb-frontend-${c}$"; then
+      echo "$c"
+      return
+    fi
+  done
+  # Last resort: legacy nginx config read.
+  grep -oE 'frontend-(blue|green)' "${NGINX_DIR}/frontend.active.conf" 2>/dev/null \
+    | head -1 | sed 's/frontend-//' || true
+}
+
 if [ "${TARGET_COLOR}" = "auto" ]; then
-  ACTIVE=$(grep -oE 'frontend-(blue|green)' "${NGINX_DIR}/frontend.active.conf" | head -1 | sed 's/frontend-//')
+  ACTIVE="$(detect_active_color)"
   case "${ACTIVE}" in
     blue)  TARGET=green ;;
     green) TARGET=blue ;;
@@ -115,33 +143,29 @@ fi
 
 log "Traffic now served by ${TARGET}"
 
+# Persist the new active color to the VM-local state file so the next
+# deploy can detect it. (Without this, `git reset --hard` would erase
+# the flip on the next run and we'd ping-pong-build the same color.)
+echo "${TARGET}" > "${ACTIVE_STATE_FILE}"
+log "Wrote active color → ${ACTIVE_STATE_FILE}"
+
 # ---------- 5b. Scraper (single instance, no blue/green) ----------
-# Scraper talks only to the backend over the docker network — recreating
-# it doesn't drop user traffic. Rebuild only when scraper source changed
-# since the last deploy; otherwise just ensure the container is running.
+# Always rebuild + recreate. The previous PREV_SHA-based conditional was
+# unreliable: when an earlier deploy crashed before writing
+# /var/lib/dailydashboard/last-deploy.json, the next deploy saw an empty
+# PREV_SHA and rebuilt — but if the deploy crashed AT the nginx flip
+# step (which happened repeatedly under the active.conf-from-git bug
+# fixed in step 2 above), last-deploy.json was stale and pointed at the
+# already-deployed SHA, so subsequent deploys skipped the rebuild even
+# when scraper/ had new commits. Result: scraper image went 11h stale.
+#
+# Build is ~60s. Just always rebuild — predictable beats clever.
 SCRAPER_CONTAINER="dailydb-scraper"
-PREV_SHA="$(grep -oE '"sha": *"[^"]*"' /var/lib/dailydashboard/last-deploy.json 2>/dev/null | head -1 | cut -d'"' -f4 || true)"
-
-scraper_changed=false
-if [ -n "${PREV_SHA}" ] && git rev-parse --verify "${PREV_SHA}" >/dev/null 2>&1; then
-  if ! git diff --quiet "${PREV_SHA}" "${GIT_SHA}" -- scraper; then
-    scraper_changed=true
-  fi
-else
-  # No prior SHA recorded → first deploy or rollback; force rebuild.
-  scraper_changed=true
-fi
-
-if [ "$scraper_changed" = "true" ]; then
-  log "Rebuilding scraper (source changed since ${PREV_SHA:-no prior deploy})"
-  docker compose build scraper
-  docker compose up -d --force-recreate scraper
-else
-  log "Scraper source unchanged since ${PREV_SHA} — ensuring container is running"
-  docker compose up -d scraper
-fi
+log "Rebuilding scraper (always)"
+docker compose build scraper
+docker compose up -d --force-recreate scraper
 wait_for_healthy "${SCRAPER_CONTAINER}" 60 \
-  || log "WARNING: scraper not healthy — backend job-search will fail until it recovers"
+  || log "WARNING: scraper not healthy — backend auto-scrape cron will fail until it recovers"
 
 # ---------- 6. Tag images for rollback ----------
 log "Tagging current images with SHA ${SHORT_SHA}"
