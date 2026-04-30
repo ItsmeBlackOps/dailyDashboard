@@ -82,6 +82,7 @@ function NavItem({ icon: Icon, label, href, badge, showDot, isOpen, tourId }: Na
       data-nav-item={href}
       data-tour-id={tourId}
       aria-current={location.pathname === href ? "page" : undefined}
+      title={label}
     >
       <span className="relative flex-shrink-0">
         <Icon className="h-5 w-5" />

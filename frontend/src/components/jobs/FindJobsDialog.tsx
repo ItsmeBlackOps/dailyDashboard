@@ -52,7 +52,21 @@ export default function FindJobsDialog({
       navigate(`/jobs/${data.sessionId}`);
     },
     onError: (err: Error) => {
-      toast({ title: 'Search failed', description: err.message, variant: 'destructive' });
+      // Map known scraper / pipeline failures to user-friendly text;
+      // keep raw message in console for engineers.
+      // eslint-disable-next-line no-console
+      console.error('[FindJobs] raw error:', err);
+      const raw = err.message || '';
+      let friendly = 'Search failed — please try again in a minute.';
+      if (/APIFY_TOKEN/i.test(raw))
+        friendly = 'Job search service is misconfigured. The team has been notified.';
+      else if (/resume YOE missing|years/i.test(raw))
+        friendly = "Couldn't read years of experience from this resume. Try re-uploading the resume or re-deriving the search profile.";
+      else if (/timed out|504/i.test(raw))
+        friendly = 'Search took longer than expected and timed out. Try again.';
+      else if (/forgeProfile|titles/i.test(raw))
+        friendly = "Search profile isn't ready for this candidate yet. Open the candidate page and click Re-derive.";
+      toast({ title: 'Search failed', description: friendly, variant: 'destructive' });
     },
   });
 

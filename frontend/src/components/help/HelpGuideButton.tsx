@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HelpCircle, ExternalLink, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -53,6 +53,21 @@ function sectionMatchesQuery(section: GuideSection, q: string): boolean {
 export default function HelpGuideButton() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+
+  // Keyboard shortcut: `?` (Shift+/) opens the help panel from anywhere.
+  // Skipped while the user is typing in an input/textarea/contenteditable.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '?' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const tag = (t?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || t?.isContentEditable) return;
+      e.preventDefault();
+      setOpen((v) => !v);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'role' | 'tech' | 'all'>('role');
 
@@ -87,8 +102,8 @@ export default function HelpGuideButton() {
           variant="ghost"
           size="icon"
           className="relative"
-          aria-label="Open help guide"
-          title="Help & Guides"
+          aria-label="Open help guide (press ?)"
+          title="Help & Guides — press ?"
         >
           <HelpCircle className="h-5 w-5" />
           {newCount > 0 && (

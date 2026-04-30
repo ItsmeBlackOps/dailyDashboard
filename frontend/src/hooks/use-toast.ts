@@ -140,6 +140,11 @@ function dispatch(action: Action) {
 type Toast = Omit<ToasterToast, "id">
 
 function toast({ ...props }: Toast) {
+  // Destructive toasts get more dwell time so users can read the
+  // failure reason; non-destructive uses Radix default (5s).
+  if (props.variant === 'destructive' && (props as { duration?: number }).duration == null) {
+    (props as { duration?: number }).duration = 10000;
+  }
   const id = genId()
 
   const update = (props: ToasterToast) =>

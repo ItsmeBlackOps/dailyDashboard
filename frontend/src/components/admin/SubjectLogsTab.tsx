@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Search } from 'lucide-react';
@@ -88,7 +88,11 @@ export default function SubjectLogsTab() {
       if (!res.ok) throw new Error('Failed to load audit logs');
       return res.json();
     },
-    refetchInterval: 5000,
+    // Pause polling when this tab/page is hidden — saves both API
+    // round-trips and battery on idle dashboards.
+    refetchInterval: () =>
+      typeof document !== 'undefined' && document.visibilityState === 'visible' ? 5000 : false,
+    refetchIntervalInBackground: false,
   });
 
   const rows = useMemo(() => data?.rows ?? [], [data]);

@@ -2,10 +2,19 @@ import { useEffect, useState } from 'react';
 import { Activity } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
-interface PerfState { feMs?: number; beMs?: number; }
+interface PerfState { feMs?: number; beMs?: number; lastBeAt?: number; }
+
+// If no backend round-trip happens for >30s, the pill grey-outs to flag
+// that the value is stale (avoids users misreading old numbers as live).
+const STALE_AFTER_MS = 30_000;
 
 export default function PerformancePill() {
   const [perf, setPerf] = useState<PerfState>({});
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const navEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
@@ -31,7 +40,7 @@ export default function PerformancePill() {
 
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      setPerf(p => ({ ...p, beMs: detail.beMs }));
+      setPerf(p => ({ ...p, beMs: detail.beMs, lastBeAt: Date.now() }));
     };
     window.addEventListener('perf-update', handler);
     return () => window.removeEventListener('perf-update', handler);
@@ -39,8 +48,10 @@ export default function PerformancePill() {
 
   if (!perf.feMs && !perf.beMs) return null;
 
+  const stale = perf.lastBeAt ? now - perf.lastBeAt > STALE_AFTER_MS : false;
   const color = (ms?: number) =>
     !ms ? 'text-muted-foreground' :
+    stale ? 'text-muted-foreground opacity-60' :
     ms < 200 ? 'text-aurora-emerald' :
     ms < 500 ? 'text-aurora-amber' : 'text-aurora-rose';
 
@@ -48,7 +59,9 @@ export default function PerformancePill() {
     <Badge
       variant="outline"
       className="gap-2 font-mono text-xs px-2 py-1 hidden md:inline-flex"
-      title="Page load + average backend response"
+      title={stale
+        ? 'Backend value is stale — no recent fetch activity'
+        : 'Page load + rolling average backend response'}
     >
       <Activity className="h-3 w-3 opacity-70" />
       {perf.feMs && <span className={color(perf.feMs)}>{perf.feMs}ms FE</span>}
