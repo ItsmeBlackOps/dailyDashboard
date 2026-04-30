@@ -193,9 +193,59 @@ export function dedupeKeyFor({ company, title, postedAt, url }) {
     .digest('hex');
 }
 
+// In-process cache for the active-candidate snapshot used by listPool.
+// Refreshed every CANDIDATE_SNAPSHOT_TTL_MS (default 60s). Eliminates
+// hundreds of per-page-load Mongo round-trips against candidateDetails.
+const CANDIDATE_SNAPSHOT_TTL_MS = parseInt(
+  process.env.JOBS_POOL_CANDIDATE_SNAPSHOT_TTL_MS || '60000',
+  10
+);
+let _candidateSnapshot = null;
+let _candidateSnapshotAt = 0;
+
 // ── Public surface ───────────────────────────────────────────────────
 
 class JobsPoolService {
+  /**
+   * Pre-computed list of active candidates with derived forgeProfile.
+   * Each entry: { id, name, titles: Set<string> as Array, buckets: string[] }
+   *
+   * Loaded once per TTL and reused across requests to make the
+   * matching-candidate annotation in listPool() effectively free.
+   */
+  async _getActiveCandidateSnapshot(db) {
+    const now = Date.now();
+    if (_candidateSnapshot && now - _candidateSnapshotAt < CANDIDATE_SNAPSHOT_TTL_MS) {
+      return _candidateSnapshot;
+    }
+    const docs = await db.collection('candidateDetails')
+      .find(
+        { status: 'Active', 'forgeProfile.titles.0': { $exists: true } },
+        { projection: { 'Candidate Name': 1, 'forgeProfile.titles': 1, 'forgeProfile.years_min': 1, 'forgeProfile.years_max': 1 } }
+      )
+      .toArray();
+    _candidateSnapshot = docs.map((c) => {
+      const fp = c.forgeProfile || {};
+      const titles = Array.isArray(fp.titles)
+        ? [...new Set(fp.titles.map(normalizeTitle).filter(Boolean))]
+        : [];
+      return {
+        id: c._id.toString(),
+        name: c['Candidate Name'] || '',
+        titles,
+        buckets: candidateBuckets(fp.years_min, fp.years_max),
+      };
+    });
+    _candidateSnapshotAt = now;
+    return _candidateSnapshot;
+  }
+
+  /** Force-clear the candidate snapshot. Call after a forgeProfile derive. */
+  invalidateCandidateSnapshot() {
+    _candidateSnapshot = null;
+    _candidateSnapshotAt = 0;
+  }
+
   /**
    * Bulk-upsert a batch of normalized jobs. Skips documents whose
    * dedupeKey already exists (idempotent). Returns counts.
@@ -454,53 +504,49 @@ class JobsPoolService {
       ];
     }
 
-    const total = await col.countDocuments(filter);
-    const docs = await col
-      .find(filter)
-      .sort({ postedAt: -1, importedAt: -1 })
-      .skip(Math.max(0, offset))
-      .limit(Math.max(1, Math.min(200, limit)))
-      .toArray();
+    // Run total + page query in parallel.
+    // Also load the active-candidate snapshot (cached) — the matching-
+    // candidate annotation now runs in-memory instead of per-job
+    // round-trips.
+    const [total, docs, candSnapshot] = await Promise.all([
+      col.countDocuments(filter),
+      col
+        .find(filter)
+        .sort({ postedAt: -1, importedAt: -1 })
+        .skip(Math.max(0, offset))
+        .limit(Math.max(1, Math.min(200, limit)))
+        .toArray(),
+      this._getActiveCandidateSnapshot(db),
+    ]);
 
-    // Annotate each job with matching candidates. One Mongo query
-    // per job — cheap with the candidateDetails forgeProfile titles
-    // already indexed via Atlas auto-indexing on simple equality lookups.
-    const candCol = db.collection('candidateDetails');
+    // In-memory match: O(jobs × candidates) with cheap Set/Array ops.
+    // For 100 jobs × 200 candidates = ~20k iterations — milliseconds.
     for (const d of docs) {
-      const matchFilter = {
-        status: 'Active',
-        'forgeProfile.titles.0': { $exists: true },
-      };
-      if (Array.isArray(d.normalizedTitles) && d.normalizedTitles.length > 0) {
-        // Match candidates whose forgeProfile.titles (normalized at write time
-        // would be ideal, but we don't denormalize; use simple $in over the
-        // raw titles array — matches the most common case where forgeProfile
-        // titles are already canonical-cased like "Data Analyst").
-        matchFilter['forgeProfile.titles'] = {
-          $regex: new RegExp(d.normalizedTitles.map((t) => `(?:^|\\b)${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|\\b)`).join('|'), 'i'),
-        };
-      } else {
+      const jobTitles = Array.isArray(d.normalizedTitles) && d.normalizedTitles.length > 0
+        ? new Set(d.normalizedTitles)
+        : null;
+      if (!jobTitles) {
         d.matchingCandidates = [];
         d.matchingCandidateCount = 0;
         continue;
       }
-      const cands = await candCol
-        .find(matchFilter, { projection: { 'Candidate Name': 1, forgeProfile: 1 } })
-        .limit(50)  // safety cap
-        .toArray();
-      // Tighten by bucket alignment in JS.
       const matched = [];
-      for (const c of cands) {
-        const fp = c.forgeProfile || {};
-        const candBuckets = candidateBuckets(fp.years_min, fp.years_max);
+      for (const c of candSnapshot) {
+        // Title overlap: any candidate-title contained in jobTitles.
+        let titleHit = false;
+        for (const t of c.titles) {
+          if (jobTitles.has(t)) { titleHit = true; break; }
+        }
+        if (!titleHit) continue;
+        // Bucket alignment.
         if (
           d.experienceBucket == null
-          || candBuckets.length === 0
-          || candBuckets.includes(d.experienceBucket)
+          || c.buckets.length === 0
+          || c.buckets.includes(d.experienceBucket)
         ) {
-          matched.push({ id: c._id.toString(), name: c['Candidate Name'] || '' });
+          matched.push({ id: c.id, name: c.name });
+          if (matched.length >= 50) break;
         }
-        if (matched.length >= 50) break;
       }
       d.matchingCandidates = matched.slice(0, 5);
       d.matchingCandidateCount = matched.length;

@@ -18,6 +18,12 @@ export async function ensurePerformanceIndexes() {
     await db.collection('candidateDetails').createIndex({ Expert: 1 });
     await db.collection('candidateDetails').createIndex({ Branch: 1 });
     await db.collection('candidateDetails').createIndex({ updated_at: -1 });
+    // Used by jobsPoolService active-candidate snapshot + missing-resume
+    // popup. Compound on status keeps the Active filter index-resident.
+    await db.collection('candidateDetails').createIndex(
+      { status: 1, 'forgeProfile.titles': 1 },
+      { name: 'status_forge_titles' }
+    );
     await db.collection('candidateDetails').createIndex({ 'Candidate Name': 1 });
     await db.collection('candidateDetails').createIndex({ 'Email ID': 1 });
     await db.collection('candidateDetails').createIndex({ Recruiter: 1, status: 1 });
