@@ -41,8 +41,14 @@ function useStarred() {
 }
 
 // ── JobCard for cards grid ────────────────────────────────────────────────────
-function JobCard({ job, selected, starred, onSelect, onStar }: {
-  job: Job; selected: boolean; starred: boolean; onSelect: (j: Job) => void; onStar: () => void;
+function JobCard({ job, selected, starred, applied, onSelect, onStar, onToggleApplied }: {
+  job: Job;
+  selected: boolean;
+  starred: boolean;
+  applied: boolean;
+  onSelect: (j: Job) => void;
+  onStar: () => void;
+  onToggleApplied: () => void;
 }) {
   return (
     <div
@@ -51,10 +57,16 @@ function JobCard({ job, selected, starred, onSelect, onStar }: {
       onClick={() => onSelect(job)}
       onKeyDown={(e) => e.key === 'Enter' && onSelect(job)}
       className={cn(
-        'rounded-xl border bg-card p-4 cursor-pointer transition-colors hover:border-aurora-violet/30',
+        'rounded-xl border bg-card p-4 cursor-pointer transition-colors hover:border-aurora-violet/30 relative',
         selected && 'border-aurora-violet/50 bg-aurora-violet/5',
+        applied && 'opacity-70 border-emerald-500/30',
       )}
     >
+      {applied && (
+        <span className="absolute top-2 right-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9.5px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+          ✓ Applied
+        </span>
+      )}
       <div className="flex items-start gap-3 mb-3">
         <CompanyLogo company={job.company} size={40} />
         <div className="flex-1 min-w-0">
@@ -84,15 +96,30 @@ function JobCard({ job, selected, starred, onSelect, onStar }: {
         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] bg-white/[0.06] border border-white/10 text-foreground/70">
           via {ATS_LABEL[job.ats] ?? job.ats}
         </span>
-        <a
-          href={job.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 text-[11px] text-aurora-violet hover:text-aurora-violet/80 transition-colors"
-        >
-          Apply <ExternalLink className="h-3 w-3" />
-        </a>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onToggleApplied(); }}
+            className={cn(
+              'inline-flex items-center gap-1 text-[11px] transition-colors',
+              applied
+                ? 'text-emerald-400 hover:text-emerald-500'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+            title={applied ? 'Mark as not applied' : 'Mark as applied'}
+          >
+            {applied ? '✓ Applied' : 'Mark applied'}
+          </button>
+          <a
+            href={job.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 text-[11px] text-aurora-violet hover:text-aurora-violet/80 transition-colors"
+          >
+            Open <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
       </div>
     </div>
   );
@@ -134,6 +161,71 @@ export default function JobsPage() {
       return d?.session?.status === 'running' ? 5000 : false;
     },
   });
+
+  // Applied-job state for the candidate this session belongs to.
+  // Single fetch; mutations optimistically update the local Set so the
+  // UI flips immediately without waiting for the round-trip.
+  const candidateId = data?.session?.candidateId;
+  const { data: appliedData } = useQuery<{ success: boolean; appliedJobIds: string[] }>({
+    queryKey: ['job-applications', candidateId],
+    enabled: !!candidateId,
+    queryFn: async () => {
+      const res = await authFetch(`${API_URL}/api/jobs/applications?candidateId=${candidateId}`);
+      if (!res.ok) throw new Error('Failed to load applications');
+      return res.json();
+    },
+  });
+  const appliedSet = useMemo(
+    () => new Set(appliedData?.appliedJobIds ?? []),
+    [appliedData]
+  );
+
+  const toggleApplied = useCallback(async (job: Job) => {
+    if (!candidateId) return;
+    const isApplied = appliedSet.has(job.id);
+    // Optimistic update — flip the cached query data.
+    queryClient.setQueryData<{ success: boolean; appliedJobIds: string[] }>(
+      ['job-applications', candidateId],
+      (prev) => {
+        const cur = new Set(prev?.appliedJobIds ?? []);
+        if (isApplied) cur.delete(job.id);
+        else cur.add(job.id);
+        return { success: true, appliedJobIds: [...cur] };
+      }
+    );
+    try {
+      if (isApplied) {
+        await authFetch(`${API_URL}/api/jobs/applications`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ candidateId, jobId: job.id }),
+        });
+      } else {
+        await authFetch(`${API_URL}/api/jobs/applications`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            candidateId,
+            jobId: job.id,
+            jobTitle: job.title,
+            company: job.company,
+            jobUrl: job.url,
+            status: 'applied',
+          }),
+        });
+      }
+      // Refresh authoritative state in the background.
+      queryClient.invalidateQueries({ queryKey: ['job-applications', candidateId] });
+    } catch (err) {
+      // Revert optimistic flip on failure.
+      queryClient.invalidateQueries({ queryKey: ['job-applications', candidateId] });
+      toast({
+        title: isApplied ? 'Could not unmark application' : 'Could not mark applied',
+        description: err instanceof Error ? err.message : String(err),
+        variant: 'destructive',
+      });
+    }
+  }, [candidateId, appliedSet, authFetch, queryClient, toast]);
 
   // Socket integration
   const socketRef = useRef<Socket | null>(null);
@@ -293,8 +385,10 @@ export default function JobsPage() {
                         job={j}
                         selected={selectedId === j.id}
                         starred={starred.has(j.id)}
+                        applied={appliedSet.has(j.id)}
                         onSelect={(job) => setSelectedId(job.id)}
                         onStar={() => toggleStar(j.id)}
+                        onToggleApplied={() => toggleApplied(j)}
                       />
                     ))}
                   </ScrollArea>
@@ -309,8 +403,10 @@ export default function JobsPage() {
                           job={j}
                           selected={selectedId === j.id}
                           starred={starred.has(j.id)}
+                          applied={appliedSet.has(j.id)}
                           onSelect={(job) => { setSelectedId(job.id); setView('split'); }}
                           onStar={() => toggleStar(j.id)}
+                          onToggleApplied={() => toggleApplied(j)}
                         />
                       ))}
                     </div>

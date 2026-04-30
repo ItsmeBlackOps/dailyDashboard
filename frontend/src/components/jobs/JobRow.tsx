@@ -49,11 +49,13 @@ interface JobRowProps {
   job: Job;
   selected: boolean;
   starred: boolean;
+  applied?: boolean;
   onSelect: (job: Job) => void;
   onStar: () => void;
+  onToggleApplied?: () => void;
 }
 
-export default function JobRow({ job, selected, starred, onSelect, onStar }: JobRowProps) {
+export default function JobRow({ job, selected, starred, applied, onSelect, onStar, onToggleApplied }: JobRowProps) {
   const postedDate = new Date(job.date_posted);
   return (
     <div
@@ -65,8 +67,9 @@ export default function JobRow({ job, selected, starred, onSelect, onStar }: Job
         'grid items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors border-b border-white/[0.04]',
         'hover:bg-white/[0.03]',
         selected && 'bg-aurora-violet/10 border-l-2 border-l-aurora-violet',
+        applied && 'opacity-60',
       )}
-      style={{ gridTemplateColumns: '36px minmax(0,1.6fr) minmax(0,1fr) 100px 90px 72px 32px' }}
+      style={{ gridTemplateColumns: '36px minmax(0,1.6fr) minmax(0,1fr) 100px 90px 72px 70px 32px' }}
       data-testid="job-row"
     >
       {/* Logo */}
@@ -108,6 +111,24 @@ export default function JobRow({ job, selected, starred, onSelect, onStar }: Job
       <div className="text-[11px] font-mono text-muted-foreground">
         {relTime(postedDate)}
       </div>
+
+      {/* Apply toggle */}
+      <button
+        type="button"
+        aria-label={applied ? 'Mark as not applied' : 'Mark applied'}
+        onClick={(e) => { e.stopPropagation(); onToggleApplied?.(); }}
+        disabled={!onToggleApplied}
+        className={cn(
+          'inline-flex items-center justify-center px-2 h-6 rounded text-[10.5px] font-medium border transition-colors',
+          applied
+            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
+            : 'bg-transparent text-muted-foreground border-white/10 hover:text-foreground hover:border-white/30',
+          !onToggleApplied && 'opacity-40 cursor-not-allowed',
+        )}
+        data-testid="apply-toggle"
+      >
+        {applied ? '✓ Applied' : 'Apply'}
+      </button>
 
       {/* Star */}
       <button
