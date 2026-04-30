@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -114,6 +116,7 @@ function EmptyState() {
 // ── JobsPage ──────────────────────────────────────────────────────────────────
 export default function JobsPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
+  const navigate = useNavigate();
   const { authFetch } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -224,6 +227,11 @@ export default function JobsPage() {
   return (
     <DashboardLayout>
       <div className="flex flex-col h-full min-h-0 overflow-hidden">
+        <div className="px-4 pt-2">
+          <Button variant="ghost" size="sm" className="gap-1.5 text-xs -ml-1" onClick={() => navigate('/jobs')}>
+            <ArrowLeft className="h-3.5 w-3.5" /> All sessions
+          </Button>
+        </div>
         {/* Header */}
         <JobsHeader
           candidateName={undefined}

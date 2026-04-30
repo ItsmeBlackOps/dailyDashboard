@@ -59,6 +59,10 @@ export default function SignIn() {
 
         const normalizedEmail = formData.email.trim().toLowerCase();
 
+        // Reset session-scoped flags so per-session prompts (e.g.
+        // missing-resume reminder) re-evaluate on a fresh login.
+        try { sessionStorage.clear(); } catch { /* ignore */ }
+
         // Persist credentials
         localStorage.setItem("accessToken", response.accessToken);
         localStorage.setItem("refreshToken", response.refreshToken);

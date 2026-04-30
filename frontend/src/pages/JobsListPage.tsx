@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Briefcase } from 'lucide-react';
+import { Briefcase, Loader2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +34,13 @@ export default function JobsListPage() {
       const res = await authFetch(url);
       if (!res.ok) throw new Error('Failed to load sessions');
       return res.json();
+    },
+    // Poll while any session is still pending/running so the UI updates
+    // without a manual refresh. Stops once everything is terminal.
+    refetchInterval: (q) => {
+      const sessions = q.state.data?.sessions ?? [];
+      const inFlight = sessions.some((s) => s.status === 'pending' || s.status === 'running');
+      return inFlight ? 4000 : false;
     },
   });
 
@@ -86,6 +93,9 @@ export default function JobsListPage() {
               variant="outline"
               className={STATUS_CLASS[s.status] ?? 'border-border text-muted-foreground'}
             >
+              {(s.status === 'running' || s.status === 'pending') && (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin inline-block" />
+              )}
               {s.status}
             </Badge>
           </div>

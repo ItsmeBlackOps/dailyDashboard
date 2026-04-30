@@ -22,11 +22,20 @@ interface OverviewStats {
 
 export default function DashboardV2() {
     const { user, authFetch } = useAuth();
-    const [dateBasis, setDateBasis] = useState('interview');
-    const [dateMode, setDateMode] = useState<'month' | 'week' | 'date'>('month');
-    const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
-    const [selectedWeek, setSelectedWeek]   = useState<string>(new Date().toISOString().slice(0, 10));
-    const [selectedDate, setSelectedDate]   = useState<string>(new Date().toISOString().slice(0, 10));
+    // Filters persist in URL search params so refreshing / switching tabs /
+    // sharing a link preserves the selection.
+    const initialParams = (() => {
+        try { return new URLSearchParams(window.location.search); } catch { return new URLSearchParams(); }
+    })();
+    const todayMonth = new Date().toISOString().slice(0, 7);
+    const todayDate  = new Date().toISOString().slice(0, 10);
+    const [dateBasis,    setDateBasis]    = useState<string>(initialParams.get('dateBasis') || 'interview');
+    const [dateMode,     setDateMode]     = useState<'month' | 'week' | 'date'>(
+        (initialParams.get('period') as 'month' | 'week' | 'date') || 'month'
+    );
+    const [selectedMonth, setSelectedMonth] = useState<string>(initialParams.get('month') || todayMonth);
+    const [selectedWeek,  setSelectedWeek]  = useState<string>(initialParams.get('week')  || todayDate);
+    const [selectedDate,  setSelectedDate]  = useState<string>(initialParams.get('date')  || todayDate);
     const [overviewStats, setOverviewStats] = useState<OverviewStats | null>(null);
     const [loadingOverview, setLoadingOverview] = useState(true);
 
@@ -53,6 +62,21 @@ export default function DashboardV2() {
     const startDate = dateMode === 'month' ? `${selectedMonth}-01`
                     : dateMode === 'week'  ? selectedWeek
                     : selectedDate;
+
+    // Mirror filters into the URL so the page survives refresh + share.
+    useEffect(() => {
+        setSearchParams((prev) => {
+            prev.set('dateBasis', dateBasis);
+            prev.set('period', dateMode);
+            if (dateMode === 'month') prev.set('month', selectedMonth);
+            else prev.delete('month');
+            if (dateMode === 'week') prev.set('week', selectedWeek);
+            else prev.delete('week');
+            if (dateMode === 'date') prev.set('date', selectedDate);
+            else prev.delete('date');
+            return prev;
+        }, { replace: true });
+    }, [dateBasis, dateMode, selectedMonth, selectedWeek, selectedDate, setSearchParams]);
 
     useEffect(() => {
         const fetch = async () => {

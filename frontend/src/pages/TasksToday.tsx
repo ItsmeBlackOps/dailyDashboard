@@ -5040,7 +5040,7 @@ export default function TasksToday() {
             </p>
             <div className="rounded-md border bg-card/40 p-3 text-xs">
               <div className="text-muted-foreground">Subject</div>
-              <div className="font-mono break-all mt-1">
+              <div className="font-mono break-all whitespace-pre-wrap mt-1 max-h-24 overflow-y-auto leading-snug">
                 {(reprocessDialog.task as Task & { Subject?: string; subject?: string } | null)?.Subject
                   || (reprocessDialog.task as Task & { Subject?: string; subject?: string } | null)?.subject
                   || '(no subject)'}

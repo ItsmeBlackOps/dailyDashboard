@@ -278,6 +278,18 @@ export default function ResumeUnderstanding() {
     });
   }, [role, posthog]);
 
+  // Clear sidebar "unread" dot once the user is on this page — mark
+  // every pending-resume notification as read on first mount.
+  useEffect(() => {
+    notifications.forEach((n) => {
+      if (!n.read && n.type === 'comment' && n.resumeUnderstandingStatus === 'pending') {
+        markAsRead(n.id);
+      }
+    });
+    // run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Track Tab Change
   useEffect(() => {
     posthog.capture('resume_tab_changed', {
