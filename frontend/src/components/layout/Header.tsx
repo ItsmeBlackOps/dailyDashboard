@@ -213,6 +213,12 @@ export function Header({ toggleSidebar }: HeaderProps) {
                 ))}
               </div>
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link to="/notifications" className="flex w-full items-center justify-center text-xs text-primary hover:text-primary py-2">
+                See all notifications →
+              </Link>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 

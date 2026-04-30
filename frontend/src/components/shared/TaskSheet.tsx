@@ -302,17 +302,6 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
               </div>
               {(() => {
                 const link = task.meetingLink || task.joinUrl || task.joinWebUrl;
-                // [debug] log every render so we can see exactly what the
-                // frontend received from /api/tasks/:taskId. Remove once
-                // the joinUrl fallback is verified live.
-                // eslint-disable-next-line no-console
-                console.log('[TaskSheet meeting-link]', {
-                  taskId: task._id,
-                  meetingLink: task.meetingLink ?? null,
-                  joinUrl: task.joinUrl ?? null,
-                  joinWebUrl: task.joinWebUrl ?? null,
-                  resolved: link ?? null,
-                });
                 return link ? (
                   <a href={link} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline break-all">
                     {link}

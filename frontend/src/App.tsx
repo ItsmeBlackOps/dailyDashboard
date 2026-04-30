@@ -29,6 +29,7 @@ const AdminInterviewSupport = lazy(() => import('./pages/AdminInterviewSupport')
 const JobsPage = lazy(() => import('./pages/JobsPage'));
 const CandidateJobsListPage = lazy(() => import('./pages/CandidateJobsListPage'));
 const JobsListPage = lazy(() => import('./pages/JobsListPage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 
 // Minimal loading splash shown while lazy chunks are fetched
 const LoadingSplash = () => (
@@ -69,6 +70,7 @@ const App = () => (
                 <Route path="/reports/assistant" element={<ReportAssistant />} />
                 <Route path="/branch-candidates" element={<BranchCandidatesPage />} />
                 <Route path="/admin-alerts" element={<AdminAlertsPage />} />
+                <Route path="/notifications" element={<NotificationsPage />} />
                 <Route path="/resume-understanding" element={<ResumeUnderstanding />} />
                 <Route path="/user-management" element={<UserManagementPage />} />
                 <Route path="/permissions" element={<PermissionsManagement />} />

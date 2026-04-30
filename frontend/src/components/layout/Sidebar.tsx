@@ -200,6 +200,16 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
     }
   }, [location.pathname, isOpen]);
 
+  // Auto-close on mobile when the route changes — otherwise the sidebar
+  // stays over the page content until the user clicks the backdrop.
+  const lastPathRef = useRef(location.pathname);
+  useEffect(() => {
+    if (lastPathRef.current !== location.pathname) {
+      lastPathRef.current = location.pathname;
+      if (isMobile && isOpen) toggleSidebar();
+    }
+  }, [location.pathname, isMobile, isOpen, toggleSidebar]);
+
   useEffect(() => {
     if (!showResumeNav) {
       setResumeCount(0);
