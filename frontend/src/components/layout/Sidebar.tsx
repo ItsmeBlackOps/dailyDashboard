@@ -420,8 +420,8 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   isOpen={isOpen}
                 />
               )}
-              {/* Jobs is a marketing-team workflow — restricted to admin + marketing roles */}
-              {['admin', 'mm', 'mam', 'mlead'].includes(normalizedRole) && (
+              {/* Jobs — admin + marketing team + recruiter */}
+              {['admin', 'mm', 'mam', 'mlead', 'recruiter'].includes(normalizedRole) && (
                 <NavItem
                   icon={Briefcase}
                   label="Jobs"
