@@ -170,6 +170,63 @@ class CandidateController {
     }
   }
 
+  async getMissingResumes(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+
+      const role = (user.role || '').trim().toLowerCase();
+      // Only the marketing-facing roles (and admin) need this prompt.
+      if (!['admin', 'mm', 'mam', 'mlead'].includes(role)) {
+        return res.json({ success: true, total: 0, candidates: [] });
+      }
+
+      const scope = await this._scopeFilter(user);
+      const taskCol = database.getCollection('candidateDetails');
+      if (!taskCol) {
+        return res.status(503).json({ success: false, error: 'Database not ready' });
+      }
+
+      const filter = {
+        ...scope,
+        status: 'Active',
+        $or: [
+          { resumeLink: { $exists: false } },
+          { resumeLink: null },
+          { resumeLink: '' },
+        ],
+      };
+
+      // Cap result list — UI will show first 50 with "+N more"
+      const docs = await taskCol
+        .find(filter, {
+          projection: {
+            _id: 1, 'Candidate Name': 1, Technology: 1, Recruiter: 1, Branch: 1,
+          },
+        })
+        .sort({ 'Candidate Name': 1 })
+        .limit(100)
+        .toArray();
+
+      const total = await taskCol.countDocuments(filter);
+
+      return res.json({
+        success: true,
+        total,
+        candidates: docs.map((d) => ({
+          id: d._id.toString(),
+          name: d['Candidate Name'] || '',
+          technology: d.Technology || '',
+          recruiter: d.Recruiter || '',
+          branch: d.Branch || '',
+        })),
+      });
+    } catch (error) {
+      logger.error('getMissingResumes failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
   async getHubStats(req, res) {
     try {
       const user = req.user;

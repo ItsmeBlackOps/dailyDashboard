@@ -420,7 +420,8 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   isOpen={isOpen}
                 />
               )}
-              {['admin', 'mm', 'mam', 'mlead', 'lead', 'user', 'am', 'recruiter', 'manager'].includes(normalizedRole) && (
+              {/* Jobs is a marketing-team workflow — restricted to admin + marketing roles */}
+              {['admin', 'mm', 'mam', 'mlead'].includes(normalizedRole) && (
                 <NavItem
                   icon={Briefcase}
                   label="Jobs"
@@ -428,7 +429,8 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   isOpen={isOpen}
                 />
               )}
-              {['admin', 'mlead', 'mm', 'mam'].includes(normalizedRole) && (
+              {/* Admin Alerts is admin-only */}
+              {normalizedRole === 'admin' && (
                 <NavItem
                   icon={BellRing}
                   label="Admin Alerts"
