@@ -1,5 +1,6 @@
 import { storageService } from '../services/storageService.js';
 import { resumeProfileService } from '../services/resumeProfileService.js';
+import { candidateService } from '../services/candidateService.js';
 import { candidateModel } from '../models/Candidate.js';
 import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
@@ -175,50 +176,38 @@ class CandidateController {
       const user = req.user;
       if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
 
+      // Marketing team only. Admin manages globally and gets flooded by
+      // this prompt, so they're explicitly excluded.
       const role = (user.role || '').trim().toLowerCase();
-      // Only the marketing-facing roles (and admin) need this prompt.
-      if (!['admin', 'mm', 'mam', 'mlead'].includes(role)) {
+      if (!['mm', 'mam', 'mlead'].includes(role)) {
         return res.json({ success: true, total: 0, candidates: [] });
       }
 
-      const scope = await this._scopeFilter(user);
-      const taskCol = database.getCollection('candidateDetails');
-      if (!taskCol) {
-        return res.status(503).json({ success: false, error: 'Database not ready' });
-      }
+      // Reuse the SAME service the Branch Candidates socket handler
+      // uses so the scope is exactly identical — whatever the user can
+      // see in Branch Candidates, this set is a subset of.
+      const result = await candidateService.getCandidatesForUser(user, {});
+      const all = Array.isArray(result?.candidates) ? result.candidates : [];
 
-      const filter = {
-        ...scope,
-        status: 'Active',
-        $or: [
-          { resumeLink: { $exists: false } },
-          { resumeLink: null },
-          { resumeLink: '' },
-        ],
-      };
-
-      // Cap result list — UI will show first 50 with "+N more"
-      const docs = await taskCol
-        .find(filter, {
-          projection: {
-            _id: 1, 'Candidate Name': 1, Technology: 1, Recruiter: 1, Branch: 1,
-          },
-        })
-        .sort({ 'Candidate Name': 1 })
-        .limit(100)
-        .toArray();
-
-      const total = await taskCol.countDocuments(filter);
+      // Filter to Active + missing resume in JS — the service's return
+      // shape varies between role paths; this avoids re-implementing
+      // each scope's mongo filter.
+      const missing = all.filter((c) => {
+        const status = (c.status || c.Status || '').trim().toLowerCase();
+        if (status !== 'active') return false;
+        const link = c.resumeLink || c.resumeUrl || '';
+        return !link;
+      });
 
       return res.json({
         success: true,
-        total,
-        candidates: docs.map((d) => ({
-          id: d._id.toString(),
-          name: d['Candidate Name'] || '',
-          technology: d.Technology || '',
-          recruiter: d.Recruiter || '',
-          branch: d.Branch || '',
+        total: missing.length,
+        candidates: missing.slice(0, 100).map((c) => ({
+          id: c.id || c._id?.toString?.() || c._id || '',
+          name: c['Candidate Name'] || c.name || c.candidateName || '',
+          technology: c.Technology || c.technology || '',
+          recruiter: c.recruiter || c.Recruiter || '',
+          branch: c.Branch || c.branch || '',
         })),
       });
     } catch (error) {
