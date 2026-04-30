@@ -15,6 +15,7 @@ router.get('/tailored/:tailoredId',          ctl.getTailored);
 
 // Shared jobs pool — matched per-candidate from previously-scraped data.
 router.get('/pool/stats',                    poolCtl.stats);
+router.post('/pool/import',                  poolCtl.triggerImport);
 router.get('/matched/:candidateId',          poolCtl.matchForCandidate);
 
 export default router;
