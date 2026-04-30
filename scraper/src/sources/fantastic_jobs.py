@@ -234,8 +234,22 @@ class FantasticJobsScraper(BaseSourceScraper):
         # work_arrangement is always populated (defaulted at __init__).
         if self.work_arrangement:
             base["aiWorkArrangementFilter"] = list(self.work_arrangement)
-        if self.experience_levels:
-            base["aiExperienceLevelFilter"] = list(self.experience_levels)
+        # HARD GUARD: never call Apify without an experience filter.
+        # Past audit: ~hundreds of Apify runs went out without
+        # aiExperienceLevelFilter because plan.years_min was 0/None and
+        # `years_min or None` collapsed to None, returning [] from
+        # years_to_experience_levels. Each filter-less run pulls every
+        # seniority bucket → much higher cost per run with mostly
+        # unusable results. Refuse rather than burn money.
+        if not self.experience_levels:
+            self.log.error(
+                "fantastic_jobs.skip_no_yoe",
+                reason="aiExperienceLevelFilter is empty — refusing to call actor",
+                hint="set years_min/years_max on the candidate's forgeProfile "
+                     "or pass experience_levels explicitly",
+            )
+            return
+        base["aiExperienceLevelFilter"] = list(self.experience_levels)
         if self.visa_sponsorship:
             base["aiVisaSponsorshipFilter"] = True
         if self.date_posted_after:
