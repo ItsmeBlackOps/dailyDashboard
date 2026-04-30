@@ -468,9 +468,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     elif is_first_run:
         time_range = "7d"
     else:
-        # Incremental: pass last_run_at as datePostedAfter; widen actor
-        # timeRange just enough to cover the gap (cap at 7d to control cost).
-        time_range = "7d"
+        # Incremental: 24h actor window with datePostedAfter narrowing
+        # further. Cron runs every 12h, so 24h has 2x headroom for any
+        # missed run; canonical_key dedupe handles repeats downstream.
+        # This is the cost-saving knob — every run-after-first scans a
+        # ~30x smaller window than first run.
+        time_range = "24h"
 
     os.environ["FANTASTIC_JOBS_TIME_RANGE"] = time_range
     os.environ["LINKEDIN_TIME_RANGE"] = time_range
