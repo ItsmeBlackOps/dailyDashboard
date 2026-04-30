@@ -151,6 +151,113 @@ class InterviewSupportAdminService {
   }
 
   // -----------------------------------------------------------------------
+  // manualTriggerAutoAssign
+  //
+  // POSTs to the Intervue-format auto-assign endpoint
+  // (auto.silverspace.tech/api/reply by default) with the same payload
+  // shape Intervue itself uses: { subject, targetTo, customBodyHtml }.
+  //
+  // Used by the admin "Trigger auto-assign" action on Pending tasks
+  // when Intervue's automatic dispatch failed or was skipped.
+  // -----------------------------------------------------------------------
+  async manualTriggerAutoAssign(taskId, adminEmail) {
+    const taskCol      = database.getCollection('taskBody');
+    const candidateCol = database.getCollection('candidateDetails');
+    const auditCol     = database.getCollection('auditLog');
+
+    let oid;
+    try { oid = new ObjectId(taskId); } catch { oid = taskId; }
+
+    const task = await taskCol.findOne({ _id: oid });
+    if (!task) throw new Error('Task not found');
+
+    const subject = task['Subject'] || task['subject'] || '';
+    if (!subject) throw new Error('Task has no subject');
+
+    const candidateName = task['Candidate Name'] || task.candidateName || '';
+    const senderEmail   = task.sender || task['Email ID'] || '';
+
+    // Resolve expert email from candidateDetails (matches Intervue's
+    // try_auto_assign lookup logic).
+    let expertEmail = '';
+    let expertName  = '';
+    if (candidateCol && candidateName) {
+      const cand = await candidateCol.findOne({
+        'Candidate Name': { $regex: `^${candidateName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+      });
+      if (cand) {
+        expertEmail = (cand.Expert || '').trim();
+        if (expertEmail) {
+          // Derive a friendly display name from the email local-part.
+          const local = expertEmail.split('@')[0] || '';
+          expertName = local
+            .split(/[._-]+/)
+            .filter(Boolean)
+            .map((s) => s[0].toUpperCase() + s.slice(1).toLowerCase())
+            .join(' ') || expertEmail;
+        }
+      }
+    }
+
+    if (!expertEmail) {
+      throw new Error(`No Expert assigned for candidate "${candidateName}" — set Expert on the candidate first`);
+    }
+
+    // Mirror Intervue's HTML body shape: simple "Assigned To @Expert" greeting.
+    // The auto-assign service will prepend this to the quoted-original
+    // thread when it builds the replyAll MIME.
+    const customBodyHtml = `<p>Assigned To <b>@${expertName}</b></p>` +
+      `<p>Please confirm and join at the scheduled time.</p>`;
+
+    const replyUrl = config.autoAssign.replyUrl;
+    if (!replyUrl) throw new Error('AUTO_REPLY_ENDPOINT (autoAssign.replyUrl) not configured');
+
+    const now = new Date();
+    let response = null;
+    let httpStatus = null;
+    let error = null;
+    try {
+      const resp = await fetch(replyUrl, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          subject,
+          targetTo:        senderEmail,    // recruiter who originally requested
+          customBodyHtml,
+        }),
+      });
+      httpStatus = resp.status;
+      const text = await resp.text();
+      try { response = JSON.parse(text); } catch { response = { raw: text }; }
+      if (!resp.ok) {
+        error = `auto-assign returned ${resp.status}: ${text.slice(0, 300)}`;
+      }
+    } catch (err) {
+      error = `auto-assign request exception: ${err.message}`;
+      logger.error('manualTriggerAutoAssign request failed', { taskId, error });
+    }
+
+    await auditCol.insertOne({
+      subject,
+      taskId:        taskId.toString(),
+      action:        error ? 'AUTO_ASSIGN_FAILED' : 'AUTO_ASSIGN_SENT',
+      phase:         error ? 'AUTO_ASSIGN_FAILED' : 'AUTO_ASSIGN_SENT',
+      adminEmail,
+      triggeredBy:   'admin-manual',
+      expertEmail,
+      targetTo:      senderEmail,
+      httpStatus,
+      response_body_preview: typeof response === 'object' ? JSON.stringify(response).slice(0, 500) : undefined,
+      error_details: error || undefined,
+      level:         error ? 'error' : 'info',
+      createdAt:     now,
+    });
+
+    if (error) throw new Error(error);
+    return { success: true, expertEmail, targetTo: senderEmail, response };
+  }
+
+  // -----------------------------------------------------------------------
   // getUnprocessedEmails
   // -----------------------------------------------------------------------
   async getUnprocessedEmails(date) {
