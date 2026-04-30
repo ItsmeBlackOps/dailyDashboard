@@ -166,24 +166,61 @@ async function main() {
   const runs = await listRuns(args.since, args.limit);
   console.log(`[import] found ${runs.length} succeeded run(s)`);
 
-  // Skip runs we've already imported (track by sourceRunId).
+  // Skip runs we've ALREADY processed (any outcome).
+  // jobsPoolImportLog has a row per runId whether or not items landed
+  // in the pool, so we never re-fetch the dataset or re-pay JD enrich.
   const db = database.getDb();
-  const seenRuns = new Set(
-    await db.collection('jobsPool').distinct('sourceRunId', {})
-  );
+  let seenRuns = await jobsPoolService.getProcessedRunIds();
+
+  // One-time migration: if the log is empty but jobsPool already has
+  // docs (i.e. a previous one-shot import populated the pool before
+  // the log existed), seed the log with every distinct sourceRunId
+  // from jobsPool so we don't re-fetch + re-enrich those runs.
+  if (seenRuns.size === 0) {
+    const existingPoolRuns = await db.collection('jobsPool')
+      .distinct('sourceRunId', { sourceRunId: { $type: 'string', $ne: '' } });
+    if (existingPoolRuns.length > 0) {
+      console.log(`[import] seeding jobsPoolImportLog with ${existingPoolRuns.length} pre-existing runIds`);
+      for (const rid of existingPoolRuns) {
+        await jobsPoolService.markRunProcessed({
+          runId: rid,
+          status: 'pre-existing',
+          itemsUpserted: -1,  // sentinel — we don't know the count, was imported before logging existed
+        });
+      }
+      seenRuns = await jobsPoolService.getProcessedRunIds();
+    }
+  }
   const todoRuns = runs.filter((r) => !seenRuns.has(r.id));
-  console.log(`[import] ${todoRuns.length} run(s) not yet imported`);
+  console.log(
+    `[import] ${todoRuns.length} run(s) not yet processed ` +
+    `(${runs.length - todoRuns.length} skipped — already in jobsPoolImportLog)`
+  );
 
   let totalRaw = 0;
   let totalAdapted = 0;
   let totalNew = 0;
   let totalUpserted = 0;
 
+  // Helper: mark this run done in jobsPoolImportLog so we never touch
+  // it again. Records every outcome (imported / empty / error / dry).
+  const markDone = (run, status, extra = {}) => {
+    if (args.dry) return Promise.resolve();
+    return jobsPoolService.markRunProcessed({
+      runId: run.id,
+      actId: run.actId || '',
+      datasetId: run.defaultDatasetId || '',
+      status,
+      ...extra,
+    });
+  };
+
   for (let i = 0; i < todoRuns.length; i++) {
     const run = todoRuns[i];
     const tag = `[${i + 1}/${todoRuns.length}] run=${run.id}`;
     if (!run.defaultDatasetId) {
       console.log(`${tag} no dataset, skipping`);
+      await markDone(run, 'no_dataset');
       continue;
     }
     let items;
@@ -191,6 +228,7 @@ async function main() {
       items = await fetchDataset(run.defaultDatasetId);
     } catch (err) {
       console.error(`${tag} dataset fetch failed: ${err.message}`);
+      await markDone(run, 'fetch_failed', { error: err.message.slice(0, 500) });
       continue;
     }
     totalRaw += items.length;
@@ -216,6 +254,12 @@ async function main() {
     }
     if (fresh.length === 0) {
       console.log(`${tag} all ${adapted.length} items already in pool`);
+      await markDone(run, 'empty', {
+        itemsTotal: items.length,
+        itemsAdapted: adapted.length,
+        itemsNew: 0,
+        itemsUpserted: 0,
+      });
       continue;
     }
 
@@ -252,6 +296,12 @@ async function main() {
     const r = await jobsPoolService.upsertBatch(fresh);
     totalUpserted += r.upserted || 0;
     console.log(`${tag} adapted=${adapted.length} new=${fresh.length} upserted=${r.upserted || 0}`);
+    await markDone(run, 'imported', {
+      itemsTotal: items.length,
+      itemsAdapted: adapted.length,
+      itemsNew: fresh.length,
+      itemsUpserted: r.upserted || 0,
+    });
   }
 
   console.log('');
