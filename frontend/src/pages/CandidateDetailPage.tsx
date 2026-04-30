@@ -388,6 +388,14 @@ export default function CandidateDetailPage() {
                     >
                       <Briefcase className="h-3.5 w-3.5" /> Find Jobs
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs gap-1.5"
+                      onClick={() => navigate(`/candidate/${id}/jobs`)}
+                    >
+                      <Briefcase className="h-3.5 w-3.5" /> Matched Jobs
+                    </Button>
                     {candidate.resumeLink && (
                       <a href={candidate.resumeLink} target="_blank" rel="noopener noreferrer">
                         <Button variant="outline" size="sm" className="text-xs gap-1.5">
