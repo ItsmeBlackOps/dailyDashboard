@@ -40,6 +40,7 @@ import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
 const COL = 'jobsPool';
+const LOG_COL = 'jobsPoolImportLog';   // marker: every Apify runId we've touched
 
 // Cap pool retention. Set to null to keep forever.
 const TTL_DAYS = parseInt(process.env.JOBS_POOL_TTL_DAYS || '30', 10);
@@ -58,6 +59,13 @@ async function ensureIndexes(db) {
     { name: 'posted_ttl', expireAfterSeconds: TTL_DAYS * 24 * 60 * 60 }
   );
   await col.createIndex({ importedAt: -1 }, { name: 'imported_recent' });
+
+  // Run-once marker. We write here AFTER each run is processed
+  // (success / empty / error), so subsequent cycles skip the run
+  // entirely — never re-fetch the dataset, never re-pay for JD enrich.
+  const logCol = db.collection(LOG_COL);
+  await logCol.createIndex({ runId: 1 }, { unique: true, name: 'runId_unique' });
+  await logCol.createIndex({ processedAt: -1 }, { name: 'processed_recent' });
   _indexEnsured = true;
 }
 
@@ -241,6 +249,56 @@ class JobsPoolService {
         extractedTitles:   d.extractedTitles,
       })),
     };
+  }
+
+  /**
+   * Return the set of Apify runIds we've ALREADY processed (any
+   * outcome: imported, empty, error). The importer uses this to
+   * skip already-touched runs in O(1) lookup.
+   */
+  async getProcessedRunIds() {
+    const db = database.getDb();
+    await ensureIndexes(db);
+    const ids = await db
+      .collection(LOG_COL)
+      .find({}, { projection: { runId: 1, _id: 0 } })
+      .toArray();
+    return new Set(ids.map((r) => r.runId));
+  }
+
+  /**
+   * Record that we processed an Apify run, even if zero items landed
+   * in the pool. Idempotent on runId. Called once per run by the
+   * importer — guarantees once-per-run semantics regardless of how
+   * many items succeeded the dedupeKey check.
+   *
+   * @param {{ runId, actId, status, datasetId, itemsTotal, itemsAdapted, itemsNew, itemsUpserted, error? }} stats
+   */
+  async markRunProcessed(stats) {
+    if (!stats?.runId) throw new Error('runId is required');
+    const db = database.getDb();
+    await ensureIndexes(db);
+    await db.collection(LOG_COL).updateOne(
+      { runId: stats.runId },
+      {
+        $setOnInsert: {
+          runId:        stats.runId,
+          processedAt:  new Date(),
+        },
+        $set: {
+          actId:         stats.actId          || '',
+          status:        stats.status         || 'imported',
+          datasetId:     stats.datasetId      || '',
+          itemsTotal:    stats.itemsTotal     || 0,
+          itemsAdapted:  stats.itemsAdapted   || 0,
+          itemsNew:      stats.itemsNew       || 0,
+          itemsUpserted: stats.itemsUpserted  || 0,
+          error:         stats.error          || null,
+          updatedAt:     new Date(),
+        },
+      },
+      { upsert: true }
+    );
   }
 
   /** High-level stats for /api/jobs/pool/stats */
