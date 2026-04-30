@@ -59,11 +59,29 @@ ACTOR_MAX_LIMIT = 5000
 
 
 def years_to_experience_levels(min_y: Optional[float], max_y: Optional[float]) -> list[str]:
-    """Map a years-of-experience window to actor's aiExperienceLevelFilter ranges.
+    """Map a YoE window to actor's aiExperienceLevelFilter buckets.
 
-    Buckets: 0-2, 2-5, 5-10, 10+. We pick every bucket whose interval
-    overlaps the [min_y, max_y] window. A single year (min == max == 1)
-    returns just ["0-2"]; 5-10 returns ["5-10"]; 3-7 returns ["2-5", "5-10"].
+    Buckets: 0-2, 2-5, 5-10, 10+ (half-open [b_lo, b_hi)).
+
+    Rule: pick only buckets that **fit at or below** the candidate's
+    actual max — i.e. b_hi <= max_y. This stops us from surfacing
+    senior-level postings to mid-level candidates (a 3-5 yr candidate
+    must NOT see 5-10 jobs even though that bucket's lower bound
+    technically overlaps).
+
+    If the strict filter returns empty (e.g. candidate at an exact
+    bucket boundary like 5-5 or 7-7), fall back to the single bucket
+    that *contains* their max — always at least one bucket so the
+    actor still has a filter to apply.
+
+    Examples:
+      3-5  → ["2-5"]            (5-10 excluded: b_hi=10 > max=5)
+      5-5  → ["5-10"]           (fallback: 5-10 contains 5)
+      4-6  → ["2-5"]            (5-10 excluded: b_hi=10 > max=6)
+      5-10 → ["5-10"]
+      7-7  → ["5-10"]           (fallback)
+      0-2  → ["0-2"]
+      10+  → ["10+"]
     """
     if min_y is None and max_y is None:
         return []
@@ -71,10 +89,25 @@ def years_to_experience_levels(min_y: Optional[float], max_y: Optional[float]) -
     hi = 50.0 if max_y is None else float(max_y)
     if hi < lo:
         lo, hi = hi, lo
-    # Bucket interval semantics are half-open [b_lo, b_hi): a window
-    # exactly at 5-10 lands in the 5-10 bucket only (not 2-5 or 10+).
+
     buckets = [("0-2", 0, 2), ("2-5", 2, 5), ("5-10", 5, 10), ("10+", 10, 50)]
-    return [name for (name, b_lo, b_hi) in buckets if b_hi > lo and b_lo < hi]
+
+    # Strict: bucket overlaps [lo, hi] AND b_hi <= hi (don't reach above
+    # candidate's actual max experience).
+    fitted = [
+        name for (name, b_lo, b_hi) in buckets
+        if b_hi > lo and b_lo < hi and b_hi <= hi
+    ]
+    if fitted:
+        return fitted
+
+    # Fallback: pick the single bucket containing hi.
+    for (name, b_lo, b_hi) in buckets:
+        if b_lo <= hi < b_hi:
+            return [name]
+        if name == "10+" and hi >= 10:
+            return [name]
+    return []
 
 
 class FantasticJobsScraper(BaseSourceScraper):
