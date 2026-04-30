@@ -226,7 +226,9 @@ async def find_jobs(req: FindJobsRequest):
     # to the Fantastic Jobs Apify actor. Host-level env wins; we only set
     # defaults the host hasn't already specified.
     spec_defaults = {
-        "FANTASTIC_JOBS_REMOVE_AGENCY":         "true",
+        # Product spec: keep agency / job-board postings — they're a real
+        # source of matching jobs and were getting filtered out previously.
+        "FANTASTIC_JOBS_REMOVE_AGENCY":         "false",
         "FANTASTIC_JOBS_INCLUDE_AI":            "true",
         "FANTASTIC_JOBS_INCLUDE_LINKEDIN":      "false",   # use the dedicated LinkedIn actor instead
         "FANTASTIC_JOBS_DESCRIPTION_TYPE":      "text",

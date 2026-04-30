@@ -255,12 +255,13 @@ class FantasticJobsScraper(BaseSourceScraper):
                         if not any(cf in str(c).lower() for c in derived):
                             country_dropped += 1
                             continue
-                    elif not (item.get("remote_derived") is True
-                              or item.get("ai_remote_location_derived")):
-                        # Empty countries_derived AND not flagged remote →
-                        # likely missing geo metadata, drop conservatively.
-                        country_dropped += 1
-                        continue
+                    # Empty countries_derived: KEEP. The actor's own
+                    # aiCountry filter already restricted results, so a
+                    # missing derived field is a metadata gap, not a
+                    # signal that the job is in a different country.
+                    # (Previous behavior dropped these conservatively;
+                    # in practice that lost a meaningful slice of valid
+                    # postings whose geo wasn't populated.)
                 count_this_window += 1
                 items_emitted += 1
                 yield item
