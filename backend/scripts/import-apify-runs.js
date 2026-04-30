@@ -30,6 +30,7 @@ import {
   normalizeTitle,
   yearsToBucket,
   dedupeKeyFor,
+  isUSLocation,
 } from '../src/services/jobsPoolService.js';
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
@@ -117,6 +118,11 @@ function adaptApifyItem(raw, run) {
     : null;
 
   if (!title || !company) return null;
+
+  // US-only filter — drop postings clearly outside the US (Kuala
+  // Lumpur, Mexico, Romania, etc. that the actor lets through when
+  // its own country filter is loose).
+  if (!isUSLocation(location, raw)) return null;
 
   return {
     title,

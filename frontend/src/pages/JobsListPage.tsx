@@ -1,168 +1,245 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { Briefcase, Loader2 } from 'lucide-react';
-import { EmptyState } from '@/components/ui/empty-state';
+import { Briefcase, ExternalLink, MapPin, Search, X } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useAuth, API_URL } from '@/hooks/useAuth';
-import type { JobSession } from '@/components/jobs/types';
+import { CompanyLogo } from '@/components/jobs/JobRow';
+import { shortLoc, relTime, ATS_LABEL } from '@/utils/jobsFormatting';
 
-function formatDate(s?: string | null) {
-  if (!s) return '—';
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' });
+interface MatchingCandidate {
+  id: string;
+  name: string;
 }
 
-const STATUS_CLASS: Record<string, string> = {
-  running: 'bg-aurora-cyan/10 text-aurora-cyan border-aurora-cyan/30',
-  pending: 'bg-aurora-cyan/10 text-aurora-cyan border-aurora-cyan/30',
-  complete: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-  error: 'bg-destructive/10 text-destructive border-destructive/30',
-};
+interface PoolJob {
+  id: string;
+  title: string;
+  company: string;
+  location: string | null;
+  remote_type: 'remote' | 'hybrid' | 'onsite' | null;
+  url: string;
+  ats: string;
+  postedAt: string | null;
+  snippet: string;
+  yearsOfExperience: number | null;
+  experienceBucket: string | null;
+  extractedTitles: string[];
+  matchingCandidates: MatchingCandidate[];
+  matchingCandidateCount: number;
+}
+
+interface PoolListResponse {
+  success: boolean;
+  total: number;
+  limit: number;
+  offset: number;
+  candidateId: string | null;
+  candidateName: string | null;
+  jobs: PoolJob[];
+}
+
+interface CandidatesResponse {
+  success: boolean;
+  candidates: { id: string; name: string }[];
+}
 
 export default function JobsListPage() {
-  const navigate = useNavigate();
   const { authFetch } = useAuth();
-  const candidateId = localStorage.getItem('candidateId') ?? undefined;
-  const [showFailed, setShowFailed] = useState(false);
+  const [candidateId, setCandidateId] = useState<string>('all');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [search, setSearch] = useState('');
 
-  const { data, isLoading } = useQuery<{ success: boolean; sessions: JobSession[] }>({
-    queryKey: ['job-sessions-all'],
+  // Active candidates for the filter dropdown.
+  const { data: candList } = useQuery<CandidatesResponse>({
+    queryKey: ['active-candidates-for-jobs-filter'],
     queryFn: async () => {
-      const url = candidateId
-        ? `${API_URL}/api/jobs/sessions?candidateId=${candidateId}`
-        : `${API_URL}/api/jobs/sessions`;
-      const res = await authFetch(url);
-      if (!res.ok) throw new Error('Failed to load sessions');
-      return res.json();
+      const res = await authFetch(`${API_URL}/api/candidates/grouped`);
+      if (!res.ok) throw new Error('Failed to load candidates');
+      const json = await res.json();
+      // /grouped returns nested groups; flatten + dedupe.
+      const flat: { id: string; name: string }[] = [];
+      const seen = new Set<string>();
+      for (const g of (json.groups || json.candidates || [])) {
+        const arr = Array.isArray(g.candidates) ? g.candidates : [g];
+        for (const c of arr) {
+          const id = c.id || c._id || '';
+          const name = c.name || c['Candidate Name'] || c.candidateName || '';
+          if (!id || !name || seen.has(id)) continue;
+          seen.add(id);
+          flat.push({ id, name });
+        }
+      }
+      flat.sort((a, b) => a.name.localeCompare(b.name));
+      return { success: true, candidates: flat };
     },
-    refetchInterval: (q) => {
-      const sessions = q.state.data?.sessions ?? [];
-      const inFlight = sessions.some((s) => s.status === 'pending' || s.status === 'running');
-      return inFlight ? 4000 : false;
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const candidates = candList?.candidates ?? [];
+
+  const { data, isLoading } = useQuery<PoolListResponse>({
+    queryKey: ['pool-jobs', candidateId, search],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: '100', offset: '0' });
+      if (candidateId !== 'all') params.set('candidateId', candidateId);
+      if (search) params.set('q', search);
+      const res = await authFetch(`${API_URL}/api/jobs/pool/list?${params}`);
+      if (!res.ok) throw new Error('Failed to load jobs');
+      return res.json();
     },
   });
 
-  const allSessions = data?.sessions ?? [];
-  const failedCount = useMemo(
-    () => allSessions.filter((s) => s.status === 'error').length,
-    [allSessions]
-  );
-  const visibleSessions = useMemo(
-    () => (showFailed ? allSessions : allSessions.filter((s) => s.status !== 'error')),
-    [allSessions, showFailed]
-  );
-
-  // Most-recent successful session for the "Open latest" deep-link.
-  const latestComplete = useMemo(
-    () => allSessions.find((s) => s.status === 'complete'),
-    [allSessions]
-  );
+  const jobs = data?.jobs ?? [];
+  const candidateLabel = useMemo(() => {
+    if (candidateId === 'all') return 'All candidates';
+    return candidates.find((c) => c.id === candidateId)?.name ?? candidateId;
+  }, [candidateId, candidates]);
 
   return (
     <DashboardLayout>
-      <div className="px-4 md:px-6 py-6 space-y-5 max-w-3xl mx-auto">
+      <div className="px-4 md:px-6 py-6 space-y-4 max-w-5xl mx-auto">
         <div className="flex items-center gap-3 flex-wrap">
           <Briefcase className="h-5 w-5 text-aurora-violet" />
-          <h1 className="text-lg font-bold">Recent Job Searches</h1>
-          {latestComplete && (
-            <Button
-              size="sm"
-              className="ml-auto bg-gradient-to-r from-aurora-violet to-aurora-cyan text-white"
-              onClick={() => navigate(`/jobs/${latestComplete.sessionId}`)}
-            >
-              Open latest results
-            </Button>
+          <h1 className="text-lg font-bold">Jobs</h1>
+          {data && (
+            <span className="text-xs text-muted-foreground">
+              {data.total} match{data.total === 1 ? '' : 'es'} · {candidateLabel} · US only
+            </span>
           )}
+        </div>
+
+        <div className="flex flex-col md:flex-row gap-2 md:items-center">
+          <Select value={candidateId} onValueChange={setCandidateId}>
+            <SelectTrigger className="w-full md:w-[280px] text-sm">
+              <SelectValue placeholder="Filter by candidate" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All candidates</SelectItem>
+              {candidates.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="flex items-center gap-1.5 flex-1">
+            <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+            <Input
+              placeholder="Search title or company…"
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && setSearch(searchDraft.trim())}
+              className="text-sm"
+            />
+            {search && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => { setSearch(''); setSearchDraft(''); }}
+                aria-label="Clear search"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+            <Button size="sm" onClick={() => setSearch(searchDraft.trim())}>
+              Search
+            </Button>
+          </div>
         </div>
 
         {isLoading && (
           <div className="space-y-3">
-            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
+            {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
           </div>
         )}
 
-        {!isLoading && allSessions.length === 0 && (
+        {!isLoading && jobs.length === 0 && (
           <EmptyState
             icon={<Briefcase className="h-6 w-6" />}
-            title="No job searches yet"
-            description="Auto-search runs on container startup and twice a day for every active candidate. New sessions will appear here within a few minutes."
-          />
-        )}
-
-        {/* All sessions exist but every one of them failed → tell the
-            user explicitly instead of just an empty list. */}
-        {!isLoading && allSessions.length > 0 && visibleSessions.length === 0 && !showFailed && (
-          <EmptyState
-            icon={<Briefcase className="h-6 w-6" />}
-            title="No completed searches yet"
-            description={`The most recent ${failedCount} search${failedCount === 1 ? '' : 'es'} failed. The team has been notified — new auto-search runs are scheduled twice a day.`}
-            action={
-              <Button variant="outline" size="sm" onClick={() => setShowFailed(true)}>
-                Show failed searches
-              </Button>
+            title="No matching jobs in the pool"
+            description={
+              candidateId === 'all'
+                ? 'The Apify import has not landed any jobs that match active candidates yet.'
+                : `No pool jobs match ${candidateLabel}'s forgeProfile titles + YoE bucket.`
             }
           />
         )}
 
-        {visibleSessions.map((s) => (
-          <div
-            key={s.sessionId}
-            role="button"
-            tabIndex={0}
-            onClick={() => navigate(`/jobs/${s.sessionId}`)}
-            onKeyDown={(e) => e.key === 'Enter' && navigate(`/jobs/${s.sessionId}`)}
-            className="flex items-center gap-4 p-4 rounded-xl border bg-card hover:border-aurora-violet/30 cursor-pointer transition-colors"
+        {jobs.map((j) => (
+          <a
+            key={j.id}
+            href={j.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-start gap-3 p-4 rounded-xl border bg-card hover:border-aurora-violet/30 transition-colors block"
           >
+            <CompanyLogo company={j.company} size={40} />
             <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-medium text-foreground truncate">
-                Session — {formatDate(s.requestedAt ?? s.createdAt)}
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="text-sm font-semibold truncate">{j.title}</p>
+                {j.postedAt && (
+                  <span className="text-[11px] font-mono text-muted-foreground shrink-0">
+                    {relTime(new Date(j.postedAt))}
+                  </span>
+                )}
               </div>
-              <div className="text-[11.5px] text-muted-foreground mt-0.5">
-                {s.totalFound != null
-                  ? `${s.totalFound} results`
-                  : s.status === 'error'
-                    ? 'Failed'
-                    : 'In progress…'}
-                {s.completedAt && ` · Completed ${formatDate(s.completedAt)}`}
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">{j.company}</p>
+              <div className="flex flex-wrap items-center gap-2 mt-2 text-[10.5px] text-muted-foreground">
+                {j.location && (
+                  <span className="inline-flex items-center gap-1">
+                    <MapPin className="h-3 w-3 opacity-50" /> {shortLoc(j.location)}
+                  </span>
+                )}
+                {j.remote_type && (
+                  <Badge variant="outline" className="text-[10px] capitalize">{j.remote_type}</Badge>
+                )}
+                {j.experienceBucket && (
+                  <Badge variant="outline" className="text-[10px]">{j.experienceBucket} yrs</Badge>
+                )}
+                {j.ats && <span>via {ATS_LABEL[j.ats] ?? j.ats}</span>}
+                <ExternalLink className="h-3 w-3 ml-auto opacity-60" />
               </div>
-              {s.status === 'error' && s.error && (
-                <div className="text-[11px] text-destructive mt-1 line-clamp-2" title={s.error}>
-                  {s.error}
+
+              {/* Matching-candidate badges */}
+              {j.matchingCandidateCount > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  <span className="text-[10px] text-muted-foreground mr-1">Matches:</span>
+                  {j.matchingCandidates.map((c) => (
+                    <Badge
+                      key={c.id}
+                      variant="outline"
+                      className="text-[10px] border-aurora-violet/40 text-aurora-violet"
+                    >
+                      {c.name}
+                    </Badge>
+                  ))}
+                  {j.matchingCandidateCount > j.matchingCandidates.length && (
+                    <Badge variant="outline" className="text-[10px]">
+                      +{j.matchingCandidateCount - j.matchingCandidates.length} more
+                    </Badge>
+                  )}
                 </div>
               )}
-            </div>
-            <Badge
-              variant="outline"
-              className={STATUS_CLASS[s.status] ?? 'border-border text-muted-foreground'}
-            >
-              {(s.status === 'running' || s.status === 'pending') && (
-                <Loader2 className="h-3 w-3 mr-1 animate-spin inline-block" aria-hidden />
-              )}
-              {s.status}
-            </Badge>
-          </div>
-        ))}
 
-        {/* Toggle to reveal failed sessions when the default view is hiding them. */}
-        {!isLoading && failedCount > 0 && visibleSessions.length > 0 && (
-          <div className="pt-2 text-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowFailed((v) => !v)}
-              className="text-xs text-muted-foreground"
-            >
-              {showFailed
-                ? `Hide ${failedCount} failed search${failedCount === 1 ? '' : 'es'}`
-                : `Show ${failedCount} failed search${failedCount === 1 ? '' : 'es'}`}
-            </Button>
-          </div>
-        )}
+              {j.snippet && (
+                <p className="text-[11.5px] text-muted-foreground line-clamp-2 mt-2 leading-relaxed">
+                  {j.snippet}
+                </p>
+              )}
+            </div>
+          </a>
+        ))}
       </div>
     </DashboardLayout>
   );

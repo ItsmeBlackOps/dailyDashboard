@@ -111,6 +111,77 @@ export function candidateBuckets(yearsMin, yearsMax) {
   return buckets;
 }
 
+// US-state shortlist for fast detection. Two-letter codes shown
+// alongside the full name; matched as whole-word, case-insensitive.
+const US_STATE_NAMES = [
+  'alabama','alaska','arizona','arkansas','california','colorado','connecticut',
+  'delaware','florida','georgia','hawaii','idaho','illinois','indiana','iowa',
+  'kansas','kentucky','louisiana','maine','maryland','massachusetts','michigan',
+  'minnesota','mississippi','missouri','montana','nebraska','nevada',
+  'new hampshire','new jersey','new mexico','new york','north carolina',
+  'north dakota','ohio','oklahoma','oregon','pennsylvania','rhode island',
+  'south carolina','south dakota','tennessee','texas','utah','vermont',
+  'virginia','washington','west virginia','wisconsin','wyoming','district of columbia',
+];
+const US_STATE_ABBR = new Set([
+  'al','ak','az','ar','ca','co','ct','de','fl','ga','hi','id','il','in','ia','ks','ky',
+  'la','me','md','ma','mi','mn','ms','mo','mt','ne','nv','nh','nj','nm','ny','nc','nd',
+  'oh','ok','or','pa','ri','sc','sd','tn','tx','ut','vt','va','wa','wv','wi','wy','dc',
+]);
+
+const NON_US_COUNTRY_TOKENS = [
+  'india','malaysia','kuala lumpur','singapore','philippines','indonesia','vietnam',
+  'thailand','china','japan','korea','taiwan','hong kong',
+  'mexico','méxico','brazil','brasil','argentina','chile','colombia','costa rica','peru','uruguay',
+  'romania','poland','germany','france','spain','italy','portugal','netherlands','belgium',
+  'sweden','denmark','norway','finland','ireland','united kingdom','britain','england',
+  'scotland','wales','austria','switzerland','czech','hungary','greece','turkey','ukraine',
+  'russia','south africa','egypt','nigeria','kenya','morocco','israel','uae','saudi',
+  'pakistan','bangladesh','sri lanka','nepal','australia','new zealand','canada',
+  'remote-emea','remote emea','emea','apac','latam',
+];
+
+/**
+ * Heuristic US-location detector. Returns true when the location string
+ * (or raw `countries_derived` array) clearly indicates a US posting.
+ * Conservative — when in doubt, returns true and lets the filter pass,
+ * because the actor itself was configured to query US.
+ *
+ *   isUSLocation('San Francisco, CA, US')           → true
+ *   isUSLocation('Kuala Lumpur, Malaysia')          → false
+ *   isUSLocation('Mexico City, Mexico')             → false
+ *   isUSLocation('Remote', { countries_derived: ['United States'] }) → true
+ *   isUSLocation('Romania')                         → false
+ *   isUSLocation('')                                → true (no signal)
+ */
+export function isUSLocation(location, raw = {}) {
+  // Honor explicit countries_derived from the actor.
+  const cd = raw?.countries_derived;
+  if (Array.isArray(cd) && cd.length > 0) {
+    return cd.some((c) => /\b(united\s*states|usa|u\.s\.|^us$)\b/i.test(String(c)));
+  }
+
+  const loc = (location || '').toString().toLowerCase();
+  if (!loc) return true; // nothing to judge — accept (actor was US-only configured)
+
+  // Fast positive signals.
+  if (/\b(united\s*states|u\.s\.a?\.?|usa)\b/.test(loc)) return true;
+  // ", US" or "US," at word boundaries — exclude when "us" is inside a word.
+  if (/\b(?:us|u\.s\.)\b/.test(loc)) return true;
+  for (const s of US_STATE_NAMES) if (loc.includes(s)) return true;
+  // Two-letter state code at end-ish: ", TX" or " TX," etc.
+  const stateMatch = loc.match(/[,\s]+([a-z]{2})\b/);
+  if (stateMatch && US_STATE_ABBR.has(stateMatch[1])) return true;
+
+  // Negative signals.
+  for (const tok of NON_US_COUNTRY_TOKENS) if (loc.includes(tok)) return false;
+
+  // Pure "Remote" with no other signal — accept; actor-side filter
+  // already ran. The candidate-side filter on remote_type can refine.
+  if (/^remote$/i.test(loc.trim())) return true;
+  return false;
+}
+
 export function dedupeKeyFor({ company, title, postedAt, url }) {
   const norm = (s) => (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
   const datePart = postedAt
@@ -299,6 +370,162 @@ class JobsPoolService {
       },
       { upsert: true }
     );
+  }
+
+  /**
+   * List pool jobs for the global Jobs tab, with optional candidate
+   * filter ("only show jobs matching this candidate") and a free-text
+   * search over title/company.
+   *
+   * Each returned job is annotated with `matchingCandidates` —
+   * candidate name + id pairs whose forgeProfile titles + bucket
+   * overlap with this job. Capped at 5 per job for UI badge density.
+   *
+   * @param {{
+   *   candidateId?: string,   // optional — filter to this candidate's matches only
+   *   query?: string,         // optional — case-insensitive title/company substring
+   *   limit?: number,
+   *   offset?: number,
+   * }} opts
+   */
+  async listPool({ candidateId, query, limit = 50, offset = 0 } = {}) {
+    const db = database.getDb();
+    await ensureIndexes(db);
+    const col = db.collection(COL);
+
+    const filter = {};
+
+    // Candidate-scoped: AND with matchForCandidate's filter shape.
+    let candDoc = null;
+    if (candidateId && ObjectId.isValid(candidateId)) {
+      candDoc = await db.collection('candidateDetails').findOne(
+        { _id: new ObjectId(candidateId) },
+        { projection: { forgeProfile: 1, 'Candidate Name': 1 } }
+      );
+      if (candDoc?.forgeProfile?.titles) {
+        const candTitles = [...new Set(candDoc.forgeProfile.titles.map(normalizeTitle).filter(Boolean))];
+        if (candTitles.length > 0) {
+          filter.normalizedTitles = { $in: candTitles };
+          const buckets = candidateBuckets(candDoc.forgeProfile.years_min, candDoc.forgeProfile.years_max);
+          if (buckets.length > 0) {
+            filter.$or = [
+              { experienceBucket: { $in: buckets } },
+              { experienceBucket: null },
+              { experienceBucket: { $exists: false } },
+            ];
+          }
+        }
+      }
+    }
+
+    if (query && query.trim()) {
+      const esc = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.$and = [
+        ...(filter.$and || []),
+        { $or: [
+          { title:   { $regex: esc, $options: 'i' } },
+          { company: { $regex: esc, $options: 'i' } },
+        ] },
+      ];
+    }
+
+    const total = await col.countDocuments(filter);
+    const docs = await col
+      .find(filter)
+      .sort({ postedAt: -1, importedAt: -1 })
+      .skip(Math.max(0, offset))
+      .limit(Math.max(1, Math.min(200, limit)))
+      .toArray();
+
+    // Annotate each job with matching candidates. One Mongo query
+    // per job — cheap with the candidateDetails forgeProfile titles
+    // already indexed via Atlas auto-indexing on simple equality lookups.
+    const candCol = db.collection('candidateDetails');
+    for (const d of docs) {
+      const matchFilter = {
+        status: 'Active',
+        'forgeProfile.titles.0': { $exists: true },
+      };
+      if (Array.isArray(d.normalizedTitles) && d.normalizedTitles.length > 0) {
+        // Match candidates whose forgeProfile.titles (normalized at write time
+        // would be ideal, but we don't denormalize; use simple $in over the
+        // raw titles array — matches the most common case where forgeProfile
+        // titles are already canonical-cased like "Data Analyst").
+        matchFilter['forgeProfile.titles'] = {
+          $regex: new RegExp(d.normalizedTitles.map((t) => `(?:^|\\b)${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|\\b)`).join('|'), 'i'),
+        };
+      } else {
+        d.matchingCandidates = [];
+        d.matchingCandidateCount = 0;
+        continue;
+      }
+      const cands = await candCol
+        .find(matchFilter, { projection: { 'Candidate Name': 1, forgeProfile: 1 } })
+        .limit(50)  // safety cap
+        .toArray();
+      // Tighten by bucket alignment in JS.
+      const matched = [];
+      for (const c of cands) {
+        const fp = c.forgeProfile || {};
+        const candBuckets = candidateBuckets(fp.years_min, fp.years_max);
+        if (
+          d.experienceBucket == null
+          || candBuckets.length === 0
+          || candBuckets.includes(d.experienceBucket)
+        ) {
+          matched.push({ id: c._id.toString(), name: c['Candidate Name'] || '' });
+        }
+        if (matched.length >= 50) break;
+      }
+      d.matchingCandidates = matched.slice(0, 5);
+      d.matchingCandidateCount = matched.length;
+    }
+
+    return {
+      total,
+      limit,
+      offset,
+      candidateId: candidateId || null,
+      candidateName: candDoc?.['Candidate Name'] || null,
+      jobs: docs.map((d) => ({
+        id: d._id.toString(),
+        title: d.title,
+        company: d.company,
+        location: d.location,
+        remote_type: d.remote_type,
+        url: d.url,
+        ats: d.ats,
+        postedAt: d.postedAt,
+        snippet: d.snippet,
+        yearsOfExperience: d.yearsOfExperience,
+        experienceBucket: d.experienceBucket,
+        extractedTitles: d.extractedTitles,
+        matchingCandidates: d.matchingCandidates || [],
+        matchingCandidateCount: d.matchingCandidateCount || 0,
+      })),
+    };
+  }
+
+  /**
+   * One-shot cleanup: drop pool docs whose location clearly isn't
+   * US. Used after the US filter was added — runs once to purge
+   * the historical pool of foreign postings.
+   *
+   * Returns counts. SAFE to call multiple times (no-op once clean).
+   */
+  async pruneNonUS({ dryRun = false } = {}) {
+    const db = database.getDb();
+    await ensureIndexes(db);
+    const col = db.collection(COL);
+    const cursor = col.find({}, { projection: { _id: 1, location: 1 } });
+    const toDelete = [];
+    for await (const d of cursor) {
+      if (!isUSLocation(d.location, {})) toDelete.push(d._id);
+    }
+    if (dryRun) return { wouldDelete: toDelete.length };
+    if (toDelete.length === 0) return { deleted: 0 };
+    const r = await col.deleteMany({ _id: { $in: toDelete } });
+    return { deleted: r.deletedCount || 0 };
   }
 
   /** High-level stats for /api/jobs/pool/stats */

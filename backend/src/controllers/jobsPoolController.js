@@ -22,6 +22,30 @@ class JobsPoolController {
     return res.json({ success: true, ...s });
   });
 
+  list = asyncHandler(async (req, res) => {
+    const candidateId = req.query.candidateId ? String(req.query.candidateId) : undefined;
+    const query  = req.query.q ? String(req.query.q) : undefined;
+    const limit  = parseInt(req.query.limit,  10) || 50;
+    const offset = parseInt(req.query.offset, 10) || 0;
+    try {
+      const result = await jobsPoolService.listPool({ candidateId, query, limit, offset });
+      return res.json({ success: true, ...result });
+    } catch (err) {
+      logger.error('jobsPool list failed', { error: err.message });
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  });
+
+  pruneNonUS = asyncHandler(async (req, res) => {
+    const role = (req.user?.role || '').trim().toLowerCase();
+    if (role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'admin only' });
+    }
+    const dryRun = req.query.dry === '1' || req.query.dry === 'true';
+    const r = await jobsPoolService.pruneNonUS({ dryRun });
+    return res.json({ success: true, dryRun, ...r });
+  });
+
   // Admin-only on-demand trigger. Kicks off the same cycle the scheduler
   // runs every JOBS_POOL_IMPORT_INTERVAL_HOURS. Returns immediately —
   // the import runs as a child process; tail backend logs to follow.
