@@ -29,3 +29,9 @@ pytest==8.3.3
 
 # JD enrichment via gpt-4o-mini (Responses API requires openai >= 1.50)
 openai>=1.50.0
+
+# Apify SDK — used by src/sources/linkedin.py and fantastic_jobs.py
+# to call the LinkedIn + Fantastic Jobs actors. Was missing from this
+# pinset, causing "ModuleNotFoundError: No module named 'apify_client'"
+# on every scrape after the cron started firing.
+apify-client>=1.7,<2
