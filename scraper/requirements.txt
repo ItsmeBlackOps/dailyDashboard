@@ -24,3 +24,6 @@ tenacity==9.0.0
 
 # Testing
 pytest==8.3.3
+
+# JD enrichment via gpt-4o-mini (Responses API requires openai >= 1.50)
+openai>=1.50.0
