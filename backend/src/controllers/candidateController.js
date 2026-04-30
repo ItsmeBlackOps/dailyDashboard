@@ -171,6 +171,36 @@ class CandidateController {
     }
   }
 
+  // Lightweight {id, name}[] of active candidates with a derived
+  // forgeProfile — used by the Jobs page candidate filter dropdown
+  // so we don't pull the full /grouped payload just to populate a
+  // <select>. Cache 60s on the client via Cache-Control.
+  async getActiveCandidateNames(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const col = database.getCollection('candidateDetails');
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+      const scope = await this._scopeFilter(user);
+      const docs = await col
+        .find(
+          { ...scope, status: 'Active', 'forgeProfile.titles.0': { $exists: true } },
+          { projection: { 'Candidate Name': 1 } }
+        )
+        .sort({ 'Candidate Name': 1 })
+        .limit(1000)
+        .toArray();
+      res.set('Cache-Control', 'private, max-age=60');
+      return res.json({
+        success: true,
+        candidates: docs.map((d) => ({ id: d._id.toString(), name: d['Candidate Name'] || '' })),
+      });
+    } catch (error) {
+      logger.error('getActiveCandidateNames failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
   async getMissingResumes(req, res) {
     try {
       const user = req.user;

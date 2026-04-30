@@ -49,6 +49,9 @@ export default function CandidateJobsListPage() {
       if (!res.ok) throw new Error('Failed to load matched jobs');
       return res.json();
     },
+    // Pool changes hourly at most — no need to refetch on focus / reconnect.
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const jobs = data?.jobs ?? [];

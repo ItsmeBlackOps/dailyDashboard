@@ -61,30 +61,17 @@ export default function JobsListPage() {
   const [searchDraft, setSearchDraft] = useState('');
   const [search, setSearch] = useState('');
 
-  // Active candidates for the filter dropdown.
+  // Active candidates for the filter dropdown — lightweight {id,name}[]
+  // endpoint avoids pulling the full /grouped payload just to populate
+  // a <select>.
   const { data: candList } = useQuery<CandidatesResponse>({
-    queryKey: ['active-candidates-for-jobs-filter'],
+    queryKey: ['active-candidate-names'],
     queryFn: async () => {
-      const res = await authFetch(`${API_URL}/api/candidates/grouped`);
+      const res = await authFetch(`${API_URL}/api/candidates/active-names`);
       if (!res.ok) throw new Error('Failed to load candidates');
-      const json = await res.json();
-      // /grouped returns nested groups; flatten + dedupe.
-      const flat: { id: string; name: string }[] = [];
-      const seen = new Set<string>();
-      for (const g of (json.groups || json.candidates || [])) {
-        const arr = Array.isArray(g.candidates) ? g.candidates : [g];
-        for (const c of arr) {
-          const id = c.id || c._id || '';
-          const name = c.name || c['Candidate Name'] || c.candidateName || '';
-          if (!id || !name || seen.has(id)) continue;
-          seen.add(id);
-          flat.push({ id, name });
-        }
-      }
-      flat.sort((a, b) => a.name.localeCompare(b.name));
-      return { success: true, candidates: flat };
+      return res.json();
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60 * 1000,
   });
 
   const candidates = candList?.candidates ?? [];
@@ -99,6 +86,8 @@ export default function JobsListPage() {
       if (!res.ok) throw new Error('Failed to load jobs');
       return res.json();
     },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const jobs = data?.jobs ?? [];
