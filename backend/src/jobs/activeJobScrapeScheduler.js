@@ -139,6 +139,15 @@ export function startActiveJobScrapeScheduler() {
     logger.warn('activeJobScrape: scheduler already started');
     return;
   }
+  // Default OFF as of the pool-model migration — per-candidate auto-scrape
+  // is the wrong shape: every candidate fires its own Apify run, costs
+  // explode, and most fail at the YoE guard when forgeProfile.years_max=0.
+  // Opt back in only via ACTIVE_JOB_SCRAPE_ENABLED=1 if you really want
+  // per-candidate scrapes alongside the daily pool import.
+  if (process.env.ACTIVE_JOB_SCRAPE_ENABLED !== '1') {
+    logger.info('activeJobScrape: disabled by default (set ACTIVE_JOB_SCRAPE_ENABLED=1 to opt in)');
+    return;
+  }
   if (process.env.ACTIVE_JOB_SCRAPE_DISABLED === '1') {
     logger.info('activeJobScrape: disabled via ACTIVE_JOB_SCRAPE_DISABLED=1');
     return;
