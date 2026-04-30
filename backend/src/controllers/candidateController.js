@@ -176,10 +176,10 @@ class CandidateController {
       const user = req.user;
       if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
 
-      // Marketing team only. Admin manages globally and gets flooded by
-      // this prompt, so they're explicitly excluded.
+      // Marketing team only — mm / mam / mlead / recruiter. Admin
+      // manages globally and gets flooded by this prompt, so excluded.
       const role = (user.role || '').trim().toLowerCase();
-      if (!['mm', 'mam', 'mlead'].includes(role)) {
+      if (!['mm', 'mam', 'mlead', 'recruiter'].includes(role)) {
         return res.json({ success: true, total: 0, candidates: [] });
       }
 
