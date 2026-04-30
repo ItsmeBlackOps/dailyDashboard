@@ -185,7 +185,12 @@ const config = {
   },
 
   autoAssign: {
+    // Existing dashboard-side endpoint (taskId+task payload).
     url: process.env.AUTO_ASSIGN_URL || '',
+    // Intervue-format endpoint at auto.silverspace.tech/api/reply.
+    // Payload: { subject, targetTo, customBodyHtml }. Used by the new
+    // 'Trigger auto-assign' admin action on pending tasks.
+    replyUrl: process.env.AUTO_REPLY_ENDPOINT || 'https://auto.silverspace.tech/api/reply',
   },
 
   pica: {

@@ -622,6 +622,38 @@ export default function TasksToday() {
     }
   }, [reprocessDialog.task, authFetch, navigate, toast]);
 
+  // Manual auto-assign trigger — fires the same POST format Intervue
+  // uses against AUTO_REPLY_ENDPOINT. Only meaningful for Pending tasks.
+  const [autoAssignBusy, setAutoAssignBusy] = useState<string | null>(null);
+  const handleManualAutoAssign = useCallback(async (task: Task) => {
+    const tid = task._id;
+    if (!tid) return;
+    if (autoAssignBusy) return;
+    setAutoAssignBusy(tid);
+    try {
+      const res = await authFetch(`${API_URL}/api/interview-support-admin/tasks/${tid}/manual-auto-assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Auto-assign failed');
+      }
+      toast({
+        title: 'Auto-assign triggered',
+        description: `Reply sent → ${data.targetTo} (Expert: ${data.expertEmail})`,
+      });
+    } catch (err) {
+      toast({
+        title: 'Auto-assign failed',
+        description: err instanceof Error ? err.message : String(err),
+        variant: 'destructive',
+      });
+    } finally {
+      setAutoAssignBusy(null);
+    }
+  }, [autoAssignBusy, authFetch, toast]);
+
 
   const storedResumeAvailable = useMemo(() => {
     if (!mockPreview) return false;
@@ -4444,6 +4476,15 @@ export default function TasksToday() {
                                     <RefreshCw className="mr-2 h-4 w-4" />
                                     Reprocess subject
                                   </DropdownMenuItem>
+                                  {(task.status || '').toLowerCase() === 'pending' && (
+                                    <DropdownMenuItem
+                                      disabled={autoAssignBusy === task._id}
+                                      onClick={() => handleManualAutoAssign(task)}
+                                    >
+                                      <RefreshCw className={`mr-2 h-4 w-4 ${autoAssignBusy === task._id ? 'animate-spin' : ''}`} />
+                                      {autoAssignBusy === task._id ? 'Triggering…' : 'Trigger auto-assign'}
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem
                                     className="text-destructive focus:text-destructive focus:bg-destructive/10"
                                     onClick={() => setDeleteTaskDialog({ open: true, task })}

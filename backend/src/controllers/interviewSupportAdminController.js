@@ -36,6 +36,19 @@ class InterviewSupportAdminController {
     res.json({ success: true, ...result });
   });
 
+  // Manual auto-assign trigger that mirrors Intervue's POST /api/reply
+  // payload shape ({ subject, targetTo, customBodyHtml }) — for use when
+  // Intervue's own auto-dispatch failed or was skipped on a Pending task.
+  manualTriggerAutoAssign = asyncHandler(async (req, res) => {
+    const { taskId } = req.params;
+    try {
+      const result = await interviewSupportAdminService.manualTriggerAutoAssign(taskId, req.user.email);
+      res.json({ success: true, ...result });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   getUnprocessed = asyncHandler(async (req, res) => {
     const { date } = req.query;
     const result = await interviewSupportAdminService.getUnprocessedEmails(date);
