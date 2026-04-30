@@ -37,12 +37,16 @@ async function main() {
   const db = database.getDatabase();
   const col = db.collection('candidateDetails');
 
-  // Match docs with a usable resume URL. The codebase has used both
-  // `resumeUrl` and `resumeLink` historically — accept either.
+  // Active candidates only. Live DB uses lowercase `status` with these
+  // values: Active (775), Backout (238), Placement Offer (163), null (92),
+  // Hold (44), Low Priority (32). Only "Active" is in scope.
+  // Resume lives on `resumeLink` (475 docs); `resumeUrl` is absent in prod
+  // but accepted as a forward-compat fallback.
   const baseFilter = {
+    status: 'Active',
     $or: [
-      { resumeUrl: { $type: 'string', $ne: '' } },
       { resumeLink: { $type: 'string', $ne: '' } },
+      { resumeUrl: { $type: 'string', $ne: '' } },
     ],
   };
 

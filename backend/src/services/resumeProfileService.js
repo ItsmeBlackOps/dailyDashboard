@@ -33,13 +33,18 @@ const RESUME_SEARCH_PROFILE_SCHEMA = {
   required: ['titles', 'keywords', 'years_min', 'years_max', 'baseline_skills'],
 };
 
-const SYSTEM_PROMPT = `You are a resume parser. Given the resume text below, extract structured search parameters for finding matching job postings.
+const SYSTEM_PROMPT = `You parse a resume into search parameters for matching job postings on LinkedIn / Apify Fantastic Jobs. Return JSON only matching the provided schema.
 
-Return JSON only matching the provided schema. Be specific:
-- titles: 6-12 plausible job titles the candidate would target. Include role variations (Senior/Staff if 5+ YOE), domain variations (Backend Engineer, Platform Engineer, Java Developer, Full Stack Engineer, etc.), and seniority-appropriate titles based on YOE.
-- keywords: 2-4 short search keywords (1-3 words each) capturing the candidate's strongest technical signals — these drive descriptionSearch in the Apify actor. Examples: "microservices", "kafka", "spring boot", "kubernetes". Avoid generic words like "engineer".
-- years_min / years_max: total professional experience in years. Use ranges that make sense (e.g. 5-8, 0-2, 10-15). Round to whole numbers.
-- baseline_skills: every technology, framework, language, tool, platform mentioned. Lowercase, deduplicated.`;
+Hard rules:
+- titles: 4-12 CANONICAL job titles the candidate is realistically targetable for, exactly as employers post them. Keep them generic enough to match many JDs.
+  • Use the title family the candidate has ACTUALLY done (Data Analyst → Data Analyst, BI Analyst, Analytics Engineer; Java backend → Backend Engineer, Java Developer, Software Engineer).
+  • Include 1-2 seniority variants matching their YoE (5 yrs → "Senior X" + "X"; 10+ yrs → "Lead X", "Staff X").
+  • Skip exotic/joined titles like "Cloud Native Microservices Engineer" — those don't match real postings.
+  • No prefix-match wildcards (no ":*"). Plain titles only.
+- keywords: 2-6 short technical phrases (1-3 words each) that strongly signal fit when present in a JD. Pick the candidate's load-bearing tech (e.g. "kafka", "spring boot", "snowflake"), not generic words ("engineer", "developer", "team player").
+- years_min: lowest YoE the candidate would still accept on a posting. For a candidate with 5 yrs total experience this is typically 3, not 5 — they'd accept a "3+ years" job. Floor at 0.
+- years_max: candidate's actual total years of professional experience, rounded down to whole number. Used to filter out clearly-overqualified senior postings.
+- baseline_skills: every technology / framework / language / tool / platform / methodology mentioned in the resume. Lowercase, deduplicated, no stop-words.`;
 
 class ResumeProfileService {
   constructor() {
