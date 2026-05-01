@@ -83,7 +83,7 @@ export default function SubjectLogsTab() {
     enabled: !!active,
     queryFn: async () => {
       const res = await authFetch(
-        `${API_URL}/api/interview-support-admin/audit?subject=${encodeURIComponent(active)}&limit=300`
+        `${API_URL}/api/admin/interview-support/audit?subject=${encodeURIComponent(active)}&limit=300`
       );
       if (!res.ok) throw new Error('Failed to load audit logs');
       return res.json();

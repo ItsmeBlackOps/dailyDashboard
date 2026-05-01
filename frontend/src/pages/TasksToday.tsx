@@ -594,7 +594,7 @@ export default function TasksToday() {
     }
     setReprocessDialog((p) => ({ ...p, busy: true }));
     try {
-      const res = await authFetch(`${API_URL}/api/interview-support-admin/subjects/reprocess`, {
+      const res = await authFetch(`${API_URL}/api/admin/interview-support/subjects/reprocess`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subject, mode }),
@@ -631,7 +631,7 @@ export default function TasksToday() {
     if (autoAssignBusy) return;
     setAutoAssignBusy(tid);
     try {
-      const res = await authFetch(`${API_URL}/api/interview-support-admin/tasks/${tid}/manual-auto-assign`, {
+      const res = await authFetch(`${API_URL}/api/admin/interview-support/tasks/${tid}/manual-auto-assign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
