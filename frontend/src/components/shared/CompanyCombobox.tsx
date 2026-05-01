@@ -189,7 +189,12 @@ export function CompanyCombobox({
                   {...pasteBlockHandlers}
                 />
                 <CommandList>
-                  <CommandEmpty>No companies match &quot;{search}&quot;</CommandEmpty>
+                  {/* Empty state intentionally minimal — the Add CTA below
+                      lives OUTSIDE the CommandList so cmdk doesn't filter
+                      it out when the search query has no matches. */}
+                  <CommandEmpty className="py-2 text-xs text-muted-foreground">
+                    No matches.
+                  </CommandEmpty>
                   <CommandGroup heading="Existing companies">
                     {filteredClients.map((name) => (
                       <CommandItem
@@ -207,16 +212,23 @@ export function CompanyCombobox({
                       </CommandItem>
                     ))}
                   </CommandGroup>
-                  <CommandGroup>
-                    <CommandItem
-                      onSelect={() => setMode('addNew')}
-                      className="text-aurora-violet font-medium"
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add new company
-                    </CommandItem>
-                  </CommandGroup>
                 </CommandList>
+                {/* Always-visible Add CTA. Uses the current search query
+                    as the suggested name so the user doesn't have to
+                    re-type after a no-match search. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (search.trim()) setNewName(search.trim());
+                    setMode('addNew');
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-medium text-aurora-violet hover:bg-aurora-violet/10 border-t border-border transition-colors"
+                >
+                  <Plus className="h-4 w-4" />
+                  {search.trim()
+                    ? <>Add <span className="font-mono">&quot;{search.trim()}&quot;</span> as a new company</>
+                    : 'Add new company'}
+                </button>
               </>
             ) : (
               <div className="p-3 space-y-2">
