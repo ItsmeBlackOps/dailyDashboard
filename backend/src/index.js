@@ -48,6 +48,7 @@ import { startFirefliesBotScheduler } from './jobs/firefliesBotScheduler.js';
 import { startActiveJobScrapeScheduler } from './jobs/activeJobScrapeScheduler.js';
 import { startJobsPoolImportScheduler } from './jobs/jobsPoolImportScheduler.js';
 import { startPoolRefresherScheduler } from './jobs/poolRefresherScheduler.js';
+import { jobsPoolService } from './services/jobsPoolService.js';
 import { ensurePerformanceIndexes } from './jobs/ensurePerfIndexes.js';
 
 // Import routes and socket manager
@@ -298,6 +299,19 @@ class Application {
         startActiveJobScrapeScheduler();
         startJobsPoolImportScheduler();
         startPoolRefresherScheduler();
+
+        // One-shot US-only sweep on boot. Stamps `inUS` on every doc
+        // and deletes ones whose location is clearly outside the US.
+        // Idempotent; cheap once the field is backfilled. Disable with
+        // JOBS_POOL_USONLY_SWEEP=0.
+        if (process.env.JOBS_POOL_USONLY_SWEEP !== '0') {
+          setTimeout(() => {
+            jobsPoolService
+              .pruneNonUS({ dryRun: false, deleteNonUS: true })
+              .then((r) => logger.info('jobsPool USonly sweep complete', r))
+              .catch((e) => logger.error('jobsPool USonly sweep failed', { error: e.message }));
+          }, 90 * 1000);
+        }
       });
     } catch (error) {
       logger.error('❌ Failed to start server', { error: error.message });

@@ -59,6 +59,8 @@ async function ensureIndexes(db) {
     { name: 'posted_ttl', expireAfterSeconds: TTL_DAYS * 24 * 60 * 60 }
   );
   await col.createIndex({ importedAt: -1 }, { name: 'imported_recent' });
+  // US-only filter applied to almost every list query.
+  await col.createIndex({ inUS: 1, postedAt: -1 }, { name: 'inUS_posted' });
 
   // Run-once marker. We write here AFTER each run is processed
   // (success / empty / error), so subsequent cycles skip the run
@@ -164,6 +166,11 @@ export function isUSLocation(location, raw = {}) {
   const loc = (location || '').toString().toLowerCase();
   if (!loc) return true; // nothing to judge — accept (actor was US-only configured)
 
+  // Negative signals beat ambiguous positives. A string like "Mexico
+  // City, MX" must NOT pass just because "MX" almost looks like a US
+  // 2-letter code, and "Toronto, ON, Canada" must not pass on "ON".
+  for (const tok of NON_US_COUNTRY_TOKENS) if (loc.includes(tok)) return false;
+
   // Fast positive signals.
   if (/\b(united\s*states|u\.s\.a?\.?|usa)\b/.test(loc)) return true;
   // ", US" or "US," at word boundaries — exclude when "us" is inside a word.
@@ -172,9 +179,6 @@ export function isUSLocation(location, raw = {}) {
   // Two-letter state code at end-ish: ", TX" or " TX," etc.
   const stateMatch = loc.match(/[,\s]+([a-z]{2})\b/);
   if (stateMatch && US_STATE_ABBR.has(stateMatch[1])) return true;
-
-  // Negative signals.
-  for (const tok of NON_US_COUNTRY_TOKENS) if (loc.includes(tok)) return false;
 
   // Pure "Remote" with no other signal — accept; actor-side filter
   // already ran. The candidate-side filter on remote_type can refine.
@@ -270,6 +274,7 @@ class JobsPoolService {
             normalizedTitles:  j.normalizedTitles || [normalizeTitle(j.title)].filter(Boolean),
             company:           j.company || '',
             location:          j.location || null,
+            inUS:              typeof j.inUS === 'boolean' ? j.inUS : isUSLocation(j.location, j.raw || {}),
             remote_type:       j.remote_type || null,
             url:               j.url || '',
             ats:               j.ats || '',
@@ -329,7 +334,7 @@ class JobsPoolService {
       };
     }
 
-    const filter = { normalizedTitles: { $in: candNormTitles } };
+    const filter = { normalizedTitles: { $in: candNormTitles }, inUS: { $ne: false } };
     if (buckets.length > 0) {
       // Match jobs in candidate's bucket range OR jobs without a bucket
       // (so JD-enrich gaps don't permanently hide otherwise-good matches).
@@ -468,7 +473,9 @@ class JobsPoolService {
     await ensureIndexes(db);
     const col = db.collection(COL);
 
-    const filter = {};
+    // US-only by default. Docs without inUS are treated as US (legacy
+    // pre-backfill); docs explicitly marked inUS:false are excluded.
+    const filter = { inUS: { $ne: false } };
 
     // Candidate-scoped: AND with matchForCandidate's filter shape.
     let candDoc = null;
@@ -584,19 +591,46 @@ class JobsPoolService {
    *
    * Returns counts. SAFE to call multiple times (no-op once clean).
    */
-  async pruneNonUS({ dryRun = false } = {}) {
+  async pruneNonUS({ dryRun = false, deleteNonUS = true } = {}) {
     const db = database.getDb();
     await ensureIndexes(db);
     const col = db.collection(COL);
-    const cursor = col.find({}, { projection: { _id: 1, location: 1 } });
+    const cursor = col.find({}, { projection: { _id: 1, location: 1, inUS: 1 } });
     const toDelete = [];
+    const toMarkUS = [];     // currently inUS!=true but heuristic says US — backfill
+    const toMarkNonUS = [];  // currently inUS!=false but heuristic says non-US (kept if !deleteNonUS)
     for await (const d of cursor) {
-      if (!isUSLocation(d.location, {})) toDelete.push(d._id);
+      const us = isUSLocation(d.location, {});
+      if (us) {
+        if (d.inUS !== true) toMarkUS.push(d._id);
+      } else {
+        if (deleteNonUS) toDelete.push(d._id);
+        else if (d.inUS !== false) toMarkNonUS.push(d._id);
+      }
     }
-    if (dryRun) return { wouldDelete: toDelete.length };
-    if (toDelete.length === 0) return { deleted: 0 };
-    const r = await col.deleteMany({ _id: { $in: toDelete } });
-    return { deleted: r.deletedCount || 0 };
+    if (dryRun) {
+      return {
+        wouldDelete: toDelete.length,
+        wouldMarkUS: toMarkUS.length,
+        wouldMarkNonUS: toMarkNonUS.length,
+      };
+    }
+    let deleted = 0;
+    if (toDelete.length > 0) {
+      const r = await col.deleteMany({ _id: { $in: toDelete } });
+      deleted = r.deletedCount || 0;
+    }
+    if (toMarkUS.length > 0) {
+      await col.updateMany({ _id: { $in: toMarkUS } }, { $set: { inUS: true } });
+    }
+    if (toMarkNonUS.length > 0) {
+      await col.updateMany({ _id: { $in: toMarkNonUS } }, { $set: { inUS: false } });
+    }
+    return {
+      deleted,
+      backfilledUS: toMarkUS.length,
+      backfilledNonUS: toMarkNonUS.length,
+    };
   }
 
   /** High-level stats for /api/jobs/pool/stats */
