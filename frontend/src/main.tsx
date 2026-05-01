@@ -5,6 +5,10 @@ import App from './App.tsx';
 import 'driver.js/dist/driver.css';
 import './index.css';
 import { msalInstance } from './authConfig';
+import { attachChunkReloadHandler } from './utils/chunkReloadHandler';
+
+// Auto-reload when stale dynamic-import chunks fail (post-deploy hygiene).
+attachChunkReloadHandler();
 
 const container = document.getElementById('root');
 
