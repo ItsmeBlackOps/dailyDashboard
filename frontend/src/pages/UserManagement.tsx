@@ -571,15 +571,15 @@ const UserManagementPage = () => {
         // [Harsh] Analytics - Track Bulk User Creation
         posthog?.capture('admin_bulk_user_action', {
           action_type: 'create',
-          user_count: data.created.length,
+          user_count: (data.created?.length ?? 0),
           target_roles: [...new Set(payload.map(p => p.role))]
         });
 
-        toast({ title: 'Users created', description: `${data.created.length} user(s) created successfully.` });
+        toast({ title: 'Users created', description: `${(data.created?.length ?? 0)} user(s) created successfully.` });
         resetCreateRows();
         fetchManageableUsers();
       } else {
-        toast({ title: 'Partial completion', description: `${data.created.length} created, ${data.failures.length} failed.`, variant: 'destructive' });
+        toast({ title: 'Partial completion', description: `${(data.created?.length ?? 0)} created, ${(data.failures?.length ?? 0)} failed.`, variant: 'destructive' });
       }
     } catch (error: any) {
       toast({ title: 'Bulk create failed', description: error?.message || 'Unable to create users', variant: 'destructive' });
@@ -709,16 +709,16 @@ const UserManagementPage = () => {
         // [Harsh] Analytics - Track Bulk User Update
         posthog?.capture('admin_bulk_user_action', {
           action_type: 'update',
-          user_count: data.updates.length,
+          user_count: (data.updates?.length ?? 0),
           target_roles: [...new Set(selectedUsers.map(u => u.role))]
         });
 
-        toast({ title: 'Users updated', description: `${data.updates.length} user(s) updated.` });
+        toast({ title: 'Users updated', description: `${(data.updates?.length ?? 0)} user(s) updated.` });
         setUpdateDraft(INITIAL_UPDATE_DRAFT);
         setSelectedEmails(new Set());
         fetchManageableUsers();
       } else {
-        toast({ title: 'Partial update', description: `${data.updates.length} updated, ${data.failures.length} failed.`, variant: 'destructive' });
+        toast({ title: 'Partial update', description: `${(data.updates?.length ?? 0)} updated, ${(data.failures?.length ?? 0)} failed.`, variant: 'destructive' });
       }
     } catch (error: any) {
       toast({ title: 'Bulk update failed', description: error?.message || 'Unable to update users', variant: 'destructive' });

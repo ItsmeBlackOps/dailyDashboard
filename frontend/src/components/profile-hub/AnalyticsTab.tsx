@@ -141,20 +141,23 @@ export default function AnalyticsTab() {
     <div className="text-sm text-muted-foreground p-4">Failed to load analytics: {error}</div>
   );
 
-  const kpi = stats.data.kpi;
+  // Defensive: API shape may have null sub-fields even when stats.data is set.
+  const kpi = stats.data.kpi || {};
   const pieData = STATUS_PIE
     .map(s => ({ name: s.label, value: kpi[s.key as keyof typeof kpi] ?? 0, gradId: s.gradId }))
     .filter(d => d.value > 0);
 
-  const barData = recruiters.data.recruiters.slice(0, 10).map(r => ({
-    name: r.name.split(' ')[0],
+  const recruiterList = Array.isArray(recruiters.data.recruiters) ? recruiters.data.recruiters : [];
+  const barData = recruiterList.slice(0, 10).map(r => ({
+    name: (r.name || '').split(' ')[0],
     Active: r.active,
     PO: r.po,
     Hold: r.hold,
     Backout: r.backout,
   }));
 
-  const branchData = stats.data.branches.map(b => ({ name: b.name, count: b.count, fill: b.color }));
+  const branches = Array.isArray(stats.data.branches) ? stats.data.branches : [];
+  const branchData = branches.map(b => ({ name: b.name, count: b.count, fill: b.color }));
 
   return (
     <>

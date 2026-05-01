@@ -34,6 +34,7 @@ import { SOCKET_URL } from '@/hooks/useAuth';
 import InterviewSupportTaskList from '@/components/admin/InterviewSupportTaskList';
 import SubjectLogsTab from '@/components/admin/SubjectLogsTab';
 import LiveLogsTab from '@/components/admin/LiveLogsTab';
+import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -143,27 +144,27 @@ function AdminInterviewSupportContent({
         </TabsList>
 
         <TabsContent value="all-tasks" className="mt-4">
-          <InterviewSupportTaskList />
+          <ErrorBoundary label="All Tasks"><InterviewSupportTaskList /></ErrorBoundary>
         </TabsContent>
 
         <TabsContent value="unprocessed" className="mt-4">
-          <UnprocessedTab authFetch={authFetch} />
+          <ErrorBoundary label="Unprocessed"><UnprocessedTab authFetch={authFetch} /></ErrorBoundary>
         </TabsContent>
 
         <TabsContent value="failed" className="mt-4">
-          <FailedTab authFetch={authFetch} queryClient={queryClient} />
+          <ErrorBoundary label="Failed Auto-Assigns"><FailedTab authFetch={authFetch} queryClient={queryClient} /></ErrorBoundary>
         </TabsContent>
 
         <TabsContent value="logs" className="mt-4">
-          <LogsTab authFetch={authFetch} />
+          <ErrorBoundary label="Processing Logs"><LogsTab authFetch={authFetch} /></ErrorBoundary>
         </TabsContent>
 
         <TabsContent value="subject-logs" className="mt-4">
-          <SubjectLogsTab />
+          <ErrorBoundary label="Subject Logs"><SubjectLogsTab /></ErrorBoundary>
         </TabsContent>
 
         <TabsContent value="live-logs" className="mt-4">
-          <LiveLogsTab />
+          <ErrorBoundary label="Live Logs"><LiveLogsTab /></ErrorBoundary>
         </TabsContent>
       </Tabs>
     </div>

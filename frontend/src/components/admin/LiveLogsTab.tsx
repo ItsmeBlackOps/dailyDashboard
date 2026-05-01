@@ -70,9 +70,13 @@ export default function LiveLogsTab() {
 
   useEffect(() => {
     if (!snapshot) return;
+    // Defensive: API may return a different shape than expected (string,
+    // null, error envelope). Only consume the two array fields we need.
+    const intervue    = Array.isArray(snapshot.intervue)    ? snapshot.intervue    : [];
+    const autoAssign  = Array.isArray(snapshot.auto_assign) ? snapshot.auto_assign : [];
     const seed: LogLine[] = [];
-    for (const l of snapshot.intervue || []) seed.push({ container: 'intervue', line: l, key: newKey() });
-    for (const l of snapshot.auto_assign || []) seed.push({ container: 'auto_assign', line: l, key: newKey() });
+    for (const l of intervue)   if (typeof l === 'string') seed.push({ container: 'intervue',    line: l, key: newKey() });
+    for (const l of autoAssign) if (typeof l === 'string') seed.push({ container: 'auto_assign', line: l, key: newKey() });
     setLines(seed);
   }, [snapshot]);
 
