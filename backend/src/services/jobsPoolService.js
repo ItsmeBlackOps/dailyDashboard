@@ -45,6 +45,11 @@ const LOG_COL = 'jobsPoolImportLog';   // marker: every Apify runId we've touche
 // Cap pool retention. Set to null to keep forever.
 const TTL_DAYS = parseInt(process.env.JOBS_POOL_TTL_DAYS || '30', 10);
 
+// YoE matching tolerances. A 4yr candidate matches jobs requiring 2..5 yrs
+// (LOWER_TOL=2 below years_min, UPPER_TOL=1 above years_max). Tunable via env.
+const YOE_LOWER_TOL = parseInt(process.env.JOBS_POOL_YOE_LOWER_TOL || '2', 10);
+const YOE_UPPER_TOL = parseInt(process.env.JOBS_POOL_YOE_UPPER_TOL || '1', 10);
+
 let _indexEnsured = false;
 async function ensureIndexes(db) {
   if (_indexEnsured) return;
@@ -344,15 +349,19 @@ class JobsPoolService {
     }
 
     const filter = { normalizedTitles: { $in: candNormTitles }, inUS: { $ne: false } };
-    if (buckets.length > 0) {
-      // Match jobs in candidate's bucket range OR jobs without a bucket
-      // (so JD-enrich gaps don't permanently hide otherwise-good matches).
-      filter.$or = [
-        { experienceBucket: { $in: buckets } },
-        { experienceBucket: null },
-        { experienceBucket: { $exists: false } },
-      ];
-    }
+    // YoE window match. A 4yr candidate should match jobs requiring ~2-5 yrs
+    // and reject 6+. Bucket-overlap was too coarse — it let "5-10" jobs in
+    // when the candidate's max sat near the boundary.
+    //   window = [years_min - LOWER_TOL, years_max + UPPER_TOL]
+    // LOWER_TOL=2 (overqualified is fine), UPPER_TOL=1 (one stretch year ok).
+    const yMin = Math.max(0, (Number(fp.years_min ?? 0)) - YOE_LOWER_TOL);
+    const yMax = (Number(fp.years_max ?? fp.years_min ?? 0)) + YOE_UPPER_TOL;
+    filter.$or = [
+      { yearsOfExperience: { $gte: yMin, $lte: yMax } },
+      // Keep YoE-unknown jobs (JD-enrich gap) — UI can mark them "unverified".
+      { yearsOfExperience: null },
+      { yearsOfExperience: { $exists: false } },
+    ];
 
     const total = await db.collection(COL).countDocuments(filter);
     const docs = await db
@@ -497,14 +506,15 @@ class JobsPoolService {
         const candTitles = [...new Set(candDoc.forgeProfile.titles.map(normalizeTitle).filter(Boolean))];
         if (candTitles.length > 0) {
           filter.normalizedTitles = { $in: candTitles };
-          const buckets = candidateBuckets(candDoc.forgeProfile.years_min, candDoc.forgeProfile.years_max);
-          if (buckets.length > 0) {
-            filter.$or = [
-              { experienceBucket: { $in: buckets } },
-              { experienceBucket: null },
-              { experienceBucket: { $exists: false } },
-            ];
-          }
+          // YoE window — same rule as matchForCandidate.
+          const fp = candDoc.forgeProfile;
+          const yMin = Math.max(0, (Number(fp.years_min ?? 0)) - YOE_LOWER_TOL);
+          const yMax = (Number(fp.years_max ?? fp.years_min ?? 0)) + YOE_UPPER_TOL;
+          filter.$or = [
+            { yearsOfExperience: { $gte: yMin, $lte: yMax } },
+            { yearsOfExperience: null },
+            { yearsOfExperience: { $exists: false } },
+          ];
         }
       }
     }

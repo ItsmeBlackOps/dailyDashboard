@@ -127,6 +127,11 @@ function adaptApifyItem(raw, run) {
 
   if (!title || !company) return null;
 
+  // Aggregator denylist — Jobgether re-lists other companies' postings as
+  // their own brand, polluting the pool with near-duplicates of jobs we
+  // already get from the original ATS source.
+  if (/^jobgether$/i.test(company.trim())) return null;
+
   // US-only filter — drop postings clearly outside the US (Kuala
   // Lumpur, Mexico, Romania, etc. that the actor lets through when
   // its own country filter is loose).
