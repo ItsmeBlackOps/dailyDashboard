@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Calendar, Clock, Building2, Briefcase, User, Mail,
-  Layers, Users, ExternalLink, MessageSquare, FileText,
+  Layers, Users, ExternalLink, MessageSquare, FileText, Video, Check, Loader2,
 } from 'lucide-react';
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
@@ -295,41 +295,68 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
             </div>
 
             {/* Meeting Link */}
-            <div className="rounded-lg border p-3 space-y-2">
+            <div className="rounded-lg border p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold">Meeting Link</h4>
                 <BotStatusBadge status={task.botStatus ?? undefined} attempts={task.botInviteAttempts ?? undefined} error={task.botLastError} />
               </div>
+
               {(() => {
                 const link = task.meetingLink || task.joinUrl || task.joinWebUrl;
-                return link ? (
-                  <a href={link} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline break-all">
-                    {link}
-                  </a>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No meeting link set yet</p>
+                if (link) {
+                  // Link is set — show Join button + lifecycle stepper.
+                  // The Fireflies scheduler picks the link up on its next 60s
+                  // tick, so no manual re-save is required for the bot.
+                  return (
+                    <>
+                      <Button
+                        size="sm"
+                        asChild
+                        className="w-full bg-gradient-to-r from-aurora-violet to-aurora-cyan text-white gap-1.5"
+                      >
+                        <a href={link} target="_blank" rel="noopener noreferrer">
+                          <Video className="h-3.5 w-3.5" />
+                          Join Meeting
+                          <ExternalLink className="h-3 w-3 ml-auto opacity-80" />
+                        </a>
+                      </Button>
+                      <BotLifecycle
+                        status={task.botStatus ?? null}
+                        attempts={task.botInviteAttempts ?? 0}
+                        joinedAt={task.botJoinedAt ?? null}
+                        error={task.botLastError ?? null}
+                      />
+                    </>
+                  );
+                }
+                // No link yet — fall through to the manual input UI.
+                return (
+                  <>
+                    <p className="text-xs text-muted-foreground">No meeting link set yet</p>
+                    <div className="space-y-2 pt-2 border-t">
+                      <Input
+                        placeholder="https://zoom.us/j/..."
+                        value={linkDraft}
+                        onChange={(e) => setLinkDraft(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                      <Input
+                        placeholder="Password (optional)"
+                        value={passwordDraft}
+                        onChange={(e) => setPasswordDraft(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                      <Button size="sm" onClick={handleSaveMeetingLink} disabled={savingLink}>
+                        {savingLink ? 'Saving...' : 'Save & Invite Bot'}
+                      </Button>
+                    </div>
+                  </>
                 );
               })()}
+
               {task.botLastError && (
                 <p className="text-xs text-aurora-rose">⚠️ {task.botLastError}</p>
               )}
-              <div className="space-y-2 pt-2 border-t">
-                <Input
-                  placeholder="https://zoom.us/j/..."
-                  value={linkDraft}
-                  onChange={(e) => setLinkDraft(e.target.value)}
-                  className="h-8 text-xs"
-                />
-                <Input
-                  placeholder="Password (optional)"
-                  value={passwordDraft}
-                  onChange={(e) => setPasswordDraft(e.target.value)}
-                  className="h-8 text-xs"
-                />
-                <Button size="sm" onClick={handleSaveMeetingLink} disabled={savingLink}>
-                  {savingLink ? 'Saving...' : 'Save & Invite Bot'}
-                </Button>
-              </div>
             </div>
 
             {/* Suggestions */}
@@ -406,5 +433,116 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+// ── Bot lifecycle stepper ───────────────────────────────────────────────────
+
+interface LifecycleProps {
+  status: string | null;
+  attempts: number;
+  joinedAt: string | null;
+  error: string | null;
+}
+
+const LIFECYCLE_ORDER = [
+  'pending',
+  'precheck_invited',
+  'precheck_joined',
+  'main_invited',
+  'main_joined',
+] as const;
+
+const LIFECYCLE_LABEL: Record<string, string> = {
+  pending:           'Waiting for window',
+  precheck_invited:  'Pre-check sent',
+  precheck_joined:   'Link verified',
+  precheck_failed:   'Link failed pre-check',
+  main_invited:      'Bot invited',
+  main_joined:       'Bot joined',
+  main_failed:       'Bot failed after retries',
+};
+
+function lifecyclePosition(status: string | null): number {
+  if (!status) return 0;
+  const i = LIFECYCLE_ORDER.indexOf(status as (typeof LIFECYCLE_ORDER)[number]);
+  // Failed states: align to where they failed.
+  if (i === -1) {
+    if (status === 'precheck_failed') return 1;  // failed at precheck step
+    if (status === 'main_failed')     return 3;  // failed at main-invite step
+    return 0;
+  }
+  return i;
+}
+
+function BotLifecycle({ status, attempts, joinedAt, error }: LifecycleProps) {
+  const position = lifecyclePosition(status);
+  const isFailed = status === 'precheck_failed' || status === 'main_failed';
+  const currentLabel = (status && LIFECYCLE_LABEL[status]) || 'Not yet scheduled';
+
+  return (
+    <div className="rounded-md border bg-card/40 p-2.5 space-y-2">
+      <div className="flex items-center justify-between text-[10.5px]">
+        <span className="text-muted-foreground">Recording bot</span>
+        <span
+          className={
+            isFailed
+              ? 'font-mono text-aurora-rose'
+              : status === 'main_joined'
+                ? 'font-mono text-aurora-emerald'
+                : 'font-mono text-foreground/80'
+          }
+        >
+          {currentLabel}
+          {attempts > 1 && status?.startsWith('main') && ` · attempt ${attempts}`}
+        </span>
+      </div>
+
+      {/* Step rail */}
+      <div className="flex items-center gap-1">
+        {LIFECYCLE_ORDER.map((s, i) => {
+          const reached = i <= position;
+          const isCurrent = i === position && !isFailed;
+          const dotClass = isFailed && i === position
+            ? 'bg-aurora-rose border-aurora-rose'
+            : reached
+              ? 'bg-aurora-violet border-aurora-violet'
+              : 'bg-transparent border-border';
+          const lineClass = i < position
+            ? 'bg-aurora-violet'
+            : 'bg-border';
+          return (
+            <div key={s} className="flex items-center flex-1 last:flex-none">
+              <div
+                className={`h-2.5 w-2.5 rounded-full border-2 shrink-0 ${dotClass} ${
+                  isCurrent ? 'ring-2 ring-aurora-violet/30' : ''
+                }`}
+                title={LIFECYCLE_LABEL[s]}
+                aria-label={LIFECYCLE_LABEL[s]}
+              >
+                {reached && status === 'main_joined' && i === LIFECYCLE_ORDER.length - 1 && (
+                  <Check className="h-2 w-2 text-white -translate-y-[1px]" aria-hidden />
+                )}
+                {isCurrent && !isFailed && (
+                  <Loader2 className="h-2.5 w-2.5 text-white animate-spin -translate-x-[1px] -translate-y-[1px]" aria-hidden />
+                )}
+              </div>
+              {i < LIFECYCLE_ORDER.length - 1 && (
+                <div className={`h-[2px] flex-1 mx-0.5 ${lineClass}`} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {joinedAt && status === 'main_joined' && (
+        <p className="text-[10px] text-muted-foreground">
+          Joined at {new Date(joinedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </p>
+      )}
+      {error && (
+        <p className="text-[10px] text-aurora-rose break-words">⚠ {error}</p>
+      )}
+    </div>
   );
 }
