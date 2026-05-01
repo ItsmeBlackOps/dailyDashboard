@@ -520,11 +520,38 @@ class JobsPoolService {
       ];
     }
 
+    // Load the active-candidate snapshot first so we can both:
+    //  (a) pre-filter the Mongo query to only jobs with at least one
+    //      title overlap with a SCOPED candidate (otherwise we'd return
+    //      jobs nobody in the user's hierarchy can match), and
+    //  (b) reuse it for the matching-candidate annotation below.
+    const candSnapshot = await this._getActiveCandidateSnapshot(db);
+
+    // Scope to recruiters the requesting user is allowed to see.
+    // `null` means no scope (admin / global view).
+    const scopedSnap = scopeRecruiterEmails
+      ? candSnapshot.filter((c) => c.recruiter && scopeRecruiterEmails.has(c.recruiter))
+      : candSnapshot;
+
+    // When the caller hasn't pinned to a single candidate, restrict the
+    // job query to jobs whose normalizedTitles overlap ANY scoped
+    // candidate's titles. This is what makes "All my candidates"
+    // actually mean "jobs that could match someone I work with".
+    if (!candidateId && !filter.normalizedTitles) {
+      const scopeTitles = new Set();
+      for (const c of scopedSnap) for (const t of c.titles) scopeTitles.add(t);
+      if (scopeTitles.size === 0) {
+        // No candidates → no jobs in scope. Short-circuit.
+        return {
+          total: 0, limit, offset,
+          candidateId: null, candidateName: null, jobs: [],
+        };
+      }
+      filter.normalizedTitles = { $in: [...scopeTitles] };
+    }
+
     // Run total + page query in parallel.
-    // Also load the active-candidate snapshot (cached) — the matching-
-    // candidate annotation now runs in-memory instead of per-job
-    // round-trips.
-    const [total, docs, candSnapshot] = await Promise.all([
+    const [total, docs] = await Promise.all([
       col.countDocuments(filter),
       col
         .find(filter)
@@ -532,14 +559,7 @@ class JobsPoolService {
         .skip(Math.max(0, offset))
         .limit(Math.max(1, Math.min(200, limit)))
         .toArray(),
-      this._getActiveCandidateSnapshot(db),
     ]);
-
-    // Scope the candidate snapshot to recruiters the requesting user is
-    // allowed to see. `null` means no scope (admin / global view).
-    const scopedSnap = scopeRecruiterEmails
-      ? candSnapshot.filter((c) => c.recruiter && scopeRecruiterEmails.has(c.recruiter))
-      : candSnapshot;
 
     // In-memory match: O(jobs × candidates) with cheap Set/Array ops.
     // For 100 jobs × 200 candidates = ~20k iterations — milliseconds.
@@ -609,13 +629,24 @@ class JobsPoolService {
       }
     }
 
+    // Defense layer: when scoped to a recruiter hierarchy AND no
+    // candidate is pinned, drop any job whose post-annotation match
+    // count is zero. The Mongo pre-filter already does the bulk of
+    // this via title overlap, but bucket alignment can still leave
+    // a stray job with no in-scope candidates — hide those rather
+    // than show a job no candidate of mine could be matched against.
+    let visibleDocs = docs;
+    if (scopeRecruiterEmails && !candidateId) {
+      visibleDocs = docs.filter((d) => (d.matchingCandidateCount || 0) > 0);
+    }
+
     return {
-      total,
+      total: scopeRecruiterEmails && !candidateId ? visibleDocs.length : total,
       limit,
       offset,
       candidateId: candidateId || null,
       candidateName: candDoc?.['Candidate Name'] || null,
-      jobs: docs.map((d) => ({
+      jobs: visibleDocs.map((d) => ({
         id: d._id.toString(),
         title: d.title,
         company: d.company,
