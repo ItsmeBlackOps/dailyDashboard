@@ -4415,15 +4415,26 @@ export default function TasksToday() {
                       </div>
                     </TableCell>
                     {showActionsColumn && (
-                      <TableCell>
+                      <TableCell
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
                         {showActionsColumn ? (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button size="sm" variant="outline">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 Actions
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
+                            <DropdownMenuContent
+                              align="end"
+                              onClick={(e) => e.stopPropagation()}
+                              onCloseAutoFocus={(e) => e.preventDefault()}
+                            >
                               {canGenerateInterviewDebrief && (
                                 <>
                                   <DropdownMenuItem
