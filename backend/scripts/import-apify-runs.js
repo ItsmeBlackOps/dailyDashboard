@@ -130,12 +130,14 @@ function adaptApifyItem(raw, run) {
   // US-only filter — drop postings clearly outside the US (Kuala
   // Lumpur, Mexico, Romania, etc. that the actor lets through when
   // its own country filter is loose).
-  if (!isUSLocation(location, raw)) return null;
+  const inUS = isUSLocation(location, raw);
+  if (!inUS) return null;
 
   return {
     title,
     company,
     location,
+    inUS: true,
     remote_type,
     url,
     ats,
