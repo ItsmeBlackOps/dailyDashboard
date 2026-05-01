@@ -33,6 +33,7 @@ import { io, Socket } from 'socket.io-client';
 import { SOCKET_URL } from '@/hooks/useAuth';
 import InterviewSupportTaskList from '@/components/admin/InterviewSupportTaskList';
 import SubjectLogsTab from '@/components/admin/SubjectLogsTab';
+import LiveLogsTab from '@/components/admin/LiveLogsTab';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -138,6 +139,7 @@ function AdminInterviewSupportContent({
           <TabsTrigger value="failed">Failed Auto-Assigns</TabsTrigger>
           <TabsTrigger value="logs">Processing Logs</TabsTrigger>
           <TabsTrigger value="subject-logs">Subject Logs</TabsTrigger>
+          <TabsTrigger value="live-logs">Live Logs</TabsTrigger>
         </TabsList>
 
         <TabsContent value="all-tasks" className="mt-4">
@@ -158,6 +160,10 @@ function AdminInterviewSupportContent({
 
         <TabsContent value="subject-logs" className="mt-4">
           <SubjectLogsTab />
+        </TabsContent>
+
+        <TabsContent value="live-logs" className="mt-4">
+          <LiveLogsTab />
         </TabsContent>
       </Tabs>
     </div>
