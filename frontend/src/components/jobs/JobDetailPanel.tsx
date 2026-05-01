@@ -20,7 +20,8 @@ interface JobDetailPanelProps {
   starred: boolean;
   onStar: () => void;
   onClose: () => void;
-  sessionId: string;
+  /** Optional — when omitted (e.g. global Jobs Tab) tailor-resume CTA is hidden. */
+  sessionId?: string;
   tailored?: TailoredStatus;
 }
 
@@ -143,8 +144,9 @@ export default function JobDetailPanel({
           </a>
         </Button>
 
-        {/* Tailor Resume button */}
-        {tailorStatus === 'complete' && tailored?.tailoredResumeUrl ? (
+        {/* Tailor Resume button — only when a sessionId is available (per-session
+            page). Global Jobs Tab has no session context, so the CTA is hidden. */}
+        {!sessionId ? null : tailorStatus === 'complete' && tailored?.tailoredResumeUrl ? (
           <Button variant="outline" size="sm" asChild className="gap-1.5 text-emerald-400 border-emerald-500/40">
             <a href={tailored.tailoredResumeUrl} target="_blank" rel="noopener noreferrer">
               <Download className="h-3.5 w-3.5" /> Tailored Resume
