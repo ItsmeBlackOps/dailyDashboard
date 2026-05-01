@@ -52,7 +52,7 @@ export default function AlertsTab() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground flex-1">
-          <span className="font-medium">{data.alerts.length} on Hold</span>
+          <span className="font-medium">{data?.alerts?.length ?? 0} on Hold</span>
           {critical > 0 && <span className="text-destructive font-semibold">{critical} critical &gt;30d</span>}
           {high     > 0 && <span className="text-aurora-amber font-semibold">{high} high &gt;14d</span>}
         </div>
