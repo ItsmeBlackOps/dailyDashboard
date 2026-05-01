@@ -225,7 +225,14 @@ class JobsPoolService {
     const docs = await db.collection('candidateDetails')
       .find(
         { status: 'Active', 'forgeProfile.titles.0': { $exists: true } },
-        { projection: { 'Candidate Name': 1, 'forgeProfile.titles': 1, 'forgeProfile.years_min': 1, 'forgeProfile.years_max': 1 } }
+        { projection: {
+            'Candidate Name': 1,
+            'forgeProfile.titles': 1,
+            'forgeProfile.years_min': 1,
+            'forgeProfile.years_max': 1,
+            'Recruiter': 1,
+            'recruiter': 1,
+          } }
       )
       .toArray();
     _candidateSnapshot = docs.map((c) => {
@@ -233,11 +240,13 @@ class JobsPoolService {
       const titles = Array.isArray(fp.titles)
         ? [...new Set(fp.titles.map(normalizeTitle).filter(Boolean))]
         : [];
+      const recruiter = (c.Recruiter || c.recruiter || '').toString().trim().toLowerCase();
       return {
         id: c._id.toString(),
         name: c['Candidate Name'] || '',
         titles,
         buckets: candidateBuckets(fp.years_min, fp.years_max),
+        recruiter,
       };
     });
     _candidateSnapshotAt = now;
@@ -468,7 +477,7 @@ class JobsPoolService {
    *   offset?: number,
    * }} opts
    */
-  async listPool({ candidateId, query, limit = 50, offset = 0 } = {}) {
+  async listPool({ candidateId, query, limit = 50, offset = 0, scopeRecruiterEmails = null } = {}) {
     const db = database.getDb();
     await ensureIndexes(db);
     const col = db.collection(COL);
@@ -526,6 +535,12 @@ class JobsPoolService {
       this._getActiveCandidateSnapshot(db),
     ]);
 
+    // Scope the candidate snapshot to recruiters the requesting user is
+    // allowed to see. `null` means no scope (admin / global view).
+    const scopedSnap = scopeRecruiterEmails
+      ? candSnapshot.filter((c) => c.recruiter && scopeRecruiterEmails.has(c.recruiter))
+      : candSnapshot;
+
     // In-memory match: O(jobs × candidates) with cheap Set/Array ops.
     // For 100 jobs × 200 candidates = ~20k iterations — milliseconds.
     for (const d of docs) {
@@ -538,7 +553,7 @@ class JobsPoolService {
         continue;
       }
       const matched = [];
-      for (const c of candSnapshot) {
+      for (const c of scopedSnap) {
         // Title overlap: any candidate-title contained in jobTitles.
         let titleHit = false;
         for (const t of c.titles) {
@@ -557,6 +572,41 @@ class JobsPoolService {
       }
       d.matchingCandidates = matched.slice(0, 5);
       d.matchingCandidateCount = matched.length;
+    }
+
+    // Annotate each (job, candidate) pair with its apply state so the
+    // UI can render a per-candidate chip ("Apply" / "Applied" /
+    // "Interview" / etc.) without an N+1 follow-up call. One batch query
+    // covers every visible (jobId, candidateId) tuple.
+    const pairs = [];
+    for (const d of docs) {
+      const jobIdStr = d._id.toString();
+      for (const m of d.matchingCandidates) {
+        pairs.push({ jobId: jobIdStr, candidateId: String(m.id) });
+      }
+    }
+    if (pairs.length > 0) {
+      const apps = await db.collection('jobApplications')
+        .find({ $or: pairs })
+        .project({ jobId: 1, candidateId: 1, status: 1, _id: 0 })
+        .toArray();
+      const byKey = new Map();
+      for (const a of apps) byKey.set(`${a.jobId}|${a.candidateId}`, a.status || 'applied');
+      for (const d of docs) {
+        const jobIdStr = d._id.toString();
+        for (const m of d.matchingCandidates) {
+          const status = byKey.get(`${jobIdStr}|${m.id}`) || null;
+          m.applied = !!status;
+          m.applicationStatus = status;
+        }
+      }
+    } else {
+      for (const d of docs) {
+        for (const m of d.matchingCandidates) {
+          m.applied = false;
+          m.applicationStatus = null;
+        }
+      }
     }
 
     return {

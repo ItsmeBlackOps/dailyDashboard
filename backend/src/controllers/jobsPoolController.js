@@ -1,8 +1,19 @@
 import { jobsPoolService } from '../services/jobsPoolService.js';
 import { poolRefresherService } from '../services/poolRefresherService.js';
+import { candidateService } from '../services/candidateService.js';
 import { _runImporter as runImporterNow } from '../jobs/jobsPoolImportScheduler.js';
 import { logger } from '../utils/logger.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+
+// Build the lowercased recruiter-email set the user is allowed to see
+// candidates for. Returns null for admins (no scope — global view).
+function recruiterScopeFor(user) {
+  if (!user) return new Set();
+  const role = (user.role || '').trim().toLowerCase();
+  if (role === 'admin') return null;
+  const set = candidateService.resolveActiveHierarchyEmails(user) || new Set();
+  return new Set([...set].map((e) => e.toLowerCase()));
+}
 
 class JobsPoolController {
   matchForCandidate = asyncHandler(async (req, res) => {
@@ -29,7 +40,10 @@ class JobsPoolController {
     const limit  = parseInt(req.query.limit,  10) || 50;
     const offset = parseInt(req.query.offset, 10) || 0;
     try {
-      const result = await jobsPoolService.listPool({ candidateId, query, limit, offset });
+      const scopeRecruiterEmails = recruiterScopeFor(req.user);
+      const result = await jobsPoolService.listPool({
+        candidateId, query, limit, offset, scopeRecruiterEmails,
+      });
       return res.json({ success: true, ...result });
     } catch (err) {
       logger.error('jobsPool list failed', { error: err.message });
