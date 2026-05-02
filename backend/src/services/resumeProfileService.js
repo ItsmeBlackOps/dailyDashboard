@@ -14,14 +14,30 @@ const RESUME_SEARCH_PROFILE_SCHEMA = {
     titles: {
       type: 'array',
       items: { type: 'string' },
-      minItems: 4,
-      maxItems: 12,
+      minItems: 6,
+      maxItems: 25,
     },
     keywords: {
       type: 'array',
       items: { type: 'string' },
-      minItems: 2,
-      maxItems: 6,
+      minItems: 6,
+      maxItems: 16,
+    },
+    industries: {
+      type: 'array',
+      items: {
+        type: 'string',
+        enum: [
+          'Technology', 'Software', 'Engineering', 'Data & Analytics',
+          'Finance & Accounting', 'Healthcare', 'Government & Public Sector',
+          'Science & Research', 'Consulting', 'Sales', 'Marketing',
+          'Manufacturing', 'Logistics', 'Customer Service & Support',
+          'Management & Leadership', 'Security & Safety', 'Creative & Media',
+          'Sports & Recreation',
+        ],
+      },
+      minItems: 1,
+      maxItems: 5,
     },
     years_min: { type: 'number' },
     years_max: { type: 'number' },
@@ -30,18 +46,29 @@ const RESUME_SEARCH_PROFILE_SCHEMA = {
       items: { type: 'string' },
     },
   },
-  required: ['titles', 'keywords', 'years_min', 'years_max', 'baseline_skills'],
+  required: ['titles', 'keywords', 'industries', 'years_min', 'years_max', 'baseline_skills'],
 };
 
-const SYSTEM_PROMPT = `You parse a resume into search parameters for matching job postings on LinkedIn / Apify Fantastic Jobs. Return JSON only matching the provided schema.
+const SYSTEM_PROMPT = `You parse a resume into rich, per-candidate search parameters for matching job postings on the Apify Fantastic Jobs (career-site & LinkedIn) actors. Return JSON only matching the provided schema.
+
+The output drives BOTH a titleSearch list and a descriptionSearch keyword list that the actor uses verbatim. Be specific — generic outputs return generic noise.
 
 Hard rules:
-- titles: 4-12 CANONICAL job titles the candidate is realistically targetable for, exactly as employers post them. Keep them generic enough to match many JDs.
-  • Use the title family the candidate has ACTUALLY done (Data Analyst → Data Analyst, BI Analyst, Analytics Engineer; Java backend → Backend Engineer, Java Developer, Software Engineer).
-  • Include 1-2 seniority variants matching their YoE (5 yrs → "Senior X" + "X"; 10+ yrs → "Lead X", "Staff X").
+
+- titles: 6-25 CANONICAL job titles the candidate is realistically targetable for, exactly as employers post them. Cover the full spectrum of role + domain variants the candidate fits.
+  • Always include the SAME role across multiple domain framings the candidate's experience supports. Example for a Healthcare-focused Data Analyst: "Data Analyst", "Healthcare Data Analyst", "Clinical Data Analyst", "Healthcare Analytics Analyst", "Business Intelligence Analyst", "BI Analyst", "Population Health Analyst", "HEDIS Analyst", "Quality Data Analyst", "Claims Data Analyst", "Risk Adjustment Analyst", "Revenue Cycle Analyst", "Medicare Data Analyst", "Medicaid Data Analyst", "Payer Data Analyst", "Healthcare Reporting Analyst", "SQL Data Analyst", "Tableau Analyst", "Power BI Analyst", "Healthcare Business Analyst", "Healthcare Financial Analyst".
+  • Include 1-2 seniority variants ONLY if matching their YoE (5 yrs → "Senior X" + "X"; 10+ yrs → "Lead X", "Staff X"). For 0-4 yrs, exclude all senior variants.
+  • Mix tool-led titles ("SQL Data Analyst", "Tableau Analyst") AND domain-led titles ("Population Health Analyst", "Risk Adjustment Analyst") when the resume supports both.
   • Skip exotic/joined titles like "Cloud Native Microservices Engineer" — those don't match real postings.
   • No prefix-match wildcards (no ":*"). Plain titles only.
-- keywords: 2-6 short technical phrases (1-3 words each) that strongly signal fit when present in a JD. Pick the candidate's load-bearing tech (e.g. "kafka", "spring boot", "snowflake"), not generic words ("engineer", "developer", "team player").
+
+- keywords: 6-16 high-signal terms for descriptionSearch. These are matched against the JD body (case-insensitive). Pick the candidate's distinctive tech AND domain anchors:
+  • Tools/languages: "SQL", "Python", "Tableau", "Power BI", "Snowflake", "ETL"
+  • Domain anchors when applicable: "Healthcare", "HEDIS", "Medicare", "Medicaid", "Claims", "Risk Adjustment", "CMS", "HIPAA", "Population Health", "Revenue Cycle"
+  • Avoid generic words ("engineer", "developer", "team player"). Avoid words that appear in EVERY JD ("communication", "agile").
+
+- industries: 1-5 from the closed enum. Pick the AI taxonomies the candidate's role + sector fits. A Healthcare DA → ["Healthcare", "Data & Analytics", "Technology", "Finance & Accounting"]. A backend Java → ["Software", "Technology", "Engineering"]. A Fintech BA → ["Finance & Accounting", "Data & Analytics", "Consulting"].
+
 - years_min: lowest YoE the candidate would still accept on a posting. For a candidate with 5 yrs total experience this is typically 3, not 5 — they'd accept a "3+ years" job. Floor at 0.
 - years_max: candidate's actual total years of professional experience, rounded down to whole number. Used to filter out clearly-overqualified senior postings.
 - baseline_skills: every technology / framework / language / tool / platform / methodology mentioned in the resume. Lowercase, deduplicated, no stop-words.`;
@@ -169,6 +196,7 @@ class ResumeProfileService {
     const forgeProfile = {
       titles: parsed.titles,
       keywords: parsed.keywords,
+      industries: parsed.industries || [],
       years_min: parsed.years_min,
       years_max: parsed.years_max,
       baseline_skills: parsed.baseline_skills,

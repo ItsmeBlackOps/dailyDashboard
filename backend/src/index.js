@@ -48,6 +48,7 @@ import { startFirefliesBotScheduler } from './jobs/firefliesBotScheduler.js';
 import { startActiveJobScrapeScheduler } from './jobs/activeJobScrapeScheduler.js';
 import { startJobsPoolImportScheduler } from './jobs/jobsPoolImportScheduler.js';
 import { startPoolRefresherScheduler } from './jobs/poolRefresherScheduler.js';
+import { startPerCandidateScrapeScheduler } from './jobs/perCandidateScrapeScheduler.js';
 import { jobsPoolService } from './services/jobsPoolService.js';
 import { ensurePerformanceIndexes } from './jobs/ensurePerfIndexes.js';
 
@@ -299,6 +300,7 @@ class Application {
         startActiveJobScrapeScheduler();
         startJobsPoolImportScheduler();
         startPoolRefresherScheduler();
+        startPerCandidateScrapeScheduler();
 
         // One-shot US-only sweep on boot. Stamps `inUS` on every doc
         // and deletes ones whose location is clearly outside the US.
