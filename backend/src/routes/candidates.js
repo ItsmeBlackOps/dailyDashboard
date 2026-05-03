@@ -52,6 +52,8 @@ router.get('/distinct-clients', (req, res) => candidateController.getDistinctCli
 router.post('/end-clients', (req, res) => candidateController.addEndClient(req, res));
 router.post('/:id/derive-profile', (req, res) => candidateController.deriveProfile(req, res));
 router.get('/:id/forge-profile',  (req, res) => candidateController.getForgeProfile(req, res));
+router.get('/:id/status-history', (req, res) => candidateController.getStatusHistory(req, res));
+router.post('/:id/status',        (req, res) => candidateController.updateStatus(req, res));
 router.get('/:id',            (req, res) => candidateController.getCandidateById(req, res));
 
 export default router;

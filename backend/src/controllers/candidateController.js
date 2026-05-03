@@ -1,6 +1,7 @@
 import { storageService } from '../services/storageService.js';
 import { resumeProfileService } from '../services/resumeProfileService.js';
 import { candidateService } from '../services/candidateService.js';
+import { candidateStatusService } from '../services/candidateStatusService.js';
 import { candidateModel } from '../models/Candidate.js';
 import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
@@ -1063,6 +1064,64 @@ class CandidateController {
     } catch (error) {
       logger.error('getForgeProfile failed', { error: error.message, candidateId: req.params?.id });
       return res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  // ── Status history (read) ─────────────────────────────────────────────────
+
+  async getStatusHistory(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const { id } = req.params;
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, error: 'Invalid candidate ID' });
+      }
+      const result = await candidateStatusService.getStatusHistory(id);
+      return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+      const status = error.statusCode || 500;
+      logger.error('getStatusHistory failed', { error: error.message, candidateId: req.params?.id });
+      return res.status(status).json({ success: false, error: error.message });
+    }
+  }
+
+  // ── Status update (write) — canonical helper ──────────────────────────────
+  // Single point of write for any status change. UI calls here, Intervue
+  // and other automations call here. Direct $set on candidateDetails.status
+  // bypasses the audit trail and will be flagged by the change-stream watcher.
+  async updateStatus(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const { id } = req.params;
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, error: 'Invalid candidate ID' });
+      }
+      const { newStatus, source, reason, sourceRef, changedAt, poDate, expert, placement } = req.body || {};
+      if (!newStatus) {
+        return res.status(400).json({ success: false, error: 'newStatus is required' });
+      }
+      const ctx = {
+        changedBy: user.email,
+        source:    source || 'manual-ui',
+        reason:    reason || null,
+        sourceRef: sourceRef || null,
+        ...(changedAt ? { changedAt: new Date(changedAt) } : {}),
+        ...(poDate    !== undefined ? { poDate: poDate ? new Date(poDate) : null } : {}),
+        ...(expert    !== undefined ? { expert } : {}),
+        ...(placement !== undefined ? { placement } : {}),
+      };
+      const result = await candidateStatusService.setCandidateStatus({
+        candidateId: id,
+        newStatus,
+        ctx,
+      });
+      return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+      const status = error.statusCode || 500;
+      logger.error('updateStatus failed', { error: error.message, candidateId: req.params?.id });
+      return res.status(status).json({ success: false, error: error.message });
     }
   }
 
