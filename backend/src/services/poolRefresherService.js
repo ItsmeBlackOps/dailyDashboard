@@ -195,7 +195,7 @@ class PoolRefresherService {
       remote: true,                     // remote jobs
       excludeATSDuplicate: true,
       seniorityFilter: ['Mid-Senior level', 'Associate', 'Director', 'Entry level'],
-      EmploymentTypeFilter: ['Full-time', 'Contract'],
+      EmploymentTypeFilter: ['FULL_TIME', 'CONTRACTOR'],
       limit: LINKEDIN_LIMIT,
     };
 
