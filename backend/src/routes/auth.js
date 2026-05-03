@@ -19,7 +19,7 @@ router.put('/profile', authController.updateProfile);
 router.post('/logout-all', authController.logoutAll);
 
 // Admin only routes
-router.post('/users', requireHTTPRole(['admin', 'manager']), validateUserCreation, authController.createUser);
-router.get('/stats', requireHTTPRole(['admin', 'manager']), authController.getStats);
+router.post('/users', requireHTTPRole(['admin', 'mm']), validateUserCreation, authController.createUser);
+router.get('/stats', requireHTTPRole(['admin', 'mm']), authController.getStats);
 
 export default router;

@@ -27,7 +27,10 @@ const validationSchemas = {
   },
   role: {
     type: 'string',
-    enum: ['admin', 'lead', 'user', 'AM', 'MM', 'MAM', 'mlead', 'mtl', 'MTL'],
+    // Canonical lowercase enum. 'mtl' / 'manager' / 'expert' removed —
+    // none had users in the database. Validation is case-insensitive
+    // at the userService layer.
+    enum: ['admin', 'mm', 'mam', 'mlead', 'am', 'lead', 'recruiter', 'user'],
     message: 'Must be a valid role'
   },
   date: {

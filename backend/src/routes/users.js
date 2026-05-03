@@ -11,24 +11,27 @@ router.use(authenticateHTTP);
 router.get('/health', userController.healthCheck);
 router.get('/active', userController.getActiveUsers);
 router.get('/team', userController.getTeamMembers);
-router.get('/manageable', requireHTTPRole(['admin', 'manager', 'MM', 'MAM', 'mlead', 'lead', 'AM', 'am']), userController.getManageableUsers);
+router.get('/manageable', requireHTTPRole(['admin', 'mm', 'mam', 'mlead', 'lead', 'am']), userController.getManageableUsers);
 router.get('/search', userController.searchUsers);
 
-router.post('/bulk', requireHTTPRole(['admin', 'manager', 'MM', 'MAM', 'mlead', 'lead', 'AM', 'am']), userController.bulkCreateUsers);
-router.put('/bulk', requireHTTPRole(['admin', 'manager', 'MM', 'MAM', 'mlead', 'lead', 'AM', 'am']), userController.bulkUpdateUsers);
+router.post('/bulk', requireHTTPRole(['admin', 'mm', 'mam', 'mlead', 'lead', 'am']), userController.bulkCreateUsers);
+router.put('/bulk', requireHTTPRole(['admin', 'mm', 'mam', 'mlead', 'lead', 'am']), userController.bulkUpdateUsers);
 
 // User profile routes
 router.get('/profile/:email', userController.getUserProfile);
+router.get('/profile/:email/history', userController.getUserChangeHistory);
 router.put('/profile/:email', userController.updateUserProfile);
 router.put('/profile/:email/password', userController.updateUserPassword);
 
-// Admin/Manager only routes
-router.get('/', requireHTTPRole(['admin', 'manager']), userController.getAllUsers);
-router.get('/role/:role', requireHTTPRole(['admin', 'manager', 'lead', 'AM', 'am']), userController.getUsersByRole);
-router.get('/stats', requireHTTPRole(['admin', 'manager']), userController.getUserStats);
+// Admin / branch-manager only routes
+router.get('/', requireHTTPRole(['admin', 'mm']), userController.getAllUsers);
+router.get('/role/:role', requireHTTPRole(['admin', 'mm', 'lead', 'am']), userController.getUsersByRole);
+router.get('/stats', requireHTTPRole(['admin', 'mm']), userController.getUserStats);
 
-router.put('/:email/role', requireHTTPRole(['admin', 'manager']), userController.updateUserRole);
-router.put('/:email/team-lead', requireHTTPRole(['admin', 'manager']), userController.updateUserTeamLead);
+// Role / team-lead mutation now allows mm/mam/am (C14) — scope enforcement
+// happens inside the service via canManageTargetRole.
+router.put('/:email/role', requireHTTPRole(['admin', 'mm', 'mam', 'am']), userController.updateUserRole);
+router.put('/:email/team-lead', requireHTTPRole(['admin', 'mm', 'mam', 'am']), userController.updateUserTeamLead);
 router.delete('/:email', requireHTTPRole(['admin']), userController.deleteUser);
 
 export default router;

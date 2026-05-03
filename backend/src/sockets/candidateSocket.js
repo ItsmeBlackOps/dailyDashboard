@@ -579,7 +579,8 @@ class CandidateSocketHandler {
     const user = socket.data.user;
     if (!user) return callback({ success: false, error: 'Auth required' });
 
-    if (!['admin', 'manager', 'lead', 'am'].includes(user.role)) {
+    const role = (user.role || '').toLowerCase();
+    if (!['admin', 'mm', 'lead', 'am'].includes(role)) {
       return callback({ success: false, error: 'Unauthorized' });
     }
 

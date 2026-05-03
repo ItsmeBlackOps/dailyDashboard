@@ -826,7 +826,7 @@ class CandidateService {
     }
 
     const normalizedRole = user.role.trim().toLowerCase();
-    if (!['admin', 'manager'].includes(normalizedRole)) {
+    if (!['admin', 'mm'].includes(normalizedRole)) {
       const error = new Error('Access denied');
       error.statusCode = 403;
       throw error;
@@ -863,7 +863,7 @@ class CandidateService {
     }
 
     const normalizedRole = user.role.trim().toLowerCase();
-    if (!['admin', 'manager'].includes(normalizedRole)) {
+    if (!['admin', 'mm'].includes(normalizedRole)) {
       const error = new Error('Access denied');
       error.statusCode = 403;
       throw error;
@@ -887,7 +887,7 @@ class CandidateService {
       ? RESUME_UNDERSTANDING_STATUS.done
       : RESUME_UNDERSTANDING_STATUS.pending;
 
-    if (normalizedRole === 'admin' || normalizedRole === 'manager') {
+    if (normalizedRole === 'admin' || normalizedRole === 'mm') {
       const candidates = await candidateModel.getCandidatesByWorkflowStatus(
         normalizedStatus === RESUME_UNDERSTANDING_STATUS.done
           ? WORKFLOW_STATUS.completed
@@ -1015,7 +1015,7 @@ class CandidateService {
       ? RESUME_UNDERSTANDING_STATUS.done
       : RESUME_UNDERSTANDING_STATUS.pending;
 
-    if (normalizedRole === 'admin' || normalizedRole === 'manager') {
+    if (normalizedRole === 'admin' || normalizedRole === 'mm') {
       const workflowStatus = normalizedStatus === RESUME_UNDERSTANDING_STATUS.done
         ? WORKFLOW_STATUS.completed
         : WORKFLOW_STATUS.needsResumeUnderstanding;
@@ -1302,7 +1302,7 @@ class CandidateService {
 
     // Validate RBAC for status updates
     if (updates.status !== undefined) {
-      if (!['recruiter', 'mlead', 'mam', 'mm', 'admin', 'manager'].includes(normalizedRole)) {
+      if (!['recruiter', 'mlead', 'mam', 'mm', 'admin'].includes(normalizedRole)) {
         const error = new Error('Access denied. Only recruitment roles can update candidate status.');
         error.statusCode = 403;
         throw error;
@@ -1382,7 +1382,7 @@ class CandidateService {
     const normalizedRole = user.role.trim().toLowerCase();
 
     // Recruitment creation flow: allow admin, manager, MM, and MAM.
-    if (!['admin', 'manager', 'mm', 'mam'].includes(normalizedRole)) {
+    if (!['admin', 'mm', 'mam'].includes(normalizedRole)) {
       const error = new Error('Access denied. Only MM, MAM, managers, or admins can create candidates.');
       error.statusCode = 403;
       throw error;
@@ -1465,7 +1465,7 @@ class CandidateService {
     }
 
     const normalizedRole = user.role.trim().toLowerCase();
-    if (!['admin', 'manager'].includes(normalizedRole)) {
+    if (!['admin', 'mm'].includes(normalizedRole)) {
       const error = new Error('Access denied');
       error.statusCode = 403;
       throw error;
@@ -1704,20 +1704,8 @@ class CandidateService {
       return result;
     }
 
-    if (normalizedRole === 'manager') {
-      return {
-        scope: {
-          type: 'manager',
-          value: normalizeEmail(user.email)
-        },
-        candidates: [],
-        meta: {
-          count: 0,
-          hasSearch: false
-        },
-        options: this.buildCandidateOptions(user)
-      };
-    }
+    // Legacy 'manager' role removed — branch was dead (0 users had it).
+    // If a special branch-manager scope is needed, route through 'mm'.
 
     const error = new Error('Access denied');
     error.statusCode = 403;
@@ -1908,7 +1896,7 @@ class CandidateService {
     const normalizedRole = user.role.trim().toLowerCase();
 
     // Only Recruiter side or Admins/Managers can create complaints
-    const canCreateComplaint = ['recruiter', 'mlead', 'mam', 'mm', 'admin', 'manager'].includes(normalizedRole);
+    const canCreateComplaint = ['recruiter', 'mlead', 'mam', 'mm', 'admin'].includes(normalizedRole);
 
     if (type === 'complaint' && !canCreateComplaint) {
       // Ideally throw error, or force type to internal. Let's force to internal for safety? 

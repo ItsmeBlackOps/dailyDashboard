@@ -55,57 +55,23 @@ function normalizeRole(role: string) {
   return role.trim().toLowerCase();
 }
 
+// Canonical lowercase role names — match backend enum exactly. Legacy
+// 'manager' and 'expert' removed (no DB users had them); uppercase
+// MM/MAM/AM normalized to lowercase.
 function canonicalRole(role: string) {
   const normalized = normalizeRole(role);
-  switch (normalized) {
-    case 'mm':
-      return 'MM';
-    case 'mam':
-      return 'MAM';
-    case 'am':
-      return 'AM';
-    case 'mlead':
-      return 'mlead';
-    case 'recruiter':
-      return 'recruiter';
-    case 'admin':
-      return 'admin';
-    case 'manager':
-      return 'manager';
-    case 'lead':
-      return 'lead';
-    case 'user':
-      return 'user';
-    case 'expert':
-      return 'expert';
-    default:
-      return '';
-  }
+  const valid = ['admin', 'mm', 'mam', 'mlead', 'am', 'lead', 'recruiter', 'user'];
+  return valid.includes(normalized) ? normalized : '';
 }
 
 function getCreatableRoles(role: string): string[] {
   const normalized = normalizeRole(role);
-  if (normalized === 'admin') {
-    return ['admin', 'manager', 'MM', 'MAM', 'AM', 'mlead', 'recruiter', 'lead', 'user', 'expert'];
-  }
-  if (normalized === 'manager') {
-    return ['MM', 'MAM', 'AM', 'mlead', 'recruiter', 'lead', 'user', 'expert'];
-  }
-  if (normalized === 'mm') {
-    return ['MAM'];
-  }
-  if (normalized === 'mam') {
-    return ['mlead', 'recruiter'];
-  }
-  if (normalized === 'am') {
-    return ['lead', 'user'];
-  }
-  if (normalized === 'lead') {
-    return ['user'];
-  }
-  if (normalized === 'mlead') {
-    return ['recruiter'];
-  }
+  if (normalized === 'admin')    return ['admin', 'mm', 'mam', 'am', 'mlead', 'lead', 'recruiter', 'user'];
+  if (normalized === 'mm')       return ['mam', 'mlead', 'recruiter'];
+  if (normalized === 'mam')      return ['mlead', 'recruiter'];
+  if (normalized === 'am')       return ['lead', 'user'];
+  if (normalized === 'lead')     return ['user'];
+  if (normalized === 'mlead')    return ['recruiter'];
   return [];
 }
 

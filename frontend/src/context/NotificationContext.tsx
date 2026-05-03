@@ -249,7 +249,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                 // If expert is assigned, use the Expert Story. 
                 // We assume this event fires ON expert assignment.
                 description = `${expertName}, has been assigned to ${candidateName} for resume understanding.`;
-            } else if (['mam', 'mlead', 'manager'].includes(myRole)) {
+            } else if (['mam', 'mlead'].includes(myRole)) {
                 // Manager View
                 description = `${expertName}, has been assigned to ${candidateName} for resume understanding.`;
             } else {
