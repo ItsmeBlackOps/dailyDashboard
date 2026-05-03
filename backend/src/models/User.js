@@ -183,38 +183,91 @@ export class UserModel {
 
   async updateUser(email, updateData) {
     try {
+      // Pull caller-context fields out of the payload so they don't get
+      // persisted as fields on the user doc.
+      const changedBy = updateData._changedBy;
+      const changeSource = updateData._source || 'system';
+      const changeReason = updateData._reason || null;
+      const cleanedUpdate = { ...updateData };
+      delete cleanedUpdate._changedBy;
+      delete cleanedUpdate._source;
+      delete cleanedUpdate._reason;
+
       const update = {
-        ...updateData,
+        ...cleanedUpdate,
         updatedAt: new Date()
       };
 
-      if (updateData.password) {
+      if (cleanedUpdate.password) {
         update.passwordHash = crypto.createHash('sha256')
-          .update(updateData.password)
+          .update(cleanedUpdate.password)
           .digest('hex');
         delete update.password;
       }
 
-      if (updateData.active !== undefined) {
-        update.active = Boolean(updateData.active);
+      if (cleanedUpdate.active !== undefined) {
+        update.active = Boolean(cleanedUpdate.active);
       }
 
       const lowerEmail = email.toLowerCase();
-      const userRecord = await this.findUserDocumentByEmailCaseInsensitive(lowerEmail, { _id: 1 });
-      if (!userRecord?._id) {
+
+      // Read prior values for fields we audit so we can capture `from`
+      // in changeHistory entries. Only the fields we care about — keeps
+      // the read cheap.
+      const AUDITED = ['role', 'teamLead', 'manager', 'active'];
+      const auditedNeeded = AUDITED.filter(f => f in cleanedUpdate);
+      let prior = null;
+      if (auditedNeeded.length > 0) {
+        const projection = { _id: 1 };
+        for (const f of auditedNeeded) projection[f] = 1;
+        prior = await this.findUserDocumentByEmailCaseInsensitive(lowerEmail, projection);
+      } else {
+        prior = await this.findUserDocumentByEmailCaseInsensitive(lowerEmail, { _id: 1 });
+      }
+      if (!prior?._id) {
         const error = new Error('User not found');
         error.statusCode = 404;
         throw error;
       }
 
+      const now = new Date();
+      const historyEntries = [];
+      for (const field of auditedNeeded) {
+        const before = prior[field] ?? null;
+        const after = cleanedUpdate[field] ?? null;
+        // Skip no-ops to keep the history clean.
+        const beforeStr = before == null ? '' : String(before).toLowerCase().trim();
+        const afterStr = after == null ? '' : String(after).toLowerCase().trim();
+        if (beforeStr === afterStr) continue;
+        historyEntries.push({
+          field,
+          from: before,
+          to: after,
+          changedAt: now,
+          changedBy: changedBy || 'system',
+          source: changeSource,
+          reason: changeReason,
+        });
+      }
+
+      const writeOp = { $set: update };
+      if (historyEntries.length > 0) {
+        writeOp.$push = { changeHistory: { $each: historyEntries } };
+      }
+
       const result = await this.collection.updateOne(
-        { _id: userRecord._id },
-        { $set: update }
+        { _id: prior._id },
+        writeOp
       );
 
       await this.refreshCacheForEmail(email);
 
-      logger.info('User updated', { email, modifiedCount: result.modifiedCount });
+      logger.info('User updated', {
+        email,
+        modifiedCount: result.modifiedCount,
+        auditedChanges: historyEntries.length,
+        changedBy,
+      });
       return result;
     } catch (error) {
       logger.error('Failed to update user', { error: error.message, email });
@@ -386,11 +439,14 @@ export class UserModel {
       .join(' ');
   }
 
+  // C18: never expose hash fields from the model layer. Auth flows that
+  // need them must call the auth-specific lookup helpers (which the
+  // login path uses directly against the cache or DB).
   getAllUsers() {
-    return Array.from(this.cache.entries()).map(([email, user]) => ({
-      email,
-      ...user
-    }));
+    return Array.from(this.cache.entries()).map(([email, user]) => {
+      const { passwordHash, adminHash, ...safe } = user;
+      return { email, ...safe };
+    });
   }
 }
 

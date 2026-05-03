@@ -119,11 +119,11 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
   const adminAlertSocketRef = useRef<Socket | null>(null);
   const currentUserEmail = useMemo(() => (localStorage.getItem("email") || "").trim().toLowerCase(), []);
   const showResumeNav = useMemo(
-    () => ["expert", "user", "lead", "am", "recruiter", "manager", "admin", "mlead", "mam", "mm"].includes(normalizedRole),
+    () => ["expert", "user", "lead", "am", "recruiter", "admin", "mlead", "mam", "mm"].includes(normalizedRole),
     [normalizedRole]
   );
   const shouldFilterResumeEvents = useMemo(
-    () => !["lead", "am", "recruiter", "manager", "admin", "mlead", "mam", "mm"].includes(normalizedRole),
+    () => !["lead", "am", "recruiter", "admin", "mlead", "mam", "mm"].includes(normalizedRole),
     [normalizedRole]
   );
 
@@ -421,7 +421,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 isOpen={isOpen}
                 tourId="tasks-link"
               />
-              {['admin', 'mm', 'mam', 'mlead', 'lead', 'user', 'am', 'recruiter', 'manager'].includes(normalizedRole) && (
+              {['admin', 'mm', 'mam', 'mlead', 'lead', 'user', 'am', 'recruiter'].includes(normalizedRole) && (
                 <NavItem
                   icon={Database}
                   label="Branch Candidates"
@@ -510,7 +510,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
         {/* Footer */}
         <div className="border-t border-border p-2 flex-shrink-0">
           <nav className="grid gap-1">
-            {['admin', 'manager', 'mm', 'mam', 'mlead', 'lead', 'am'].includes(normalizedRole) && (
+            {['admin', 'mm', 'mam', 'mlead', 'lead', 'am'].includes(normalizedRole) && (
               <NavItem
                 icon={UserPlus}
                 label="User Management"

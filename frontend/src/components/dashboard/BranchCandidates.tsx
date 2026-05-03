@@ -317,14 +317,16 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [editResumeFile, setEditResumeFile] = useState<File | null>(null);
   const [editResumeError, setEditResumeError] = useState<string>('');
   const normalizedRole = role.trim().toLowerCase();
-  const canView = ["admin", "mm", "mam", "mlead", "lead", "user", "am", "manager", "recruiter"].includes(normalizedRole);
-  const canEdit = ["mm", "mam", "mlead", "recruiter", "lead", "am", "admin", "manager"].includes(normalizedRole);
+  const canView = ["admin", "mm", "mam", "mlead", "lead", "user", "am", "recruiter"].includes(normalizedRole);
+  const canEdit = ["mm", "mam", "mlead", "recruiter", "lead", "am", "admin"].includes(normalizedRole);
   const canEditBasicFields = ["mm", "mam", "mlead", "recruiter", "admin"].includes(normalizedRole);
   const canChangeRecruiterField = ['mm', 'mam', 'mlead', "admin"].includes(normalizedRole);
   const canChangeContactField = ['mm', 'mam', 'mlead', 'recruiter', "admin"].includes(normalizedRole);
   const canChangeExpertField = ['lead', 'am', "admin"].includes(normalizedRole);
-  const isManager = normalizedRole === 'manager';
-  const showCreateButton = isManager || normalizedRole === 'mm' || normalizedRole === 'mam';
+  // Branch-manager-class roles can create candidates. (Legacy 'manager' role removed —
+  // its semantics are now expressed by 'mm' / 'mam' / 'admin'.)
+  const isManager = ['mm', 'mam', 'admin'].includes(normalizedRole);
+  const showCreateButton = isManager;
   const tourEligible = TOUR_ROLES.some((roleKey) => roleKey === normalizedRole);
   const [visibleCount, setVisibleCount] = useState(20);
   const observerTarget = useRef<HTMLDivElement>(null);

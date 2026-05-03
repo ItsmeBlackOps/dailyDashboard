@@ -2,18 +2,24 @@ import { userModel } from '../models/User.js';
 import { refreshTokenModel } from '../models/RefreshToken.js';
 import { logger } from '../utils/logger.js';
 
+// Canonical role enum (lowercase). Drops legacy 'manager' and 'expert' —
+// 'manager' had zero users in DB and was effectively dead permission tier;
+// its capabilities are now expressed as 'mm' (branch manager) where
+// appropriate. 'expert' is kept as a logical TYPE in tag/notification
+// code but is no longer a stored user role. 'AM/MM/MAM' uppercase
+// variants normalized to lowercase to match storage.
 const ROLE_CANONICAL_MAP = new Map([
-  ['admin', 'admin'],
-  ['manager', 'manager'],
-  ['lead', 'lead'],
-  ['user', 'user'],
-  ['am', 'AM'],
-  ['mm', 'MM'],
-  ['mam', 'MAM'],
-  ['mlead', 'mlead'],
+  ['admin',     'admin'],
+  ['lead',      'lead'],
+  ['user',      'user'],
+  ['am',        'am'],
+  ['mm',        'mm'],
+  ['mam',       'mam'],
+  ['mlead',     'mlead'],
   ['recruiter', 'recruiter'],
-  ['expert', 'expert']
 ]);
+
+const VALID_ROLES = new Set(ROLE_CANONICAL_MAP.values());
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -70,7 +76,8 @@ export class UserService {
       }
 
       const allUsers = await Promise.resolve(this.userModel.getAllUsers());
-      const filteredUsers = allUsers.filter(user => user.role === role);
+      const targetRole = (role || '').toLowerCase();
+      const filteredUsers = allUsers.filter(user => (user.role || '').toLowerCase() === targetRole);
 
       const sanitizedUsers = filteredUsers.map(user => ({
         email: user.email,
@@ -168,11 +175,16 @@ export class UserService {
         throw new Error('Target user not found');
       }
 
-      await this.userModel.updateUser(targetEmail, { role: newRole });
+      const normalizedNewRole = (newRole || '').toLowerCase().trim();
+      await this.userModel.updateUser(targetEmail, {
+        role: normalizedNewRole,
+        _changedBy: requestingUserEmail,
+        _source: 'manual-ui',
+      });
 
       logger.info('User role updated', {
         targetEmail,
-        newRole,
+        newRole: normalizedNewRole,
         updatedBy: requestingUserEmail
       });
 
@@ -206,7 +218,11 @@ export class UserService {
 
       const formattedTeamLead = this.formatNameValue(newTeamLead);
 
-      await this.userModel.updateUser(targetEmail, { teamLead: formattedTeamLead });
+      await this.userModel.updateUser(targetEmail, {
+        teamLead: formattedTeamLead,
+        _changedBy: requestingUserEmail,
+        _source: 'manual-ui',
+      });
 
       logger.info('User team lead updated', {
         targetEmail,
@@ -369,28 +385,32 @@ export class UserService {
   }
 
   canManageUsers(role) {
-    return ['admin', 'manager'].includes(role);
+    return ['admin', 'mm'].includes((role || '').toLowerCase());
   }
 
   canViewUsersByRole(requestingRole, targetRole) {
-    if (requestingRole === 'admin') return true;
-    if (requestingRole === 'manager') return true;
-    if (requestingRole === 'am' && ['lead', 'user', 'expert'].includes(targetRole)) return true;
-    if (requestingRole === 'lead' && ['user', 'expert'].includes(targetRole)) return true;
+    const r = (requestingRole || '').toLowerCase();
+    const t = (targetRole || '').toLowerCase();
+    if (r === 'admin') return true;
+    if (r === 'mm') return true;
+    if (r === 'am' && ['lead', 'user'].includes(t)) return true;
+    if (r === 'lead' && ['user'].includes(t)) return true;
     return false;
   }
 
   canViewStats(role) {
-    return ['admin', 'manager', 'lead'].includes(role);
+    return ['admin', 'mm', 'lead'].includes((role || '').toLowerCase());
   }
 
   canSearchUsers(role) {
-    return ['admin', 'manager', 'lead', 'am'].includes(role);
+    return ['admin', 'mm', 'lead', 'am'].includes((role || '').toLowerCase());
   }
 
+  // Case-insensitive — accepts any casing the caller hands in (UI / route
+  // params / legacy data) and validates against the canonical lowercase set.
   isValidRole(role) {
-    const validRoles = ['admin', 'lead', 'user', 'AM', 'MM', 'MAM', 'mlead', 'manager', 'expert', 'recruiter'];
-    return validRoles.includes(role);
+    if (!role) return false;
+    return VALID_ROLES.has(role.toString().toLowerCase().trim());
   }
 
   async getUserProfile(email) {
@@ -415,6 +435,32 @@ export class UserService {
         error: error.message,
         email
       });
+      throw error;
+    }
+  }
+
+  // C17: read change history (role / teamLead / manager / active mutations).
+  async getUserChangeHistory(email) {
+    try {
+      const lc = (email || '').toLowerCase();
+      const doc = await this.userModel.findUserDocumentByEmailCaseInsensitive(lc, {
+        email: 1, changeHistory: 1,
+      });
+      if (!doc) throw new Error('User not found');
+      const entries = (Array.isArray(doc.changeHistory) ? doc.changeHistory : [])
+        .map((e) => ({
+          field:     e.field,
+          from:      e.from ?? null,
+          to:        e.to ?? null,
+          changedAt: e.changedAt instanceof Date ? e.changedAt.toISOString() : e.changedAt,
+          changedBy: e.changedBy || 'system',
+          source:    e.source || null,
+          reason:    e.reason || null,
+        }))
+        .sort((a, b) => new Date(a.changedAt || 0) - new Date(b.changedAt || 0));
+      return { success: true, email: doc.email || lc, history: entries };
+    } catch (error) {
+      logger.error('Failed to get user change history', { error: error.message, email });
       throw error;
     }
   }
@@ -591,15 +637,15 @@ export class UserService {
 
   canInitiateProvisioning(role) {
     const normalized = (role || '').toLowerCase();
-    return ['admin', 'manager', 'mm', 'mam', 'mlead', 'lead', 'am'].includes(normalized);
+    return ['admin', 'mm', 'mam', 'mlead', 'lead', 'am'].includes(normalized);
   }
 
   canCreateRole(requesterRole, targetRole) {
     const requester = (requesterRole || '').toLowerCase();
     const target = (targetRole || '').toLowerCase();
 
-    if (['admin', 'manager'].includes(requester)) return true;
-    if (requester === 'mm') return ['mam'].includes(target);
+    if (requester === 'admin') return true;
+    if (requester === 'mm') return ['mam', 'mlead', 'recruiter'].includes(target);
     if (requester === 'mam') return ['mlead', 'recruiter'].includes(target);
     if (requester === 'mlead') return ['recruiter'].includes(target);
     if (requester === 'am') return ['lead', 'user'].includes(target);
@@ -611,7 +657,7 @@ export class UserService {
     const requester = (requesterRole || '').toLowerCase();
     const target = (targetRole || '').toLowerCase();
 
-    if (['admin', 'manager'].includes(requester)) return true;
+    if (requester === 'admin') return true;
     if (requester === 'mm') return ['mam', 'mlead', 'recruiter'].includes(target);
     if (requester === 'mam') return ['mlead', 'recruiter'].includes(target);
     if (requester === 'mlead') return ['recruiter'].includes(target);

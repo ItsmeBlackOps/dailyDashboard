@@ -56,7 +56,7 @@ export function ResumeDiscussionDrawer({
     const role = useMemo(() => (localStorage.getItem("role") || "").trim().toLowerCase(), []);
     const userEmail = useMemo(() => (localStorage.getItem("email") || "").trim().toLowerCase(), []);
     const canSeeComplaints = useMemo(() => !['expert', 'user'].includes(role), [role]);
-    const canCreateComplaints = useMemo(() => ['recruiter', 'mlead', 'mam', 'mm', 'admin', 'manager'].includes(role), [role]);
+    const canCreateComplaints = useMemo(() => ['recruiter', 'mlead', 'mam', 'mm', 'admin'].includes(role), [role]);
     const canLogActivity = useMemo(() => {
         return role === 'admin' || ((role === 'lead' || role === 'user') && (expertRaw || '').toLowerCase() === userEmail);
     }, [role, expertRaw, userEmail]);

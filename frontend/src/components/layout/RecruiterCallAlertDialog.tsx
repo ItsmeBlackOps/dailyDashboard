@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useNotifications } from '@/context/NotificationContext';
 
-const ALERT_ROLES = ['recruiter', 'mlead', 'mam', 'mm', 'manager', 'admin'];
+const ALERT_ROLES = ['recruiter', 'mlead', 'mam', 'mm', 'admin'];
 
 export function RecruiterCallAlertDialog() {
     const { pendingCallAlerts, respondToCallAlert } = useNotifications();

@@ -3,11 +3,10 @@ import { asyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 import { database } from '../config/database.js';
 
-function nameFromEmail(email) {
-  if (!email) return '';
-  const local = email.split('@')[0];
-  return local.split(/[._]/).filter(Boolean).map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
-}
+// Use the service-level helper as the single source of truth (was a
+// duplicate impl that split on `[._]` only — service version handles
+// `[._\s-]+` which is the right behavior for hyphenated emails).
+const nameFromEmail = (email) => userService.deriveDisplayNameFromEmail(email);
 
 export class UserController {
   constructor() {
@@ -132,12 +131,25 @@ export class UserController {
     res.status(200).json(result);
   });
 
+  getUserChangeHistory = asyncHandler(async (req, res) => {
+    const { email } = req.params;
+    const requestingUser = req.user;
+    const role = (requestingUser?.role || '').toLowerCase();
+    if (email !== requestingUser.email && !['admin', 'mm'].includes(role)) {
+      return res.status(403).json({ success: false, error: 'Insufficient permissions' });
+    }
+    const result = await this.userService.getUserChangeHistory(email);
+    res.status(200).json(result);
+  });
+
   getUserProfile = asyncHandler(async (req, res) => {
     const { email } = req.params;
     const requestingUser = req.user;
 
-    // Users can only view their own profile unless they have admin/manager role
-    if (email !== requestingUser.email && !['admin', 'manager'].includes(requestingUser.role)) {
+    // Users can only view their own profile unless they have admin/mm role.
+    // (C8 — broader hierarchy-aware access deferred to backlog.)
+    const role = (requestingUser.role || '').toLowerCase();
+    if (email !== requestingUser.email && !['admin', 'mm'].includes(role)) {
       return res.status(403).json({
         success: false,
         error: 'Insufficient permissions'
@@ -215,11 +227,12 @@ export class UserController {
     try {
       const db = database.getDatabase();
       const roleParam = (req.query.role || '').toString().trim();
-      // Treat missing `active` as truthy — legacy user docs predate the flag.
-      // Excludes only docs with active === false.
-      const filter = { $or: [{ active: true }, { active: { $exists: false } }] };
+      // Verified: 0 docs have null/missing `active` post-cleanup, so the
+      // legacy defensive `$or` was dead. Strict `active: true` now.
+      const filter = { active: true };
       if (roleParam) {
-        const roles = roleParam.split(',').map(r => r.trim()).filter(Boolean);
+        // Accept comma-separated roles, case-insensitive.
+        const roles = roleParam.split(',').map(r => r.trim().toLowerCase()).filter(Boolean);
         filter.role = { $in: roles };
       }
       const docs = await db.collection('users')

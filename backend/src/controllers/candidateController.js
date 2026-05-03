@@ -74,7 +74,7 @@ class CandidateController {
       }
 
       const normalizedRole = (user.role || '').trim().toLowerCase();
-      if (!['manager', 'admin', 'mm', 'mam', 'mlead', 'recruiter'].includes(normalizedRole)) {
+      if (!['admin', 'mm', 'mam', 'mlead', 'recruiter'].includes(normalizedRole)) {
         return res.status(403).json({
           success: false,
           error: 'Only managers can upload resumes'
@@ -1134,7 +1134,7 @@ class CandidateController {
         return res.status(401).json({ success: false, error: 'Authentication required' });
       }
       const normalizedRole = (user.role || '').trim().toLowerCase();
-      if (!['admin', 'mm', 'mam', 'mlead', 'manager', 'recruiter'].includes(normalizedRole)) {
+      if (!['admin', 'mm', 'mam', 'mlead', 'recruiter'].includes(normalizedRole)) {
         return res.status(403).json({ success: false, error: 'Insufficient permissions' });
       }
 
