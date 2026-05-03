@@ -1327,8 +1327,12 @@ class CandidateService {
       updates.poDate = new Date();
     }
 
-    // Pass caller identity for statusHistory
+    // Pass caller identity + provenance for statusHistory.
+    // Default source 'manual-ui' covers UI-driven updates; callers that
+    // know better (Intervue PO email, fireflies summary, admin-bulk)
+    // override by setting updates._source explicitly before passing here.
     updates._changedBy = user.email;
+    if (updates._source === undefined) updates._source = 'manual-ui';
 
     const updated = await candidateModel.updateCandidateById(candidateId, updates);
 

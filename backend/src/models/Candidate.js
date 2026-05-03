@@ -223,6 +223,15 @@ export class CandidateModel {
     const changedBy = updates._changedBy;
     const now = new Date();
 
+    // Read prior state when status is changing — needed to record `from`
+    // in the rich statusHistory entry. One extra read per status change
+    // is cheap; skipped entirely when status isn't being modified.
+    let priorStatus = null;
+    if (updates.status !== undefined) {
+      const prior = await this.collection.findOne(filter, { projection: { status: 1 } });
+      priorStatus = prior?.status ?? null;
+    }
+
     const updateDoc = {
       $set: {
         ...(updates.name !== undefined ? { 'Candidate Name': updates.name } : {}),
@@ -243,13 +252,22 @@ export class CandidateModel {
     };
 
     if (updates.status !== undefined) {
-      updateDoc.$push = {
-        statusHistory: {
-          status: updates.status,
-          changedAt: now,
-          changedBy: changedBy || 'system'
-        }
+      // Rich statusHistory entry. Old shape kept as flat fields for
+      // backward compat with existing readers (the `status` field is the
+      // new value, identical to `to`). New consumers should read `from`
+      // and `to` for the actual transition, plus `source`/`reason`/`sourceRef`
+      // for provenance.
+      const entry = {
+        status:    updates.status,                 // legacy: the new value
+        from:      priorStatus,
+        to:        updates.status,
+        changedAt: now,
+        changedBy: changedBy || 'system',
+        source:    updates._source    ?? null,    // 'manual-ui' | 'po-email' | 'fireflies-summary' | 'admin-bulk' | 'backfill'
+        reason:    updates._reason    ?? null,
+        sourceRef: updates._sourceRef ?? null,    // { kind, id, ...metadata }
       };
+      updateDoc.$push = { statusHistory: entry };
     }
 
     const result = await this.collection.updateOne(filter, updateDoc);
@@ -689,9 +707,16 @@ export class CandidateModel {
       resumeLink: doc.resumeLink || '',
       poDate: doc.poDate instanceof Date ? doc.poDate.toISOString() : doc.poDate ?? null,
       statusHistory: Array.isArray(doc.statusHistory) ? doc.statusHistory.map(e => ({
+        // Legacy fields (always present for backward compat).
         status: e.status,
         changedAt: e.changedAt instanceof Date ? e.changedAt.toISOString() : e.changedAt,
-        changedBy: e.changedBy || 'system'
+        changedBy: e.changedBy || 'system',
+        // Rich fields (new entries only; older entries return null).
+        from:      e.from      ?? null,
+        to:        e.to        ?? e.status ?? null,
+        source:    e.source    ?? null,
+        reason:    e.reason    ?? null,
+        sourceRef: e.sourceRef ?? null,
       })) : []
     };
   }
