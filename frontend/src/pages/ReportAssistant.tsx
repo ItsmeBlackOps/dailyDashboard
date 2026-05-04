@@ -14,7 +14,8 @@ import { useAuth, SOCKET_URL } from '@/hooks/useAuth';
 import { Send, Download, Paperclip, Smile } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const ALLOWED_ROLES = new Set(['admin', 'MM', 'MAM', 'mtl', 'MTL']);
+// C20 — lowercase canonical + new names. `mtl` was a stale legacy abbreviation.
+const ALLOWED_ROLES = new Set(['admin', 'mm', 'mam', 'manager', 'assistantmanager']);
 const PREVIEW_LIMIT = 50;
 
 interface AssistantMessage {
@@ -49,7 +50,8 @@ interface ReportDownloadResponse {
 }
 
 const ReportAssistant = () => {
-  const role = useMemo(() => localStorage.getItem('role') || '', []);
+  // C20 — normalize on read so the lowercase Set lookup works.
+  const role = useMemo(() => (localStorage.getItem('role') || '').trim().toLowerCase(), []);
   const canUseAssistant = ALLOWED_ROLES.has(role);
   const { refreshAccessToken } = useAuth();
   const { toast } = useToast();

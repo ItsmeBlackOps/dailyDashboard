@@ -7,7 +7,8 @@ import { KpiOverview } from '@/components/dashboard/KpiOverview';
 import { DashboardFilters, type DashboardFilterState } from '@/components/dashboard/DashboardFilters';
 import { computeDayRange } from '@/utils/dateRanges';
 
-const CAN_USE_RECEIVED_DATE = ['admin', 'MM', 'MAM', 'mlead'];
+// C20 — lowercase canonical + accept new names. localStorage stores lowercase.
+const CAN_USE_RECEIVED_DATE = ['admin', 'mm', 'mam', 'mlead', 'manager', 'assistantmanager', 'teamlead'];
 
 const getStoredTab = () => {
   if (typeof window === 'undefined') return undefined;
@@ -16,7 +17,8 @@ const getStoredTab = () => {
 
 const getStoredRole = () => {
   if (typeof window === 'undefined') return '';
-  return localStorage.getItem('role') ?? '';
+  // C20 — normalize on read so case-sensitive comparators work.
+  return (localStorage.getItem('role') ?? '').trim().toLowerCase();
 };
 
 const resolveInitialDateField = (role: string) => {
