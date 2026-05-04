@@ -15,7 +15,12 @@ class CandidateController {
   // Returns a MongoDB filter object scoping candidateDetails by the requesting user.
   // Uses string-based $regex + $options (same pattern as candidateModel) for driver compatibility.
   async _scopeFilter(user) {
-    if (!user) return {};
+    // Default-deny: if anything goes wrong, return a no-match filter
+    // instead of {} (which would expose ALL candidates). C20 — accept
+    // both legacy and new role names so this works whether or not the
+    // auth-middleware shim has been applied.
+    const NO_MATCH = { _id: null };
+    if (!user) return NO_MATCH;
     const role = (user.role || '').trim().toLowerCase();
     const email = (user.email || '').toLowerCase();
     const esc = (e) => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -27,9 +32,16 @@ class CandidateController {
 
     if (role === 'user' || role === 'expert') return { Expert: exactRe(email) };
 
-    if (['lead', 'mlead', 'am', 'mam'].includes(role)) {
+    // C20 — include new names alongside legacy in this branch.
+    if (['lead', 'mlead', 'am', 'mam', 'teamlead', 'assistantmanager'].includes(role)) {
       let teamEmails = [];
-      if (role === 'mam') {
+      // The "marketing AM" path keys off manager-name lookup. After
+      // migration, both legacy `mam` and new `assistantManager` users
+      // with team='marketing' belong here. Technical assistantManagers
+      // (was `am`) take the team-emails path below.
+      const isMarketingAM = role === 'mam'
+        || (role === 'assistantmanager' && (user.team || '').toLowerCase() === 'marketing');
+      if (isMarketingAM) {
         const mamName = userModel.formatDisplayNameFromEmail(email);
         const userCol = database.getCollection('users');
         if (userCol) {
@@ -49,7 +61,7 @@ class CandidateController {
       };
     }
 
-    if (role === 'mm') {
+    if (role === 'mm' || role === 'manager') {
       const profile = await userModel.getUserProfileMetadata(email);
       let branch = profile?.metadata?.branch;
       if (email.includes('tushar.ahuja')) branch = 'GGR';
@@ -59,7 +71,12 @@ class CandidateController {
       return { Recruiter: exactRe(email) };
     }
 
-    return {};
+    // Unknown role — never expose all candidates. Logged so we can
+    // catch any role that slipped through the dual-accept window.
+    logger.warn('candidate _scopeFilter: unknown role, returning no-match', {
+      email, role
+    });
+    return NO_MATCH;
   }
 
   async uploadResume(req, res) {
@@ -74,7 +91,9 @@ class CandidateController {
       }
 
       const normalizedRole = (user.role || '').trim().toLowerCase();
-      if (!['admin', 'mm', 'mam', 'mlead', 'recruiter'].includes(normalizedRole)) {
+      // C20 — accept both legacy and new role names.
+      const allowedUploaders = ['admin', 'mm', 'mam', 'mlead', 'recruiter', 'manager', 'assistantmanager', 'teamlead'];
+      if (!allowedUploaders.includes(normalizedRole)) {
         return res.status(403).json({
           success: false,
           error: 'Only managers can upload resumes'

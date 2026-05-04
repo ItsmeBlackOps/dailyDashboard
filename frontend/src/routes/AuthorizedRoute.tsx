@@ -3,9 +3,9 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { MicrosoftConsentProvider } from '@/contexts/MicrosoftConsentContext';
 
-const PROFILE_HUB_ROLES = ['admin', 'mam', 'mm', 'mlead', 'recruiter'];
+const PROFILE_HUB_ROLES = ['admin', 'mam', 'mm', 'mlead', 'recruiter', 'manager', 'assistantmanager', 'teamlead'];
 // Jobs page — must match Sidebar visibility rules. Marketing team + recruiters.
-const JOBS_ROLES = ['admin', 'mm', 'mam', 'mlead', 'recruiter'];
+const JOBS_ROLES = ['admin', 'mm', 'mam', 'mlead', 'recruiter', 'manager', 'assistantmanager', 'teamlead'];
 
 const isAuthed = () => Boolean(localStorage.getItem('accessToken'));
 const isAdmin = () => (localStorage.getItem('role') || '').trim().toLowerCase() === 'admin';
