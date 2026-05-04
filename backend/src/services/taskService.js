@@ -279,25 +279,30 @@ export class TaskService {
         .getTeamEmails(userEmail, userRole, teamLead)
         .map((email) => email.toLowerCase());
 
-      const summary = await this.taskModel.getDashboardSummary(
-        userEmail,
-        userRole,
-        manager,
-        teamEmails,
-        startIso,
-        endIso,
-        effectiveDateField
-      );
-
-      const kpiTasks = await this.taskModel.getTasksForKpi(
-        userEmail,
-        userRole,
-        manager,
-        teamEmails,
-        startIso,
-        endIso,
-        effectiveDateField
-      );
+      // PERF — fire both Mongo round-trips in parallel. They share the
+      // same role/date match but project different fields, so neither
+      // depends on the other. Halves wall-clock for whichever scan is
+      // slower (typically the aggregation pipeline).
+      const [summary, kpiTasks] = await Promise.all([
+        this.taskModel.getDashboardSummary(
+          userEmail,
+          userRole,
+          manager,
+          teamEmails,
+          startIso,
+          endIso,
+          effectiveDateField
+        ),
+        this.taskModel.getTasksForKpi(
+          userEmail,
+          userRole,
+          manager,
+          teamEmails,
+          startIso,
+          endIso,
+          effectiveDateField
+        ),
+      ]);
 
       const kpi = this.buildKpiMetrics(kpiTasks, userRole);
       const leaders = this.buildTopPerformers(kpiTasks, userRole);
