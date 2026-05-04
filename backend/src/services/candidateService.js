@@ -226,11 +226,16 @@ class CandidateService {
     };
   }
 
-  collectHierarchyEmails(user) {
+  // C19 phase 2b — async + delegation-aware. Same pattern as
+  // userService.isUserInRequesterHierarchy: walk the requester's own
+  // subtree, then union in any active delegations TO the requester.
+  // `subtree` shares expand to a BFS rooted at the share's
+  // subtreeRootEmail; `specific` shares contribute their subjectEmails.
+  async collectHierarchyEmails(user) {
     const allUsers = userModel.getAllUsers();
 
-    const leaderDisplayName = normalizeName(deriveDisplayNameFromEmail(user.email));
-
+    // Pre-build leadDisplayName → [reports] map; reused for the
+    // requester's BFS and any subtree-scoped delegations.
     const leadToUsers = new Map();
     for (const candidate of allUsers) {
       if (!candidate.teamLead) continue;
@@ -241,33 +246,70 @@ class CandidateService {
       leadToUsers.get(leadName).push(candidate);
     }
 
-    const visitedLeads = new Set();
-    const queue = [leaderDisplayName];
     const allSubordinateEmails = new Set();
     const recruiterEmails = new Set();
 
-    while (queue.length > 0) {
-      const currentLead = queue.shift();
-      if (!currentLead || visitedLeads.has(currentLead)) {
-        continue;
-      }
-      visitedLeads.add(currentLead);
-
-      const directReports = leadToUsers.get(currentLead) || [];
-      for (const report of directReports) {
-        const reportEmail = normalizeEmail(report.email);
-        allSubordinateEmails.add(reportEmail);
-
-        const reportRole = (report.role || '').toLowerCase();
-        if (reportRole === 'recruiter') {
-          recruiterEmails.add(reportEmail);
+    // BFS helper — walks teamLead chain rooted at a display name,
+    // adding emails to the running sets. Visited set is local so each
+    // root is independently traversed (admins-of-admins etc.).
+    const walkSubtree = (rootDisplayName) => {
+      if (!rootDisplayName) return;
+      const visitedLeads = new Set();
+      const queue = [rootDisplayName];
+      while (queue.length > 0) {
+        const currentLead = queue.shift();
+        if (!currentLead || visitedLeads.has(currentLead)) continue;
+        visitedLeads.add(currentLead);
+        const directReports = leadToUsers.get(currentLead) || [];
+        for (const report of directReports) {
+          const reportEmail = normalizeEmail(report.email);
+          if (reportEmail) allSubordinateEmails.add(reportEmail);
+          const reportRole = (report.role || '').toLowerCase();
+          if (reportRole === 'recruiter') recruiterEmails.add(reportEmail);
+          const reportDisplayName = normalizeName(deriveDisplayNameFromEmail(report.email));
+          if (reportDisplayName && !visitedLeads.has(reportDisplayName)) {
+            queue.push(reportDisplayName);
+          }
         }
+      }
+    };
 
-        const reportDisplayName = normalizeName(deriveDisplayNameFromEmail(report.email));
-        if (!visitedLeads.has(reportDisplayName)) {
-          queue.push(reportDisplayName);
+    // 1. Requester's own subtree.
+    walkSubtree(normalizeName(deriveDisplayNameFromEmail(user.email)));
+
+    // 2. Active delegations TO the requester. Lazy import for
+    //    consistency with the userService BFS — avoids any chance of
+    //    a load-order cycle. Failure here doesn't break the requester's
+    //    own scope; logged so an outage is visible.
+    try {
+      const { delegationService } = await import('./delegationService.js');
+      const delegations = await delegationService.listActiveForUser(user.email);
+      for (const d of delegations) {
+        if (d.scope === 'specific') {
+          for (const email of (d.subjectEmails || [])) {
+            const normalized = normalizeEmail(email);
+            if (!normalized) continue;
+            allSubordinateEmails.add(normalized);
+            // Look up the actual role to decide if it's a recruiter
+            const subject = allUsers.find((u) => normalizeEmail(u.email) === normalized);
+            if (subject && (subject.role || '').toLowerCase() === 'recruiter') {
+              recruiterEmails.add(normalized);
+            }
+          }
+        } else if (d.scope === 'subtree') {
+          const root = (d.subtreeRootEmail || '').toLowerCase();
+          if (!root) continue;
+          // Include the root itself (a subtree share grants access to
+          // everyone in the tree, including the root user).
+          allSubordinateEmails.add(root);
+          const rootDisplay = normalizeName(deriveDisplayNameFromEmail(root));
+          walkSubtree(rootDisplay);
         }
       }
+    } catch (err) {
+      logger.warn('candidateService.collectHierarchyEmails: delegation union failed', {
+        error: err.message, requester: user.email,
+      });
     }
 
     return {
@@ -922,7 +964,7 @@ class CandidateService {
       }
 
       if (normalizedRole === ROLE_MAM || normalizedRole === ROLE_MLEAD) {
-        const hierarchy = this.collectHierarchyEmails(user);
+        const hierarchy = await this.collectHierarchyEmails(user);
         const normalizedEmail = normalizeEmail(user.email);
         let recruiterEmails = new Set();
 
@@ -1587,7 +1629,7 @@ class CandidateService {
     }
 
     if (normalizedRole === ROLE_MAM || normalizedRole === ROLE_MLEAD) {
-      const hierarchy = this.collectHierarchyEmails(user);
+      const hierarchy = await this.collectHierarchyEmails(user);
       const normalizedEmail = normalizeEmail(user.email);
 
       if (normalizedRole === ROLE_MAM) {
