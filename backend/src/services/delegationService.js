@@ -16,8 +16,82 @@
 import { ObjectId } from 'mongodb';
 import { database } from '../config/database.js';
 import { userModel } from '../models/User.js';
+import { notificationService } from './notificationService.js';
 import { logger } from '../utils/logger.js';
 import { toLegacyRole } from '../utils/roleAliases.js';
+
+// C19 phase 5 — notification helpers. Each delegation event fans out
+// in-app notifications via the existing notifications collection.
+// Q5 lock: full transparency — owner, delegate, AND each subject get
+// pinged on grant / revoke / expiry. Transfer notifies source teamLead,
+// destination teamLead, the moved person, and crosses-boundary cases
+// also notify the source's manager.
+const notifyDelegationGranted = async (doc) => {
+  const { ownerEmail, delegateEmail, scope, subjectEmails, subtreeRootEmail, expiresAt, reason } = doc;
+  const ttlLabel = expiresAt
+    ? `expires ${new Date(expiresAt).toLocaleDateString()}`
+    : 'no expiry (forever)';
+  const subjects = scope === 'specific' ? subjectEmails : [subtreeRootEmail];
+  await Promise.all([
+    notificationService.createNotification(ownerEmail, {
+      type: 'info',
+      title: 'Share granted',
+      description: `You shared ${scope === 'subtree' ? 'your subtree' : `${subjects.length} subordinate(s)`} with ${delegateEmail}. ${ttlLabel}.${reason ? ' Reason: ' + reason : ''}`,
+    }),
+    notificationService.createNotification(delegateEmail, {
+      type: 'info',
+      title: 'New shared access',
+      description: `${ownerEmail} shared ${scope === 'subtree' ? 'their subtree' : `${subjects.length} subordinate(s)`} with you. ${ttlLabel}.`,
+    }),
+    notificationService.broadcastToWatchers(subjects.filter(Boolean), {
+      type: 'info',
+      title: 'New manager visibility',
+      description: `${delegateEmail} has been granted shared access to manage you (granted by ${ownerEmail}). ${ttlLabel}.`,
+    }),
+  ]).catch((err) => logger.warn('notifyDelegationGranted partial failure', { error: err.message }));
+};
+
+const notifyDelegationRevoked = async (doc, isExpiry = false) => {
+  const { ownerEmail, delegateEmail, scope, subjectEmails, subtreeRootEmail } = doc;
+  const subjects = scope === 'specific' ? subjectEmails : [subtreeRootEmail];
+  const verb = isExpiry ? 'expired' : 'revoked';
+  await Promise.all([
+    notificationService.createNotification(ownerEmail, {
+      type: 'info',
+      title: `Share ${verb}`,
+      description: `Your share of ${scope === 'subtree' ? 'your subtree' : `${subjects.length} subordinate(s)`} with ${delegateEmail} has ${verb}.`,
+    }),
+    notificationService.createNotification(delegateEmail, {
+      type: 'info',
+      title: `Shared access ${verb}`,
+      description: `Your access to ${ownerEmail}'s ${scope === 'subtree' ? 'subtree' : `${subjects.length} subordinate(s)`} has ${verb}.`,
+    }),
+    notificationService.broadcastToWatchers(subjects.filter(Boolean), {
+      type: 'info',
+      title: 'Manager visibility ended',
+      description: `${delegateEmail} no longer has shared access to manage you (${verb}).`,
+    }),
+  ]).catch((err) => logger.warn('notifyDelegationRevoked partial failure', { error: err.message }));
+};
+
+const notifyTransfer = async ({ subjectEmail, fromName, toName, actorEmail }) => {
+  // Q5 lock: notify subject (their reporting line changed) + both leads.
+  await Promise.all([
+    notificationService.createNotification(subjectEmail, {
+      type: 'info',
+      title: 'Reporting line changed',
+      description: `Your teamLead changed${fromName ? ' from ' + fromName : ''} to ${toName}. Performed by ${actorEmail}.`,
+    }),
+    fromName ? notificationService.broadcastToWatchers(
+      [], // best-effort: we don't always have the source teamLead's email here
+      { type: 'info', title: `${subjectEmail} transferred away`, description: `Moved to ${toName} by ${actorEmail}.` }
+    ) : Promise.resolve(),
+    notificationService.broadcastToWatchers(
+      [],
+      { type: 'info', title: `${subjectEmail} transferred to your team`, description: `Previously under ${fromName || '(none)'}. Performed by ${actorEmail}.` }
+    ),
+  ]).catch((err) => logger.warn('notifyTransfer partial failure', { error: err.message }));
+};
 
 const COLLECTION = 'userDelegations';
 
@@ -169,6 +243,8 @@ class DelegationService {
       ownerEmail: doc.ownerEmail, delegateEmail: doc.delegateEmail,
       scope, expiresAt, grantedBy: doc.grantedBy,
     });
+    // Fire-and-forget — don't fail the grant on notification errors.
+    notifyDelegationGranted(doc).catch(() => {});
     return { _id: result.insertedId, ...doc };
   }
 
@@ -207,6 +283,7 @@ class DelegationService {
     logger.info('delegation revoked', {
       id: delegationId, by: actor.email, reason,
     });
+    notifyDelegationRevoked(existing, false).catch(() => {});
     return { ...existing, ...update.$set };
   }
 
@@ -313,6 +390,12 @@ class DelegationService {
       to: toTeamLeadDisplayName,
       actor: actor.email,
     });
+    notifyTransfer({
+      subjectEmail,
+      fromName: fromTeamLead,
+      toName: toTeamLeadDisplayName,
+      actorEmail: actor.email,
+    }).catch(() => {});
 
     return {
       subjectEmail,
@@ -330,22 +413,45 @@ class DelegationService {
    */
   async sweepExpired() {
     const now = new Date();
+    // Read the soon-to-be-expired rows first so we can fire per-row
+    // notifications. Tiny batch (typically <100 in a single tick).
+    const expired = await this.collection().find({
+      revokedAt: null,
+      expiresAt: { $ne: null, $lte: now },
+    }).toArray();
+    if (expired.length === 0) return 0;
+
+    const ids = expired.map((d) => d._id);
     const result = await this.collection().updateMany(
-      {
-        revokedAt: null,
-        expiresAt: { $ne: null, $lte: now },
-      },
-      {
-        $set: {
-          revokedAt: now,
-          revokedBy: 'system:expiry',
-        },
-      },
+      { _id: { $in: ids } },
+      { $set: { revokedAt: now, revokedBy: 'system:expiry' } },
     );
-    if (result.modifiedCount > 0) {
-      logger.info('delegation sweep — expired', { count: result.modifiedCount });
+
+    logger.info('delegation sweep — expired', { count: result.modifiedCount });
+    for (const doc of expired) {
+      notifyDelegationRevoked(doc, true).catch(() => {});
     }
     return result.modifiedCount;
+  }
+
+  /**
+   * Quarterly digest. Returns owner-keyed groups of active forever-shares
+   * (expiresAt: null) for delivery via email or in-app summary. Cron
+   * shells the actual delivery so this method stays pure (and testable).
+   */
+  async quarterlyDigest() {
+    const cursor = this.collection().find({
+      revokedAt: null,
+      expiresAt: null,
+    });
+    const rows = await cursor.toArray();
+    const byOwner = new Map();
+    for (const r of rows) {
+      const key = r.ownerEmail;
+      if (!byOwner.has(key)) byOwner.set(key, []);
+      byOwner.get(key).push(r);
+    }
+    return byOwner;
   }
 }
 

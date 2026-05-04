@@ -49,6 +49,7 @@ import { startActiveJobScrapeScheduler } from './jobs/activeJobScrapeScheduler.j
 import { startJobsPoolImportScheduler } from './jobs/jobsPoolImportScheduler.js';
 import { startPoolRefresherScheduler } from './jobs/poolRefresherScheduler.js';
 import { startPerCandidateScrapeScheduler } from './jobs/perCandidateScrapeScheduler.js';
+import { startDelegationSweepScheduler } from './jobs/delegationSweepScheduler.js';
 import { jobsPoolService } from './services/jobsPoolService.js';
 import { ensurePerformanceIndexes } from './jobs/ensurePerfIndexes.js';
 
@@ -311,6 +312,7 @@ class Application {
         startJobsPoolImportScheduler();
         startPoolRefresherScheduler();
         startPerCandidateScrapeScheduler();
+        startDelegationSweepScheduler();
 
         // One-shot US-only sweep on boot. Stamps `inUS` on every doc
         // and deletes ones whose location is clearly outside the US.
