@@ -325,7 +325,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const canChangeExpertField = ['lead', 'am', "admin"].includes(normalizedRole);
   // Branch-manager-class roles can create candidates. (Legacy 'manager' role removed —
   // its semantics are now expressed by 'mm' / 'mam' / 'admin'.)
-  const isManager = ['mm', 'mam', 'admin'].includes(normalizedRole);
+  // C20 — accept legacy + new role names side-by-side during dual-read.
+  const isManager = ['mm', 'mam', 'admin', 'manager', 'assistantmanager'].includes(normalizedRole);
   const showCreateButton = isManager;
   const tourEligible = TOUR_ROLES.some((roleKey) => roleKey === normalizedRole);
   const [visibleCount, setVisibleCount] = useState(20);
@@ -3501,11 +3502,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder={isManager
-                ? 'Managers can submit candidates using the button above'
-                : 'Search by candidate, technology, recruiter or expert'}
+              placeholder='Search by candidate, technology, recruiter or expert'
               className="sm:max-w-sm"
-              disabled={isManager}
             />
             {renderScopeBadge()}
           </div>

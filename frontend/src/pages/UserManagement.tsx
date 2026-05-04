@@ -251,6 +251,10 @@ const UserManagementPage = () => {
     manageableUsers.forEach((user) => {
       const roleKey = (user.role || '').toLowerCase();
       const display = deriveDisplayNameFromEmail(user.email);
+      // C20 — accept legacy + new role names. New names map to legacy
+      // buckets so existing dropdown logic keeps working during dual-read.
+      // teamLead and assistantManager populate both their team buckets
+      // (mam/am, mlead/lead) since the team field isn't enforced yet.
       switch (roleKey) {
         case 'manager':
           addName(rosterSets.manager, display);
@@ -269,6 +273,17 @@ const UserManagementPage = () => {
           break;
         case 'am':
           addName(rosterSets.am, display);
+          break;
+        case 'assistantmanager':
+          addName(rosterSets.mam, display);
+          addName(rosterSets.am, display);
+          break;
+        case 'teamlead':
+          addName(rosterSets.mlead, display);
+          addName(rosterSets.lead, display);
+          break;
+        case 'expert':
+          // experts aren't a teamLead bucket — skip
           break;
         default:
           break;
@@ -294,6 +309,15 @@ const UserManagementPage = () => {
         break;
       case 'am':
         addName(rosterSets.am, normalizedSelfDisplay);
+        break;
+      // C20 — new role names (dual-read).
+      case 'assistantmanager':
+        addName(rosterSets.mam, normalizedSelfDisplay);
+        addName(rosterSets.am, normalizedSelfDisplay);
+        break;
+      case 'teamlead':
+        addName(rosterSets.mlead, normalizedSelfDisplay);
+        addName(rosterSets.lead, normalizedSelfDisplay);
         break;
       default:
         break;
@@ -327,24 +351,38 @@ const UserManagementPage = () => {
       const derivedDefault = formatNameInput(emailForDefault ? deriveDisplayNameFromEmail(emailForDefault) : '');
       let base: string[] = [];
 
+      // C9/C20 rule — a subordinate's teamLead may be at any layer above
+      // them in the same team. Both legacy and new role names are accepted.
+      // Marketing chain (legacy mm/mam/mlead/recruiter ≡ new manager/assistantManager/teamLead/recruiter).
+      // Technical chain (legacy mm/am/lead/user ≡ new manager/assistantManager/teamLead/expert).
+      const allManagers = [...roleRosters.mm, ...roleRosters.manager];
       switch (normalizedTarget) {
         case 'user':
-          base = roleRosters.lead;
+        case 'expert':
+          base = [...roleRosters.lead, ...roleRosters.am, ...allManagers];
           break;
         case 'lead':
-          base = roleRosters.am;
+          base = [...roleRosters.am, ...allManagers];
           break;
         case 'am':
-          base = [];
+          base = allManagers;
           break;
         case 'recruiter':
-          base = [...roleRosters.mlead, ...roleRosters.mam];
+          base = [...roleRosters.mlead, ...roleRosters.mam, ...allManagers];
           break;
         case 'mlead':
-          base = roleRosters.mam;
+          base = [...roleRosters.mam, ...allManagers];
           break;
         case 'mam':
-          base = [];
+          base = allManagers;
+          break;
+        // New role names (post-C20). teamLead spans both legacy lead and
+        // mlead during dual-read; assistantManager spans am and mam.
+        case 'teamlead':
+          base = [...roleRosters.am, ...roleRosters.mam, ...allManagers];
+          break;
+        case 'assistantmanager':
+          base = allManagers;
           break;
         default:
           base = [];
