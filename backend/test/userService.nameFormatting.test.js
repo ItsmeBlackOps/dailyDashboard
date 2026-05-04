@@ -111,7 +111,8 @@ describe('UserService bulk update defaults', () => {
 
     service.userModel = {
       getUserByEmail,
-      updateUser
+      updateUser,
+      getAllUsers: jest.fn().mockReturnValue([{ email: 'suraj.bohra@vizvainc.com', role: 'mam' }])
     };
 
     service.refreshTokenModel = {
@@ -147,7 +148,8 @@ describe('UserService bulk update defaults', () => {
 
     service.userModel = {
       getUserByEmail,
-      updateUser
+      updateUser,
+      getAllUsers: jest.fn().mockReturnValue([{ email: 'lead.user@vizvainc.com', role: 'lead' }])
     };
 
     service.refreshTokenModel = {
@@ -193,7 +195,8 @@ describe('UserService permission checks', () => {
 
     service.userModel = {
       getUserByEmail,
-      updateUser
+      updateUser,
+      getAllUsers: jest.fn().mockReturnValue([{ email: 'neha.singh@vizvainc.com', role: 'mam' }])
     };
 
     service.refreshTokenModel = {
@@ -270,7 +273,7 @@ describe('UserService MM hierarchy rules', () => {
       email: 'priya.singh@vizvainc.com',
       password: 'secret1',
       adminHash: null,
-      role: 'MAM',
+      role: 'mam',
       teamLead: '',
       manager: 'Neha Malik',
       active: true
@@ -344,7 +347,8 @@ describe('UserService MM hierarchy rules', () => {
 
     service.userModel = {
       getUserByEmail,
-      updateUser
+      updateUser,
+      getAllUsers: jest.fn().mockReturnValue([{ email: 'existing.lead@example.com', role: 'mlead' }])
     };
 
     service.refreshTokenModel = {

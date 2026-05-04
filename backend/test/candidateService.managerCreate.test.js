@@ -55,7 +55,7 @@ describe('candidateService manager create flow', () => {
     ]);
 
     const result = await candidateService.createCandidateFromManager(
-      { email: 'manager@example.com', role: 'manager' },
+      { email: 'manager@example.com', role: 'MM' },
       {
         name: 'Jane Doe',
         email: 'jane.doe@example.com',
@@ -144,7 +144,7 @@ describe('candidateService manager create flow', () => {
   it('rejects candidate creation when resume link is missing', async () => {
     await expect(
       candidateService.createCandidateFromManager(
-        { email: 'manager@example.com', role: 'manager' },
+        { email: 'manager@example.com', role: 'MM' },
         {
           name: 'Jane Doe',
           email: 'jane.doe@example.com',
@@ -257,7 +257,7 @@ describe('candidateService manager create flow', () => {
 
     await expect(
       candidateService.createCandidateFromManager(
-        { email: 'manager@example.com', role: 'manager' },
+        { email: 'manager@example.com', role: 'MM' },
         {
           name: 'Jane Doe',
           email: 'jane.doe@example.com',
@@ -277,7 +277,7 @@ describe('candidateService manager create flow', () => {
 
     await expect(
       candidateService.createCandidateFromManager(
-        { email: 'manager@example.com', role: 'manager' },
+        { email: 'manager@example.com', role: 'MM' },
         {
           name: 'Jane Doe',
           email: 'jane.doe@example.com',

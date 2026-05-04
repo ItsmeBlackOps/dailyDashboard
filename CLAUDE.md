@@ -18,11 +18,11 @@ Nginx (`nginx/`) sits in front of both app stacks as a reverse proxy. Blue/green
 
 ---
 
-## Development Branch
+## Branching Strategy
 
-All development work goes on: **`claude/add-claude-documentation-SkbsI`**  
-Push target: `origin/claude/add-claude-documentation-SkbsI`  
-Main branch: `main` — never push directly.
+- Work on feature branches cut from `main` (e.g. `feat/my-feature`, `fix/my-bug`)
+- Push to `origin/<feature-branch>` and open a PR targeting `main`
+- Never push directly to `main`
 
 ---
 
@@ -256,7 +256,7 @@ Workflows in `.github/workflows/ci.yml`:
 - Always use `frontend/src/components/ui/` primitives before reaching for raw HTML.
 - Page routing uses `react-router-dom` v6 — file-based convention is not used.
 - For role checks in components: `localStorage.getItem('role')?.toLowerCase()`.
-- Use `sonner` (via `components/ui/sonner.tsx`) for toast notifications.
+- Use the `Toaster` component (via `components/ui/toaster.tsx`) for toast notifications.
 - Use `dompurify` when rendering any user-supplied HTML.
 - Avoid adding `console.log` — use the `trackError` utility for error reporting.
 - Tailwind CSS — no inline `style` attributes unless absolutely necessary.

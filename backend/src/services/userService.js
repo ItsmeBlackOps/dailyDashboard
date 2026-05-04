@@ -752,7 +752,7 @@ export class UserService {
     const target = (targetRole || '').toLowerCase();
 
     if (requester === 'admin') return true;
-    if (requester === 'mm') return ['mam', 'mlead', 'recruiter'].includes(target);
+    if (requester === 'mm') return ['mam', 'mlead'].includes(target);
     if (requester === 'mam') return ['mlead', 'recruiter'].includes(target);
     if (requester === 'mlead') return ['recruiter'].includes(target);
     if (requester === 'am') return ['lead', 'user'].includes(target);
