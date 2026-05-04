@@ -76,6 +76,12 @@ class InterviewSupportAdminController {
     res.json({ success: true, ...result });
   });
 
+  getLogs = asyncHandler(async (req, res) => {
+    const { date } = req.query;
+    const result = await interviewSupportAdminService.getLogs(date);
+    res.json({ success: true, ...result });
+  });
+
   getSubjectAudit = asyncHandler(async (req, res) => {
     const { subject, limit } = req.query;
     if (!subject) {
