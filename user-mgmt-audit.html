@@ -1,0 +1,293 @@
+<!doctype html><html><head><meta charset="utf-8"><title>User Management — Status & Backlog</title><style>
+*{box-sizing:border-box}body{background:#0a0a0a;color:#e5e5e5;font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;margin:0;padding:24px;line-height:1.6;max-width:1400px;margin-left:auto;margin-right:auto}
+h1{margin:0 0 6px 0;font-size:24px;font-weight:700}
+h2{margin:36px 0 12px 0;font-size:15px;font-weight:600;color:#a78bfa;letter-spacing:0.06em;text-transform:uppercase;border-bottom:1px solid #262626;padding-bottom:8px}
+h3{margin:22px 0 10px 0;font-size:14px;font-weight:600;color:#fafafa}
+h4{margin:16px 0 8px 0;font-size:13px;font-weight:600;color:#cbd5e1}
+.sub{color:#737373;font-size:13px;margin-bottom:18px}
+.toc{background:#171717;border:1px solid #262626;border-radius:10px;padding:14px 18px;margin:16px 0}
+.toc a{color:#a78bfa;text-decoration:none;display:block;padding:3px 0;font-size:13px}
+.toc a:hover{color:#c4b5fd;text-decoration:underline}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:16px 0 24px 0}
+.stat{background:#171717;border:1px solid #262626;border-radius:10px;padding:12px}
+.stat .num{font-size:24px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.stat .lbl{color:#737373;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;margin-top:5px}
+.done-list{background:#0e1c12;border:1px solid #14532d;border-radius:10px;padding:14px 20px;margin:14px 0}
+.done-list ul{margin:6px 0;padding-left:20px}
+.done-list li{font-size:13px;margin:5px 0}
+.done-list .check{color:#86efac;font-weight:700;margin-right:6px}
+.code-loc{display:inline-block;background:#1a1a1a;color:#fcd34d;font-family:ui-monospace,monospace;font-size:11px;padding:1px 6px;border-radius:3px;border:1px solid #292524}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0 14px 0;border:1px solid #262626;border-radius:8px;overflow:hidden}
+th{background:#1a1a1a;color:#a3a3a3;font-weight:600;padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #262626}
+td{padding:7px 12px;border-bottom:1px solid #1f1f1f;vertical-align:top}
+tr:last-child td{border-bottom:none}
+code{background:#1a1a1a;padding:1px 6px;border-radius:3px;font-size:11.5px;color:#fcd34d;font-family:ui-monospace,monospace}
+pre{background:#0f0f0f;border:1px solid #262626;border-radius:6px;padding:12px 14px;font-size:11.5px;color:#e5e5e5;font-family:ui-monospace,monospace;overflow-x:auto;line-height:1.55;margin:8px 0}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-family:ui-monospace,monospace;font-size:9.5px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase}
+.tag.done{background:#14532d;color:#86efac}
+.tag.scoped{background:#3a2a1a;color:#fcd34d}
+.tag.affects-rbac{background:#7f1d1d;color:#fecaca}
+.tag.no-rbac{background:#1e3a5f;color:#bfdbfe}
+.tag.data-only{background:#3a1a3a;color:#f0abfc}
+.tag.ui-only{background:#1f2937;color:#cbd5e1}
+.bl-card{background:#171717;border:1px solid #262626;border-radius:10px;padding:18px 22px;margin:16px 0}
+.bl-card h3{margin-top:0;margin-bottom:8px;font-size:15px}
+.bl-card .tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.bl-card .section{margin:10px 0}
+.bl-card .section-label{display:block;font-size:10.5px;color:#737373;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;margin-bottom:5px}
+.bl-card .section-body{font-size:13px;color:#cbd5e1}
+.bl-card table{margin:6px 0}
+.diff-add{color:#86efac;background:rgba(20,83,45,0.18);display:block;padding:1px 6px}
+.diff-del{color:#fca5a5;background:rgba(127,29,29,0.18);display:block;padding:1px 6px;text-decoration:line-through}
+.callout{background:#0e151c;border-left:3px solid #1e3a5f;padding:10px 14px;margin:8px 0;font-size:12.5px;color:#bfdbfe}
+.callout.warn{background:#1c150e;border-color:#854d0e;color:#fde68a}
+.kbd{display:inline-block;background:#262626;border:1px solid #404040;color:#fafafa;padding:1px 5px;border-radius:3px;font-family:ui-monospace,monospace;font-size:10.5px}
+.muted{color:#737373}
+.example-box{background:#0a0a0a;border:1px solid #262626;border-radius:6px;padding:10px 14px;margin:6px 0;font-size:12.5px}
+.example-box .ex-header{font-size:10.5px;color:#737373;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;margin-bottom:6px}
+</style></head><body>
+<h1>User Management — Status &amp; Backlog Deep-Dive</h1>
+<div class="sub">Live state of <code>interviewSupport.users</code> after PR #95 (merged). Below: what shipped, what's in backlog, and exactly what each backlog item touches in the codebase.</div>
+<h2 id="done">Already shipped (PR #95 + mongosh fixes)</h2>
+<div class="summary">
+<div class="stat"><div class="num" style="color:#86efac">0</div><div class="lbl">Mixed-case emails</div></div>
+<div class="stat"><div class="num" style="color:#86efac">0</div><div class="lbl">Self-loop teamLeads</div></div>
+<div class="stat"><div class="num" style="color:#86efac">0</div><div class="lbl">Placeholder seed values</div></div>
+<div class="stat"><div class="num" style="color:#86efac">0</div><div class="lbl">Empty displayName</div></div>
+<div class="stat"><div class="num" style="color:#86efac">0</div><div class="lbl">Legacy uppercase MM/MAM/AM</div></div>
+<div class="stat"><div class="num" style="color:#86efac">15</div><div class="lbl">Files updated in PR #95</div></div>
+</div>
+<div class="done-list"><h3 style="margin-top:0">Live verification</h3><ul>
+<li><span class="check">✓</span>Mixed-case emails in <code>users</code> — <code>0</code></li>
+<li><span class="check">✓</span>Mixed-case <code>candidateDetails.Expert</code> — <code>0</code></li>
+<li><span class="check">✓</span>Mixed-case <code>candidateDetails.Recruiter</code> — <code>0</code></li>
+<li><span class="check">✓</span>Users with empty <code>profile.displayName</code> — <code>0</code></li>
+<li><span class="check">✓</span>Self-referential <code>teamLead</code> — <code>0</code></li>
+<li><span class="check">✓</span>Placeholder <code>"Lead A"</code>/<code>"Manager A"</code> — <code>0</code></li>
+<li><span class="check">✓</span>Malformed <code>&lt;name&gt;</code> manager strings — <code>0</code></li>
+<li><span class="check">✓</span>Legacy uppercase role values — <code>0</code></li>
+<li><span class="check">✓</span>Adnan Shaikh role: <code>mlead</code> → <code>mam</code> — <code>done</code></li>
+<li><span class="check">✓</span>Rohit Vishwakarma teamLead self-loop cleared — <code>done</code></li>
+<li><span class="check">✓</span>Bhavya Dutt teamLead → Rujuwal Garg — <code>done</code></li>
+<li><span class="check">✓</span>Umang Pandya role: <code>am</code> → <code>lead</code>, with 5 direct reports — <code>done</code></li>
+</ul></div>
+<table><thead><tr><th>Issue</th><th>What shipped</th><th>Status</th></tr></thead><tbody>
+<tr><td><code>C1</code></td><td>Drop <code>"manager"</code>/<code>"expert"</code> from validRoles</td><td><span class="tag done">DONE</span></td></tr>
+<tr><td><code>C2</code></td><td>ROLE_CANONICAL_MAP returns lowercase; live data normalized</td><td><span class="tag done">DONE</span></td></tr>
+<tr><td><code>C3</code></td><td><code>"manager"</code> permission gates replaced with <code>"mm"</code></td><td><span class="tag done">DONE</span></td></tr>
+<tr><td><code>C4</code></td><td>Routes use lowercase-only role lists</td><td><span class="tag done">DONE</span></td></tr>
+<tr><td><code>C5</code></td><td><code>isValidRole()</code> case-insensitive</td><td><span class="tag done">DONE</span></td></tr>
+<tr><td><code>C6</code></td><td><code>normalizeRoleValue("Manager")</code> can no longer create phantom users</td><td><span class="tag done">DONE</span></td></tr>
+<tr><td><code>C7</code></td><td>Frontend <code>getCreatableRoles()</code> aligned to backend enum</td><td><span class="tag done">DONE</span></td></tr>
+<tr><td><code>C10</code></td><td>Dead defensive <code>active === null</code> branch removed</td><td><span class="tag done">DONE</span></td></tr>
+<tr><td><code>C11</code></td><td><code>getUsersByRole</code> case-insensitive</td><td><span class="tag done">DONE</span></td></tr>
+<tr><td><code>C13</code></td><td>Duplicate <code>nameFromEmail</code> deleted; controller forwards to service</td><td><span class="tag done">DONE</span></td></tr>
+<tr><td><code>C14</code></td><td><code>PUT /:email/role</code> + <code>/:email/team-lead</code> now allow <code>mm/mam/am</code> (was admin-only)</td><td><span class="tag done">DONE</span></td></tr>
+<tr><td><code>C17</code></td><td><code>users.changeHistory[]</code> + atomic write helper + <code>GET /api/users/profile/:email/history</code></td><td><span class="tag done">DONE</span></td></tr>
+<tr><td><code>C18</code></td><td><code>passwordHash</code>/<code>adminHash</code> stripped at model layer</td><td><span class="tag done">DONE</span></td></tr>
+<tr><td><code>D1-D5</code></td><td>All data quality issues resolved (verified above)</td><td><span class="tag done">DONE</span></td></tr>
+</tbody></table>
+<h2 id="backlog">Backlog — detailed walkthrough</h2>
+<div class="callout"><b>Reading guide:</b> each item below has 4 fixed sections — <i>What it is</i> · <i>Where the code lives</i> · <i>Concrete example with real users</i> · <i>Does it change role-based access?</i> Tags at the top of each card make the access-impact obvious at a glance.</div>
+<div class="bl-card">
+<h3>C8 — Hierarchy-aware profile read</h3>
+<div class="tags"><span class="tag scoped">SCOPED</span><span class="tag no-rbac">DOES NOT CHANGE WHO CAN MANAGE ANYONE</span></div>
+
+<div class="section"><span class="section-label">What it is</span><span class="section-body">
+Today, <code>GET /api/users/profile/:email</code> only lets you read your own profile OR have role <code>admin</code>/<code>mm</code>. C8 broadens that to also include leads/managers reading profiles within their <i>own</i> hierarchy. Read-only — does not grant any new mutation power.
+</span></div>
+
+
+<div class="section"><span class="section-label">Where the code lives</span><span class="section-body">
+<table><thead><tr><th>File · Line</th><th>What it does today</th></tr></thead><tbody>
+<tr><td><code class="code-loc">backend/src/controllers/userController.js:139-142</code></td><td>Hard 403 unless requester is admin or mm</td></tr>
+<tr><td><code class="code-loc">backend/src/services/candidateService.js:228-275</code></td><td>Existing <code>collectHierarchyEmails()</code> that already does the BFS — re-use this</td></tr>
+<tr><td><code class="code-loc">backend/src/services/userService.js</code></td><td>Add new helper <code>isUserInRequesterHierarchy(requester, targetEmail)</code></td></tr>
+</tbody></table>
+</span></div>
+
+
+<div class="section"><span class="section-label">Concrete example</span>
+<div class="example-box"><div class="ex-header">Today (broken)</div>
+Umang Pandya (<code>role: lead</code>) clicks "View profile" on Vaibhav Kumar (one of his 5 direct reports).<br>
+→ <code>GET /api/users/profile/vaibhav.kumar@silverspaceinc.com</code><br>
+→ Server: requester role is <code>lead</code> — not in <code>['admin','mm']</code> → <b>403 Forbidden</b>.<br>
+Same goes for Tushar Ahuja (MM) trying to view any of his 77 recruiters — wait, Tushar IS <code>mm</code>, so he's fine. But Brhamdev Sharma (MAM) trying to view a recruiter under him? <b>403</b>.
+</div>
+<div class="example-box"><div class="ex-header">After C8</div>
+The check becomes "admin OR mm OR target is in requester's hierarchy". Umang queries Vaibhav → BFS via <code>teamLead = "Umang Pandya"</code> finds Vaibhav → <b>200 OK</b>. Brhamdev viewing one of his recruiters → walks down through his MLeads → <b>200 OK</b>. <i>Anyone outside their tree still gets 403.</i>
+</div>
+</div>
+
+
+<div class="section"><span class="section-label">Does it change role-based access?</span><span class="section-body">
+<b>No.</b> This relaxes a read-only viewport, not management permissions. A lead still cannot promote, demote, delete, or reassign anyone. The only thing that changes is "<code>403</code> on a profile-read API" → "<code>200</code> when target is in your team."
+</span></div>
+
+</div>
+<div class="bl-card">
+<h3>C9 — Migrate <code>teamLead</code> from display-name string to email reference</h3>
+<div class="tags"><span class="tag scoped">LARGEST CHANGE</span><span class="tag no-rbac">DOES NOT CHANGE WHO CAN MANAGE ANYONE</span><span class="tag data-only">SCHEMA + BACKFILL</span></div>
+
+<div class="section"><span class="section-label">What it is</span><span class="section-body">
+Currently <code>users.teamLead</code> stores a display name string like <code>"Umang Pandya"</code>. The hierarchy BFS matches that string against <code>profile.displayName</code> derived from emails. Five different functions across the codebase do this string-matching dance, and any time <code>profile.displayName</code> drifts (typo, name change, marriage), the whole tree breaks silently. C9 changes <code>teamLead</code> to store the user's <i>email</i> — a stable foreign key.
+</span></div>
+
+
+<div class="section"><span class="section-label">Where the code lives</span><span class="section-body">
+<table><thead><tr><th>File · Line</th><th>Current behavior</th><th>After C9</th></tr></thead><tbody>
+<tr><td><code class="code-loc">backend/src/services/candidateService.js:228-275</code></td><td><code>collectHierarchyEmails</code> BFS uses <code>leadToUsers.get(displayName)</code></td><td>BFS keyed by email, no displayName derivation</td></tr>
+<tr><td><code class="code-loc">backend/src/services/userService.js:540-548</code></td><td><code>deriveDisplayNameFromEmail</code> heavily used as fallback for matching</td><td>Display name only used for UI rendering</td></tr>
+<tr><td><code class="code-loc">backend/src/services/candidateService.js:323, 430, 449, 616, 844, 1483, 1618, 1665</code></td><td>8 different sites walk hierarchy via display-name string match</td><td>All read <code>teamLead</code> as email directly</td></tr>
+<tr><td><code class="code-loc">backend/src/models/User.js:184-260</code></td><td><code>updateUser</code> stores teamLead verbatim</td><td>Add validator: must be a real active user's email or null</td></tr>
+<tr><td><code class="code-loc">frontend/src/pages/UserManagement.tsx:155-200, 532-680</code></td><td>UI binds teamLead as a free-text formatted name</td><td>Datalist of active users; submitted value is email</td></tr>
+<tr><td><i>One-shot mongosh script</i></td><td>—</td><td>Convert all 251 teamLead display-name strings to corresponding emails</td></tr>
+</tbody></table>
+</span></div>
+
+
+<div class="section"><span class="section-label">Concrete example</span>
+<div class="example-box"><div class="ex-header">Today (fragile)</div>
+Vaibhav Kumar's doc has <code>teamLead: "Umang Pandya"</code>. The BFS to find all of Umang's reports does:<br>
+<pre>const leaderName = deriveDisplayNameFromEmail("umang.pandya@silverspaceinc.com")
+                    // → "Umang Pandya"
+const directs = leadToUsers.get(leaderName.toLowerCase())</pre>
+If Umang's email ever changes to <code>upandya@…</code>, the derive function returns "Upandya" instead of "Umang Pandya". The map lookup fails. Vaibhav becomes orphan. Hierarchy silently disappears.
+</div>
+<div class="example-box"><div class="ex-header">After C9</div>
+Vaibhav's doc has <code>teamLead: "umang.pandya@silverspaceinc.com"</code>. BFS becomes:<br>
+<pre>const directs = await db.users.find({ teamLead: requester.email }).toArray()</pre>
+Email change, name change, display-name typo — all irrelevant. <code>teamLead</code> = email of an active user, stable forever.
+</div>
+</div>
+
+
+<div class="section"><span class="section-label">Does it change role-based access?</span><span class="section-body">
+<b>No.</b> Same hierarchy semantics — same person sees same set of subordinates. The difference is <i>robustness</i> — it stops silently breaking when display names drift. Fewer "why doesn't user X show up under user Y?" support tickets.
+</span></div>
+
+</div>
+<div class="bl-card">
+<h3>C12 — Lead can promote/manage another lead</h3>
+<div class="tags"><span class="tag affects-rbac">EXPANDS RBAC SLIGHTLY</span><span class="tag scoped">PAIRED WITH C8</span></div>
+
+<div class="section"><span class="section-label">What it is</span><span class="section-body">
+Currently a <code>lead</code> can only create or manage role <code>user</code>. They can't promote a peer, can't demote a peer, can't bring in another lead. Every reorg requires Harsh Patel (admin). C12 adds <code>"lead"</code> to the set of roles a lead can create and manage <i>within their own subtree</i>.
+</span></div>
+
+
+<div class="section"><span class="section-label">Where the code lives</span><span class="section-body">
+<table><thead><tr><th>File · Line</th><th>Current line</th><th>After C12</th></tr></thead><tbody>
+<tr><td><code class="code-loc">backend/src/services/userService.js:603</code></td><td><code>if (requester === 'lead') return ['user'];</code></td><td><code>if (requester === 'lead') return ['lead', 'user'];</code></td></tr>
+<tr><td><code class="code-loc">backend/src/services/userService.js:614</code></td><td>Same in <code>canManageTargetRole</code></td><td>Same expansion</td></tr>
+<tr><td><code class="code-loc">frontend/src/pages/UserManagement.tsx:88-100</code></td><td><code>getCreatableRoles('lead') → ['user']</code></td><td><code>→ ['lead', 'user']</code></td></tr>
+</tbody></table>
+</span></div>
+
+
+<div class="section"><span class="section-label">Concrete example</span>
+<div class="example-box"><div class="ex-header">Today</div>
+Bhavya Dutt (<code>lead</code>) wants to promote Sonali Das to lead-tier (Sonali has been mentoring two people). Bhavya cannot. Has to ping Harsh.
+</div>
+<div class="example-box"><div class="ex-header">After C12</div>
+Bhavya goes to User Management → picks Sonali → Role dropdown now shows <i>both</i> "lead" and "user" → promotes. Audit log captures it. Harsh stays out of the loop.
+</div>
+</div>
+
+
+<div class="section"><span class="section-label">Does it change role-based access?</span><span class="section-body">
+<b>Yes — slightly.</b> This is the one backlog item that does. Leads gain a new capability they don't have today: lateral peer promotion. Should land paired with C8 (so leads can also <i>see</i> peer profiles to know who to promote) and a hierarchy-scoped enforcement (so lead-A can't promote lead-B who's in lead-C's tree). The hierarchy scope is the safety belt.
+</span></div>
+
+</div>
+<div class="bl-card">
+<h3>C15 — UI silent <code>teamLead</code> mutation in bulk-update form</h3>
+<div class="tags"><span class="tag ui-only">FRONTEND ONLY</span><span class="tag no-rbac">DOES NOT CHANGE WHO CAN MANAGE ANYONE</span></div>
+
+<div class="section"><span class="section-label">What it is</span><span class="section-body">
+In the bulk-update dialog, when an admin changes a row's role, the UI <i>silently</i> auto-fills <code>teamLead</code> with the requesting admin's display name. The placeholder shows "Auto assigned" but the form submits the actual value, and most users don't notice they're re-rooting reports.
+</span></div>
+
+
+<div class="section"><span class="section-label">Where the code lives</span><span class="section-body">
+<table><thead><tr><th>File · Line</th><th>Current behavior</th></tr></thead><tbody>
+<tr><td><code class="code-loc">frontend/src/pages/UserManagement.tsx:155-200</code></td><td>4 separate sites auto-mutate <code>teamLead</code> based on the chosen role and the current user</td></tr>
+<tr><td><code class="code-loc">frontend/src/pages/UserManagement.tsx:625-690</code></td><td>Bulk-update payload includes the auto-mutated value</td></tr>
+</tbody></table>
+</span></div>
+
+
+<div class="section"><span class="section-label">Concrete example</span>
+<div class="example-box"><div class="ex-header">Today</div>
+Tushar Ahuja (<code>mm</code>) opens bulk-edit, changes 5 recruiters' role from <code>recruiter</code> to <code>mlead</code>. The UI silently sets their <code>teamLead</code> to "Tushar Ahuja" — even though those 5 already had teamLead "Brhamdev Sharma". Brhamdev wakes up to find 5 of his reports are now Tushar's direct reports. No notification.
+</div>
+<div class="example-box"><div class="ex-header">After C15</div>
+The UI shows an explicit notice: "<i>5 users will have their teamLead changed from 'Brhamdev Sharma' to 'Tushar Ahuja'. Confirm?</i>" Tushar can either accept or pick a different teamLead per row.
+</div>
+</div>
+
+
+<div class="section"><span class="section-label">Does it change role-based access?</span><span class="section-body">
+<b>No.</b> Pure UX. The exact same operation is allowed — it just gets confirmed instead of silently applied.
+</span></div>
+
+</div>
+<div class="bl-card">
+<h3>C16 — Pre-save validator for <code>teamLead</code>/<code>manager</code> values (the "mechanism" from D3)</h3>
+<div class="tags"><span class="tag scoped">PREVENTIVE</span><span class="tag no-rbac">DOES NOT CHANGE WHO CAN MANAGE ANYONE</span></div>
+
+<div class="section"><span class="section-label">What it is</span><span class="section-body">
+The reason we even <i>had</i> issues like <code>"Lead A"</code>, <code>"Manager A"</code>, and <code>"\"aman Sagar\" &lt;aman Sagar"</code> stuck in the database is that nothing at the write layer rejected them. C16 adds a model-level pre-save validator that rejects:
+<ul style="margin:6px 0 6px 20px">
+<li>self-loop (user's own display name as their teamLead)</li>
+<li>strings containing <code>&lt;</code> <code>&gt;</code> <code>"</code> or other Outlook artifacts</li>
+<li>placeholder strings (<code>"Lead A"</code>, <code>"Manager A"</code>, <code>"TBD"</code>, <code>"???"</code>)</li>
+<li>values that don't resolve to an active user (with C9, this is just "email exists in users with active=true")</li>
+</ul>
+</span></div>
+
+
+<div class="section"><span class="section-label">Where the code lives</span><span class="section-body">
+<table><thead><tr><th>File · Line</th><th>Current behavior</th><th>After C16</th></tr></thead><tbody>
+<tr><td><code class="code-loc">backend/src/models/User.js:184-260</code></td><td><code>updateUser</code> writes whatever you give it</td><td>Validates <code>teamLead</code> + <code>manager</code> before <code>$set</code>; throws 422 on bad input</td></tr>
+<tr><td><code class="code-loc">backend/src/services/userService.js</code></td><td>—</td><td>New <code>validateTeamLeadReference(value)</code> shared helper</td></tr>
+<tr><td><code class="code-loc">backend/src/services/userService.js:625-680</code> (bulkUpdateUsers)</td><td>Allows malformed refs through</td><td>Rejects rows with bad refs and reports them in <code>failures[]</code></td></tr>
+</tbody></table>
+</span></div>
+
+
+<div class="section"><span class="section-label">Concrete example</span>
+<div class="example-box"><div class="ex-header">Today</div>
+A buggy script (or a careless admin paste) sets <code>users.updateOne({...}, {$set: {teamLead: '"Aman Sagar" &lt;aman.sagar@…&gt;'}})</code> — write succeeds. Hierarchy traversal breaks for that user silently. Took the audit (Section 5 of the previous report) to even discover it.
+</div>
+<div class="example-box"><div class="ex-header">After C16</div>
+Same write hits the validator → <code>422 Invalid teamLead reference: contains forbidden characters &lt;</code>. The bad data never lands. The dashboard / API return a clear error so the operator fixes it on the spot.
+</div>
+</div>
+
+
+<div class="section"><span class="section-label">Does it change role-based access?</span><span class="section-body">
+<b>No.</b> Validators only reject malformed data. Whoever could write a teamLead before C16 can still write a teamLead after C16 — they just can't put garbage in it.
+</span></div>
+
+</div>
+<h2 id="rbac-summary">RBAC impact summary</h2>
+<table><thead><tr><th>Backlog item</th><th>Changes who can manage what?</th><th>Why</th></tr></thead><tbody>
+<tr><td>C8 — hierarchy-aware profile read</td><td><b style="color:#86efac">No</b></td><td>Read-only relaxation. No mutation power added.</td></tr>
+<tr><td>C9 — teamLead string→email migration</td><td><b style="color:#86efac">No</b></td><td>Same hierarchy, more robust matching. Identity transformation.</td></tr>
+<tr><td>C12 — lead promotes lead</td><td><b style="color:#fcd34d">Yes (small)</b></td><td>Adds one capability for leads. Hierarchy-scoped, so still safe. Should land with C8.</td></tr>
+<tr><td>C15 — UI silent mutation</td><td><b style="color:#86efac">No</b></td><td>UX confirmation step. Same operation, more transparency.</td></tr>
+<tr><td>C16 — pre-save validator</td><td><b style="color:#86efac">No</b></td><td>Rejects malformed input. Doesn't grant or remove permissions.</td></tr>
+</tbody></table>
+
+<div class="callout"><b>Bottom line:</b> Of 5 backlog items, 4 are <span style="color:#bfdbfe">access-neutral</span> (relaxation/UX/data integrity) and 1 (<code>C12</code>) is a small, scoped expansion of lead capability. Nothing in the backlog removes anyone's current access. Nothing in the backlog grants admin/mm-tier capability to lower roles. Hierarchy gating remains the boundary in every case.</div>
+
+<h2 id="order">Suggested ship order</h2>
+<table><thead><tr><th>#</th><th>Item</th><th>Why this order</th><th>Risk</th></tr></thead><tbody>
+<tr><td>1</td><td>C16 (pre-save validator)</td><td>Stops new bad data the moment it lands. Smallest blast radius — model layer only.</td><td>Very low — fail-soft</td></tr>
+<tr><td>2</td><td>C8 (hierarchy-aware profile read)</td><td>Unblocks day-to-day for leads/MLeads/MAMs without touching writes. Validates the hierarchy-scoping mechanism we'll re-use for C12.</td><td>Low — read-only relaxation</td></tr>
+<tr><td>3</td><td>C15 (UI confirmation)</td><td>Frontend only. Removes a footgun in bulk-update. Independent of backend.</td><td>Very low — UX</td></tr>
+<tr><td>4</td><td>C9 (teamLead → email)</td><td>The big one. Makes hierarchy robust. Schema migration + 8 backend sites + 5 frontend sites + one-shot data migration. Wait until 1-3 are stable before touching this.</td><td>Medium — wide blast radius, but the new path is strictly more correct</td></tr>
+<tr><td>5</td><td>C12 (lead promotes lead)</td><td>Lands cleanly only after C8 (so leads can see who to promote) and C9 (so the hierarchy scope is reliable).</td><td>Low — gated by hierarchy scope</td></tr>
+</tbody></table>
+</body></html>

@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"subject":{"$numberInt":"1"}},"name":"subject_1","unique":true}],"uuid":"147c3f0708f345ac85a95c9284a21c1f","collectionName":"cleanedBody","type":"collection"}
