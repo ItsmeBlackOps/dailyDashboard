@@ -589,7 +589,9 @@ const UserManagementPage = () => {
 
       if (normalizedRole === 'mam') {
         if (targetRole === 'mlead') {
-          if (selfDisplayName) {
+          // C15: never silently overwrite teamLead — only fill if user
+          // explicitly cleared it AND no current value is preserved.
+          if (!entry.teamLead && selfDisplayName) {
             entry.teamLead = selfDisplayName;
           }
           if (!entry.manager && normalizedManagerName) {
