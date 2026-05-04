@@ -109,14 +109,16 @@ export default function JobDetailPanel({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium border capitalize',
-              REMOTE_CLASS[job.remote_type] ?? 'bg-muted/40 text-muted-foreground border-border',
-            )}
-          >
-            {job.remote_type}
-          </span>
+          {job.remote_type && (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium border capitalize',
+                REMOTE_CLASS[job.remote_type] ?? 'bg-muted/40 text-muted-foreground border-border',
+              )}
+            >
+              {job.remote_type}
+            </span>
+          )}
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-white/[0.06] border border-white/10 text-muted-foreground">
             <MapPin className="h-3 w-3" />
             {shortLoc(job.location)}
@@ -218,7 +220,7 @@ export default function JobDetailPanel({
             ['Posted', postedDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' })],
             ['Company', job.company],
             ['Location', job.location ?? '—'],
-            ['Work mode', job.remote_type],
+            ['Work mode', job.remote_type ?? '—'],
             ['Source ATS', ATS_LABEL[job.ats] ?? job.ats],
           ].map(([k, v]) => (
             <>

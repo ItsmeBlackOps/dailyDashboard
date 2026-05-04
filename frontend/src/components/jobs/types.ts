@@ -3,7 +3,7 @@ export interface Job {
   title: string;
   company: string;
   location: string | null;
-  remote_type: 'remote' | 'hybrid' | 'onsite';
+  remote_type: 'remote' | 'hybrid' | 'onsite' | null;
   ats: string;
   url: string;
   date_posted: string;

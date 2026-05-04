@@ -88,7 +88,7 @@ function adaptPoolJob(p: PoolJob): Job & { _pool: PoolJob } {
     title: p.title,
     company: p.company,
     location: p.location,
-    remote_type: (p.remote_type ?? 'remote') as Job['remote_type'],
+    remote_type: (p.remote_type ?? null) as Job['remote_type'],
     ats: p.ats || '',
     url: p.url || '',
     date_posted: p.postedAt ?? new Date().toISOString(),
