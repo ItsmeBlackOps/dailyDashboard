@@ -131,11 +131,22 @@ export class UserController {
     res.status(200).json(result);
   });
 
+  // C8 — hierarchy-aware profile-read gate. Allowed if any of:
+  //   1. self
+  //   2. requester role is admin or mm (org-wide read)
+  //   3. target email is a subordinate (direct or transitive) of requester
+  _canReadProfile(requestingUser, targetEmail) {
+    if (!requestingUser?.email) return false;
+    const role = (requestingUser.role || '').toLowerCase();
+    if (targetEmail === requestingUser.email) return true;
+    if (['admin', 'mm'].includes(role)) return true;
+    return this.userService.isUserInRequesterHierarchy(requestingUser, targetEmail);
+  }
+
   getUserChangeHistory = asyncHandler(async (req, res) => {
     const { email } = req.params;
     const requestingUser = req.user;
-    const role = (requestingUser?.role || '').toLowerCase();
-    if (email !== requestingUser.email && !['admin', 'mm'].includes(role)) {
+    if (!this._canReadProfile(requestingUser, email)) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions' });
     }
     const result = await this.userService.getUserChangeHistory(email);
@@ -146,10 +157,9 @@ export class UserController {
     const { email } = req.params;
     const requestingUser = req.user;
 
-    // Users can only view their own profile unless they have admin/mm role.
-    // (C8 — broader hierarchy-aware access deferred to backlog.)
-    const role = (requestingUser.role || '').toLowerCase();
-    if (email !== requestingUser.email && !['admin', 'mm'].includes(role)) {
+    // C8: profile-read is allowed for self, admin/mm, OR users in the
+    // requester's own hierarchy (direct/transitive teamLead BFS).
+    if (!this._canReadProfile(requestingUser, email)) {
       return res.status(403).json({
         success: false,
         error: 'Insufficient permissions'
