@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { parseJsonOrThrow } from '@/lib/fetchJson';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
@@ -92,9 +93,16 @@ export function TaskDetailDrawer({ taskId, preload, onClose }: Props) {
     if (!taskId) { setTask(null); return; }
     setLoading(true);
     authFetch(`${API_URL}/api/candidates/task/${taskId}`)
-      .then(r => r.json())
-      .then(json => { if (json.success) setTask(json.task); })
-      .catch(() => {})
+      .then(parseJsonOrThrow)
+      .then((json: { success: boolean; task: typeof task }) => {
+        if (json.success) setTask(json.task);
+      })
+      .catch((err) => {
+        // Helper has already logged status + body snippet to console.
+        // Drawer keeps preload visible — no toast spam for transient
+        // backend hiccups.
+        console.warn('TaskDetailDrawer load failed', err);
+      })
       .finally(() => setLoading(false));
   }, [taskId, authFetch]);
 

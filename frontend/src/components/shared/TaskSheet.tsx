@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { parseJsonOrThrow } from '@/lib/fetchJson';
 import {
   Calendar, Clock, Building2, Briefcase, User, Mail,
   Layers, Users, ExternalLink, MessageSquare, FileText, Video, Check, Loader2,
@@ -185,14 +186,18 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
     setLoading(true);
     setError(null);
     authFetch(`${API_URL}/api/candidates/task/${taskId}?full=true`)
-      .then(r => r.json())
-      .then(json => {
-        if (!json.success) throw new Error(json.error);
+      .then(parseJsonOrThrow)
+      .then((json: { success: boolean; task: typeof task; error?: string }) => {
+        if (!json.success) throw new Error(json.error || 'Request failed');
         setTask(json.task);
-        setLinkDraft(json.task.meetingLink ?? '');
-        setPasswordDraft(json.task.meetingPassword ?? '');
+        setLinkDraft(json.task?.meetingLink ?? '');
+        setPasswordDraft(json.task?.meetingPassword ?? '');
       })
-      .catch(e => setError(e.message))
+      .catch((e: Error) => {
+        // HttpError carries status + url; show a clean message to the
+        // user, leave the technical detail in console (logged by helper).
+        setError(e.message);
+      })
       .finally(() => setLoading(false));
   }, [taskId, authFetch]);
 
