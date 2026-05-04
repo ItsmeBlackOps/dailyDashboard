@@ -5,7 +5,8 @@ import { BranchCandidates as BranchCandidatesCard } from '@/components/dashboard
 const BranchCandidatesPage = () => {
   const [role, setRole] = useState('');
   const normalizedRole = role.trim().toLowerCase();
-  const canView = ['admin','mm', 'mam', 'mlead', 'lead', 'user', 'am', 'manager', 'recruiter'].includes(normalizedRole);
+  // C20 — accept legacy + new role names.
+  const canView = ['admin','mm', 'mam', 'mlead', 'lead', 'user', 'am', 'manager', 'recruiter', 'assistantmanager', 'teamlead', 'expert'].includes(normalizedRole);
   useEffect(() => {
     setRole(localStorage.getItem('role') || '');
   }, []);

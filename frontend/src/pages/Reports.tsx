@@ -146,14 +146,16 @@ const REPORTS_META: { id: ReportKind; name: string; description: string }[] = [
 ];
 
 export default function Reports() {
-  const role = useMemo(() => localStorage.getItem('role') || '', []);
-  const canUseAssistant = ['MAM', 'MM', 'admin', 'mtl', 'MTL'].includes(role);
+  // C20 — normalize on read; accept both legacy and new role names.
+  // `mtl` was a stale legacy abbreviation that no user holds anymore.
+  const role = useMemo(() => (localStorage.getItem('role') || '').trim().toLowerCase(), []);
+  const canUseAssistant = ['admin', 'mm', 'mam', 'manager', 'assistantmanager'].includes(role);
   const { toast } = useToast();
   const { refreshAccessToken } = useAuth();
   const { selectedTab, setSelectedTab } = useTab();
 
   const allowReceivedDate = useMemo(() => {
-    return ['admin', 'MM', 'MAM', 'mlead'].includes(role);
+    return ['admin', 'mm', 'mam', 'mlead', 'manager', 'assistantmanager', 'teamlead'].includes(role);
   }, [role]);
 
   const dateFieldOptions = useMemo(() => {

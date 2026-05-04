@@ -1,4 +1,5 @@
-export const MARKETING_ROLES = ['admin', 'MAM', 'MM', 'mlead', 'recruiter'];
+// C20 — lowercase canonical + new names.
+export const MARKETING_ROLES = ['admin', 'mm', 'mam', 'mlead', 'recruiter', 'manager', 'assistantmanager', 'teamlead'];
 
 export const kpiData = {
   total: 1340,

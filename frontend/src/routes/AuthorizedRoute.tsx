@@ -9,7 +9,11 @@ const JOBS_ROLES = ['admin', 'mm', 'mam', 'mlead', 'recruiter', 'manager', 'assi
 
 const isAuthed = () => Boolean(localStorage.getItem('accessToken'));
 const isAdmin = () => (localStorage.getItem('role') || '').trim().toLowerCase() === 'admin';
-const isMarketing = () => localStorage.getItem('role') === 'MAM' || localStorage.getItem('role') === 'MM';
+const isMarketing = () => {
+  // C20 — lowercase compare; legacy storage was sometimes uppercase.
+  const r = (localStorage.getItem('role') || '').trim().toLowerCase();
+  return ['mm', 'mam', 'manager', 'assistantmanager'].includes(r);
+};
 const getRole = () => (localStorage.getItem('role') || '').trim().toLowerCase();
 
 export default function AuthorizedRoute() {

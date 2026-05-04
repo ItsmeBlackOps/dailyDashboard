@@ -463,7 +463,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
             <Separator className="my-4" />
 
             <nav className="grid gap-1">
-              {['mam', 'mm', 'admin', 'mtl'].includes(normalizedRole) && (
+              {['admin', 'mm', 'mam', 'manager', 'assistantmanager'].includes(normalizedRole) && (
                 <>
                   <NavItem
                     icon={BarChart3}
@@ -479,7 +479,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   />
                 </>
               )}
-              {['admin', 'mam', 'mm', 'mlead', 'recruiter'].includes(normalizedRole) && (
+              {['admin', 'mam', 'mm', 'mlead', 'recruiter', 'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole) && (
                 <NavItem
                   icon={LayoutDashboard}
                   label="Profile Hub"
