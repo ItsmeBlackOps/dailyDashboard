@@ -519,6 +519,14 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 tourId="user-management-link"
               />
             )}
+            {['admin', 'mm', 'mam', 'mlead', 'lead', 'am', 'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole) && (
+              <NavItem
+                icon={UserPlus}
+                label="Delegations"
+                href="/delegations"
+                isOpen={isOpen}
+              />
+            )}
             <Button
               variant="ghost"
               className={cn(
