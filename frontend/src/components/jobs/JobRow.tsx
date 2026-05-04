@@ -87,17 +87,21 @@ export default function JobRow({ job, selected, starred, applied, onSelect, onSt
         <span className="truncate">{shortLoc(job.location)}</span>
       </div>
 
-      {/* Remote pill */}
+      {/* Remote pill — only render when backend actually classified the job */}
       <div>
-        <span
-          className={cn(
-            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium border capitalize',
-            REMOTE_CLASS[job.remote_type] ?? 'bg-muted/40 text-muted-foreground border-border',
-          )}
-        >
-          <span className={cn('w-1.5 h-1.5 rounded-full', REMOTE_DOT[job.remote_type])} />
-          {job.remote_type}
-        </span>
+        {job.remote_type ? (
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium border capitalize',
+              REMOTE_CLASS[job.remote_type] ?? 'bg-muted/40 text-muted-foreground border-border',
+            )}
+          >
+            <span className={cn('w-1.5 h-1.5 rounded-full', REMOTE_DOT[job.remote_type])} />
+            {job.remote_type}
+          </span>
+        ) : (
+          <span className="text-[10.5px] text-muted-foreground/60">—</span>
+        )}
       </div>
 
       {/* ATS pill */}
