@@ -26,6 +26,15 @@ jest.unstable_mockModule('../src/models/User.js', () => ({
   },
 }));
 
+// Mock notificationService so the grant/revoke fire-and-forget side
+// effects don't pollute the shared insertOne counter.
+jest.unstable_mockModule('../src/services/notificationService.js', () => ({
+  notificationService: {
+    createNotification: jest.fn().mockResolvedValue(null),
+    broadcastToWatchers: jest.fn().mockResolvedValue([]),
+  },
+}));
+
 const { delegationService, _testHelpers } = await import('../src/services/delegationService.js');
 
 beforeEach(() => {
