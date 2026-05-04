@@ -1558,7 +1558,17 @@ class CandidateService {
       throw error;
     }
 
-    const normalizedRole = user.role.trim().toLowerCase();
+    // C20 — accept both legacy and new role names. Map new → legacy here
+    // so the rest of this method's branches keep working with their
+    // legacy comparisons. Team is used to disambiguate assistantManager
+    // (am vs mam) and teamLead (lead vs mlead).
+    const rawRole = user.role.trim().toLowerCase();
+    const team = (user.team || '').toString().toLowerCase();
+    let normalizedRole = rawRole;
+    if (rawRole === 'manager') normalizedRole = ROLE_MM;
+    else if (rawRole === 'assistantmanager') normalizedRole = team === 'technical' ? 'am' : ROLE_MAM;
+    else if (rawRole === 'teamlead') normalizedRole = team === 'technical' ? 'lead' : ROLE_MLEAD;
+    else if (rawRole === 'expert') normalizedRole = 'user';
 
     if (normalizedRole === 'admin') {
       return this.fetchAllCandidates(user, options);

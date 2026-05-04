@@ -421,7 +421,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 isOpen={isOpen}
                 tourId="tasks-link"
               />
-              {['admin', 'mm', 'mam', 'mlead', 'lead', 'user', 'am', 'recruiter'].includes(normalizedRole) && (
+              {['admin', 'mm', 'mam', 'mlead', 'lead', 'user', 'am', 'recruiter', 'manager', 'assistantmanager', 'teamlead', 'expert'].includes(normalizedRole) && (
                 <NavItem
                   icon={Database}
                   label="Branch Candidates"
@@ -430,7 +430,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 />
               )}
               {/* Jobs — admin + marketing team + recruiter */}
-              {['admin', 'mm', 'mam', 'mlead', 'recruiter'].includes(normalizedRole) && (
+              {['admin', 'mm', 'mam', 'mlead', 'recruiter', 'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole) && (
                 <NavItem
                   icon={Briefcase}
                   label="Jobs"
@@ -510,7 +510,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
         {/* Footer */}
         <div className="border-t border-border p-2 flex-shrink-0">
           <nav className="grid gap-1">
-            {['admin', 'mm', 'mam', 'mlead', 'lead', 'am'].includes(normalizedRole) && (
+            {['admin', 'mm', 'mam', 'mlead', 'lead', 'am', 'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole) && (
               <NavItem
                 icon={UserPlus}
                 label="User Management"
