@@ -8,18 +8,76 @@ import { logger } from '../utils/logger.js';
 // appropriate. 'expert' is kept as a logical TYPE in tag/notification
 // code but is no longer a stored user role. 'AM/MM/MAM' uppercase
 // variants normalized to lowercase to match storage.
+// C20 Phase 1 — dual-read: accept both legacy and new role names. The map
+// is keyed by either form and resolves to a single canonical lowercase
+// stored value. New names map to themselves; legacy names also map to
+// themselves for now (no auto-rename on read; the migration already
+// rewrote DB rows). Frontend writes new names. Old-name writes from
+// stragglers are still accepted and logged via emitLegacyRoleWarning().
 const ROLE_CANONICAL_MAP = new Map([
-  ['admin',     'admin'],
-  ['lead',      'lead'],
-  ['user',      'user'],
-  ['am',        'am'],
-  ['mm',        'mm'],
-  ['mam',       'mam'],
-  ['mlead',     'mlead'],
-  ['recruiter', 'recruiter'],
+  // legacy names (still accepted during the dual-read window)
+  ['admin',           'admin'],
+  ['lead',            'lead'],
+  ['user',            'user'],
+  ['am',              'am'],
+  ['mm',              'mm'],
+  ['mam',             'mam'],
+  ['mlead',           'mlead'],
+  ['recruiter',       'recruiter'],
+  // new names introduced in C20
+  ['manager',          'manager'],
+  ['assistantmanager', 'assistantManager'],
+  ['teamlead',         'teamLead'],
+  ['expert',           'expert'],
 ]);
 
+// Legacy names — used by emitLegacyRoleWarning to flag any straggler
+// writes after the migration. Removed when the dual-read window closes.
+const LEGACY_ROLE_NAMES = new Set(['lead', 'user', 'am', 'mm', 'mam', 'mlead']);
+
+// Valid teams. `null` is reserved for admin only.
+const VALID_TEAMS = new Set(['technical', 'marketing', 'sales']);
+
 const VALID_ROLES = new Set(ROLE_CANONICAL_MAP.values());
+
+// C20 — Role "level" abstraction. Both legacy and new role names map to
+// the same level token, so permission checks can compare on level
+// regardless of which name is stored. Old `am` (technical AM) and `mam`
+// (marketing AM) collapse to the same level: assistantManager.
+const ROLE_LEVEL = new Map([
+  ['admin',            'admin'],
+  ['mm',               'manager'],
+  ['manager',          'manager'],
+  ['am',               'assistantManager'],
+  ['mam',              'assistantManager'],
+  ['assistantmanager', 'assistantManager'],
+  ['lead',             'teamLead'],
+  ['mlead',            'teamLead'],
+  ['teamlead',         'teamLead'],
+  ['recruiter',        'recruiter'],
+  ['user',             'expert'],
+  ['expert',           'expert'],
+]);
+
+const roleLevel = (role) => ROLE_LEVEL.get((role || '').toLowerCase().trim()) || null;
+
+// Pre-built superset arrays — extend the existing permission gates so
+// they accept both legacy and new role names. Removing the legacy entries
+// is the final step when the dual-read window closes.
+const ROLES_ADMIN_OR_MANAGER       = ['admin', 'mm', 'manager'];
+const ROLES_ADMIN_MANAGER_TEAMLEAD = ['admin', 'mm', 'manager', 'lead', 'teamLead'];
+const ROLES_ADMIN_MANAGER_TL_AM    = ['admin', 'mm', 'manager', 'lead', 'teamLead', 'am', 'assistantManager'];
+const ROLES_PROVISIONERS           = ['admin', 'mm', 'manager', 'mam', 'assistantManager', 'mlead', 'teamLead', 'lead', 'am'];
+const ROLES_MM_SUBORDINATES        = ['mam', 'assistantManager', 'mlead', 'teamLead', 'recruiter'];
+
+// Track legacy-name writes — emits a structured warn so we can spot
+// stragglers (e.g. an old client still posting `role: "mm"`) during the
+// dual-read window. Keep this until we drop the legacy aliases.
+const emitLegacyRoleWarning = (role, source) => {
+  if (LEGACY_ROLE_NAMES.has((role || '').toLowerCase().trim())) {
+    logger.warn('legacy role name in write path', { role, source });
+  }
+};
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -41,6 +99,7 @@ export class UserService {
       const sanitizedUsers = users.map(user => ({
         email: user.email,
         role: user.role,
+        team: user.team || null,
         teamLead: user.teamLead,
         manager: user.manager,
         active: user.active !== undefined ? Boolean(user.active) : true,
@@ -82,6 +141,7 @@ export class UserService {
       const sanitizedUsers = filteredUsers.map(user => ({
         email: user.email,
         role: user.role,
+        team: user.team || null,
         teamLead: user.teamLead,
         manager: user.manager,
         active: user.active !== undefined ? Boolean(user.active) : true,
@@ -127,7 +187,8 @@ export class UserService {
               ? {
                   email,
                   role: user.role,
-                  teamLead: user.teamLead,
+                  team: user.team || null,
+        teamLead: user.teamLead,
                   manager: user.manager,
                   active: user.active !== undefined ? Boolean(user.active) : true
                 }
@@ -359,6 +420,7 @@ export class UserService {
       const sanitizedUsers = matchedUsers.map(user => ({
         email: user.email,
         role: user.role,
+        team: user.team || null,
         teamLead: user.teamLead,
         manager: user.manager,
         active: user.active !== undefined ? Boolean(user.active) : true,
@@ -391,25 +453,26 @@ export class UserService {
   }
 
   canManageUsers(role) {
-    return ['admin', 'mm'].includes((role || '').toLowerCase());
+    return ROLES_ADMIN_OR_MANAGER.includes((role || '').toLowerCase());
   }
 
   canViewUsersByRole(requestingRole, targetRole) {
-    const r = (requestingRole || '').toLowerCase();
-    const t = (targetRole || '').toLowerCase();
+    // C20 — compare on level tokens so legacy + new names are accepted.
+    const r = roleLevel(requestingRole);
+    const t = roleLevel(targetRole);
     if (r === 'admin') return true;
-    if (r === 'mm') return true;
-    if (r === 'am' && ['lead', 'user'].includes(t)) return true;
-    if (r === 'lead' && ['user'].includes(t)) return true;
+    if (r === 'manager') return true;
+    if (r === 'assistantManager' && ['teamLead', 'expert', 'recruiter'].includes(t)) return true;
+    if (r === 'teamLead' && ['expert', 'recruiter'].includes(t)) return true;
     return false;
   }
 
   canViewStats(role) {
-    return ['admin', 'mm', 'lead'].includes((role || '').toLowerCase());
+    return ROLES_ADMIN_MANAGER_TEAMLEAD.includes((role || '').toLowerCase());
   }
 
   canSearchUsers(role) {
-    return ['admin', 'mm', 'lead', 'am'].includes((role || '').toLowerCase());
+    return ROLES_ADMIN_MANAGER_TL_AM.includes((role || '').toLowerCase());
   }
 
   // Case-insensitive — accepts any casing the caller hands in (UI / route
@@ -431,7 +494,8 @@ export class UserService {
         profile: {
           email,
           role: user.role,
-          teamLead: user.teamLead,
+          team: user.team || null,
+        teamLead: user.teamLead,
           manager: user.manager,
           active: user.active !== undefined ? Boolean(user.active) : true
         }
@@ -501,49 +565,65 @@ export class UserService {
     return [...new Set(matches.map(u => (u.role || '').toLowerCase()).filter(Boolean))];
   }
 
-  //   Hierarchy contract — a user with role X may have a teamLead whose
-  //   role is one of:
-  //     mam       → mm, admin
-  //     mlead     → mam, mm, admin    (matters for the C15 scenario:
-  //                                    recruiter→mlead can keep mam lead)
-  //     recruiter → mlead, mam, mm, admin
-  //     am        → mm, admin
-  //     lead      → am, mm, admin
-  //     user      → lead, am, mm, admin
-  //     admin/mm  → no teamLead required (any value tolerated, none enforced)
+  //   Hierarchy contract (C20 — level-based, accepts legacy + new names):
+  //     assistantManager → manager, admin
+  //     teamLead         → assistantManager, manager, admin
+  //     recruiter        → teamLead, assistantManager, manager, admin
+  //     expert           → teamLead, assistantManager, manager, admin
+  //     admin / manager  → no teamLead required (any value tolerated)
   validateTeamLeadCompatibility(role, teamLeadName) {
-    const roleLower = (role || '').toLowerCase();
+    const lvl = roleLevel(role);
     const formatted = this.formatNameValue(teamLeadName);
-    if (!roleLower) return { valid: true };
-    if (['admin', 'mm'].includes(roleLower)) return { valid: true };
+    if (!lvl) return { valid: true };
+    if (['admin', 'manager'].includes(lvl)) return { valid: true };
     if (!formatted) return { valid: true };
 
     const allowed = {
-      mam:       ['mm', 'admin'],
-      mlead:     ['mam', 'mm', 'admin'],
-      recruiter: ['mlead', 'mam', 'mm', 'admin'],
-      am:        ['mm', 'admin'],
-      lead:      ['am', 'mm', 'admin'],
-      user:      ['lead', 'am', 'mm', 'admin'],
-    }[roleLower];
+      assistantManager: ['manager', 'admin'],
+      teamLead:         ['assistantManager', 'manager', 'admin'],
+      recruiter:        ['teamLead', 'assistantManager', 'manager', 'admin'],
+      expert:           ['teamLead', 'assistantManager', 'manager', 'admin'],
+    }[lvl];
 
     if (!allowed) return { valid: true };
 
-    const candidateRoles = this._getRolesForDisplayName(formatted);
-    if (candidateRoles.length === 0) {
+    const candidateLevels = this._getRolesForDisplayName(formatted)
+      .map(r => roleLevel(r))
+      .filter(Boolean);
+
+    if (candidateLevels.length === 0) {
       return {
         valid: false,
         reason: `teamLead "${formatted}" does not match any active user`
       };
     }
-    const ok = candidateRoles.some(r => allowed.includes(r));
+    const ok = candidateLevels.some(r => allowed.includes(r));
     if (!ok) {
       return {
         valid: false,
-        reason: `${roleLower} requires teamLead with role in [${allowed.join(', ')}]; "${formatted}" has role(s) [${candidateRoles.join(', ')}]`
+        reason: `${lvl} requires teamLead at level [${allowed.join(', ')}]; "${formatted}" is at level [${[...new Set(candidateLevels)].join(', ')}]`
       };
     }
     return { valid: true };
+  }
+
+  // C20 — resolve `team` for a new user. Admins are team-less. Phase 1
+  // is additive: explicit valid team wins, else inherit from requester,
+  // else null. We never throw on missing team during the dual-read
+  // window because legacy callers don't know about the field. Phase 2
+  // will tighten when sales arrives.
+  _resolveTeamForCreation(role, providedTeam, requesterRecord) {
+    if (roleLevel(role) === 'admin') return null;
+    const provided = (providedTeam || '').toString().toLowerCase().trim();
+    if (provided) {
+      if (!VALID_TEAMS.has(provided)) {
+        throw new Error(`Invalid team "${provided}" — must be one of: ${[...VALID_TEAMS].join(', ')}`);
+      }
+      return provided;
+    }
+    const inherited = (requesterRecord?.team || '').toString().toLowerCase().trim();
+    if (inherited && VALID_TEAMS.has(inherited)) return inherited;
+    return null;
   }
 
   // C17: read change history (role / teamLead / manager / active mutations).
@@ -602,6 +682,18 @@ export class UserService {
 
       if (sanitizedUpdate.manager !== undefined) {
         sanitizedUpdate.manager = this.formatNameValue(sanitizedUpdate.manager);
+      }
+
+      // C20 — validate team if provided; only admin may have null team.
+      if (sanitizedUpdate.team !== undefined && sanitizedUpdate.team !== null) {
+        const t = (sanitizedUpdate.team || '').toString().toLowerCase().trim();
+        if (!VALID_TEAMS.has(t)) {
+          throw new Error(`Invalid team "${t}"`);
+        }
+        sanitizedUpdate.team = t;
+      }
+      if (sanitizedUpdate.role !== undefined) {
+        emitLegacyRoleWarning(sanitizedUpdate.role, 'updateUserProfile');
       }
 
       await this.userModel.updateUser(email, sanitizedUpdate);
@@ -744,33 +836,40 @@ export class UserService {
 
   canInitiateProvisioning(role) {
     const normalized = (role || '').toLowerCase();
-    return ['admin', 'mm', 'mam', 'mlead', 'lead', 'am'].includes(normalized);
+    return ROLES_PROVISIONERS.includes(normalized);
   }
 
+  // C20 — accept both legacy and new role names but preserve the original
+  // technical/marketing split via the legacy name pairings. New names map
+  // forward by team (after migration the team field carries the split):
+  //   manager           ≡ mm   (cross-team during dual-read; team enforced in Phase 2)
+  //   assistantManager  ≡ mam  (marketing) OR am (technical) depending on team
+  //   teamLead          ≡ mlead (marketing) OR lead (technical) depending on team
+  //   expert            ≡ user
   canCreateRole(requesterRole, targetRole) {
     const requester = (requesterRole || '').toLowerCase();
     const target = (targetRole || '').toLowerCase();
 
     if (requester === 'admin') return true;
-    if (requester === 'mm') return ['mam', 'mlead', 'recruiter'].includes(target);
-    if (requester === 'mam') return ['mlead', 'recruiter'].includes(target);
+    if (requester === 'mm' || requester === 'manager') {
+      return ['mam', 'mlead', 'recruiter', 'assistantmanager', 'teamlead'].includes(target);
+    }
+    if (requester === 'mam' || requester === 'assistantmanager') {
+      return ['mlead', 'recruiter', 'teamlead'].includes(target);
+    }
     if (requester === 'mlead') return ['recruiter'].includes(target);
-    if (requester === 'am') return ['lead', 'user'].includes(target);
-    if (requester === 'lead') return ['user'].includes(target);
+    if (requester === 'am') return ['lead', 'user', 'expert'].includes(target);
+    if (requester === 'lead') return ['user', 'expert'].includes(target);
+    // New `teamLead` accepts the union during dual-read because the
+    // requester's home team is what disambiguates — Phase 2 reads team.
+    if (requester === 'teamlead') {
+      return ['recruiter', 'user', 'expert'].includes(target);
+    }
     return false;
   }
 
   canManageTargetRole(requesterRole, targetRole) {
-    const requester = (requesterRole || '').toLowerCase();
-    const target = (targetRole || '').toLowerCase();
-
-    if (requester === 'admin') return true;
-    if (requester === 'mm') return ['mam', 'mlead', 'recruiter'].includes(target);
-    if (requester === 'mam') return ['mlead', 'recruiter'].includes(target);
-    if (requester === 'mlead') return ['recruiter'].includes(target);
-    if (requester === 'am') return ['lead', 'user'].includes(target);
-    if (requester === 'lead') return ['user'].includes(target);
-    return false;
+    return this.canCreateRole(requesterRole, targetRole);
   }
 
   resolveTeamLeadForCreation(requestingUser, targetRole, providedTeamLead = '', targetEmail = '') {
@@ -779,28 +878,28 @@ export class UserService {
       return formattedProvided;
     }
 
-    const requesterRole = (requestingUser.role || '').toLowerCase();
+    // C20 — level-based comparison so legacy + new role names work.
+    const requesterLvl = roleLevel(requestingUser.role);
+    const targetLvl = roleLevel(targetRole);
     const requesterDisplayName = this.deriveDisplayNameFromEmail(requestingUser.email);
-    const normalizedTarget = (targetRole || '').toLowerCase();
     const targetDisplayName = this.formatNameValue(this.deriveDisplayNameFromEmail(targetEmail));
 
-    if (normalizedTarget === 'mlead') {
+    if (targetLvl === 'teamLead') {
       return targetDisplayName || requesterDisplayName;
     }
 
-    if (normalizedTarget === 'recruiter') {
-      if (['mlead', 'mam', 'mm'].includes(requesterRole)) {
+    if (targetLvl === 'recruiter') {
+      if (['teamLead', 'assistantManager', 'manager'].includes(requesterLvl)) {
         return requesterDisplayName;
       }
       return targetDisplayName;
     }
 
-    if (normalizedTarget === 'lead' && requesterRole === 'am') {
-      return requesterDisplayName;
-    }
-
-    if (normalizedTarget === 'user' && requesterRole === 'lead') {
-      return requesterDisplayName;
+    if (targetLvl === 'expert') {
+      if (['teamLead', 'assistantManager', 'manager'].includes(requesterLvl)) {
+        return requesterDisplayName;
+      }
+      return targetDisplayName;
     }
 
     return '';
@@ -812,25 +911,26 @@ export class UserService {
       return formattedProvided;
     }
 
-    const normalizedTarget = (targetRole || '').toLowerCase();
-    if (normalizedTarget === 'mlead') {
+    // C20 — level-based comparison.
+    const targetLvl = roleLevel(targetRole);
+    if (targetLvl === 'teamLead') {
       const targetDisplayName = this.formatNameValue(this.deriveDisplayNameFromEmail(targetEmail));
       if (targetDisplayName) {
         return targetDisplayName;
       }
     }
 
-    const requesterRole = (requestingUser.role || '').toLowerCase();
-    if (requesterRole === 'mm') {
+    const requesterLvl = roleLevel(requestingUser.role);
+    if (requesterLvl === 'manager') {
       return this.deriveDisplayNameFromEmail(requestingUser.email);
     }
 
-     if (requesterRole === 'am') {
-       const requesterManagerDisplay = this.formatNameValue(requesterRecord?.manager ?? '');
-       if (requesterManagerDisplay) {
-         return requesterManagerDisplay;
-       }
-     }
+    if (requesterLvl === 'assistantManager') {
+      const requesterManagerDisplay = this.formatNameValue(requesterRecord?.manager ?? '');
+      if (requesterManagerDisplay) {
+        return requesterManagerDisplay;
+      }
+    }
 
     const requesterManager = this.formatNameValue(requesterRecord?.manager ?? '');
     if (requesterManager) {
@@ -909,7 +1009,8 @@ export class UserService {
         .map((user) => ({
           email: user.email,
           role: user.role,
-          teamLead: user.teamLead,
+          team: user.team || null,
+        teamLead: user.teamLead,
           manager: user.manager,
           active: user.active !== undefined ? Boolean(user.active) : true
         }));
@@ -950,7 +1051,7 @@ export class UserService {
       }
     };
 
-    if (requesterRole === 'mm') {
+    if (roleLevel(requesterRole) === 'manager') {
       pushReports(managerMap.get(requesterDisplay) || []);
     }
 
@@ -972,7 +1073,8 @@ export class UserService {
         manageable.push({
           email,
           role: user.role,
-          teamLead: user.teamLead,
+          team: user.team || null,
+        teamLead: user.teamLead,
           manager: user.manager,
           active: user.active !== undefined ? Boolean(user.active) : true
         });
@@ -1053,6 +1155,11 @@ export class UserService {
         const manager = this.resolveManagerForCreation(requestingUser, canonicalRole, entry.manager, requesterRecord, email);
         const active = entry.active !== undefined ? Boolean(entry.active) : true;
 
+        // C20 — resolve team. Admins have no team. Otherwise: explicit
+        // value if provided + valid; else inherit from requester; else
+        // throw (don't silently misclassify).
+        const team = this._resolveTeamForCreation(canonicalRole, entry.team, requesterRecord);
+
         // C9/C15: reject creates that would land in an invalid (role,
         // teamLead) state — e.g. a recruiter pointing at another recruiter.
         {
@@ -1062,11 +1169,13 @@ export class UserService {
           }
         }
 
+        emitLegacyRoleWarning(canonicalRole, 'bulkCreateUsers');
         await this.userModel.createUser({
           email,
           password: entry.password,
           adminHash,
           role: canonicalRole,
+          team,
           teamLead,
           manager,
           active
@@ -1143,22 +1252,28 @@ export class UserService {
             throw new Error('Unsupported role');
           }
 
+          // C20 — accept legacy + new override allowances side-by-side.
+          // A manager (mm/manager) can move anyone in the marketing
+          // subordinate set; a teamLead/lead can promote experts/users.
           const canonicalRoleLower = (canonicalRole || '').toLowerCase();
-          const allowedMmRoles = ['mam', 'mlead', 'recruiter'];
-          const canOverrideRoleChange = requesterNormalized === 'mm'
+          const allowedMmRoles = ['mam', 'mlead', 'recruiter', 'assistantmanager', 'teamlead'];
+          const canOverrideRoleChange =
+            (requesterNormalized === 'mm' || requesterNormalized === 'manager')
             && allowedMmRoles.includes(targetRoleLower)
             && allowedMmRoles.includes(canonicalRoleLower);
-          const canLeadAssign = requesterNormalized === 'lead'
-            && targetRoleLower === 'user'
-            && canonicalRoleLower === 'user';
+          const canLeadAssign =
+            (requesterNormalized === 'lead' || requesterNormalized === 'teamlead')
+            && (targetRoleLower === 'user' || targetRoleLower === 'expert')
+            && (canonicalRoleLower === 'user' || canonicalRoleLower === 'expert');
 
           if (canonicalRole !== targetUser.role && !this.canCreateRole(requestingUser.role, canonicalRole) && !canOverrideRoleChange && !canLeadAssign) {
             throw new Error('Not allowed to assign this role');
           }
 
+          emitLegacyRoleWarning(canonicalRole, 'bulkUpdateUsers');
           updatePayload.role = canonicalRole;
           resultingRole = canonicalRole;
-          if ((canonicalRole || '').toLowerCase() === 'mlead' && canonicalRole !== targetUser.role) {
+          if ((canonicalRoleLower === 'mlead' || canonicalRoleLower === 'teamlead') && canonicalRole !== targetUser.role) {
             roleChangedToMlead = true;
           }
           revokeTokens = true;
@@ -1184,15 +1299,19 @@ export class UserService {
           const formattedManager = this.formatNameValue(rawManager);
           if (formattedManager) {
             updatePayload.manager = formattedManager;
-          } else if (resultingRoleLower === 'mlead' && derivedSelfName) {
+          } else if (roleLevel(resultingRoleLower) === 'teamLead' && derivedSelfName) {
             updatePayload.manager = derivedSelfName;
           }
         } else if (roleChangedToMlead && derivedSelfName) {
           updatePayload.manager = derivedSelfName;
         }
 
-        if (requesterNormalized === 'mm' && ['mam', 'mlead', 'recruiter'].includes(targetRoleLower)) {
-          if (targetRoleLower === 'mam') {
+        // C20 — accept legacy + new names side-by-side. Same fixups for
+        // manager-moves-marketing-subordinate as before.
+        const isManagerLike = requesterNormalized === 'mm' || requesterNormalized === 'manager';
+        const isMarketingTarget = ['mam', 'mlead', 'recruiter', 'assistantmanager', 'teamlead'].includes(targetRoleLower);
+        if (isManagerLike && isMarketingTarget) {
+          if (targetRoleLower === 'mam' || targetRoleLower === 'assistantmanager') {
             delete updatePayload.teamLead;
           }
 
@@ -1202,7 +1321,7 @@ export class UserService {
             }
           }
 
-          if ((targetRoleLower === 'mlead' || targetRoleLower === 'recruiter') && !updatePayload.teamLead) {
+          if (['mlead', 'teamlead', 'recruiter'].includes(targetRoleLower) && !updatePayload.teamLead) {
             const existingLead = this.formatNameValue(targetUser.teamLead ?? '');
             if (existingLead) {
               updatePayload.teamLead = existingLead;
@@ -1210,7 +1329,9 @@ export class UserService {
           }
         }
 
-        if (requesterNormalized === 'lead' && targetRoleLower === 'user') {
+        const isLeadLike = requesterNormalized === 'lead' || requesterNormalized === 'teamlead';
+        const isUserLike = targetRoleLower === 'user' || targetRoleLower === 'expert';
+        if (isLeadLike && isUserLike) {
           if (!updatePayload.teamLead || updatePayload.teamLead.trim() === '') {
             updatePayload.teamLead = requesterDisplayName;
           }
@@ -1234,6 +1355,17 @@ export class UserService {
           }
           updatePayload.password = entry.password;
           revokeTokens = true;
+        }
+
+        // C20 — accept `team` updates. Validate against VALID_TEAMS.
+        // Admin demotion to team-less is not handled here (admin
+        // promotions/demotions go through updateUserRole anyway).
+        if (entry.team !== undefined) {
+          const t = (entry.team || '').toString().toLowerCase().trim();
+          if (t && !VALID_TEAMS.has(t)) {
+            throw new Error(`Invalid team "${t}"`);
+          }
+          updatePayload.team = t || null;
         }
 
         if (Object.keys(updatePayload).length === 0) {

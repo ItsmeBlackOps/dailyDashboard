@@ -19,6 +19,7 @@ export class UserModel {
       passwordHash: userDoc.passwordHash,
       adminHash: userDoc.adminHash,
       role: userDoc.role,
+      team: userDoc.team || null,
       teamLead: userDoc.teamLead,
       manager: userDoc.manager,
       active: userDoc.active !== undefined ? Boolean(userDoc.active) : true,
@@ -156,6 +157,7 @@ export class UserModel {
         passwordHash,
         adminHash: userData.adminHash || passwordHash,
         role: userData.role || 'user',
+        team: userData.team || null,
         teamLead: userData.teamLead || null,
         manager: userData.manager || null,
         active: userData.active !== undefined ? Boolean(userData.active) : true,
@@ -214,7 +216,7 @@ export class UserModel {
       // Read prior values for fields we audit so we can capture `from`
       // in changeHistory entries. Only the fields we care about — keeps
       // the read cheap.
-      const AUDITED = ['role', 'teamLead', 'manager', 'active'];
+      const AUDITED = ['role', 'team', 'teamLead', 'manager', 'active'];
       const auditedNeeded = AUDITED.filter(f => f in cleanedUpdate);
       let prior = null;
       if (auditedNeeded.length > 0) {
