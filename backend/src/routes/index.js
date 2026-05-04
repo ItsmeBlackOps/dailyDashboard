@@ -53,6 +53,7 @@ import poRoutes from './po.js';
 import interviewSupportAdminRoutes from './interviewSupportAdmin.js';
 import jobsRoutes from './jobs.js';
 import jobApplicationsRoutes from './jobApplications.js';
+import delegationRoutes from './delegations.js';
 
 const router = express.Router();
 
@@ -69,6 +70,7 @@ router.use('/permissions', permissionRoutes);
 router.use('/transcript-requests', transcriptRequestRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/po', poRoutes);
+router.use('/delegations', delegationRoutes);
 // Mount specific path BEFORE the generic /jobs prefix so Express
 // reaches the applications router instead of falling into jobsRoutes.
 router.use('/jobs/applications', jobApplicationsRoutes);
