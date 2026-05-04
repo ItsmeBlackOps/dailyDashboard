@@ -52,6 +52,7 @@ import AuthorizedRoute from './routes/AuthorizedRoute';
 import DashboardV2 from './pages/DashboardV2';
 import AdminAlertsPage from './pages/AdminAlerts';
 import UserManagementPage from './pages/UserManagement';
+import DelegationsPage from './pages/Delegations';
 import PermissionsManagement from './pages/PermissionsManagement';
 
 // Lazy imports — heavy/secondary pages, split into their own chunks
@@ -111,6 +112,7 @@ const App = () => (
                 <Route path="/notifications" element={<NotificationsPage />} />
                 <Route path="/resume-understanding" element={<ResumeUnderstanding />} />
                 <Route path="/user-management" element={<UserManagementPage />} />
+                <Route path="/delegations" element={<DelegationsPage />} />
                 <Route path="/permissions" element={<PermissionsManagement />} />
                 <Route path="/dashboard-v2" element={<DashboardV2 />} />
                 <Route path="/profile-hub" element={<ProfileHubPage />} />
