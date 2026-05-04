@@ -30,9 +30,23 @@ export function extractMeetingLink(body) {
   return null;
 }
 
-// interviewDateTime is stored as 'YYYY-MM-DDTHH:mm' in EST (America/New_York)
+// interviewDateTime is stored as 'YYYY-MM-DDTHH:mm' in EST (America/New_York).
+// Falls back to computing from legacy fields when the field is absent so that
+// tasks ingested before the interviewDateTime backfill remain visible.
+function computeInterviewDateTimeFromFields(task) {
+  const dateStr = (task['Date of Interview'] || '').trim();
+  const timeStr = (task['Start Time Of Interview'] || '').trim();
+  const dm = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const tm = timeStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!dm || !tm) return null;
+  let hh = parseInt(tm[1], 10);
+  if (tm[3].toUpperCase() === 'PM' && hh !== 12) hh += 12;
+  if (tm[3].toUpperCase() === 'AM' && hh === 12) hh = 0;
+  return `${dm[3]}-${dm[1].padStart(2,'0')}-${dm[2].padStart(2,'0')}T${String(hh).padStart(2,'0')}:${tm[2]}`;
+}
+
 function getMinutesUntil(task) {
-  const raw = task.interviewDateTime;
+  const raw = task.interviewDateTime || computeInterviewDateTimeFromFields(task);
   if (!raw) return null;
   const meetingMoment = moment.tz(raw, 'YYYY-MM-DDTHH:mm', TIMEZONE);
   if (!meetingMoment.isValid()) return null;
@@ -229,15 +243,27 @@ async function tick() {
 
     const candidates = await collection
       .find({
-        // Either an already-saved meetingLink, OR a body we can scan for one
-        $or: [
-          { meetingLink: { $exists: true, $ne: null, $ne: '' } },
-          { joinUrl:     { $exists: true, $ne: null, $ne: '' } },
-          { joinWebUrl:  { $exists: true, $ne: null, $ne: '' } },
-          { body:        { $exists: true, $ne: '' } },
+        $and: [
+          // Either an already-saved meetingLink, OR a body we can scan for one
+          {
+            $or: [
+              { meetingLink: { $exists: true, $ne: null, $ne: '' } },
+              { joinUrl:     { $exists: true, $ne: null, $ne: '' } },
+              { joinWebUrl:  { $exists: true, $ne: null, $ne: '' } },
+              { body:        { $exists: true, $ne: '' } },
+            ],
+          },
+          // Primary: indexed interviewDateTime range. Fallback: no interviewDateTime
+          // field — getMinutesUntil() computes from legacy date/time fields and
+          // processTask() naturally skips tasks outside the ±25-min window.
+          {
+            $or: [
+              { interviewDateTime: { $gte: cutoffStart, $lte: cutoffEnd } },
+              { interviewDateTime: { $exists: false } },
+            ],
+          },
         ],
         botStatus: { $nin: ['main_joined', 'main_failed', 'completed'] },
-        interviewDateTime: { $gte: cutoffStart, $lte: cutoffEnd },
       })
       .sort({ interviewDateTime: 1 })
       .limit(100)
