@@ -404,27 +404,40 @@ class InterviewSupportAdminService {
   // getFailedAutoAssigns
   // -----------------------------------------------------------------------
   async getFailedAutoAssigns(date) {
+    // The auditLog pipeline writes { phase, timestamp, subject, ... }
+    // — not { action, createdAt, taskId } as an older draft of this
+    // service assumed. Schema confirmed live: 339 'AUTO_ASSIGN_FAILED'
+    // rows present, all keyed by `subject`.
     const auditCol = database.getCollection('auditLog');
     const taskCol  = database.getCollection('taskBody');
 
-    const query = { action: 'AUTO_ASSIGN_FAILED' };
+    const query = { phase: 'AUTO_ASSIGN_FAILED' };
     if (date) {
       const start = new Date(`${date}T00:00:00Z`);
       const end   = new Date(`${date}T23:59:59Z`);
-      query.createdAt = { $gte: start, $lte: end };
+      query.timestamp = { $gte: start, $lte: end };
     }
 
-    const failedAudits = await auditCol.find(query).sort({ createdAt: -1 }).toArray();
+    const failedAudits = await auditCol.find(query).sort({ timestamp: -1 }).toArray();
 
-    // Enrich with task data
-    const taskIds = [...new Set(failedAudits.map(a => a.taskId).filter(Boolean))];
-    const oids    = taskIds.map(id => { try { return new ObjectId(id); } catch { return id; } });
-    const tasks   = await taskCol.find({ _id: { $in: oids } }).toArray();
-    const taskMap = Object.fromEntries(tasks.map(t => [t._id.toString(), t]));
+    // Enrich by subject → most recent matching taskBody row. Subjects
+    // can match multiple thread replies; pick the latest by
+    // receivedDateTime as the primary representation of the task.
+    const subjects = [...new Set(failedAudits.map(a => a.subject).filter(Boolean))];
+    let taskBySubject = {};
+    if (subjects.length > 0) {
+      const tasks = await taskCol.find({ subject: { $in: subjects } })
+        .sort({ receivedDateTime: -1 })
+        .toArray();
+      for (const t of tasks) {
+        // Keep the first (latest) row per subject because of the sort above.
+        if (!taskBySubject[t.subject]) taskBySubject[t.subject] = t;
+      }
+    }
 
     const enriched = failedAudits.map(a => ({
       ...a,
-      task: taskMap[a.taskId] || null,
+      task: taskBySubject[a.subject] || null,
     }));
 
     return { date: date || null, total: enriched.length, failedAutoAssigns: enriched };
@@ -452,8 +465,10 @@ class InterviewSupportAdminService {
         { $group: { _id: '$Status', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ]).toArray(),
-      auditCol.find({ createdAt: { $gte: start, $lte: end } }).sort({ createdAt: -1 }).toArray(),
-      auditCol.countDocuments({ action: 'AUTO_ASSIGN_FAILED', createdAt: { $gte: start, $lte: end } }),
+      // Field name is `timestamp`, not `createdAt`. And the success/fail
+      // markers live on `phase`, not `action`.
+      auditCol.find({ timestamp: { $gte: start, $lte: end } }).sort({ timestamp: -1 }).toArray(),
+      auditCol.countDocuments({ phase: 'AUTO_ASSIGN_FAILED', timestamp: { $gte: start, $lte: end } }),
     ]);
 
     const statusMap = Object.fromEntries(statusBreakdown.map(s => [s._id || 'Unknown', s.count]));
@@ -478,7 +493,7 @@ class InterviewSupportAdminService {
     const auditCol = database.getCollection('auditLog');
     const rows = await auditCol
       .find({ subject })
-      .sort({ createdAt: 1 })
+      .sort({ timestamp: 1 })
       .limit(Math.max(1, Math.min(1000, parseInt(limit, 10) || 200)))
       .toArray();
     return { subject, rows };
