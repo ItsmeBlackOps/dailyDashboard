@@ -2,6 +2,21 @@ import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
 
+// C16 — pre-save validation. Reject malformed user data at write time
+// so dirty state never lands in the DB. The D-series audit found rows
+// like `teamLead: '"aman Sagar" <aman Sagar'`, self-loops on teamLead,
+// and admin users with non-null team that nothing rejected. This
+// validator closes those write paths.
+const EMAIL_REGEX = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+const VALID_ROLES = new Set([
+  // legacy (still accepted during the C20 dual-read window)
+  'admin', 'mm', 'mam', 'mlead', 'am', 'lead', 'recruiter', 'user',
+  // canonical (post-C20)
+  'manager', 'assistantManager', 'teamLead', 'expert',
+]);
+const VALID_TEAMS = new Set(['technical', 'marketing', 'sales']);
+const NAME_FIELD_REGEX = /^[\p{L}][\p{L} .'-]{0,79}$/u; // letter, then up to 79 of letter/space/.'-
+
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export class UserModel {
@@ -138,8 +153,105 @@ export class UserModel {
     return this.cache.get(email.toLowerCase()) || null;
   }
 
+  // C16 — pre-save validator. mode = 'create' or 'update'. Throws on
+  // invalid input. Coercion-free: callers must pass clean data.
+  _validateBeforeWrite(payload, mode) {
+    const isCreate = mode === 'create';
+    const has = (k) => Object.prototype.hasOwnProperty.call(payload, k);
+
+    // --- email ---
+    if (isCreate || has('email')) {
+      const raw = payload.email;
+      if (typeof raw !== 'string' || !raw.trim()) {
+        throw new Error('email is required');
+      }
+      if (raw !== raw.trim() || raw !== raw.toLowerCase()) {
+        throw new Error('email must be lowercased and trimmed');
+      }
+      if (!EMAIL_REGEX.test(raw)) {
+        throw new Error(`email "${raw}" is malformed`);
+      }
+    }
+
+    // --- role ---
+    if (isCreate || has('role')) {
+      const r = (payload.role || '').toString();
+      if (!r) throw new Error('role is required');
+      if (!VALID_ROLES.has(r)) {
+        throw new Error(`role "${r}" is not in the canonical enum`);
+      }
+    }
+
+    // --- team ---
+    if (has('team')) {
+      const t = payload.team;
+      if (t !== null && t !== undefined && t !== '') {
+        if (typeof t !== 'string' || !VALID_TEAMS.has(t.toLowerCase())) {
+          throw new Error(`team "${t}" must be one of: ${[...VALID_TEAMS].join(', ')} or null`);
+        }
+      }
+    }
+
+    // --- (role, team) combo: admin is team-less; everyone else needs a team ---
+    // Only enforce when both are present in this write so partial updates
+    // that touch only role OR only team don't trip on the other side.
+    if ((isCreate || has('role')) && (isCreate || has('team'))) {
+      const r = (payload.role || '').toString().toLowerCase();
+      const t = payload.team ? payload.team.toString().toLowerCase() : null;
+      const isAdminLike = r === 'admin';
+      if (isAdminLike && t) {
+        throw new Error('admin users must have team = null');
+      }
+      if (!isAdminLike && !t && isCreate) {
+        // Only on create — updates that don't touch team are fine.
+        throw new Error(`role "${r}" requires a team (technical / marketing / sales)`);
+      }
+    }
+
+    // --- teamLead / manager: well-formed strings, no self-loops ---
+    for (const field of ['teamLead', 'manager']) {
+      if (!has(field)) continue;
+      const v = payload[field];
+      if (v === null || v === '' || v === undefined) continue;
+      if (typeof v !== 'string') {
+        throw new Error(`${field} must be a string`);
+      }
+      const trimmed = v.trim();
+      if (trimmed.length === 0) continue;
+      if (trimmed !== v) {
+        throw new Error(`${field} has leading/trailing whitespace: "${v}"`);
+      }
+      if (!NAME_FIELD_REGEX.test(trimmed)) {
+        throw new Error(`${field} "${v}" is malformed (expected a display name)`);
+      }
+      // Self-loop: teamLead/manager pointing at the user's own derived
+      // display name. Only check when we know the email being written.
+      const targetEmail = (isCreate ? payload.email : payload._targetEmail)
+        || payload.email;
+      if (targetEmail) {
+        const selfDisplay = this.formatDisplayNameFromEmail(targetEmail);
+        if (selfDisplay && selfDisplay.toLowerCase() === trimmed.toLowerCase()) {
+          throw new Error(`${field} cannot point at the user's own display name (self-loop)`);
+        }
+      }
+    }
+
+    // --- active is boolean ---
+    if (has('active') && typeof payload.active !== 'boolean') {
+      // Permit 0/1 / 'true' / 'false' coercion — the model already does
+      // Boolean(...) elsewhere, so we just disallow garbage.
+      const a = payload.active;
+      if (a !== 0 && a !== 1 && a !== 'true' && a !== 'false') {
+        throw new Error(`active must be a boolean (got ${typeof a})`);
+      }
+    }
+  }
+
   async createUser(userData) {
     try {
+      // C16 — validate before any side-effect (hash, insert, cache).
+      this._validateBeforeWrite(userData, 'create');
+
       let passwordHash = userData.passwordHash;
 
       if (!passwordHash) {
@@ -194,6 +306,11 @@ export class UserModel {
       delete cleanedUpdate._changedBy;
       delete cleanedUpdate._source;
       delete cleanedUpdate._reason;
+
+      // C16 — validate the partial update payload. Pass _targetEmail so
+      // teamLead/manager self-loop check has the user's own display
+      // name to compare against. Stripped before write below.
+      this._validateBeforeWrite({ ...cleanedUpdate, _targetEmail: email }, 'update');
 
       const update = {
         ...cleanedUpdate,
