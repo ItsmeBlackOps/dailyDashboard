@@ -1690,7 +1690,12 @@ class CandidateService {
 
       for (const person of allUsers) {
         const roleKey = (person.role || '').toLowerCase();
-        if (roleKey !== 'user') continue;
+        // Accept legacy/new expert role names AND any user explicitly
+        // flagged acceptsTasks=true (covers the teamLead-who-also-does-IC
+        // case — Darshan, Anusree, Bhavya).
+        const isAssignable = ['user', 'expert'].includes(roleKey)
+          || person.acceptsTasks === true;
+        if (!isAssignable) continue;
         const personLeadName = normalizeName(person.teamLead || '');
         if (!personLeadName) continue;
         if (leadNameToEmail.has(personLeadName)) {
@@ -1718,7 +1723,12 @@ class CandidateService {
 
       for (const person of allUsers) {
         const roleKey = (person.role || '').toLowerCase();
-        if (roleKey !== 'user') continue;
+        // Accept legacy/new expert role names AND any user explicitly
+        // flagged acceptsTasks=true (covers the teamLead-who-also-does-IC
+        // case — Darshan, Anusree, Bhavya).
+        const isAssignable = ['user', 'expert'].includes(roleKey)
+          || person.acceptsTasks === true;
+        if (!isAssignable) continue;
         const personLeadName = normalizeName(person.teamLead || '');
         if (personLeadName === leadName) {
           experts.add(normalizeEmail(person.email));
