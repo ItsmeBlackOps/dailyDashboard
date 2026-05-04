@@ -50,6 +50,7 @@ export class AuthService {
         user: {
           email,
           role: user.role,
+          team: user.team || null,
           teamLead: user.teamLead,
           manager: user.manager,
           active: user.active !== undefined ? Boolean(user.active) : true
@@ -268,6 +269,7 @@ export class AuthService {
       return {
         email,
         role: user.role,
+        team: user.team || null,
         teamLead: user.teamLead,
         manager: user.manager
       };
