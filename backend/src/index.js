@@ -170,6 +170,16 @@ class Application {
     await rolePermissionModel.initialize();
     await transcriptRequestModel.initialize();
 
+    // C19 phase 1 — userDelegations indexes. Idempotent — safe to call
+    // every boot. Builds delegate_active_lookup, owner_active_lookup,
+    // sweep_expired indexes per the spec.
+    try {
+      const { delegationService } = await import('./services/delegationService.js');
+      await delegationService.ensureIndexes();
+    } catch (err) {
+      logger.warn('delegationService.ensureIndexes failed at boot', { error: err.message });
+    }
+
     logger.info('✅ Models initialized');
   }
 
