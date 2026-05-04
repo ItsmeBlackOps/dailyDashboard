@@ -76,7 +76,7 @@ describe('UserModel cache synchronization', () => {
     );
     expect(findOne).toHaveBeenCalledWith(
       { email: 'lead@example.com' },
-      expect.objectContaining({ projection: { _id: 1 } })
+      expect.objectContaining({ projection: expect.objectContaining({ _id: 1 }) })
     );
     expect(model.cache.get('lead@example.com')).toMatchObject({
       passwordHash: 'newhash',

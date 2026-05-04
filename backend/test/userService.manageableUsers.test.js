@@ -27,10 +27,10 @@ describe('UserService.getManageableUsers admin/manager coverage', () => {
     expect(emails).toEqual(['lead1@example.com', 'user1@example.com']);
   });
 
-  it('returns all other users for manager', async () => {
+  it('returns manageable users for mm', async () => {
     const users = [
-      { email: 'manager@example.com', role: 'manager', active: true },
-      { email: 'user2@example.com', role: 'user', teamLead: 'Manager', active: true },
+      { email: 'manager@example.com', role: 'mm', active: true },
+      { email: 'user2@example.com', role: 'recruiter', teamLead: 'Manager', active: true },
       { email: 'mlead1@example.com', role: 'mlead', teamLead: 'Manager', active: true },
     ];
 
@@ -38,7 +38,7 @@ describe('UserService.getManageableUsers admin/manager coverage', () => {
       getAllUsers: () => users
     };
 
-    const result = await service.getManageableUsers({ email: 'manager@example.com', role: 'manager' });
+    const result = await service.getManageableUsers({ email: 'manager@example.com', role: 'mm' });
     expect(result.success).toBe(true);
     expect(result.users).toHaveLength(2);
     const emails = result.users.map((u) => u.email).sort();

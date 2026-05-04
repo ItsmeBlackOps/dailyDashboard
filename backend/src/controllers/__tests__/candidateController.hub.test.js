@@ -32,6 +32,15 @@ jest.unstable_mockModule('../../models/Candidate.js', () => ({
   candidateModel: {
     collection: candidateCol,
   },
+  WORKFLOW_STATUS: {
+    awaitingExpert: 'awaiting_expert',
+    needsResumeUnderstanding: 'needs_resume_understanding',
+    completed: 'completed',
+  },
+  RESUME_UNDERSTANDING_STATUS: {
+    pending: 'pending',
+    done: 'done',
+  },
 }));
 
 jest.unstable_mockModule('../../models/User.js', () => ({

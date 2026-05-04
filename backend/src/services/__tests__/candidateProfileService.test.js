@@ -66,9 +66,12 @@ await jest.unstable_mockModule('openai/helpers/zod', () => ({
   zodResponseFormat: jest.fn((schema, name) => ({ __mocked: true, name })),
 }));
 
-// Mock: pdf-parse
+// Mock: pdf-parse — service uses it as `new PDFParse({ data })` then `parser.getText()`
+const mockPDFParseGetText = jest.fn().mockResolvedValue({ text: 'Resume: John Doe, 8 years backend Node.js MongoDB H1B NJ Remote' });
+const MockPDFParse = jest.fn().mockImplementation(() => ({ getText: mockPDFParseGetText }));
 await jest.unstable_mockModule('pdf-parse', () => ({
-  default: jest.fn().mockResolvedValue({ text: 'Resume: John Doe, 8 years backend Node.js MongoDB H1B NJ Remote' }),
+  default: MockPDFParse,
+  PDFParse: MockPDFParse,
 }));
 
 // ---------------------------------------------------------------------------

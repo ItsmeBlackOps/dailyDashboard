@@ -13,7 +13,16 @@ jest.unstable_mockModule('../../config/database.js', () => ({
 }));
 
 jest.unstable_mockModule('../../services/userService.js', () => ({
-  userService: {},
+  userService: {
+    deriveDisplayNameFromEmail: jest.fn(email => {
+      const local = (email || '').split('@')[0];
+      const parts = local.split(/[._\s-]+/).filter(Boolean);
+      if (parts.length === 0) return email || '';
+      return parts
+        .map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+        .join(' ');
+    }),
+  },
 }));
 
 jest.unstable_mockModule('../../middleware/errorHandler.js', () => ({
