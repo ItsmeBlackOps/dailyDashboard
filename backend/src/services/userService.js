@@ -218,6 +218,12 @@ export class UserService {
 
       const formattedTeamLead = this.formatNameValue(newTeamLead);
 
+      // C9/C15: validate against the existing role on disk before writing.
+      const check = this.validateTeamLeadCompatibility(targetUser.role, formattedTeamLead);
+      if (!check.valid) {
+        throw new Error(`Invalid role/teamLead combination: ${check.reason}`);
+      }
+
       await this.userModel.updateUser(targetEmail, {
         teamLead: formattedTeamLead,
         _changedBy: requestingUserEmail,
@@ -479,6 +485,65 @@ export class UserService {
       }
     }
     return false;
+  }
+
+  // C9/C15: role/teamLead compatibility validator.
+  //   Returns the role(s) currently held by users whose displayName matches
+  //   `name` (after normalization). Multiple roles signal a name collision
+  //   (D3) — caller can decide whether to accept any-match or reject.
+  _getRolesForDisplayName(name) {
+    const norm = this.normalizeNameValue(name);
+    if (!norm) return [];
+    const matches = this.userModel.getAllUsers().filter(u => {
+      const d = this.normalizeNameValue(this.deriveDisplayNameFromEmail(u.email));
+      return d && d === norm;
+    });
+    return [...new Set(matches.map(u => (u.role || '').toLowerCase()).filter(Boolean))];
+  }
+
+  //   Hierarchy contract — a user with role X may have a teamLead whose
+  //   role is one of:
+  //     mam       → mm, admin
+  //     mlead     → mam, mm, admin    (matters for the C15 scenario:
+  //                                    recruiter→mlead can keep mam lead)
+  //     recruiter → mlead, mam, mm, admin
+  //     am        → mm, admin
+  //     lead      → am, mm, admin
+  //     user      → lead, am, mm, admin
+  //     admin/mm  → no teamLead required (any value tolerated, none enforced)
+  validateTeamLeadCompatibility(role, teamLeadName) {
+    const roleLower = (role || '').toLowerCase();
+    const formatted = this.formatNameValue(teamLeadName);
+    if (!roleLower) return { valid: true };
+    if (['admin', 'mm'].includes(roleLower)) return { valid: true };
+    if (!formatted) return { valid: true };
+
+    const allowed = {
+      mam:       ['mm', 'admin'],
+      mlead:     ['mam', 'mm', 'admin'],
+      recruiter: ['mlead', 'mam', 'mm', 'admin'],
+      am:        ['mm', 'admin'],
+      lead:      ['am', 'mm', 'admin'],
+      user:      ['lead', 'am', 'mm', 'admin'],
+    }[roleLower];
+
+    if (!allowed) return { valid: true };
+
+    const candidateRoles = this._getRolesForDisplayName(formatted);
+    if (candidateRoles.length === 0) {
+      return {
+        valid: false,
+        reason: `teamLead "${formatted}" does not match any active user`
+      };
+    }
+    const ok = candidateRoles.some(r => allowed.includes(r));
+    if (!ok) {
+      return {
+        valid: false,
+        reason: `${roleLower} requires teamLead with role in [${allowed.join(', ')}]; "${formatted}" has role(s) [${candidateRoles.join(', ')}]`
+      };
+    }
+    return { valid: true };
   }
 
   // C17: read change history (role / teamLead / manager / active mutations).
@@ -988,6 +1053,15 @@ export class UserService {
         const manager = this.resolveManagerForCreation(requestingUser, canonicalRole, entry.manager, requesterRecord, email);
         const active = entry.active !== undefined ? Boolean(entry.active) : true;
 
+        // C9/C15: reject creates that would land in an invalid (role,
+        // teamLead) state — e.g. a recruiter pointing at another recruiter.
+        {
+          const check = this.validateTeamLeadCompatibility(canonicalRole, teamLead);
+          if (!check.valid) {
+            throw new Error(`Invalid role/teamLead combination: ${check.reason}`);
+          }
+        }
+
         await this.userModel.createUser({
           email,
           password: entry.password,
@@ -1093,12 +1167,13 @@ export class UserService {
         const resultingRoleLower = (resultingRole || '').toLowerCase();
 
         if (entry.teamLead !== undefined) {
+          // C15: only honor explicit input. If caller cleared the field we
+          // leave it untouched (preserved later by the role-aware block
+          // below) instead of silently reassigning to the requester.
           const rawTeamLead = typeof entry.teamLead === 'string' ? entry.teamLead : targetUser.teamLead;
           const formattedTeamLead = this.formatNameValue(rawTeamLead);
           if (formattedTeamLead) {
             updatePayload.teamLead = formattedTeamLead;
-          } else if (resultingRoleLower === 'mlead' && derivedSelfName) {
-            updatePayload.teamLead = derivedSelfName;
           }
         } else if (roleChangedToMlead && derivedSelfName) {
           updatePayload.teamLead = derivedSelfName;
@@ -1163,6 +1238,20 @@ export class UserService {
 
         if (Object.keys(updatePayload).length === 0) {
           throw new Error('No changes provided for this user');
+        }
+
+        // C9/C15: validate role/teamLead compatibility on the resulting
+        // (role, teamLead) pair — the new role if changed, the new lead if
+        // changed, otherwise fall back to the existing values on disk.
+        {
+          const finalRole = (updatePayload.role || targetUser.role || '').toLowerCase();
+          const finalLead = updatePayload.teamLead !== undefined
+            ? updatePayload.teamLead
+            : targetUser.teamLead;
+          const check = this.validateTeamLeadCompatibility(finalRole, finalLead);
+          if (!check.valid) {
+            throw new Error(`Invalid role/teamLead combination: ${check.reason}`);
+          }
         }
 
         await this.userModel.updateUser(email, updatePayload);
