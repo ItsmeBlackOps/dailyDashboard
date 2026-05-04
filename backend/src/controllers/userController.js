@@ -135,7 +135,9 @@ export class UserController {
   //   1. self
   //   2. requester role is admin or mm (org-wide read)
   //   3. target email is a subordinate (direct or transitive) of requester
-  _canReadProfile(requestingUser, targetEmail) {
+  // C19 phase 2 — now async because isUserInRequesterHierarchy unions
+  // in active delegations to the requester.
+  async _canReadProfile(requestingUser, targetEmail) {
     if (!requestingUser?.email) return false;
     const role = (requestingUser.role || '').toLowerCase();
     if (targetEmail === requestingUser.email) return true;
@@ -146,7 +148,7 @@ export class UserController {
   getUserChangeHistory = asyncHandler(async (req, res) => {
     const { email } = req.params;
     const requestingUser = req.user;
-    if (!this._canReadProfile(requestingUser, email)) {
+    if (!(await this._canReadProfile(requestingUser, email))) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions' });
     }
     const result = await this.userService.getUserChangeHistory(email);
@@ -159,7 +161,7 @@ export class UserController {
 
     // C8: profile-read is allowed for self, admin/mm, OR users in the
     // requester's own hierarchy (direct/transitive teamLead BFS).
-    if (!this._canReadProfile(requestingUser, email)) {
+    if (!(await this._canReadProfile(requestingUser, email))) {
       return res.status(403).json({
         success: false,
         error: 'Insufficient permissions'
