@@ -516,16 +516,25 @@ export class UserService {
   //
   // Match is by display name (today). Once C9 lands, this becomes a
   // straight email-keyed BFS — but the public signature stays the same.
-  isUserInRequesterHierarchy(requester, targetEmail) {
+  // C19 phase 2 — async + delegation-aware. The original BFS walks the
+  // teamLead chain. After phase 2, we ALSO union in any active
+  // delegations where `requester` is the delegate. A `subtree` share
+  // expands to a BFS rooted at the share's subtreeRootEmail; a
+  // `specific` share contributes its subjectEmails directly.
+  //
+  // Caller is expected to await — was sync, now async. Only one
+  // production caller (controllers/userController._canReadProfile),
+  // updated alongside this change.
+  async isUserInRequesterHierarchy(requester, targetEmail) {
     if (!requester?.email || !targetEmail) return false;
     const target = (targetEmail || '').toString().toLowerCase().trim();
-    if (target === (requester.email || '').toLowerCase().trim()) return true;
+    const requesterEmail = (requester.email || '').toString().toLowerCase().trim();
+    if (target === requesterEmail) return true;
 
     const allUsers = this.userModel.getAllUsers();
-    const leaderDisplayName = this.normalizeNameValue(this.deriveDisplayNameFromEmail(requester.email));
-    if (!leaderDisplayName) return false;
 
-    // Build a map: leadDisplayName(lowercase) → [reports]
+    // Pre-build the leadDisplayName → [reports] map once; reused by
+    // both the requester's own BFS and any subtree-scoped delegations.
     const leadToUsers = new Map();
     for (const u of allUsers) {
       if (!u.teamLead) continue;
@@ -534,20 +543,53 @@ export class UserService {
       leadToUsers.get(k).push(u);
     }
 
-    const visited = new Set();
-    const queue = [leaderDisplayName];
-    while (queue.length > 0) {
-      const cur = queue.shift();
-      if (!cur || visited.has(cur)) continue;
-      visited.add(cur);
-      const directs = leadToUsers.get(cur) || [];
-      for (const r of directs) {
-        const rEmail = (r.email || '').toLowerCase().trim();
-        if (rEmail === target) return true;
-        const rDisplay = this.normalizeNameValue(this.deriveDisplayNameFromEmail(r.email));
-        if (rDisplay && !visited.has(rDisplay)) queue.push(rDisplay);
+    const bfsContains = (rootDisplayName) => {
+      if (!rootDisplayName) return false;
+      const visited = new Set();
+      const queue = [rootDisplayName];
+      while (queue.length > 0) {
+        const cur = queue.shift();
+        if (!cur || visited.has(cur)) continue;
+        visited.add(cur);
+        const directs = leadToUsers.get(cur) || [];
+        for (const r of directs) {
+          const rEmail = (r.email || '').toLowerCase().trim();
+          if (rEmail === target) return true;
+          const rDisplay = this.normalizeNameValue(this.deriveDisplayNameFromEmail(r.email));
+          if (rDisplay && !visited.has(rDisplay)) queue.push(rDisplay);
+        }
       }
+      return false;
+    };
+
+    // 1. Requester's own subtree.
+    const ownRoot = this.normalizeNameValue(this.deriveDisplayNameFromEmail(requesterEmail));
+    if (bfsContains(ownRoot)) return true;
+
+    // 2. Active delegations TO this requester. Lazy import to avoid a
+    //    circular dep at module load (delegationService imports userModel).
+    try {
+      const { delegationService } = await import('./delegationService.js');
+      const delegations = await delegationService.listActiveForUser(requesterEmail);
+      for (const d of delegations) {
+        if (d.scope === 'specific') {
+          const hit = (d.subjectEmails || []).some((e) => (e || '').toLowerCase().trim() === target);
+          if (hit) return true;
+        } else if (d.scope === 'subtree') {
+          const root = (d.subtreeRootEmail || '').toLowerCase().trim();
+          if (root === target) return true;
+          const rootDisplay = this.normalizeNameValue(this.deriveDisplayNameFromEmail(root));
+          if (bfsContains(rootDisplay)) return true;
+        }
+      }
+    } catch (err) {
+      // If delegationService fails, fall back to the own-subtree result.
+      // Logged so an outage is visible but doesn't 500 the whole BFS.
+      logger.warn('isUserInRequesterHierarchy: delegation lookup failed', {
+        error: err.message, requester: requesterEmail,
+      });
     }
+
     return false;
   }
 
