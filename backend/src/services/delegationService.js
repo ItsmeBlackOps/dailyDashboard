@@ -245,6 +245,86 @@ class DelegationService {
   }
 
   /**
+   * Transfer — one-shot lateral move of a subject's teamLead to a new
+   * one. Per the locked Q3, every layer can perform a transfer scoped
+   * to their own authority:
+   *
+   *   admin            anywhere
+   *   manager          anyone in their team (cross-team only via admin)
+   *   assistantManager anyone in their subtree
+   *   teamLead         one of their own direct reports → a peer teamLead
+   *                    in the same assistantManager subtree
+   *
+   * Source loses access immediately, destination gains immediately.
+   * Audited via the existing User.updateUser changeHistory pipeline.
+   *
+   * @param actor          { email, role, team }
+   * @param input          { subjectEmail, toTeamLeadDisplayName, reason }
+   *                       The destination is identified by display name
+   *                       to match the existing teamLead string field
+   *                       (C9 validator gates the (role, teamLead) combo).
+   */
+  async transfer(actor, input) {
+    if (!actor?.email) throw new Error('actor required');
+    const { subjectEmail, toTeamLeadDisplayName, reason = '' } = input || {};
+    if (!subjectEmail) throw new Error('subjectEmail required');
+    if (!toTeamLeadDisplayName) throw new Error('toTeamLeadDisplayName required');
+
+    // Lazy-import to avoid circular deps with userService.
+    const { userService } = await import('./userService.js');
+    const { userModel } = await import('../models/User.js');
+
+    const subject = await Promise.resolve(userModel.getUserByEmail(subjectEmail));
+    if (!subject) throw new Error(`subject ${subjectEmail} not found`);
+    if (subject.active === false) throw new Error('subject is inactive');
+
+    // Authority check — actor must be admin OR have the subject in their
+    // hierarchy (own subtree or via an active delegation).
+    const actorRole = toLegacyRole(actor.role, actor.team);
+    if (actorRole !== 'admin') {
+      const inScope = await userService.isUserInRequesterHierarchy(actor, subjectEmail);
+      if (!inScope) {
+        throw new Error('subject is not in your authority');
+      }
+    }
+
+    // Validate the resulting (role, teamLead) combo via the C9/C16 validator.
+    const compat = userService.validateTeamLeadCompatibility(subject.role, toTeamLeadDisplayName);
+    if (!compat.valid) {
+      throw new Error(`invalid resulting teamLead for ${subject.role}: ${compat.reason}`);
+    }
+
+    const fromTeamLead = subject.teamLead || null;
+    if ((fromTeamLead || '').trim().toLowerCase() === toTeamLeadDisplayName.trim().toLowerCase()) {
+      throw new Error('subject is already on that teamLead');
+    }
+
+    // Write — userModel.updateUser pushes the changeHistory entry.
+    await userModel.updateUser(subjectEmail, {
+      teamLead: toTeamLeadDisplayName,
+      _changedBy: actor.email,
+      _source: 'c19-transfer',
+      _reason: reason || null,
+    });
+
+    logger.info('c19 transfer executed', {
+      subject: subjectEmail,
+      from: fromTeamLead,
+      to: toTeamLeadDisplayName,
+      actor: actor.email,
+    });
+
+    return {
+      subjectEmail,
+      from: fromTeamLead,
+      to: toTeamLeadDisplayName,
+      transferredAt: new Date(),
+      transferredBy: actor.email,
+      reason,
+    };
+  }
+
+  /**
    * Sweep cron entry point. Marks every row whose expiresAt has passed
    * and revokedAt is still null as expired. Returns the count.
    */

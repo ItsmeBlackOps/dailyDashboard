@@ -95,6 +95,34 @@ class DelegationController {
   });
 
   /**
+   * POST /api/delegations/transfer
+   * Body: { subjectEmail, toTeamLeadDisplayName, reason? }
+   * One-shot lateral move. See delegationService.transfer for authority rules.
+   */
+  transfer = asyncHandler(async (req, res) => {
+    const actor = req.user;
+    const body = req.body || {};
+    try {
+      const result = await delegationService.transfer(actor, {
+        subjectEmail: body.subjectEmail,
+        toTeamLeadDisplayName: body.toTeamLeadDisplayName,
+        reason: body.reason,
+      });
+      return res.status(200).json({ success: true, transfer: result });
+    } catch (err) {
+      logger.warn('delegation transfer failed', {
+        actor: actor.email, error: err.message,
+      });
+      const status = /not in your authority/i.test(err.message) ? 403
+        : /not found/i.test(err.message) ? 400
+        : /already on that teamLead/i.test(err.message) ? 400
+        : /invalid resulting/i.test(err.message) ? 400
+        : 400;
+      return errorResponse(res, status, err.message);
+    }
+  });
+
+  /**
    * DELETE /api/delegations/:id
    * Body: { reason? }
    * Owner-or-admin gate enforced by the service.
