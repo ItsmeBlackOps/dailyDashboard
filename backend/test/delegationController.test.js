@@ -122,6 +122,57 @@ describe('owned controller', () => {
   });
 });
 
+describe('transfer controller', () => {
+  it('200 on success', async () => {
+    const transfer = jest.fn().mockResolvedValue({
+      subjectEmail: 's@x.com', from: 'Old Lead', to: 'New Lead',
+      transferredAt: new Date(), transferredBy: 'a@x.com',
+    });
+    // patch service mock for this test
+    const mod = await import('../src/services/delegationService.js');
+    mod.delegationService.transfer = transfer;
+    const req = {
+      user: { email: 'a@x.com', role: 'manager', team: 'marketing' },
+      body: { subjectEmail: 's@x.com', toTeamLeadDisplayName: 'New Lead', reason: 'reorg' },
+    };
+    const res = makeRes();
+    delegationController.transfer(req, res);
+    await new Promise((r) => setImmediate(r));
+    expect(transfer).toHaveBeenCalledWith(req.user, expect.objectContaining({
+      subjectEmail: 's@x.com', toTeamLeadDisplayName: 'New Lead', reason: 'reorg',
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('403 when subject is not in authority', async () => {
+    const transfer = jest.fn().mockRejectedValue(new Error('subject is not in your authority'));
+    const mod = await import('../src/services/delegationService.js');
+    mod.delegationService.transfer = transfer;
+    const req = {
+      user: { email: 'a@x.com', role: 'teamLead', team: 'technical' },
+      body: { subjectEmail: 's@x.com', toTeamLeadDisplayName: 'New Lead' },
+    };
+    const res = makeRes();
+    delegationController.transfer(req, res);
+    await new Promise((r) => setImmediate(r));
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('400 when no-op (already on that teamLead)', async () => {
+    const transfer = jest.fn().mockRejectedValue(new Error('subject is already on that teamLead'));
+    const mod = await import('../src/services/delegationService.js');
+    mod.delegationService.transfer = transfer;
+    const req = {
+      user: { email: 'a@x.com', role: 'admin' },
+      body: { subjectEmail: 's@x.com', toTeamLeadDisplayName: 'Same Lead' },
+    };
+    const res = makeRes();
+    delegationController.transfer(req, res);
+    await new Promise((r) => setImmediate(r));
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+});
+
 describe('revoke controller', () => {
   it('200 on success', async () => {
     revoke.mockResolvedValue({ _id: 'x', revokedAt: new Date() });

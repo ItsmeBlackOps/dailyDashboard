@@ -37,6 +37,13 @@ router.get('/owned',
   requireHTTPRole(DELEGATION_AUTHORS),
   delegationController.owned);
 
+// POST /api/delegations/transfer   one-shot lateral move
+//   Authority is checked in the service via the BFS — anyone with the
+//   subject in their hierarchy can move them within compatibility rules.
+router.post('/transfer',
+  requireHTTPRole(DELEGATION_AUTHORS),
+  delegationController.transfer);
+
 // DELETE /api/delegations/:id      revoke (owner-or-admin gated in service)
 router.delete('/:id',
   requireHTTPRole(DELEGATION_AUTHORS),
