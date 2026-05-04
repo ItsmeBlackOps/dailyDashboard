@@ -19,6 +19,11 @@ interface ManageableUser {
   teamLead?: string;
   manager?: string;
   active: boolean;
+  // Decouples "do you take interview assignments?" from role. teamLeads
+  // who also do IC work (Darshan, Anusree, Bhavya) get this set so they
+  // appear in the expert-assignment dropdown alongside experts.
+  acceptsTasks?: boolean;
+  team?: string | null;
 }
 
 interface BulkCreatePayload {
@@ -1400,6 +1405,7 @@ const UserManagementPage = () => {
                       <TableHead>Team Lead</TableHead>
                       <TableHead>Manager</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Accepts tasks</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1421,6 +1427,13 @@ const UserManagementPage = () => {
                             <span className="text-emerald-600">Active</span>
                           ) : (
                             <span className="text-destructive">Inactive</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {user.acceptsTasks ? (
+                            <span className="text-emerald-600">Yes</span>
+                          ) : (
+                            <span className="text-muted-foreground">No</span>
                           )}
                         </TableCell>
                       </TableRow>

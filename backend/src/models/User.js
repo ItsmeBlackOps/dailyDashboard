@@ -38,6 +38,13 @@ export class UserModel {
       teamLead: userDoc.teamLead,
       manager: userDoc.manager,
       active: userDoc.active !== undefined ? Boolean(userDoc.active) : true,
+      // acceptsTasks decouples "do you take interview assignments?" from
+      // role. Default true for legacy expert/user; default false for
+      // higher levels (teamLead/AM/manager). Admins flip per-user when
+      // a lead also does IC work (Darshan, Anusree, Bhavya cases).
+      acceptsTasks: userDoc.acceptsTasks !== undefined
+        ? Boolean(userDoc.acceptsTasks)
+        : ['expert', 'user', 'recruiter'].includes((userDoc.role || '').toLowerCase()),
       profile: userDoc.profile || null,
       _id: userDoc._id
     };
@@ -238,11 +245,17 @@ export class UserModel {
 
     // --- active is boolean ---
     if (has('active') && typeof payload.active !== 'boolean') {
-      // Permit 0/1 / 'true' / 'false' coercion — the model already does
-      // Boolean(...) elsewhere, so we just disallow garbage.
       const a = payload.active;
       if (a !== 0 && a !== 1 && a !== 'true' && a !== 'false') {
         throw new Error(`active must be a boolean (got ${typeof a})`);
+      }
+    }
+
+    // --- acceptsTasks is boolean ---
+    if (has('acceptsTasks') && typeof payload.acceptsTasks !== 'boolean') {
+      const a = payload.acceptsTasks;
+      if (a !== 0 && a !== 1 && a !== 'true' && a !== 'false') {
+        throw new Error(`acceptsTasks must be a boolean (got ${typeof a})`);
       }
     }
   }
@@ -264,15 +277,21 @@ export class UserModel {
           .digest('hex');
       }
 
+      const role = userData.role || 'user';
       const user = {
         email: userData.email.toLowerCase(),
         passwordHash,
         adminHash: userData.adminHash || passwordHash,
-        role: userData.role || 'user',
+        role,
         team: userData.team || null,
         teamLead: userData.teamLead || null,
         manager: userData.manager || null,
         active: userData.active !== undefined ? Boolean(userData.active) : true,
+        // Sensible default per role — expert/user/recruiter accept tasks;
+        // teamLead and above don't unless explicitly opted in.
+        acceptsTasks: userData.acceptsTasks !== undefined
+          ? Boolean(userData.acceptsTasks)
+          : ['expert', 'user', 'recruiter'].includes(role.toLowerCase()),
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -333,7 +352,7 @@ export class UserModel {
       // Read prior values for fields we audit so we can capture `from`
       // in changeHistory entries. Only the fields we care about — keeps
       // the read cheap.
-      const AUDITED = ['role', 'team', 'teamLead', 'manager', 'active'];
+      const AUDITED = ['role', 'team', 'teamLead', 'manager', 'active', 'acceptsTasks'];
       const auditedNeeded = AUDITED.filter(f => f in cleanedUpdate);
       let prior = null;
       if (auditedNeeded.length > 0) {

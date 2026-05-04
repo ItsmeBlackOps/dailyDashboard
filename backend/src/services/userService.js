@@ -100,6 +100,7 @@ export class UserService {
         email: user.email,
         role: user.role,
         team: user.team || null,
+        acceptsTasks: user.acceptsTasks !== undefined ? Boolean(user.acceptsTasks) : false,
         teamLead: user.teamLead,
         manager: user.manager,
         active: user.active !== undefined ? Boolean(user.active) : true,
@@ -142,6 +143,7 @@ export class UserService {
         email: user.email,
         role: user.role,
         team: user.team || null,
+        acceptsTasks: user.acceptsTasks !== undefined ? Boolean(user.acceptsTasks) : false,
         teamLead: user.teamLead,
         manager: user.manager,
         active: user.active !== undefined ? Boolean(user.active) : true,
@@ -188,6 +190,7 @@ export class UserService {
                   email,
                   role: user.role,
                   team: user.team || null,
+        acceptsTasks: user.acceptsTasks !== undefined ? Boolean(user.acceptsTasks) : false,
         teamLead: user.teamLead,
                   manager: user.manager,
                   active: user.active !== undefined ? Boolean(user.active) : true
@@ -421,6 +424,7 @@ export class UserService {
         email: user.email,
         role: user.role,
         team: user.team || null,
+        acceptsTasks: user.acceptsTasks !== undefined ? Boolean(user.acceptsTasks) : false,
         teamLead: user.teamLead,
         manager: user.manager,
         active: user.active !== undefined ? Boolean(user.active) : true,
@@ -495,6 +499,7 @@ export class UserService {
           email,
           role: user.role,
           team: user.team || null,
+        acceptsTasks: user.acceptsTasks !== undefined ? Boolean(user.acceptsTasks) : false,
         teamLead: user.teamLead,
           manager: user.manager,
           active: user.active !== undefined ? Boolean(user.active) : true
@@ -1052,6 +1057,7 @@ export class UserService {
           email: user.email,
           role: user.role,
           team: user.team || null,
+        acceptsTasks: user.acceptsTasks !== undefined ? Boolean(user.acceptsTasks) : false,
         teamLead: user.teamLead,
           manager: user.manager,
           active: user.active !== undefined ? Boolean(user.active) : true
@@ -1116,6 +1122,7 @@ export class UserService {
           email,
           role: user.role,
           team: user.team || null,
+        acceptsTasks: user.acceptsTasks !== undefined ? Boolean(user.acceptsTasks) : false,
         teamLead: user.teamLead,
           manager: user.manager,
           active: user.active !== undefined ? Boolean(user.active) : true
