@@ -2,6 +2,32 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
 import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
+import { toLegacyRole } from '../utils/roleAliases.js';
+
+// C20 — collapse both legacy and new role names to a level token so
+// every requireRole / requireHTTPRole guard accepts both forms during
+// the dual-read window. Without this, post-migration users (whose
+// stored role is now 'manager'/'assistantManager'/'teamLead') fail
+// every legacy guard like ['admin','mm','mam','mlead','lead','am']
+// and get 403 on every request — tasks, branch candidates, user
+// management, etc. all break silently for them.
+const ROLE_LEVEL_HTTP = new Map([
+  ['admin',            'admin'],
+  ['mm',               'manager'],
+  ['manager',          'manager'],
+  ['am',               'assistantManager'],
+  ['mam',              'assistantManager'],
+  ['assistantmanager', 'assistantManager'],
+  ['lead',             'teamLead'],
+  ['mlead',            'teamLead'],
+  ['teamlead',         'teamLead'],
+  ['recruiter',        'recruiter'],
+  ['user',             'expert'],
+  ['expert',           'expert'],
+]);
+const httpRoleLevel = (r) =>
+  ROLE_LEVEL_HTTP.get((r || '').toString().toLowerCase().trim())
+  || (r || '').toString().toLowerCase().trim();
 
 export const authenticateSocket = (socket, next) => {
   const token = socket.handshake.auth.token;
@@ -22,9 +48,14 @@ export const authenticateSocket = (socket, next) => {
       throw new Error('Account is inactive');
     }
 
+    // C20 — translate role to legacy form for downstream handlers that
+    // still compare against legacy strings. Original new-name role is
+    // preserved as roleCanonical for any consumer that needs it.
     socket.data.user = {
       email,
-      role: user.role,
+      role: toLegacyRole(user.role, user.team),
+      roleCanonical: user.role,
+      team: user.team || null,
       teamLead: user.teamLead,
       manager: user.manager,
       active: user.active !== undefined ? Boolean(user.active) : true,
@@ -57,16 +88,20 @@ export const requireRole = (roles) => {
       return next(new Error('Authentication required'));
     }
 
-    const allowedRoles = (Array.isArray(roles) ? roles : [roles])
+    const allowedRaw = (Array.isArray(roles) ? roles : [roles])
       .map((role) => (role || '').toString().trim().toLowerCase())
       .filter(Boolean);
+    const allowedLevels = new Set(allowedRaw.map(httpRoleLevel));
     const currentRole = (user.role || '').toString().trim().toLowerCase();
+    const currentLevel = httpRoleLevel(currentRole);
 
-    if (!allowedRoles.includes(currentRole)) {
+    if (!allowedRaw.includes(currentRole) && !allowedLevels.has(currentLevel)) {
       logger.warn('Socket access denied - insufficient permissions', {
         userEmail: user.email,
         userRole: user.role,
-        requiredRoles: allowedRoles,
+        userLevel: currentLevel,
+        requiredRoles: allowedRaw,
+        requiredLevels: [...allowedLevels],
         socketId: socket.id
       });
       return next(new Error('Insufficient permissions'));
@@ -106,9 +141,12 @@ export const authenticateHTTP = (req, res, next) => {
       });
     }
 
+    // C20 — translate role to legacy form. See socket equivalent above.
     req.user = {
       email,
-      role: user.role,
+      role: toLegacyRole(user.role, user.team),
+      roleCanonical: user.role,
+      team: user.team || null,
       teamLead: user.teamLead,
       manager: user.manager,
       active: user.active !== undefined ? Boolean(user.active) : true,
@@ -147,16 +185,21 @@ export const requireHTTPRole = (roles) => {
       });
     }
 
-    const allowedRoles = (Array.isArray(roles) ? roles : [roles])
+    const allowedRaw = (Array.isArray(roles) ? roles : [roles])
       .map((role) => (role || '').toString().trim().toLowerCase())
       .filter(Boolean);
+    const allowedLevels = new Set(allowedRaw.map(httpRoleLevel));
     const currentRole = (user.role || '').toString().trim().toLowerCase();
+    const currentLevel = httpRoleLevel(currentRole);
 
-    if (!allowedRoles.includes(currentRole)) {
+    // Allow if either the raw role or its collapsed level matches.
+    if (!allowedRaw.includes(currentRole) && !allowedLevels.has(currentLevel)) {
       logger.warn('HTTP access denied - insufficient permissions', {
         userEmail: user.email,
         userRole: user.role,
-        requiredRoles: allowedRoles,
+        userLevel: currentLevel,
+        requiredRoles: allowedRaw,
+        requiredLevels: [...allowedLevels],
         path: req.path
       });
 
