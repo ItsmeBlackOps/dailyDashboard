@@ -401,6 +401,65 @@ class InterviewSupportAdminService {
   }
 
   // -----------------------------------------------------------------------
+  // getLogs — returns processing logs + counters in the shape the
+  // frontend's "Processing Logs" tab expects:
+  //   { stats: { totalProcessed, totalFailed, totalPending, totalAssigned },
+  //     logs:  ProcessingLogEntry[] }
+  // Adapter over the raw auditLog schema (phase/detail/timestamp/extra)
+  // to the frontend's (action/details/timestamp/level) shape. Counters
+  // are computed against the same day's audit window, not all-time.
+  // -----------------------------------------------------------------------
+  async getLogs(date) {
+    const auditCol = database.getCollection('auditLog');
+    const filterDate = date || new Date().toISOString().slice(0, 10);
+    const start = new Date(`${filterDate}T00:00:00Z`);
+    const end   = new Date(`${filterDate}T23:59:59Z`);
+
+    const rows = await auditCol.find({ timestamp: { $gte: start, $lte: end } })
+      .sort({ timestamp: -1 })
+      .limit(2000)
+      .toArray();
+
+    const PROCESSED_PHASES = new Set([
+      'CREATED', 'EXTRACTED', 'AUTO_ASSIGN_SUCCESS', 'REPLY_SUCCESS', 'SEARCH_MATCHED',
+    ]);
+    const FAILED_PHASES = new Set([
+      'AUTO_ASSIGN_FAILED', 'AUTO_ASSIGN_5XX', 'REPLY_FAILED', 'SEARCH_NO_RESULTS',
+      'SEARCH_EXHAUSTED', 'VALIDATION_FAILED', 'PO_EXTRACT_FAILED',
+    ]);
+    const PENDING_PHASES = new Set([
+      'AUTO_ASSIGN_QUEUED', 'AUTO_ASSIGN_STARTED', 'SEARCH_RETRY_WAIT', 'SEARCH_STARTED',
+    ]);
+    const ASSIGNED_PHASES = new Set(['AUTO_ASSIGN_SUCCESS']);
+
+    let totalProcessed = 0, totalFailed = 0, totalPending = 0, totalAssigned = 0;
+    for (const r of rows) {
+      if (PROCESSED_PHASES.has(r.phase)) totalProcessed++;
+      if (FAILED_PHASES.has(r.phase))    totalFailed++;
+      if (PENDING_PHASES.has(r.phase))   totalPending++;
+      if (ASSIGNED_PHASES.has(r.phase))  totalAssigned++;
+    }
+
+    const logs = rows.map((r) => ({
+      _id:         (r._id || '').toString(),
+      action:      r.phase || 'UNKNOWN',
+      // Performed-by is whichever of (extra.actor, extra.by, extra.user, system) is set.
+      performedBy: (r.extra && (r.extra.actor || r.extra.by || r.extra.user || r.extra.performedBy))
+                   || (r.phase && r.phase.startsWith('AUTO_ASSIGN_') ? 'auto-assign' : 'intervue'),
+      timestamp:   r.timestamp instanceof Date ? r.timestamp.toISOString() : r.timestamp,
+      details:     r.detail || (r.extra ? JSON.stringify(r.extra).slice(0, 280) : ''),
+      // Normalize 'warn' vs 'warning' — DB has both. Frontend expects 'warn'.
+      level:       r.level === 'warning' ? 'warn' : (r.level || 'info'),
+    }));
+
+    return {
+      date: filterDate,
+      stats: { totalProcessed, totalFailed, totalPending, totalAssigned },
+      logs,
+    };
+  }
+
+  // -----------------------------------------------------------------------
   // getFailedAutoAssigns
   // -----------------------------------------------------------------------
   async getFailedAutoAssigns(date) {
@@ -435,12 +494,25 @@ class InterviewSupportAdminService {
       }
     }
 
-    const enriched = failedAudits.map(a => ({
-      ...a,
-      task: taskBySubject[a.subject] || null,
-    }));
+    // Frontend's FailedAssignRow shape: { _id, candidateName, technology,
+    // endClient, receivedAt, failureReason }. Flatten + adapt from the
+    // (audit row, task row) pair. _id is the task's _id when available
+    // (lets the Retry button work) — otherwise the audit row's _id.
+    const tasks = failedAudits.map((a) => {
+      const task = taskBySubject[a.subject] || null;
+      return {
+        _id: task ? task._id.toString() : (a._id || '').toString(),
+        candidateName: task?.['Candidate Name'] || a.subject || '(unknown)',
+        technology:    task?.Technology || task?.['Job Title'] || '',
+        endClient:     task?.['End Client'] || '',
+        receivedAt:    (task?.receivedDateTime || a.timestamp instanceof Date ? a.timestamp.toISOString() : a.timestamp) || null,
+        failureReason: a.detail || (a.extra ? JSON.stringify(a.extra).slice(0, 280) : ''),
+        // Keep raw audit row available for any UI that wants it.
+        _audit: a,
+      };
+    });
 
-    return { date: date || null, total: enriched.length, failedAutoAssigns: enriched };
+    return { date: date || null, total: tasks.length, tasks };
   }
 
   // -----------------------------------------------------------------------
