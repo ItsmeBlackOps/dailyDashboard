@@ -47,3 +47,10 @@ nginx/conf.d/upstreams/backend.active.conf
 .apify_runs.json
 .input*.json
 .a*.json
+
+# Local DB exports (PII — never commit)
+/mongo-archive/
+
+# Local scratch HTML reports
+/po-dry-run.html
+/user-mgmt-audit.html

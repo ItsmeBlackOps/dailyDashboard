@@ -439,6 +439,48 @@ export class UserService {
     }
   }
 
+  // C8: BFS through teamLead chain to determine whether `targetEmail` is
+  // a subordinate (direct or transitive) of `requester`. Mirrors the
+  // logic in candidateService.collectHierarchyEmails but lives here to
+  // avoid a circular import.
+  //
+  // Match is by display name (today). Once C9 lands, this becomes a
+  // straight email-keyed BFS — but the public signature stays the same.
+  isUserInRequesterHierarchy(requester, targetEmail) {
+    if (!requester?.email || !targetEmail) return false;
+    const target = (targetEmail || '').toString().toLowerCase().trim();
+    if (target === (requester.email || '').toLowerCase().trim()) return true;
+
+    const allUsers = this.userModel.getAllUsers();
+    const leaderDisplayName = this.normalizeNameValue(this.deriveDisplayNameFromEmail(requester.email));
+    if (!leaderDisplayName) return false;
+
+    // Build a map: leadDisplayName(lowercase) → [reports]
+    const leadToUsers = new Map();
+    for (const u of allUsers) {
+      if (!u.teamLead) continue;
+      const k = this.normalizeNameValue(u.teamLead);
+      if (!leadToUsers.has(k)) leadToUsers.set(k, []);
+      leadToUsers.get(k).push(u);
+    }
+
+    const visited = new Set();
+    const queue = [leaderDisplayName];
+    while (queue.length > 0) {
+      const cur = queue.shift();
+      if (!cur || visited.has(cur)) continue;
+      visited.add(cur);
+      const directs = leadToUsers.get(cur) || [];
+      for (const r of directs) {
+        const rEmail = (r.email || '').toLowerCase().trim();
+        if (rEmail === target) return true;
+        const rDisplay = this.normalizeNameValue(this.deriveDisplayNameFromEmail(r.email));
+        if (rDisplay && !visited.has(rDisplay)) queue.push(rDisplay);
+      }
+    }
+    return false;
+  }
+
   // C17: read change history (role / teamLead / manager / active mutations).
   async getUserChangeHistory(email) {
     try {
