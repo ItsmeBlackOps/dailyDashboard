@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import { trackError } from '@/utils/trackError';
+import { toLegacyRole } from '@/lib/roleAliases';
 import DOMPurify from "dompurify";
 import moment, { Moment } from "moment-timezone";
 import { io, Socket } from "socket.io-client";
@@ -1192,7 +1193,14 @@ export default function TasksToday() {
         const payload = await response.json();
         if (!active) return;
 
-        const manageableUsers = Array.isArray(payload?.users) ? (payload.users as ManageableUser[]) : [];
+        // C20 — normalize new role names to legacy via the alias shim
+        // so every downstream legacy comparison (e.g. role === 'mlead')
+        // keeps working post-migration.
+        const rawUsers = Array.isArray(payload?.users) ? payload.users : [];
+        const manageableUsers = rawUsers.map((u: ManageableUser) => ({
+          ...u,
+          role: toLegacyRole(u.role, (u as ManageableUser & { team?: string | null }).team),
+        })) as ManageableUser[];
         const mapping = buildTeamLeadMapping(manageableUsers);
 
         setTeamLeadData(mapping);
@@ -1227,7 +1235,22 @@ export default function TasksToday() {
   useEffect(() => {
     authFetch(`${API_URL}/api/users/active`)
       .then((r) => r.json())
-      .then((data) => { if (data.success) setActiveUsersByRole(data.byRole || {}); })
+      .then((data) => {
+        if (!data.success) return;
+        // C20 — rebuild byRole keyed by legacy role names so legacy
+        // consumers (TasksToday's mlead/mam/lead/am switches) keep
+        // working post-migration. Each user's role is normalized via
+        // the alias shim using their team field.
+        type ActiveUser = { email: string; name: string; teamLead: string; manager: string; role: string };
+        const remapped: Record<string, ActiveUser[]> = {};
+        const allUsers: Array<ActiveUser & { team?: string | null }> = Array.isArray(data.users) ? data.users : [];
+        for (const u of allUsers) {
+          const legacyRole = toLegacyRole(u.role, u.team);
+          const normalized: ActiveUser = { ...u, role: legacyRole };
+          (remapped[legacyRole] = remapped[legacyRole] || []).push(normalized);
+        }
+        setActiveUsersByRole(remapped);
+      })
       .catch(() => {});
   }, [authFetch]);
 

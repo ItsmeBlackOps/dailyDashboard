@@ -15,6 +15,7 @@ import {
 import { Eye, EyeOff, Mail, Lock } from "lucide-react";
 import { SOCKET_URL } from "../../hooks/useAuth";
 import { deriveDisplayNameFromEmail } from "@/utils/userNames";
+import { toLegacyRole } from "@/lib/roleAliases";
 import { usePostHog } from 'posthog-js/react'; // [Harsh] Import PostHog
 
 export default function SignIn() {
@@ -63,10 +64,16 @@ export default function SignIn() {
         // missing-resume reminder) re-evaluate on a fresh login.
         try { sessionStorage.clear(); } catch { /* ignore */ }
 
-        // Persist credentials
+        // Persist credentials. C20 — translate new role names back to
+        // legacy at the boundary so the ~150 sites that compare against
+        // legacy strings keep working unchanged. Team is preserved so
+        // the rest of the app can disambiguate where it matters.
+        const legacyRole = toLegacyRole(response.role, response.team);
         localStorage.setItem("accessToken", response.accessToken);
         localStorage.setItem("refreshToken", response.refreshToken);
-        localStorage.setItem("role", response.role);
+        localStorage.setItem("role", legacyRole);
+        localStorage.setItem("roleCanonical", response.role || legacyRole);
+        localStorage.setItem("team", response.team || '');
         localStorage.setItem("teamLead", response.teamLead);
         localStorage.setItem("manager", response.manager);
         localStorage.setItem("email", normalizedEmail);

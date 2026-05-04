@@ -3,6 +3,25 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@radix-ui/react-tooltip';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { toLegacyRole } from './lib/roleAliases';
+
+// C20 — one-shot migration of cached localStorage role for users who
+// logged in before the alias shim landed. If their stored role is a
+// new-name (manager / assistantManager / teamLead / expert), translate
+// it back to legacy in place. Idempotent — passes legacy names through.
+try {
+  const cached = localStorage.getItem('role');
+  if (cached) {
+    const team = localStorage.getItem('team') || '';
+    const legacy = toLegacyRole(cached, team);
+    if (legacy !== cached.toLowerCase()) {
+      localStorage.setItem('roleCanonical', cached);
+      localStorage.setItem('role', legacy);
+    }
+  }
+} catch {
+  // localStorage may be locked down in some environments.
+}
 
 // Eager imports — auth, layout, and the landing page after login
 import SignIn from './pages/auth/SignIn';

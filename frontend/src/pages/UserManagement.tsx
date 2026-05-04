@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
+import { toLegacyRole } from '@/lib/roleAliases';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -200,7 +201,11 @@ const UserManagementPage = () => {
       if (!data?.success) {
         throw new Error(data?.error || 'Unable to load users');
       }
-      setManageableUsers(Array.isArray(data.users) ? data.users : []);
+      // C20 — normalize new role names to legacy via the alias shim so
+      // every legacy comparison in this file (and the dropdown switches
+      // patched in PR #103) keeps working post-migration.
+      const rawUsers: Array<ManageableUser & { team?: string | null }> = Array.isArray(data.users) ? data.users : [];
+      setManageableUsers(rawUsers.map((u) => ({ ...u, role: toLegacyRole(u.role, u.team) })) as ManageableUser[]);
       setSelectedEmails(new Set());
     } catch (error: any) {
       setUsersError(error?.message || 'Failed to load manageable users');
