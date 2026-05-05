@@ -1,6 +1,44 @@
 import moment from 'moment-timezone';
 import { firefliesService } from '../services/firefliesService.js';
 import { database } from '../config/database.js';
+
+// Bug 3 followup — write per-stage audit rows so the admin Processing
+// Logs / Failed Auto-Assigns tabs surface Fireflies activity. Same
+// auditLog shape as Intervue + Auto-Assign external services.
+const FIREFLIES_PHASE = {
+  INVITE_ATTEMPT:  'FIREFLIES_INVITE_ATTEMPT',
+  INVITE_SUCCESS:  'FIREFLIES_INVITE_SUCCESS',
+  INVITE_FAILED:   'FIREFLIES_INVITE_FAILED',
+  VERIFY_SUCCESS:  'FIREFLIES_VERIFY_SUCCESS',
+  VERIFY_NOT_IN:   'FIREFLIES_VERIFY_NOT_IN_MEETING',
+  VERIFY_FAILED:   'FIREFLIES_VERIFY_FAILED',
+  MAIN_JOINED:     'FIREFLIES_MAIN_JOINED',
+  MAIN_RETRY:      'FIREFLIES_MAIN_RETRY',
+  MAIN_FAILED:     'FIREFLIES_MAIN_FAILED',
+};
+
+async function audit(phase, level, task, detail, extra = {}) {
+  try {
+    const auditCol = database.getCollection('auditLog');
+    if (!auditCol) return;
+    await auditCol.insertOne({
+      subject: task?.subject || task?.Subject || `task:${task?._id}`,
+      phase,
+      detail: (detail || '').toString().slice(0, 500),
+      level,
+      timestamp: new Date(),
+      extra: {
+        taskId: task?._id?.toString(),
+        candidateName: task?.['Candidate Name'] || null,
+        meetingLink: task?.meetingLink || null,
+        ...extra,
+      },
+    });
+  } catch (e) {
+    // Never let audit-write failure cascade into bot failure.
+    logger.warn('Fireflies audit write failed', { error: e.message, phase });
+  }
+}
 import { logger } from '../utils/logger.js';
 
 const TICK_INTERVAL_MS = 60_000;
@@ -98,6 +136,8 @@ async function processTask(collection, task) {
 
   // Stage A — Precheck invite (T-20 to T-5)
   if (botStatus === 'pending' && minutesUntil <= 20 && minutesUntil > 5) {
+    await audit(FIREFLIES_PHASE.INVITE_ATTEMPT, 'info', task,
+      'Precheck invite (Stage A)', { stage: 'precheck', minutesUntil });
     try {
       await firefliesService.inviteBot({
         meetingLink,
@@ -117,12 +157,19 @@ async function processTask(collection, task) {
         }
       );
       logger.info('Fireflies precheck invited for task', { taskId: _id });
+      await audit(FIREFLIES_PHASE.INVITE_SUCCESS, 'info', task,
+        'Precheck invite accepted by Fireflies', { stage: 'precheck' });
     } catch (err) {
       await collection.updateOne(
         { _id },
         { $set: { botStatus: 'precheck_failed', botLastError: err.message } }
       );
       logger.error('Fireflies precheck invite failed', { taskId: _id, error: err.message });
+      await audit(FIREFLIES_PHASE.INVITE_FAILED, 'error', task, err.message, {
+        stage: 'precheck',
+        firefliesStatus: err.status || null,
+        firefliesBody: err.responseBody || err.body || null,
+      });
     }
     return;
   }
@@ -136,6 +183,8 @@ async function processTask(collection, task) {
           { _id },
           { $set: { botStatus: 'precheck_joined', precheckCheckedAt: now } }
         );
+        await audit(FIREFLIES_PHASE.VERIFY_SUCCESS, 'info', task,
+          'Bot present in active_meetings (precheck)', { stage: 'precheck' });
       } else {
         await collection.updateOne(
           { _id },
@@ -147,9 +196,16 @@ async function processTask(collection, task) {
             },
           }
         );
+        await audit(FIREFLIES_PHASE.VERIFY_NOT_IN, 'warning', task,
+          'Bot did not appear in active_meetings during precheck', { stage: 'precheck' });
       }
     } catch (err) {
       logger.error('Fireflies precheck verify failed', { taskId: _id, error: err.message });
+      await audit(FIREFLIES_PHASE.VERIFY_FAILED, 'error', task, err.message, {
+        stage: 'precheck',
+        firefliesStatus: err.status || null,
+        firefliesBody: err.responseBody || err.body || null,
+      });
     }
     return;
   }
@@ -160,6 +216,8 @@ async function processTask(collection, task) {
     minutesUntil > -5 &&
     ['pending', 'precheck_joined', 'precheck_failed'].includes(botStatus)
   ) {
+    await audit(FIREFLIES_PHASE.INVITE_ATTEMPT, 'info', task,
+      'Main bot invite (Stage C)', { stage: 'main', minutesUntil, fromStatus: botStatus });
     try {
       await firefliesService.inviteBot({
         meetingLink,
@@ -175,12 +233,19 @@ async function processTask(collection, task) {
         }
       );
       logger.info('Fireflies main bot invited for task', { taskId: _id });
+      await audit(FIREFLIES_PHASE.INVITE_SUCCESS, 'info', task,
+        'Main bot invite accepted by Fireflies', { stage: 'main' });
     } catch (err) {
       await collection.updateOne(
         { _id },
         { $set: { botStatus: 'main_failed', botLastError: err.message } }
       );
       logger.error('Fireflies main bot invite failed', { taskId: _id, error: err.message });
+      await audit(FIREFLIES_PHASE.INVITE_FAILED, 'error', task, err.message, {
+        stage: 'main',
+        firefliesStatus: err.status || null,
+        firefliesBody: err.responseBody || err.body || null,
+      });
     }
     return;
   }
@@ -195,8 +260,14 @@ async function processTask(collection, task) {
           { $set: { botStatus: 'main_joined', botJoinedAt: now } }
         );
         logger.info('Fireflies main bot confirmed joined for task', { taskId: _id });
+        await audit(FIREFLIES_PHASE.MAIN_JOINED, 'info', task,
+          'Bot confirmed in active_meetings', { stage: 'main', joinedAt: now });
       } else if (botInviteAttempts < 3) {
         // Retry
+        await audit(FIREFLIES_PHASE.MAIN_RETRY, 'warning', task,
+          'Bot not in meeting yet — retrying invite', {
+            stage: 'main', attemptNumber: botInviteAttempts + 1,
+          });
         await firefliesService.inviteBot({
           meetingLink,
           title: candidateName,
@@ -222,9 +293,18 @@ async function processTask(collection, task) {
           }
         );
         logger.warn('Fireflies main bot failed after retries', { taskId: _id });
+        await audit(FIREFLIES_PHASE.MAIN_FAILED, 'error', task,
+          'Bot did not join after 3 retries', {
+            stage: 'main', attempts: botInviteAttempts,
+          });
       }
     } catch (err) {
       logger.error('Fireflies main bot verify failed', { taskId: _id, error: err.message });
+      await audit(FIREFLIES_PHASE.VERIFY_FAILED, 'error', task, err.message, {
+        stage: 'main',
+        firefliesStatus: err.status || null,
+        firefliesBody: err.responseBody || err.body || null,
+      });
     }
     return;
   }
