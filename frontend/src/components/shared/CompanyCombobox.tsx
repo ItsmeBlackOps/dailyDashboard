@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/command';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useAuth } from '@/hooks/useAuth';
 
 // ── Module-level cache ───────────────────────────────────────────────────────
 let cachedClients: string[] | null = null;
@@ -22,13 +23,16 @@ export function invalidateClientsCache() {
   inflightFetch = null;
 }
 
-async function fetchClients(): Promise<string[]> {
+// Bug 4 fix — both fetches now route through authFetch (passed in by
+// the caller) so a 401 on an expired access token triggers the
+// useAuth refresh-and-retry flow instead of surfacing 'Invalid token'
+// to the user inline.
+async function fetchClients(
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>,
+): Promise<string[]> {
   if (cachedClients) return cachedClients;
   if (inflightFetch) return inflightFetch;
-  const token = localStorage.getItem('accessToken');
-  inflightFetch = fetch('/api/candidates/distinct-clients', {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  inflightFetch = authFetch('/api/candidates/distinct-clients')
     .then((r) => r.json())
     .then((d) => {
       cachedClients = d.clients || [];
@@ -59,6 +63,7 @@ export function CompanyCombobox({
   disabled,
   className,
 }: CompanyComboboxProps) {
+  const { authFetch } = useAuth();
   const [open, setOpen] = useState(false);
   const [clients, setClients] = useState<string[]>([]);
   const [search, setSearch] = useState('');
@@ -73,7 +78,7 @@ export function CompanyCombobox({
 
   // Load clients on mount
   useEffect(() => {
-    fetchClients().then(setClients);
+    fetchClients(authFetch).then(setClients);
   }, []);
 
   // Auto-focus add-new input when mode switches
@@ -121,25 +126,24 @@ export function CompanyCombobox({
     setSaving(true);
     setAddError('');
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('/api/candidates/end-clients', {
+      // Bug 4 fix — authFetch handles 401 by refreshing the access
+      // token and retrying. Raw fetch() bypassed that and surfaced
+      // 'Invalid token' / 'Token expired' to marketing users mid-session.
+      const res = await authFetch('/api/candidates/end-clients', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: trimmed }),
       });
       const payload = await res.json();
       if (res.ok && payload.success) {
         invalidateClientsCache();
-        const refreshed = await fetchClients();
+        const refreshed = await fetchClients(authFetch);
         setClients(refreshed);
         onChange(payload.client);
         setOpen(false);
       } else if (res.status === 409) {
         invalidateClientsCache();
-        const refreshed = await fetchClients();
+        const refreshed = await fetchClients(authFetch);
         setClients(refreshed);
         onChange(payload.existing);
         setDupeMsg('Company already exists; selected the existing one');
