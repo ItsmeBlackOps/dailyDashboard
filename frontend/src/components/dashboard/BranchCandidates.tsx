@@ -317,12 +317,20 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [editResumeFile, setEditResumeFile] = useState<File | null>(null);
   const [editResumeError, setEditResumeError] = useState<string>('');
   const normalizedRole = role.trim().toLowerCase();
-  const canView = ["admin", "mm", "mam", "mlead", "lead", "user", "am", "recruiter"].includes(normalizedRole);
-  const canEdit = ["mm", "mam", "mlead", "recruiter", "lead", "am", "admin"].includes(normalizedRole);
-  const canEditBasicFields = ["mm", "mam", "mlead", "recruiter", "admin"].includes(normalizedRole);
-  const canChangeRecruiterField = ['mm', 'mam', 'mlead', "admin"].includes(normalizedRole);
-  const canChangeContactField = ['mm', 'mam', 'mlead', 'recruiter', "admin"].includes(normalizedRole);
-  const canChangeExpertField = ['lead', 'am', "admin"].includes(normalizedRole);
+  // C20 — accept legacy + new role names. Page wrapper already accepts
+  // both (PR cd7e5b8); these inner gates were the missing half.
+  const canView = ["admin", "mm", "mam", "mlead", "lead", "user", "am", "recruiter",
+                   "manager", "assistantmanager", "teamlead", "expert"].includes(normalizedRole);
+  const canEdit = ["admin", "mm", "mam", "mlead", "recruiter", "lead", "am",
+                   "manager", "assistantmanager", "teamlead"].includes(normalizedRole);
+  const canEditBasicFields = ["admin", "mm", "mam", "mlead", "recruiter",
+                              "manager", "assistantmanager", "teamlead"].includes(normalizedRole);
+  const canChangeRecruiterField = ['admin', 'mm', 'mam', 'mlead',
+                                   'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole);
+  const canChangeContactField = ['admin', 'mm', 'mam', 'mlead', 'recruiter',
+                                 'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole);
+  const canChangeExpertField = ['admin', 'lead', 'am',
+                                'teamlead', 'assistantmanager'].includes(normalizedRole);
   // Branch-manager-class roles can create candidates. (Legacy 'manager' role removed —
   // its semantics are now expressed by 'mm' / 'mam' / 'admin'.)
   // C20 — accept legacy + new role names side-by-side during dual-read.
@@ -434,7 +442,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState<string>('');
   const [bulkUpdating, setBulkUpdating] = useState(false);
-  const canSendSupport = ['recruiter', 'mlead', 'mam', 'mm'].includes(normalizedRole);
+  // C20 — accept legacy + new names.
+  const canSendSupport = ['recruiter', 'mlead', 'mam', 'mm',
+                          'teamlead', 'assistantmanager', 'manager'].includes(normalizedRole);
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportCandidate, setSupportCandidate] = useState<CandidateRow | null>(null);
   const [supportForm, setSupportForm] = useState<SupportFormState>({
@@ -3647,7 +3657,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                             <StatusBadge
                               status={candidate.status}
                               candidateId={candidate.id}
-                              canEdit={['recruiter', 'mlead', 'mam', 'mm', 'lead', 'am', 'admin', 'manager'].includes(normalizedRole)}
+                              canEdit={['recruiter', 'mlead', 'mam', 'mm', 'lead', 'am', 'admin', 'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole)}
                               onUpdate={handleStatusUpdate}
                               className="w-fit"
                             />
@@ -3926,7 +3936,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 <StatusBadge
                   status={selectedSheetCandidate.status}
                   candidateId={selectedSheetCandidate.id}
-                  canEdit={['recruiter', 'mlead', 'mam', 'mm', 'admin'].includes(normalizedRole)}
+                  canEdit={['recruiter', 'mlead', 'mam', 'mm', 'admin', 'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole)}
                   onUpdate={handleStatusUpdate}
                 />
               </div>
@@ -3968,7 +3978,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-semibold">Resume</h4>
-                  {['mm', 'mam', 'mlead', 'recruiter', 'admin'].includes(normalizedRole) && (
+                  {['mm', 'mam', 'mlead', 'recruiter', 'admin', 'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole) && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -4030,7 +4040,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                         Send Assessment
                       </Button>
                     )}
-                    {['recruiter', 'mlead', 'mam', 'mm', 'admin'].includes(normalizedRole) && (
+                    {['recruiter', 'mlead', 'mam', 'mm', 'admin', 'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole) && (
                       <Button
                         variant="secondary"
                         className="w-full sm:w-auto"
