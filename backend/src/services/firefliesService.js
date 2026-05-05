@@ -31,48 +31,89 @@ class FirefliesService {
     }
   }
 
-  async _request(query, variables = {}) {
+  // Bug 3 fix — _request now retries on transient failures (5xx, network)
+  // with exponential backoff. Permanent failures (4xx other than 429,
+  // GraphQL errors[]) fail fast — no retry. Each attempt is logged at
+  // warn so we can spot recurring transient noise without it being a
+  // single log line per stage.
+  async _request(query, variables = {}, { maxAttempts = 3 } = {}) {
     if (!this.enabled) {
       throw new FirefliesNotConfiguredError();
     }
 
-    const response = await fetch(this.graphqlUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({ query, variables }),
-    });
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await fetch(this.graphqlUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({ query, variables }),
+        });
 
-    const text = await response.text();
-    let parsed;
-    try {
-      parsed = text ? JSON.parse(text) : {};
-    } catch (err) {
-      logger.error('Failed to parse Fireflies response', { error: err.message });
-      parsed = text;
+        const text = await response.text();
+        let parsed;
+        try {
+          parsed = text ? JSON.parse(text) : {};
+        } catch (err) {
+          logger.error('Failed to parse Fireflies response', { error: err.message, attempt });
+          parsed = text;
+        }
+
+        if (!response.ok) {
+          const isRetryable = response.status >= 500 || response.status === 429;
+          if (isRetryable && attempt < maxAttempts) {
+            logger.warn('Fireflies request transient failure, retrying', {
+              status: response.status, attempt, maxAttempts,
+            });
+            lastError = new FirefliesRequestError(
+              'Fireflies GraphQL request failed', response.status, parsed
+            );
+            await this._sleep(500 * Math.pow(2, attempt - 1));
+            continue;
+          }
+          throw new FirefliesRequestError(
+            'Fireflies GraphQL request failed', response.status, parsed
+          );
+        }
+
+        if (parsed.errors && parsed.errors.length > 0) {
+          // GraphQL errors are usually permanent (bad query, bad
+          // arguments). Don't retry. But log so the cause is obvious.
+          logger.error('Fireflies GraphQL errors', { errors: parsed.errors, attempt });
+          throw new FirefliesRequestError(
+            parsed.errors[0]?.message || 'Fireflies GraphQL error',
+            response.status, parsed
+          );
+        }
+
+        return parsed.data;
+      } catch (err) {
+        // Network-layer error (DNS, ECONNRESET) — retry. Anything we
+        // already classified above will bubble up via throw.
+        if (err instanceof FirefliesRequestError || err instanceof FirefliesNotConfiguredError) {
+          throw err;
+        }
+        if (attempt < maxAttempts) {
+          logger.warn('Fireflies network error, retrying', {
+            error: err.message, attempt, maxAttempts,
+          });
+          lastError = err;
+          await this._sleep(500 * Math.pow(2, attempt - 1));
+          continue;
+        }
+        throw err;
+      }
     }
+    // unreachable, but keeps the type-checker happy
+    throw lastError || new Error('Fireflies request failed after retries');
+  }
 
-    if (!response.ok) {
-      throw new FirefliesRequestError(
-        'Fireflies GraphQL request failed',
-        response.status,
-        parsed
-      );
-    }
-
-    if (parsed.errors && parsed.errors.length > 0) {
-      logger.error('Fireflies GraphQL errors', { errors: parsed.errors });
-      throw new FirefliesRequestError(
-        parsed.errors[0]?.message || 'Fireflies GraphQL error',
-        response.status,
-        parsed
-      );
-    }
-
-    return parsed.data;
+  _sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   async inviteBot({ meetingLink, title, duration, password }) {
