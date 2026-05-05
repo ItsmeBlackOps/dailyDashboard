@@ -6,6 +6,7 @@ import type { TaskSheetPrefill } from '@/components/shared/TaskSheet';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth, API_URL } from '@/hooks/useAuth';
+import { canCreatePO } from '@/lib/roleAliases';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Loader2, ChevronDown, ChevronRight, Search, ExternalLink } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -555,10 +556,11 @@ export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: s
             <TaskSheet
   taskId={selectedTaskId}
   onClose={() => setSelectedTaskId(null)}
-  onCreatePO={(prefill) => {
+  // PO is marketing-side. Technical team gets no Create PO button.
+  onCreatePO={canCreatePO() ? (prefill) => {
     setPoPrefill(prefill);
     setPoSheetOpen(true);
-  }}
+  } : undefined}
 />
 <PODraftSheet
   open={poSheetOpen}
