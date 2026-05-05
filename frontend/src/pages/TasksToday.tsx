@@ -477,8 +477,33 @@ export default function TasksToday() {
   const meetingsEnabled = AZURE_CLIENT_ID.length > 0;
   const canManageMeetings = useMemo(() => {
     if (!meetingsEnabled) return false;
-    const allowedRoles = ['admin', 'user', 'lead', 'am'];
-    return allowedRoles.includes(normalizedRole);
+    // C20 — accept legacy + new role names side-by-side. The intent is
+    // "technical team can create meetings (admin too)". Post-C20 a
+    // technical teamLead is stored as `teamLead/technical`; the SignIn
+    // shim translates that to legacy `lead`, but if the shim
+    // mistranslated (missing team field at login time) or the user's
+    // localStorage somehow has the new name, the gate must still
+    // recognize them. Defense in depth: also allow when the team
+    // field in localStorage explicitly says 'technical', regardless
+    // of the role string.
+    const allowedRoles = [
+      'admin',
+      // legacy technical team
+      'user', 'lead', 'am',
+      // new C20 names — technical OR marketing teamLead/expert/AM. We
+      // accept marketing equivalents here too because the original
+      // gate's exclusion of mm/mam/mlead/recruiter was about role
+      // tier (no managers/recruiters), not team. Post-C20, the
+      // tier signal is the role name, and team is a separate axis.
+      'expert', 'teamlead', 'assistantmanager',
+    ];
+    if (allowedRoles.includes(normalizedRole)) return true;
+    // Last-ditch fallback: if the user is on the technical team,
+    // they are allowed regardless of role string. This catches edge
+    // cases where the shim couldn't determine team at login time.
+    const team = (localStorage.getItem('team') || '').toLowerCase().trim();
+    if (team === 'technical') return true;
+    return false;
   }, [meetingsEnabled, normalizedRole]);
 
   const hideGrantConsentBanner = useMemo(() => {
