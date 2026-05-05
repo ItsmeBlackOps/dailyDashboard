@@ -14,7 +14,12 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 //
 // Guarded by a sentinel so it fires exactly once per browser. Bump the
 // sentinel suffix if a future migration needs to wipe state again.
-const C20_STORAGE_RESET_KEY = 'c20_storage_reset_v1';
+// Bumped to v2 — v1 fired correctly but the login callback was dropping
+// the `team` field, so every technical teamLead got 'mlead' in their
+// freshly-rebuilt localStorage. Backend fix landed alongside this v2
+// bump; v2 forces another reset so users re-login and get the corrected
+// team/role values.
+const C20_STORAGE_RESET_KEY = 'c20_storage_reset_v2';
 try {
   if (!localStorage.getItem(C20_STORAGE_RESET_KEY)) {
     // Preserve nothing — clearing tokens too forces re-login through
