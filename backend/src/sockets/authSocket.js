@@ -47,6 +47,7 @@ export class AuthSocketHandler {
       socket.data.user = {
         email: result.user.email,
         role: result.user.role,
+        team: result.user.team || null,
         teamLead: result.user.teamLead,
         manager: result.user.manager,
       };
@@ -54,14 +55,21 @@ export class AuthSocketHandler {
       logger.info('Socket login successful', {
         email: result.user.email,
         role: result.user.role,
+        team: result.user.team,
         socketId: socket.id
       });
 
+      // C20 — `team` was being dropped from the login callback payload.
+      // The frontend SignIn shim reads response.team to disambiguate
+      // teamLead → lead (technical) vs mlead (marketing); without it
+      // every technical teamLead got 'mlead' in localStorage and was
+      // misclassified as marketing for every role-gated UI thereafter.
       callback({
         success: true,
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
         role: result.user.role,
+        team: result.user.team || null,
         teamLead: result.user.teamLead,
         manager: result.user.manager,
       });
