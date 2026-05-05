@@ -61,6 +61,23 @@ export const toCanonicalRole = (legacyRole?: string | null, team?: string | null
   }
 };
 
+// PO (Purchase Order) is a marketing-side concept. Technical-team
+// users should never see "Create PO" buttons. Admins (no team) and
+// anyone NOT on the technical team are allowed.
+//
+// Uses localStorage as the source of truth for team because that's
+// what every role-gated UI gates on; the SignIn shim writes it.
+export const canCreatePO = (): boolean => {
+  try {
+    const team = (localStorage.getItem('team') || '').toLowerCase().trim();
+    return team !== 'technical';
+  } catch {
+    // localStorage locked down (incognito edge case) — be permissive,
+    // backend will reject if the user isn't actually authorized.
+    return true;
+  }
+};
+
 // Convenience for normalising a user object in API responses.
 export interface UserShape {
   role?: string | null;

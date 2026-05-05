@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth, API_URL } from '@/hooks/useAuth';
+import { canCreatePO } from '@/lib/roleAliases';
 import { Loader2, Search, ExternalLink } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import {
@@ -325,10 +326,11 @@ export function ExpertAnalytics({ period, startDate, dateBasis }: { period: stri
             <TaskSheet
   taskId={selectedTaskId}
   onClose={() => setSelectedTaskId(null)}
-  onCreatePO={(prefill) => {
+  // PO is marketing-side. Technical team gets no Create PO button.
+  onCreatePO={canCreatePO() ? (prefill) => {
     setPoPrefill(prefill);
     setPoSheetOpen(true);
-  }}
+  } : undefined}
 />
 <PODraftSheet
   open={poSheetOpen}

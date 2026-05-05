@@ -6,6 +6,7 @@ import {
   ChevronDown, ChevronUp, Building2, Layers, Users, Sparkles, RefreshCw,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { canCreatePO } from '@/lib/roleAliases';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -359,7 +360,7 @@ export default function CandidateDetailPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {candidate.status === 'Placement Offer' && (
+                    {candidate.status === 'Placement Offer' && canCreatePO() && (
                       <Button
                         variant="outline"
                         size="sm"
