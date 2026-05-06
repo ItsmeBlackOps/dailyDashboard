@@ -349,11 +349,29 @@ async function tick() {
       .limit(100)
       .toArray();
 
-    for (const task of candidates) {
+    // Pace per-task processing to avoid bursting Fireflies. After the
+    // 878d6c7 fix that finally let the scheduler reach real tasks, the
+    // 2:30 PM cohort had 8 invites fire back-to-back and 5 of them hit
+    // Fireflies rate-limiting. The scheduler tick window is 60 seconds
+    // and the candidate scan caps at 100, so the worst case (100 tasks
+    // all in window) needs to space its calls. Default 750ms gives a
+    // ceiling of ~80 invites/min — under Fireflies' burst limit, well
+    // within the 60s tick budget when N is small.
+    //
+    // Override via FIREFLIES_TICK_PACING_MS for tuning without redeploy.
+    const pacingMs = parseInt(process.env.FIREFLIES_TICK_PACING_MS || '750', 10);
+
+    for (let i = 0; i < candidates.length; i++) {
+      const task = candidates[i];
       try {
         await processTask(collection, task);
       } catch (err) {
         logger.error('Fireflies scheduler: task failed', { taskId: task._id, error: err.message });
+      }
+      // Skip the wait after the last task — saves a needless 750ms at
+      // tick end.
+      if (pacingMs > 0 && i < candidates.length - 1) {
+        await new Promise((r) => setTimeout(r, pacingMs));
       }
     }
   } catch (err) {
