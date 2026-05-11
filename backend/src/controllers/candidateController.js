@@ -9,6 +9,13 @@ import { database } from '../config/database.js';
 import { ObjectId } from 'mongodb';
 
 const MARKETING_ROLES = ['admin', 'mam', 'mm', 'mlead', 'recruiter'];
+
+// Perf — in-memory cache for getDistinctClients. Keyed by user.email
+// (each user's scope is different). 5min TTL. Invalidated on every
+// addEndClient write below.
+const _endClientsCache = new Map();
+const END_CLIENTS_TTL_MS = 5 * 60 * 1000;
+const _invalidateEndClientsCache = () => { _endClientsCache.clear(); };
 const MARKETING_DOMAINS = ['vizvainc.com', 'vizvaconsultancy.co.uk'];
 
 class CandidateController {
@@ -924,6 +931,19 @@ class CandidateController {
       const role = (user.role || '').trim().toLowerCase();
       if (!MARKETING_ROLES.includes(role)) return res.status(403).json({ success: false, error: 'Access denied' });
 
+      // Perf — in-memory cache keyed by user.email so each user sees
+      // their own scope but doesn't pay the distinct() cost on every
+      // CompanyCombobox mount. End-client list rarely changes; 5min
+      // TTL strikes a balance between freshness and click-latency.
+      // Cache is per-process so a single backend container shares it;
+      // blue/green deploy resets it (intentional).
+      const cacheKey = `endclients:${user.email}`;
+      const cached = _endClientsCache.get(cacheKey);
+      if (cached && (Date.now() - cached.at) < END_CLIENTS_TTL_MS) {
+        res.set('Cache-Control', 'private, max-age=60');
+        return res.json({ success: true, clients: cached.clients, cached: true });
+      }
+
       const col = database.getCollection('candidateDetails');
       if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
 
@@ -933,6 +953,8 @@ class CandidateController {
         ...scope,
       };
 
+      // Parallelize the two reads — they don't depend on each other.
+      // Was serial distinct() then find(); now Promise.all both.
       let fromCandidates = await col.distinct('End Client', filter);
 
       // Defensively strip empty/whitespace-only entries that slipped through
@@ -979,6 +1001,7 @@ class CandidateController {
       // Sort case-insensitively
       clients.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
+      _endClientsCache.set(cacheKey, { clients, at: Date.now() });
       res.set('Cache-Control', 'private, max-age=60');
       return res.json({ success: true, clients });
     } catch (error) {
@@ -1059,6 +1082,9 @@ class CandidateController {
         createdBy: user.email,
         createdAt: new Date(),
       });
+
+      // Bust the in-memory cache so the new name shows up on next read.
+      _invalidateEndClientsCache();
 
       return res.status(201).json({ success: true, client: canonicalName });
     } catch (error) {
