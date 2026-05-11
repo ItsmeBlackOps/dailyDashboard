@@ -1694,10 +1694,33 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     acquireGraphAccessToken
   ]);
 
-  // Helper to open sheet
-  const openCandidateSheet = (candidate: CandidateRow) => {
+  // Helper to open sheet (memoized so memoized row children stay stable)
+  const openCandidateSheet = useCallback((candidate: CandidateRow) => {
     setSelectedSheetCandidate(candidate);
-  };
+  }, []);
+
+  // Perf — precompute a Set of candidateIds with unread comment
+  // notifications. Was: O(rows × notifications) per render (50 × 100
+  // = 5,000 iterations on every state change including search typing).
+  // Now: O(notifications) once per change, O(1) lookup per row.
+  // Visible on i5 5th gen as snappier search-typing latency.
+  const unreadCommentCandidateIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const n of notifications) {
+      if (n.type === 'comment' && !n.read && n.candidateId) {
+        ids.add(n.candidateId);
+      }
+    }
+    return ids;
+  }, [notifications]);
+
+  // Perf — compute role-gate for StatusBadge once per render instead
+  // of running .includes() per row. Same role for the whole table.
+  const canEditStatus = useMemo(
+    () => ['recruiter', 'mlead', 'mam', 'mm', 'lead', 'am', 'admin',
+           'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole),
+    [normalizedRole],
+  );
 
 
   const handleSupportSubmit = useCallback(async () => {
@@ -3667,7 +3690,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                             <StatusBadge
                               status={candidate.status}
                               candidateId={candidate.id}
-                              canEdit={['recruiter', 'mlead', 'mam', 'mm', 'lead', 'am', 'admin', 'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole)}
+                              canEdit={canEditStatus}
                               onUpdate={handleStatusUpdate}
                               className="w-fit"
                             />
@@ -3684,7 +3707,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                                   onClick={(e) => { e.stopPropagation(); openDiscussionDrawer(candidate); }}
                                 >
                                   <MessageSquare className="h-4 w-4" />
-                                  {notifications.some(n => n.candidateId === candidate.id && n.type === 'comment' && !n.read) && (
+                                  {unreadCommentCandidateIds.has(candidate.id) && (
                                     <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
                                   )}
                                   <span className="sr-only">Discussion</span>
