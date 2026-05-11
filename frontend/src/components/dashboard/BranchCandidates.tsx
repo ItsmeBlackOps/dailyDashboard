@@ -2339,6 +2339,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
     setBulkUpdating(true);
     const ids = Array.from(selectedIds);
+    const idSet = new Set(ids);
 
     // Use refined Bulk Update (HAR-37)
     socket.emit('bulkUpdateCandidateStatus', { ids, status: newStatus }, (response: any) => {
@@ -2347,6 +2348,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       setSelectedIds(new Set());
 
       if (response.success) {
+        // Perf — patch state in place instead of triggering a full
+        // refetch. On a manager view this avoids re-running the
+        // hierarchy BFS + scope filter (200ms+ round trip).
+        setCandidates((prev) => prev.map((c) =>
+          idSet.has(c.id) ? { ...c, status: newStatus } : c
+        ));
         toast({
           title: 'Bulk Update Complete',
           description: `Successfully updated ${response.updated} candidates.`,
