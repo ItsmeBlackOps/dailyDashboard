@@ -750,11 +750,22 @@ export class TaskModel {
             }
           }
         },
+        // B2 — $last after $group is non-deterministic without a
+        // preceding $sort, and pushing $$ROOT into the group wastes
+        // memory. Sort first, project only the fields we read.
+        {
+          $sort: { "Candidate Name": 1, receivedDateTime: -1 }
+        },
         {
           $group: {
             _id: "$Candidate Name",
             rounds: { $push: "$normalizedRound" },
-            lastDocument: { $last: "$$ROOT" }
+            // After the desc sort, $first picks the most-recent doc
+            // per candidate — deterministic and ~5-10x less memory
+            // than $last on $$ROOT for typical group sizes.
+            lastSender: { $first: "$sender" },
+            lastCC: { $first: "$cc" },
+            lastAssignedTo: { $first: "$assignedTo" },
           }
         },
         {
@@ -780,9 +791,9 @@ export class TaskModel {
                 }
               }
             },
-            "Last Sender": "$lastDocument.sender",
-            "Last CC": "$lastDocument.cc",
-            Expert: "$lastDocument.assignedTo"
+            "Last Sender": "$lastSender",
+            "Last CC": "$lastCC",
+            Expert: "$lastAssignedTo"
           }
         }
       ];
