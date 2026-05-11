@@ -1,5 +1,5 @@
 import moment from 'moment-timezone';
-import { firefliesService } from '../services/firefliesService.js';
+import { firefliesService, FirefliesRateLimitError } from '../services/firefliesService.js';
 import { database } from '../config/database.js';
 
 // Bug 3 followup — write per-stage audit rows so the admin Processing
@@ -142,7 +142,7 @@ async function processTask(collection, task) {
       await firefliesService.inviteBot({
         meetingLink,
         title: '[Precheck] ' + candidateName,
-        duration: 1,
+        duration: 15,
         password: meetingPassword || undefined,
       });
       await collection.updateOne(
@@ -160,6 +160,7 @@ async function processTask(collection, task) {
       await audit(FIREFLIES_PHASE.INVITE_SUCCESS, 'info', task,
         'Precheck invite accepted by Fireflies', { stage: 'precheck' });
     } catch (err) {
+      if (err instanceof FirefliesRateLimitError) throw err;
       await collection.updateOne(
         { _id },
         { $set: { botStatus: 'precheck_failed', botLastError: err.message } }
@@ -200,6 +201,7 @@ async function processTask(collection, task) {
           'Bot did not appear in active_meetings during precheck', { stage: 'precheck' });
       }
     } catch (err) {
+      if (err instanceof FirefliesRateLimitError) throw err;
       logger.error('Fireflies precheck verify failed', { taskId: _id, error: err.message });
       await audit(FIREFLIES_PHASE.VERIFY_FAILED, 'error', task, err.message, {
         stage: 'precheck',
@@ -222,7 +224,7 @@ async function processTask(collection, task) {
       await firefliesService.inviteBot({
         meetingLink,
         title: candidateName,
-        duration: 180,
+        duration: 120,
         password: meetingPassword || undefined,
       });
       await collection.updateOne(
@@ -236,6 +238,7 @@ async function processTask(collection, task) {
       await audit(FIREFLIES_PHASE.INVITE_SUCCESS, 'info', task,
         'Main bot invite accepted by Fireflies', { stage: 'main' });
     } catch (err) {
+      if (err instanceof FirefliesRateLimitError) throw err;
       await collection.updateOne(
         { _id },
         { $set: { botStatus: 'main_failed', botLastError: err.message } }
@@ -271,7 +274,7 @@ async function processTask(collection, task) {
         await firefliesService.inviteBot({
           meetingLink,
           title: candidateName,
-          duration: 180,
+          duration: 120,
           password: meetingPassword || undefined,
         });
         await collection.updateOne(
@@ -299,6 +302,7 @@ async function processTask(collection, task) {
           });
       }
     } catch (err) {
+      if (err instanceof FirefliesRateLimitError) throw err;
       logger.error('Fireflies main bot verify failed', { taskId: _id, error: err.message });
       await audit(FIREFLIES_PHASE.VERIFY_FAILED, 'error', task, err.message, {
         stage: 'main',
@@ -312,6 +316,16 @@ async function processTask(collection, task) {
 
 async function tick() {
   if (!firefliesService.enabled) return;
+
+  if (firefliesService.isRateLimited) {
+    logger.warn('Fireflies scheduler: rate-limited, skipping tick', {
+      rateLimitedUntil: firefliesService.rateLimitedUntil?.toISOString(),
+      resumesInMinutes: Math.ceil(
+        (firefliesService.rateLimitedUntil?.getTime() - Date.now()) / 60_000
+      ),
+    });
+    return;
+  }
 
   try {
     const collection = database.getDb().collection('taskBody');
@@ -333,15 +347,10 @@ async function tick() {
               { body:        { $exists: true, $ne: '' } },
             ],
           },
-          // Primary: indexed interviewDateTime range. Fallback: no interviewDateTime
-          // field — getMinutesUntil() computes from legacy date/time fields and
-          // processTask() naturally skips tasks outside the ±25-min window.
-          {
-            $or: [
-              { interviewDateTime: { $gte: cutoffStart, $lte: cutoffEnd } },
-              { interviewDateTime: { $exists: false } },
-            ],
-          },
+          // interviewDateTime range only. The $exists:false fallback was removed —
+          // 17k+ legacy tasks without this field saturated the limit(100) before
+          // any real upcoming tasks were reached.
+          { interviewDateTime: { $gte: cutoffStart, $lte: cutoffEnd } },
         ],
         botStatus: { $nin: ['main_joined', 'main_failed', 'completed'] },
       })
@@ -366,6 +375,16 @@ async function tick() {
       try {
         await processTask(collection, task);
       } catch (err) {
+        if (err instanceof FirefliesRateLimitError) {
+          // Rate limit hit mid-loop — no point processing remaining tasks.
+          logger.warn('Fireflies scheduler: rate limit hit during tick, stopping loop', {
+            taskId: task._id,
+            rateLimitedUntil: firefliesService.rateLimitedUntil?.toISOString(),
+            processedSoFar: i,
+            remaining: candidates.length - i - 1,
+          });
+          break;
+        }
         logger.error('Fireflies scheduler: task failed', { taskId: task._id, error: err.message });
       }
       // Skip the wait after the last task — saves a needless 750ms at

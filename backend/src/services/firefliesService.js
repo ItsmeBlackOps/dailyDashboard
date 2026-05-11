@@ -17,18 +17,72 @@ class FirefliesRequestError extends Error {
   }
 }
 
+class FirefliesRateLimitError extends Error {
+  constructor(rateLimitedUntil) {
+    const iso = rateLimitedUntil instanceof Date ? rateLimitedUntil.toISOString() : String(rateLimitedUntil);
+    super(`Fireflies rate-limited until ${iso}`);
+    this.name = 'FirefliesRateLimitError';
+    this.rateLimitedUntil = rateLimitedUntil;
+  }
+}
+
 class FirefliesService {
   constructor() {
     const apiKey = config.fireflies.apiKey;
     this.apiKey = apiKey;
     this.graphqlUrl = config.fireflies.graphqlUrl;
     this.enabled = Boolean(apiKey);
+    // Date after which Fireflies requests may resume; null = not rate-limited.
+    this.rateLimitedUntil = null;
 
     if (this.enabled) {
       logger.info('✅ Fireflies service configured');
     } else {
       logger.warn('⚠️ Fireflies disabled — set FIREFLIES_API_KEY to enable');
     }
+  }
+
+  get isRateLimited() {
+    if (!this.rateLimitedUntil) return false;
+    if (Date.now() >= this.rateLimitedUntil.getTime()) {
+      this.rateLimitedUntil = null;
+      return false;
+    }
+    return true;
+  }
+
+  // Parse Retry-After header or the "retry after YYYY-MM-DD HH:MM:SS GMT (UTC)" body
+  // and set this.rateLimitedUntil. Falls back to +1 hour if neither is parseable.
+  _applyRateLimit(response, parsed) {
+    let untilMs = null;
+
+    const retryAfterHeader = response?.headers?.get?.('retry-after');
+    if (retryAfterHeader) {
+      const secs = parseInt(retryAfterHeader, 10);
+      if (!isNaN(secs)) {
+        untilMs = Date.now() + secs * 1_000;
+      } else {
+        const d = new Date(retryAfterHeader);
+        if (!isNaN(d.getTime())) untilMs = d.getTime();
+      }
+    }
+
+    if (!untilMs) {
+      const bodyText = typeof parsed === 'string' ? parsed : JSON.stringify(parsed ?? '');
+      const m = bodyText.match(/retry after (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) GMT/i);
+      if (m) {
+        const d = new Date(m[1] + ' UTC');
+        if (!isNaN(d.getTime())) untilMs = d.getTime();
+      }
+    }
+
+    if (!untilMs) untilMs = Date.now() + 3_600_000;
+
+    this.rateLimitedUntil = new Date(untilMs);
+    logger.warn('Fireflies rate limit applied — cooldown until', {
+      rateLimitedUntil: this.rateLimitedUntil.toISOString(),
+      cooldownMinutes: Math.ceil((untilMs - Date.now()) / 60_000),
+    });
   }
 
   // Bug 3 fix — _request now retries on transient failures (5xx, network)
@@ -39,6 +93,11 @@ class FirefliesService {
   async _request(query, variables = {}, { maxAttempts = 3 } = {}) {
     if (!this.enabled) {
       throw new FirefliesNotConfiguredError();
+    }
+
+    // Honour the rate-limit cooldown set by a prior 429 before even trying.
+    if (this.isRateLimited) {
+      throw new FirefliesRateLimitError(this.rateLimitedUntil);
     }
 
     let lastError = null;
@@ -64,7 +123,13 @@ class FirefliesService {
         }
 
         if (!response.ok) {
-          const isRetryable = response.status >= 500 || response.status === 429;
+          if (response.status === 429) {
+            // 429s carry a Retry-After that can be hours away — do not
+            // loop-retry within this call; record the cooldown and bail.
+            this._applyRateLimit(response, parsed);
+            throw new FirefliesRateLimitError(this.rateLimitedUntil);
+          }
+          const isRetryable = response.status >= 500;
           if (isRetryable && attempt < maxAttempts) {
             logger.warn('Fireflies request transient failure, retrying', {
               status: response.status, attempt, maxAttempts,
@@ -118,7 +183,7 @@ class FirefliesService {
 
   async inviteBot({ meetingLink, title, duration, password }) {
     const query = `
-      mutation AddToLiveMeeting($meeting_link: String, $title: String, $meeting_password: String, $duration: Int) {
+      mutation AddToLiveMeeting($meeting_link: String!, $title: String, $meeting_password: String, $duration: Int) {
         addToLiveMeeting(meeting_link: $meeting_link, title: $title, meeting_password: $meeting_password, duration: $duration) {
           message
           success
@@ -187,4 +252,4 @@ class FirefliesService {
 }
 
 export const firefliesService = new FirefliesService();
-export { FirefliesNotConfiguredError, FirefliesRequestError };
+export { FirefliesNotConfiguredError, FirefliesRequestError, FirefliesRateLimitError };
