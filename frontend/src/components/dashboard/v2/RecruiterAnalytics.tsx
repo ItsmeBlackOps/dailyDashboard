@@ -1,8 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TaskSheet } from '@/components/shared/TaskSheet';
-import { PODraftSheet } from '@/components/shared/PODraftSheet';
 import type { TaskSheetPrefill } from '@/components/shared/TaskSheet';
+import { lazy, Suspense } from 'react';
+// E1 — lazy-load the heavy task detail drawer + PO draft sheet so
+// DashboardV2 first-paint doesn't ship them in the tab chunk.
+const TaskSheet = lazy(() => import('@/components/shared/TaskSheet').then(m => ({ default: m.TaskSheet })));
+const PODraftSheet = lazy(() => import('@/components/shared/PODraftSheet').then(m => ({ default: m.PODraftSheet })));
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth, API_URL } from '@/hooks/useAuth';
@@ -552,21 +555,26 @@ export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: s
                 </DialogContent>
             </Dialog>
 
-            {/* Task detail drawer */}
-            <TaskSheet
-  taskId={selectedTaskId}
-  onClose={() => setSelectedTaskId(null)}
-  // PO is marketing-side. Technical team gets no Create PO button.
-  onCreatePO={canCreatePO() ? (prefill) => {
-    setPoPrefill(prefill);
-    setPoSheetOpen(true);
-  } : undefined}
-/>
-<PODraftSheet
-  open={poSheetOpen}
-  onClose={() => { setPoSheetOpen(false); setPoPrefill(null); }}
-  prefill={poPrefill}
-/>
+            {/* Task detail drawer — lazy-loaded, render only when needed */}
+            <Suspense fallback={null}>
+              {selectedTaskId && (
+                <TaskSheet
+                  taskId={selectedTaskId}
+                  onClose={() => setSelectedTaskId(null)}
+                  onCreatePO={canCreatePO() ? (prefill) => {
+                    setPoPrefill(prefill);
+                    setPoSheetOpen(true);
+                  } : undefined}
+                />
+              )}
+              {poSheetOpen && (
+                <PODraftSheet
+                  open={poSheetOpen}
+                  onClose={() => { setPoSheetOpen(false); setPoPrefill(null); }}
+                  prefill={poPrefill}
+                />
+              )}
+            </Suspense>
         </div>
     );
 }
