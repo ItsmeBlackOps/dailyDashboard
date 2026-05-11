@@ -49,16 +49,23 @@ try {
 
 // Eager imports — auth, layout, and the landing page after login
 import SignIn from './pages/auth/SignIn';
-import TasksToday from './pages/TasksToday';
 import { Toaster } from './components/ui/toaster';
 import { Toast } from './components/ui/toast';
-import Index from './pages/Index';
 import AuthorizedRoute from './routes/AuthorizedRoute';
-import DashboardV2 from './pages/DashboardV2';
-import AdminAlertsPage from './pages/AdminAlerts';
-import UserManagementPage from './pages/UserManagement';
-import DelegationsPage from './pages/Delegations';
-import PermissionsManagement from './pages/PermissionsManagement';
+
+// C1 — lazy-load every auth-gated route. Previously these were all
+// eager imports (~200-300 KB combined), meaning every login parsed
+// every page even if the user never visited some. On i5 5th gen / 8 GB
+// hardware that's seconds of JS parse before first paint. Now each
+// route's chunk loads only when navigated to. The Suspense boundary
+// below renders a fast skeleton while the chunk streams in.
+const TasksToday = lazy(() => import('./pages/TasksToday'));
+const Index = lazy(() => import('./pages/Index'));
+const DashboardV2 = lazy(() => import('./pages/DashboardV2'));
+const AdminAlertsPage = lazy(() => import('./pages/AdminAlerts'));
+const UserManagementPage = lazy(() => import('./pages/UserManagement'));
+const DelegationsPage = lazy(() => import('./pages/Delegations'));
+const PermissionsManagement = lazy(() => import('./pages/PermissionsManagement'));
 
 // Lazy imports — heavy/secondary pages, split into their own chunks
 const Reports = lazy(() => import('./pages/Reports'));
