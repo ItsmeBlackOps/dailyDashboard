@@ -1,5 +1,5 @@
 import moment from 'moment-timezone';
-import { firefliesService } from '../services/firefliesService.js';
+import { firefliesService, FirefliesRateLimitError } from '../services/firefliesService.js';
 import { database } from '../config/database.js';
 
 // Bug 3 followup — write per-stage audit rows so the admin Processing
@@ -160,6 +160,18 @@ async function processTask(collection, task) {
       await audit(FIREFLIES_PHASE.INVITE_SUCCESS, 'info', task,
         'Precheck invite accepted by Fireflies', { stage: 'precheck' });
     } catch (err) {
+      // Rate-limit is not a per-task failure — the API said back off,
+      // not "this invite is broken". Leave botStatus alone so the next
+      // tick (after cooldown clears) retries naturally. Audit the
+      // event so it's visible without polluting the failure counters.
+      if (err instanceof FirefliesRateLimitError) {
+        logger.warn('Fireflies precheck invite skipped (rate-limited)', { taskId: _id });
+        await audit('FIREFLIES_RATE_LIMITED', 'warning', task, err.message, {
+          stage: 'precheck',
+          retryAfter: err.retryAfterEpochMs,
+        });
+        return;
+      }
       await collection.updateOne(
         { _id },
         { $set: { botStatus: 'precheck_failed', botLastError: err.message } }
@@ -200,6 +212,14 @@ async function processTask(collection, task) {
           'Bot did not appear in active_meetings during precheck', { stage: 'precheck' });
       }
     } catch (err) {
+      if (err instanceof FirefliesRateLimitError) {
+        logger.warn('Fireflies precheck verify skipped (rate-limited)', { taskId: _id });
+        await audit('FIREFLIES_RATE_LIMITED', 'warning', task, err.message, {
+          stage: 'precheck-verify',
+          retryAfter: err.retryAfterEpochMs,
+        });
+        return;
+      }
       logger.error('Fireflies precheck verify failed', { taskId: _id, error: err.message });
       await audit(FIREFLIES_PHASE.VERIFY_FAILED, 'error', task, err.message, {
         stage: 'precheck',
@@ -236,6 +256,14 @@ async function processTask(collection, task) {
       await audit(FIREFLIES_PHASE.INVITE_SUCCESS, 'info', task,
         'Main bot invite accepted by Fireflies', { stage: 'main' });
     } catch (err) {
+      if (err instanceof FirefliesRateLimitError) {
+        logger.warn('Fireflies main bot invite skipped (rate-limited)', { taskId: _id });
+        await audit('FIREFLIES_RATE_LIMITED', 'warning', task, err.message, {
+          stage: 'main',
+          retryAfter: err.retryAfterEpochMs,
+        });
+        return;
+      }
       await collection.updateOne(
         { _id },
         { $set: { botStatus: 'main_failed', botLastError: err.message } }
@@ -299,6 +327,14 @@ async function processTask(collection, task) {
           });
       }
     } catch (err) {
+      if (err instanceof FirefliesRateLimitError) {
+        logger.warn('Fireflies main bot verify skipped (rate-limited)', { taskId: _id });
+        await audit('FIREFLIES_RATE_LIMITED', 'warning', task, err.message, {
+          stage: 'main-verify',
+          retryAfter: err.retryAfterEpochMs,
+        });
+        return;
+      }
       logger.error('Fireflies main bot verify failed', { taskId: _id, error: err.message });
       await audit(FIREFLIES_PHASE.VERIFY_FAILED, 'error', task, err.message, {
         stage: 'main',
@@ -312,6 +348,14 @@ async function processTask(collection, task) {
 
 async function tick() {
   if (!firefliesService.enabled) return;
+  // If a prior request put us into rate-limit cooldown, skip the whole
+  // tick. The Mongo scan + per-task work + pacing waits all yield zero
+  // useful progress while we're throttled — every call would just
+  // refresh the same cooldown.
+  if (firefliesService.isRateLimited()) {
+    logger.debug('Fireflies tick skipped — rate-limit cooldown active');
+    return;
+  }
 
   try {
     const collection = database.getDb().collection('taskBody');

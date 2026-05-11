@@ -17,17 +17,82 @@ class FirefliesRequestError extends Error {
   }
 }
 
+// Distinct from FirefliesRequestError — the scheduler treats this as
+// "back off, don't change botStatus, try again next tick after cooldown".
+// Plain FirefliesRequestError means "this task is broken, mark failed".
+class FirefliesRateLimitError extends Error {
+  constructor(retryAfterEpochMs, responseBody) {
+    const seconds = Math.max(0, Math.ceil((retryAfterEpochMs - Date.now()) / 1000));
+    super(`Fireflies rate-limited; retry after ${new Date(retryAfterEpochMs).toISOString()} (in ${seconds}s)`);
+    this.name = 'FirefliesRateLimitError';
+    this.retryAfterEpochMs = retryAfterEpochMs;
+    this.responseBody = responseBody;
+  }
+}
+
+// Fireflies returns 429 in TWO shapes:
+//   1. HTTP 429 with a Retry-After header (rare in practice for them)
+//   2. HTTP 200 with body.errors[0].extensions.code === 'too_many_requests'
+//      and body.errors[0].extensions.metadata.retryAfter (epoch ms)
+// Both must produce the same cooldown behavior; the previous code only
+// branched on response.status === 429 and missed shape #2 entirely,
+// which is what's actually happening in prod per the audit.
+const extractGraphQLRateLimit = (parsed) => {
+  if (!parsed || !Array.isArray(parsed.errors) || parsed.errors.length === 0) return null;
+  const err = parsed.errors[0];
+  const ext = err?.extensions || {};
+  const isRateLimit =
+    ext.code === 'too_many_requests' ||
+    err?.code === 'too_many_requests' ||
+    ext.status === 429;
+  if (!isRateLimit) return null;
+  let retryAfter = ext.metadata?.retryAfter;
+  if (typeof retryAfter !== 'number') {
+    // Fallback: parse the ISO-ish string from the error message.
+    const m = (err.message || '').match(/retry after\s+(.+?)\s*\(?UTC\)?/i);
+    if (m) {
+      const t = Date.parse(m[1]);
+      if (!isNaN(t)) retryAfter = t;
+    }
+  }
+  if (typeof retryAfter !== 'number') {
+    // Last resort — 60s from now so we don't busy-loop.
+    retryAfter = Date.now() + 60_000;
+  }
+  return retryAfter;
+};
+
 class FirefliesService {
   constructor() {
     const apiKey = config.fireflies.apiKey;
     this.apiKey = apiKey;
     this.graphqlUrl = config.fireflies.graphqlUrl;
     this.enabled = Boolean(apiKey);
+    // Set when Fireflies returns a rate-limit error. Subsequent
+    // _request() calls short-circuit until this clears. Per-process —
+    // each backend container holds its own cooldown clock.
+    this._rateLimitedUntil = 0;
 
     if (this.enabled) {
       logger.info('✅ Fireflies service configured');
     } else {
       logger.warn('⚠️ Fireflies disabled — set FIREFLIES_API_KEY to enable');
+    }
+  }
+
+  isRateLimited() {
+    return Date.now() < this._rateLimitedUntil;
+  }
+
+  _applyRateLimit(retryAfterEpochMs, source) {
+    if (retryAfterEpochMs > this._rateLimitedUntil) {
+      this._rateLimitedUntil = retryAfterEpochMs;
+      const seconds = Math.ceil((retryAfterEpochMs - Date.now()) / 1000);
+      logger.warn('Fireflies rate-limited — cooldown engaged', {
+        source,
+        until: new Date(retryAfterEpochMs).toISOString(),
+        seconds,
+      });
     }
   }
 
@@ -39,6 +104,13 @@ class FirefliesService {
   async _request(query, variables = {}, { maxAttempts = 3 } = {}) {
     if (!this.enabled) {
       throw new FirefliesNotConfiguredError();
+    }
+
+    // Fail-fast if we're still in cooldown from a prior rate-limit.
+    // Avoids burning another quota unit and propagates a typed error
+    // the scheduler knows not to mark the task as failed.
+    if (this.isRateLimited()) {
+      throw new FirefliesRateLimitError(this._rateLimitedUntil, null);
     }
 
     let lastError = null;
@@ -64,7 +136,22 @@ class FirefliesService {
         }
 
         if (!response.ok) {
-          const isRetryable = response.status >= 500 || response.status === 429;
+          // Shape #1 — proper HTTP 429. Honor Retry-After header if present.
+          if (response.status === 429) {
+            const retryHeader = response.headers.get('retry-after');
+            let retryAfter;
+            if (retryHeader && /^\d+$/.test(retryHeader)) {
+              retryAfter = Date.now() + parseInt(retryHeader, 10) * 1000;
+            } else if (retryHeader) {
+              const parsedTs = Date.parse(retryHeader);
+              retryAfter = !isNaN(parsedTs) ? parsedTs : Date.now() + 60_000;
+            } else {
+              retryAfter = Date.now() + 60_000;
+            }
+            this._applyRateLimit(retryAfter, 'http-429');
+            throw new FirefliesRateLimitError(retryAfter, parsed);
+          }
+          const isRetryable = response.status >= 500;
           if (isRetryable && attempt < maxAttempts) {
             logger.warn('Fireflies request transient failure, retrying', {
               status: response.status, attempt, maxAttempts,
@@ -81,8 +168,17 @@ class FirefliesService {
         }
 
         if (parsed.errors && parsed.errors.length > 0) {
-          // GraphQL errors are usually permanent (bad query, bad
-          // arguments). Don't retry. But log so the cause is obvious.
+          // Shape #2 — HTTP 200 with GraphQL errors[]. Fireflies's
+          // actual rate-limit response in prod. extensions.code is
+          // 'too_many_requests' and extensions.metadata.retryAfter
+          // carries the cooldown epoch ms directly.
+          const retryAfter = extractGraphQLRateLimit(parsed);
+          if (retryAfter !== null) {
+            this._applyRateLimit(retryAfter, 'graphql-too-many-requests');
+            throw new FirefliesRateLimitError(retryAfter, parsed);
+          }
+
+          // Real GraphQL error (bad query, bad arguments). Permanent.
           logger.error('Fireflies GraphQL errors', { errors: parsed.errors, attempt });
           throw new FirefliesRequestError(
             parsed.errors[0]?.message || 'Fireflies GraphQL error',
@@ -93,8 +189,14 @@ class FirefliesService {
         return parsed.data;
       } catch (err) {
         // Network-layer error (DNS, ECONNRESET) — retry. Anything we
-        // already classified above will bubble up via throw.
-        if (err instanceof FirefliesRequestError || err instanceof FirefliesNotConfiguredError) {
+        // already classified above (FirefliesRequestError,
+        // FirefliesRateLimitError, FirefliesNotConfiguredError) bubbles
+        // straight up. RateLimit specifically must NOT retry because
+        // we've already set the cooldown and we'd just burn another
+        // quota unit on each in-tick attempt.
+        if (err instanceof FirefliesRequestError ||
+            err instanceof FirefliesRateLimitError ||
+            err instanceof FirefliesNotConfiguredError) {
           throw err;
         }
         if (attempt < maxAttempts) {
@@ -187,4 +289,4 @@ class FirefliesService {
 }
 
 export const firefliesService = new FirefliesService();
-export { FirefliesNotConfiguredError, FirefliesRequestError };
+export { FirefliesNotConfiguredError, FirefliesRequestError, FirefliesRateLimitError };
