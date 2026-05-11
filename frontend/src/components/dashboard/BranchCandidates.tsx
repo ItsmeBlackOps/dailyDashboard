@@ -337,7 +337,16 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const isManager = ['mm', 'mam', 'admin', 'manager', 'assistantmanager'].includes(normalizedRole);
   const showCreateButton = isManager;
   const tourEligible = TOUR_ROLES.some((roleKey) => roleKey === normalizedRole);
-  const [visibleCount, setVisibleCount] = useState(20);
+  // Pagination — fully client-side. The full scoped set is held in
+  // `candidates` (already pushed via socket on connect + live-patched
+  // by event subscribers). Search filters the array in memory;
+  // pagination slices the filtered result. Net effect:
+  //   - real-time row updates (socket patches `candidates` → re-renders
+  //     only the current page's slice)
+  //   - instant search across the entire user's scope
+  //   - 50 DOM rows max at a time → friendly to i5 5th gen / 8 GB
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const observerTarget = useRef<HTMLDivElement>(null);
   const normalizedScope = useMemo<NormalizedScope | null>(() => {
     if (!scope) {
@@ -3394,34 +3403,28 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       return;
     }
 
-    observerRef.current?.disconnect();
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => {
-            const next = prev + 20;
-            return next >= filteredCandidates.length ? filteredCandidates.length : next;
-          });
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    observer.observe(target);
-    observerRef.current = observer;
-
-    return () => observer.disconnect();
+    // Pagination replaces the previous IntersectionObserver
+    // infinite-scroll. Observer ref + target are now no-ops; kept the
+    // declarations as deprecated harmless references to avoid a
+    // broader refactor.
   }, [filteredCandidates.length, loading]);
 
-  // Reset visible count when filters change
+  // Reset to page 1 when the underlying set changes (search, scope swap,
+  // or fresh socket payload). pageSize change keeps the current item
+  // roughly visible by recalculating which page they're on, but for
+  // simplicity we also reset to page 1.
   useEffect(() => {
-    setVisibleCount(20);
-  }, [search, scope, candidates]);
+    setPage(1);
+  }, [search, scope, candidates, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCandidates.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const startIdx = (safePage - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, filteredCandidates.length);
 
   const visibleCandidates = useMemo(() => {
-    return filteredCandidates?.slice(0, visibleCount) || [];
-  }, [filteredCandidates, visibleCount]);
+    return filteredCandidates.slice(startIdx, endIdx);
+  }, [filteredCandidates, startIdx, endIdx]);
 
   return (
     <>
@@ -3768,9 +3771,51 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   )}
                 </TableBody>
               </Table>
-              {visibleCount < filteredCandidates.length && (
-                <div ref={observerTarget} className="h-10 flex items-center justify-center p-4">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              {/* Pagination controls — client-side over the filtered set.
+                  Hidden when the filtered set fits on one page. */}
+              {filteredCandidates.length > pageSize && (
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t bg-card/40 text-xs">
+                  <div className="text-muted-foreground">
+                    Showing <span className="font-medium text-foreground">{startIdx + 1}-{endIdx}</span>{' '}
+                    of <span className="font-medium text-foreground">{filteredCandidates.length}</span>
+                    {filteredCandidates.length !== candidates.length && (
+                      <> (filtered from {candidates.length})</>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Rows:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => setPageSize(Number(e.target.value))}
+                      className="h-7 px-2 rounded border bg-background text-foreground"
+                    >
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value={200}>200</option>
+                    </select>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={safePage <= 1}
+                    >
+                      Prev
+                    </Button>
+                    <span className="px-2 tabular-nums">
+                      Page <span className="font-medium text-foreground">{safePage}</span> / {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={safePage >= totalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
