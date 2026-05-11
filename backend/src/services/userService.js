@@ -65,6 +65,14 @@ const roleLevel = (role) => ROLE_LEVEL.get((role || '').toLowerCase().trim()) ||
 // they accept both legacy and new role names. Removing the legacy entries
 // is the final step when the dual-read window closes.
 const ROLES_ADMIN_OR_MANAGER       = ['admin', 'mm', 'manager'];
+
+// Perf — in-memory cache for getManageableUsers. Keyed by
+// email:role (so a role change immediately yields a fresh result).
+// 30s TTL — short enough that admin updates flow through promptly,
+// long enough to deduplicate the page-mount storm when a user opens
+// TasksToday → UserManagement → BranchCandidates in succession.
+const _manageableUsersCache = new Map();
+const MANAGEABLE_USERS_TTL_MS = 30 * 1000;
 const ROLES_ADMIN_MANAGER_TEAMLEAD = ['admin', 'mm', 'manager', 'lead', 'teamLead'];
 const ROLES_ADMIN_MANAGER_TL_AM    = ['admin', 'mm', 'manager', 'lead', 'teamLead', 'am', 'assistantManager'];
 const ROLES_PROVISIONERS           = ['admin', 'mm', 'manager', 'mam', 'assistantManager', 'mlead', 'teamLead', 'lead', 'am'];
@@ -1141,9 +1149,21 @@ export class UserService {
       throw new Error('Insufficient permissions');
     }
 
-    const users = this.collectManageableUsers(requestingUser);
+    // Perf — in-memory cache. The manageable-users list is computed by
+    // walking the in-memory userModel cache (no DB read), but the BFS
+    // + role/team disambiguation costs real CPU for managers with deep
+    // subtrees (sometimes 100ms+). Multiple frontend pages (TasksToday,
+    // UserManagement, BranchCandidates) all hit this on mount. 30s TTL
+    // is short enough that role/team changes flow through quickly but
+    // long enough to deduplicate the back-to-back page-load traffic.
+    const cacheKey = `manageable:${requestingUser.email}:${requestingUser.role}`;
+    const cached = _manageableUsersCache.get(cacheKey);
+    if (cached && (Date.now() - cached.at) < MANAGEABLE_USERS_TTL_MS) {
+      return cached.payload;
+    }
 
-    return {
+    const users = this.collectManageableUsers(requestingUser);
+    const payload = {
       success: true,
       users,
       meta: {
@@ -1151,6 +1171,13 @@ export class UserService {
         requestedBy: requestingUser.email
       }
     };
+    _manageableUsersCache.set(cacheKey, { payload, at: Date.now() });
+    return payload;
+  }
+
+  // Static so users.js routes can invalidate after a bulk update / create.
+  static invalidateManageableUsersCache() {
+    _manageableUsersCache.clear();
   }
 
   async bulkCreateUsers(requestingUser, payload = []) {
@@ -1247,6 +1274,7 @@ export class UserService {
       }
     }
 
+    if (created.length > 0) _manageableUsersCache.clear();
     return {
       success: failures.length === 0,
       created,
@@ -1460,6 +1488,7 @@ export class UserService {
       }
     }
 
+    if (updates.length > 0) _manageableUsersCache.clear();
     return {
       success: failures.length === 0,
       updates,
