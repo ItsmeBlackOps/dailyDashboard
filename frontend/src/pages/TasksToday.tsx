@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import { trackError } from '@/utils/trackError';
-import { toLegacyRole } from '@/lib/roleAliases';
+import { toLegacyRole, canSeeBotStatus } from '@/lib/roleAliases';
 import DOMPurify from "dompurify";
 import moment, { Moment } from "moment-timezone";
 import { io, Socket } from "socket.io-client";
@@ -4459,7 +4459,9 @@ export default function TasksToday() {
                         {task.status && (
                           <Badge className={getStatusBadge(task.status)}>{task.status}</Badge>
                         )}
-                        <BotStatusBadge status={task.botStatus} attempts={task.botInviteAttempts} error={task.botLastError} />
+                        {canSeeBotStatus() && (
+                          <BotStatusBadge status={task.botStatus} attempts={task.botInviteAttempts} error={task.botLastError} />
+                        )}
                       </div>
                     </TableCell>
                     {showActionsColumn && (

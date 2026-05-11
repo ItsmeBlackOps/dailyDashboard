@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { parseJsonOrThrow } from '@/lib/fetchJson';
+import { canSeeBotStatus } from '@/lib/roleAliases';
 import {
   Calendar, Clock, Building2, Briefcase, User, Mail,
   Layers, Users, ExternalLink, MessageSquare, FileText, Video, Check, Loader2,
@@ -303,7 +304,9 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
             <div className="rounded-lg border p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold">Meeting Link</h4>
-                <BotStatusBadge status={task.botStatus ?? undefined} attempts={task.botInviteAttempts ?? undefined} error={task.botLastError} />
+                {canSeeBotStatus() && (
+                  <BotStatusBadge status={task.botStatus ?? undefined} attempts={task.botInviteAttempts ?? undefined} error={task.botLastError} />
+                )}
               </div>
 
               {(() => {
@@ -325,12 +328,14 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
                           <ExternalLink className="h-3 w-3 ml-auto opacity-80" />
                         </a>
                       </Button>
-                      <BotLifecycle
-                        status={task.botStatus ?? null}
-                        attempts={task.botInviteAttempts ?? 0}
-                        joinedAt={task.botJoinedAt ?? null}
-                        error={task.botLastError ?? null}
-                      />
+                      {canSeeBotStatus() && (
+                        <BotLifecycle
+                          status={task.botStatus ?? null}
+                          attempts={task.botInviteAttempts ?? 0}
+                          joinedAt={task.botJoinedAt ?? null}
+                          error={task.botLastError ?? null}
+                        />
+                      )}
                     </>
                   );
                 }
@@ -359,7 +364,7 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
                 );
               })()}
 
-              {task.botLastError && (
+              {task.botLastError && canSeeBotStatus() && (
                 <p className="text-xs text-aurora-rose">⚠️ {task.botLastError}</p>
               )}
             </div>
