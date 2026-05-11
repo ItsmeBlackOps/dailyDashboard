@@ -78,6 +78,20 @@ export const canCreatePO = (): boolean => {
   }
 };
 
+// Fireflies / recording-bot status surfaces (badges, lifecycle viz,
+// botLastError text) are admin-only. Bot infra is operational tooling
+// and the badges/errors aren't useful to recruiters/managers/experts —
+// they leak retry counts and stack-traces that are noise in the daily
+// workflow. Admin keeps them for diagnosis.
+export const canSeeBotStatus = (): boolean => {
+  try {
+    const role = (localStorage.getItem('role') || '').toLowerCase().trim();
+    return role === 'admin';
+  } catch {
+    return false;
+  }
+};
+
 // Convenience for normalising a user object in API responses.
 export interface UserShape {
   role?: string | null;
