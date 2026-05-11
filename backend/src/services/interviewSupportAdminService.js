@@ -653,6 +653,279 @@ class InterviewSupportAdminService {
       results:          kafkaResult.results,
     };
   }
+
+  // -----------------------------------------------------------------------
+  // deleteEmailFromMailbox — calls PicaOS DELETE /me/messages/{emailId}
+  //
+  // Fail-loud. We refuse to call when:
+  //   - PICA_DELETE_ACTION_ID is unset (must be wired explicitly; sharing
+  //     the GET action ID returns ErrorInvalidIdMalformed because PicaOS
+  //     action IDs are path-scoped)
+  //   - emailId is missing (older tasks lack it; admin must use the
+  //     Reject path with an explanation instead of trying to force-delete)
+  //
+  // Always writes an auditLog row (success or failure) for traceability.
+  // Returns { success: true, status } on 2xx; throws otherwise.
+  // -----------------------------------------------------------------------
+  async deleteEmailFromMailbox(emailId, { adminEmail, taskId, subject } = {}) {
+    if (!config.pica.deleteActionId) {
+      throw new Error('PICA_DELETE_ACTION_ID not configured — set it in env before approving deletions');
+    }
+    if (!emailId) {
+      throw new Error('Task has no emailId — cannot delete the source email automatically');
+    }
+
+    const auditCol = database.getCollection('auditLog');
+    const url = `${config.pica.baseUrl}/me/messages/${emailId}`;
+    const headers = {
+      'x-pica-secret':         config.pica.secretKey,
+      'x-pica-connection-key': config.pica.outlookConnectionKey,
+      'x-pica-action-id':      config.pica.deleteActionId,
+      'Content-Type':          'application/json',
+    };
+
+    let resp, bodyText = '';
+    try {
+      resp = await fetch(url, { method: 'DELETE', headers });
+      bodyText = await resp.text();
+    } catch (err) {
+      await auditCol.insertOne({
+        subject:    subject || '',
+        taskId:     taskId ? taskId.toString() : null,
+        emailId,
+        action:     'MAILBOX_DELETE_FAILED',
+        phase:      'MAILBOX_DELETE_FAILED',
+        adminEmail,
+        error:      err.message,
+        level:      'error',
+        createdAt:  new Date(),
+        timestamp:  new Date(),
+      });
+      throw new Error(`PicaOS delete request failed: ${err.message}`);
+    }
+
+    // Graph returns 204 on successful delete; PicaOS proxies the same status.
+    if (!resp.ok) {
+      await auditCol.insertOne({
+        subject:    subject || '',
+        taskId:     taskId ? taskId.toString() : null,
+        emailId,
+        action:     'MAILBOX_DELETE_FAILED',
+        phase:      'MAILBOX_DELETE_FAILED',
+        adminEmail,
+        status:     resp.status,
+        responseBody: bodyText.slice(0, 500),
+        level:      'error',
+        createdAt:  new Date(),
+        timestamp:  new Date(),
+      });
+      throw new Error(`PicaOS delete returned ${resp.status}: ${bodyText.slice(0, 200)}`);
+    }
+
+    await auditCol.insertOne({
+      subject:    subject || '',
+      taskId:     taskId ? taskId.toString() : null,
+      emailId,
+      action:     'MAILBOX_DELETE_SUCCESS',
+      phase:      'MAILBOX_DELETE_SUCCESS',
+      adminEmail,
+      status:     resp.status,
+      level:      'info',
+      createdAt:  new Date(),
+      timestamp:  new Date(),
+    });
+
+    logger.info('PicaOS mailbox delete succeeded', { emailId, taskId, adminEmail, status: resp.status });
+    return { success: true, status: resp.status };
+  }
+
+  // -----------------------------------------------------------------------
+  // requestTaskDeletion — recruiter-initiated deletion request.
+  // Writes a deletionRequest subdoc with status='pending'. Idempotent:
+  // if a pending request already exists, returns it as-is.
+  // -----------------------------------------------------------------------
+  async requestTaskDeletion(taskId, { requesterEmail, reason }) {
+    if (!reason || !reason.trim()) {
+      throw new Error('Reason is required');
+    }
+    const taskCol  = database.getCollection('taskBody');
+    const auditCol = database.getCollection('auditLog');
+
+    let oid;
+    try { oid = new ObjectId(taskId); } catch { oid = taskId; }
+
+    const task = await taskCol.findOne({ _id: oid });
+    if (!task) throw new Error('Task not found');
+    if (task.deletedAt) throw new Error('Task is already deleted');
+    if (task.deletionRequest && task.deletionRequest.status === 'pending') {
+      return { alreadyPending: true, deletionRequest: task.deletionRequest };
+    }
+
+    const now = new Date();
+    const deletionRequest = {
+      requestedBy:     requesterEmail,
+      requestedAt:     now,
+      reason:          reason.trim().slice(0, 1000),
+      status:          'pending',
+      reviewedBy:      null,
+      reviewedAt:      null,
+      rejectionReason: null,
+    };
+
+    await taskCol.updateOne({ _id: oid }, { $set: { deletionRequest, updatedAt: now } });
+
+    await auditCol.insertOne({
+      subject:        task['Subject'] || task['subject'] || '',
+      taskId:         taskId.toString(),
+      action:         'DELETION_REQUESTED',
+      phase:          'DELETION_REQUESTED',
+      requesterEmail,
+      reason:         deletionRequest.reason,
+      level:          'info',
+      createdAt:      now,
+      timestamp:      now,
+    });
+
+    if (this.io) {
+      this.io.emit('deletionRequestCreated', { taskId: taskId.toString(), requesterEmail });
+    }
+
+    return { alreadyPending: false, deletionRequest };
+  }
+
+  // -----------------------------------------------------------------------
+  // reviewTaskDeletion — admin approve/reject.
+  //
+  // approve: calls deleteEmailFromMailbox, then sets deletedAt/deletedBy
+  //          on the task (soft-delete) and marks deletionRequest.status.
+  //          If the mailbox delete fails, the task stays active and
+  //          deletionRequest.status stays 'pending' — admin can retry.
+  //
+  // reject:  requires rejectionReason; updates deletionRequest only.
+  // -----------------------------------------------------------------------
+  async reviewTaskDeletion(taskId, { adminEmail, decision, rejectionReason }) {
+    if (!['approved', 'rejected'].includes(decision)) {
+      throw new Error("decision must be 'approved' or 'rejected'");
+    }
+    if (decision === 'rejected' && !(rejectionReason && rejectionReason.trim())) {
+      throw new Error('rejectionReason is required when rejecting');
+    }
+
+    const taskCol  = database.getCollection('taskBody');
+    const auditCol = database.getCollection('auditLog');
+
+    let oid;
+    try { oid = new ObjectId(taskId); } catch { oid = taskId; }
+
+    const task = await taskCol.findOne({ _id: oid });
+    if (!task) throw new Error('Task not found');
+    if (!task.deletionRequest || task.deletionRequest.status !== 'pending') {
+      throw new Error('No pending deletion request for this task');
+    }
+
+    const now     = new Date();
+    const subject = task['Subject'] || task['subject'] || '';
+
+    if (decision === 'approved') {
+      // Mailbox delete first — if PicaOS rejects, we don't soft-delete
+      // the task. The deletionRequest stays pending so admin can retry
+      // or fall back to Reject + manual cleanup.
+      await this.deleteEmailFromMailbox(task.emailId, { adminEmail, taskId, subject });
+
+      await taskCol.updateOne({ _id: oid }, {
+        $set: {
+          deletedAt:                       now,
+          deletedBy:                       adminEmail,
+          'deletionRequest.status':        'approved',
+          'deletionRequest.reviewedBy':    adminEmail,
+          'deletionRequest.reviewedAt':    now,
+          updatedAt:                       now,
+        },
+      });
+
+      await auditCol.insertOne({
+        subject,
+        taskId:    taskId.toString(),
+        action:    'DELETION_APPROVED',
+        phase:     'DELETION_APPROVED',
+        adminEmail,
+        emailId:   task.emailId || null,
+        level:     'info',
+        createdAt: now,
+        timestamp: now,
+      });
+
+      if (this.io) {
+        this.io.emit('deletionRequestReviewed', { taskId: taskId.toString(), decision: 'approved' });
+      }
+
+      return { decision: 'approved', subject, deletedAt: now };
+    }
+
+    // Reject path
+    await taskCol.updateOne({ _id: oid }, {
+      $set: {
+        'deletionRequest.status':          'rejected',
+        'deletionRequest.reviewedBy':      adminEmail,
+        'deletionRequest.reviewedAt':      now,
+        'deletionRequest.rejectionReason': rejectionReason.trim().slice(0, 1000),
+        updatedAt:                         now,
+      },
+    });
+
+    await auditCol.insertOne({
+      subject,
+      taskId:          taskId.toString(),
+      action:          'DELETION_REJECTED',
+      phase:           'DELETION_REJECTED',
+      adminEmail,
+      rejectionReason: rejectionReason.trim().slice(0, 1000),
+      level:           'info',
+      createdAt:       now,
+      timestamp:       now,
+    });
+
+    if (this.io) {
+      this.io.emit('deletionRequestReviewed', { taskId: taskId.toString(), decision: 'rejected' });
+    }
+
+    return { decision: 'rejected', subject };
+  }
+
+  // -----------------------------------------------------------------------
+  // listPendingDeletionRequests — admin panel data source.
+  // -----------------------------------------------------------------------
+  async listPendingDeletionRequests() {
+    const taskCol = database.getCollection('taskBody');
+    const tasks = await taskCol
+      .find(
+        { 'deletionRequest.status': 'pending', deletedAt: { $exists: false } },
+        {
+          projection: {
+            _id: 1,
+            Subject: 1, subject: 1,
+            'Candidate Name': 1,
+            interviewDateTime: 1,
+            emailId: 1,
+            deletionRequest: 1,
+            from: 1,
+          },
+        }
+      )
+      .sort({ 'deletionRequest.requestedAt': -1 })
+      .limit(200)
+      .toArray();
+
+    return tasks.map((t) => ({
+      _id:               t._id.toString(),
+      subject:           t.Subject || t.subject || '',
+      candidateName:     t['Candidate Name'] || '',
+      interviewDateTime: t.interviewDateTime || null,
+      emailId:           t.emailId || null,
+      from:              t.from || '',
+      deletionRequest:   t.deletionRequest,
+    }));
+  }
 }
 
 export const interviewSupportAdminService = new InterviewSupportAdminService();

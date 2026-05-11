@@ -27,6 +27,10 @@ router.get('/stats',                       (req, res) => ctl.getStats(req, res))
 router.get('/audit',                       (req, res) => ctl.getSubjectAudit(req, res));
 router.post('/subjects/reprocess',         (req, res) => ctl.reprocessSubject(req, res));
 
+// Deletion-request review (admin only — the existing email gate above).
+router.get('/deletion-requests',           (req, res) => ctl.listDeletionRequests(req, res));
+router.put('/tasks/:taskId/deletion-review', (req, res) => ctl.reviewDeletion(req, res));
+
 // Aliases used by the current frontend bundle (kept for back-compat — same handlers)
 router.post('/scan-outlook', (req, res) => ctl.getUnprocessed(req, res));
 router.post('/push-kafka',   (req, res) => ctl.pushUnprocessed(req, res));

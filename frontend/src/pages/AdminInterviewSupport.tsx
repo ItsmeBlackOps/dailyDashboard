@@ -34,6 +34,7 @@ import { SOCKET_URL } from '@/hooks/useAuth';
 import InterviewSupportTaskList from '@/components/admin/InterviewSupportTaskList';
 import SubjectLogsTab from '@/components/admin/SubjectLogsTab';
 import LiveLogsTab from '@/components/admin/LiveLogsTab';
+import DeletionRequestsTab from '@/components/admin/DeletionRequestsTab';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
@@ -138,6 +139,7 @@ function AdminInterviewSupportContent({
           <TabsTrigger value="all-tasks">All Tasks</TabsTrigger>
           <TabsTrigger value="unprocessed">Unprocessed</TabsTrigger>
           <TabsTrigger value="failed">Failed Auto-Assigns</TabsTrigger>
+          <TabsTrigger value="deletion-requests">Deletion Requests</TabsTrigger>
           <TabsTrigger value="logs">Processing Logs</TabsTrigger>
           <TabsTrigger value="subject-logs">Subject Logs</TabsTrigger>
           <TabsTrigger value="live-logs">Live Logs</TabsTrigger>
@@ -153,6 +155,10 @@ function AdminInterviewSupportContent({
 
         <TabsContent value="failed" className="mt-4">
           <ErrorBoundary label="Failed Auto-Assigns"><FailedTab authFetch={authFetch} queryClient={queryClient} /></ErrorBoundary>
+        </TabsContent>
+
+        <TabsContent value="deletion-requests" className="mt-4">
+          <ErrorBoundary label="Deletion Requests"><DeletionRequestsTab /></ErrorBoundary>
         </TabsContent>
 
         <TabsContent value="logs" className="mt-4">

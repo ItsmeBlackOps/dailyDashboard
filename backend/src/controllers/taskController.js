@@ -3,6 +3,7 @@ import { taskService } from '../services/taskService.js';
 import { thanksMailService } from '../services/thanksMailService.js';
 import { interviewerQuestionService } from '../services/interviewerQuestionService.js';
 import { interviewDebriefService } from '../services/interviewDebriefService.js';
+import { interviewSupportAdminService } from '../services/interviewSupportAdminService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 import { database } from '../config/database.js';
@@ -273,6 +274,32 @@ export class TaskController {
     }
 
     return res.json({ success: true, task: result });
+  });
+
+  // Recruiter-initiated request to delete a task. Reason is mandatory.
+  // Hard-delete is intentionally NOT done here — admin must review and
+  // approve, which then deletes the source email from the shared mailbox
+  // via PicaOS and soft-deletes the task.
+  requestTaskDeletion = asyncHandler(async (req, res) => {
+    const { taskId } = req.params;
+    const { reason } = req.body || {};
+    if (!taskId) {
+      return res.status(400).json({ success: false, error: 'Task id is required' });
+    }
+    if (!reason || !String(reason).trim()) {
+      return res.status(400).json({ success: false, error: 'reason is required' });
+    }
+    try {
+      const result = await interviewSupportAdminService.requestTaskDeletion(taskId, {
+        requesterEmail: req.user.email,
+        reason,
+      });
+      res.json({ success: true, ...result });
+    } catch (err) {
+      logger.warn('requestTaskDeletion failed', { taskId, error: err.message });
+      const code = /not found/i.test(err.message) ? 404 : 400;
+      res.status(code).json({ success: false, error: err.message });
+    }
   });
 
   healthCheck = asyncHandler(async (req, res) => {

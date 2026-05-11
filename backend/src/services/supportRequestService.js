@@ -567,7 +567,10 @@ class SupportRequestService {
     }
 
     const taskCollection = database.getCollection('taskBody');
+    // Exclude soft-deleted tasks (admin approved a Request Deletion). Their
+    // subject must not block the recruiter's resubmission.
     const query = {
+      deletedAt: { $exists: false },
       $or: [
         { subject: { $in: subjects } },
         { Subject: { $in: subjects } }

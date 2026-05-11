@@ -27,4 +27,9 @@ router.post('/:taskId/interview-debrief', taskController.getInterviewDebrief);
 router.post('/:taskId/transcript-request', transcriptRequestController.createTranscriptRequest);
 router.delete('/:taskId', taskController.deleteTask);
 
+// Recruiter / marketing path: request admin-approved deletion of a task
+// (admin then deletes the source email from the mailbox and soft-deletes
+// the task — see interviewSupportAdminService.reviewTaskDeletion).
+router.post('/:taskId/request-deletion', taskController.requestTaskDeletion);
+
 export default router;

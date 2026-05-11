@@ -197,6 +197,7 @@ const config = {
     secretKey: process.env.PICA_SECRET_KEY || '',
     outlookConnectionKey: process.env.PICA_OUTLOOK_CONNECTION_KEY || '',
     actionId: process.env.PICA_ACTION_ID || 'conn_mod_def::GCorx9pDnxY::58M00d9DQI-jjQJC7z7JaQ',
+    deleteActionId: process.env.PICA_DELETE_ACTION_ID || '',
     baseUrl: process.env.PICA_BASE_URL || 'https://api.picaos.com/v1/passthrough',
     powerAutomateUrl: process.env.POWER_AUTOMATE_URL || '',
   },

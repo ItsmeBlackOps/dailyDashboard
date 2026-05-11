@@ -105,6 +105,18 @@ interface Task {
   assignedExpert?: string;
   recruiterName?: string;
   transcription?: boolean;
+
+  // Deletion-request lifecycle (recruiter requests, admin reviews).
+  deletedAt?: string | null;
+  deletionRequest?: {
+    requestedBy: string;
+    requestedAt: string;
+    reason: string;
+    status: 'pending' | 'approved' | 'rejected';
+    reviewedBy?: string | null;
+    reviewedAt?: string | null;
+    rejectionReason?: string | null;
+  } | null;
 }
 
 interface ManageableUser {
@@ -352,7 +364,8 @@ const MAX_DELAY = 2147483647; // ~24.85 days (2^31 - 1)
 
 import { SubjectValidationBadge } from "@/components/tasks/SubjectValidationBadge";
 import { DeleteTaskDialog } from "@/components/tasks/DeleteTaskDialog";
-import { Trash2, RefreshCw } from "lucide-react";
+import { RequestDeletionDialog } from "@/components/tasks/RequestDeletionDialog";
+import { Trash2, RefreshCw, AlertTriangle } from "lucide-react";
 import { TaskSheet } from '@/components/shared/TaskSheet';
 import { PODraftSheet } from '@/components/shared/PODraftSheet';
 import type { TaskSheetPrefill } from '@/components/shared/TaskSheet';
@@ -600,6 +613,14 @@ export default function TasksToday() {
   const [deleteTaskDialog, setDeleteTaskDialog] = useState<{ open: boolean; task: Task | null }>({
     open: false,
     task: null
+  });
+
+  // Request Deletion Dialog State (recruiter/marketing path — admin reviews
+  // and approves; on approval the system deletes the original email from
+  // the mailbox via PicaOS and soft-deletes the task).
+  const [requestDeletionDialog, setRequestDeletionDialog] = useState<{ open: boolean; task: Task | null }>({
+    open: false,
+    task: null,
   });
 
   // Reprocess Subject Dialog State (admin only — wipes & re-pushes via Kafka/Intervue).
@@ -1077,6 +1098,40 @@ export default function TasksToday() {
     [toast]
   );
 
+
+  const handleRequestDeletion = useCallback(async (taskId: string, reason: string) => {
+    try {
+      const response = await authFetch(`${API_URL}/api/tasks/${taskId}/request-deletion`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.success === false) {
+        throw new Error(data.error || `Request failed (${response.status})`);
+      }
+      const alreadyPending = data.alreadyPending === true;
+      toast({
+        title: alreadyPending ? 'Already requested' : 'Deletion request submitted',
+        description: alreadyPending
+          ? 'A deletion request for this task is already pending admin review.'
+          : 'An admin will review the request shortly.',
+      });
+      posthog.capture('task_action_performed', {
+        user_role: authUser?.role,
+        action_type: 'request_deletion',
+        task_id: taskId,
+      });
+    } catch (error: any) {
+      console.error('Request deletion error', error);
+      toast({
+        title: 'Request failed',
+        description: error?.message || 'Could not submit the deletion request',
+        variant: 'destructive',
+      });
+      throw error;
+    }
+  }, [authFetch, toast, authUser?.role, posthog]);
 
   const handleDeleteTask = useCallback(async (taskId: string) => {
     try {
@@ -4527,6 +4582,30 @@ export default function TasksToday() {
                                   )}
                                 </>
                               )}
+                              {/* Recruiter / marketing path: request admin-approved deletion.
+                                  Hidden from admin (admin uses Delete Task below) and from
+                                  tasks already soft-deleted or with a pending request. */}
+                              {user !== "admin" && !task.deletedAt && task.deletionRequest?.status !== 'pending' && (
+                                <>
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                    onClick={() => setRequestDeletionDialog({ open: true, task })}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Request Deletion
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                </>
+                              )}
+                              {user !== "admin" && task.deletionRequest?.status === 'pending' && (
+                                <>
+                                  <DropdownMenuItem disabled>
+                                    <AlertTriangle className="mr-2 h-4 w-4 text-amber-600" />
+                                    Deletion pending review
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                </>
+                              )}
                               {user === "admin" && (
                                 <>
                                   <DropdownMenuItem
@@ -5122,6 +5201,13 @@ export default function TasksToday() {
         onOpenChange={(open) => setDeleteTaskDialog(prev => ({ ...prev, open }))}
         task={deleteTaskDialog.task}
         onConfirm={handleDeleteTask}
+      />
+      {/* Request Deletion Dialog (recruiter / marketing) */}
+      <RequestDeletionDialog
+        open={requestDeletionDialog.open}
+        onOpenChange={(open) => setRequestDeletionDialog(prev => ({ ...prev, open }))}
+        task={requestDeletionDialog.task}
+        onConfirm={handleRequestDeletion}
       />
 
       <Dialog

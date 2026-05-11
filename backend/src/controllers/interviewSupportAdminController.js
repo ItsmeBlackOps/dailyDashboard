@@ -91,6 +91,50 @@ class InterviewSupportAdminController {
     res.json({ success: true, ...result });
   });
 
+  // Recruiter / marketing: open a deletion request on their own task.
+  // Auth/permission gating handled by the route layer.
+  requestDeletion = asyncHandler(async (req, res) => {
+    const { taskId } = req.params;
+    const { reason } = req.body || {};
+    if (!reason || !String(reason).trim()) {
+      return res.status(400).json({ success: false, error: 'reason is required' });
+    }
+    try {
+      const result = await interviewSupportAdminService.requestTaskDeletion(taskId, {
+        requesterEmail: req.user.email,
+        reason,
+      });
+      res.json({ success: true, ...result });
+    } catch (err) {
+      const code = /not found/i.test(err.message) ? 404 : 400;
+      res.status(code).json({ success: false, error: err.message });
+    }
+  });
+
+  // Admin: approve or reject a pending deletion request.
+  reviewDeletion = asyncHandler(async (req, res) => {
+    const { taskId } = req.params;
+    const { decision, rejectionReason } = req.body || {};
+    try {
+      const result = await interviewSupportAdminService.reviewTaskDeletion(taskId, {
+        adminEmail: req.user.email,
+        decision,
+        rejectionReason,
+      });
+      res.json({ success: true, ...result });
+    } catch (err) {
+      logger.error('reviewDeletion failed', { taskId, error: err.message });
+      const code = /not found/i.test(err.message) ? 404 : 400;
+      res.status(code).json({ success: false, error: err.message });
+    }
+  });
+
+  // Admin: list pending deletion requests for the review panel.
+  listDeletionRequests = asyncHandler(async (req, res) => {
+    const result = await interviewSupportAdminService.listPendingDeletionRequests();
+    res.json({ success: true, requests: result });
+  });
+
   reprocessSubject = asyncHandler(async (req, res) => {
     const { subject, mode = 'assign' } = req.body || {};
     if (!subject) {
