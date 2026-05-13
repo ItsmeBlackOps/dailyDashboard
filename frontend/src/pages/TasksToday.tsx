@@ -3986,8 +3986,26 @@ export default function TasksToday() {
   }, [tasks, activeUsersByRole]);
 
   const expertOptions = useMemo(() => {
-    const activeExperts = [...(activeUsersByRole.user || []), ...(activeUsersByRole.expert || [])];
-    const activeMap = new Map(activeExperts.map((u) => [u.name.toLowerCase(), u]));
+    // Source includes legacy 'user' role + new 'expert' role + any
+    // teamLead/AM/manager who explicitly opts in via acceptsTasks=true.
+    // Covers the Darshan / Anusree case — technical teamLeads who
+    // actively do IC interview work and need to be filterable +
+    // assignable like an expert.
+    const activeExperts = [
+      ...(activeUsersByRole.user || []),
+      ...(activeUsersByRole.expert || []),
+      ...Object.values(activeUsersByRole).flat().filter(
+        (u) => (u as { acceptsTasks?: boolean }).acceptsTasks === true
+      ),
+    ];
+    // Dedupe by email (a teamLead with acceptsTasks=true might also
+    // land in the bucket scan above if their role bucket changes).
+    const byEmail = new Map<string, typeof activeExperts[number]>();
+    for (const u of activeExperts) {
+      if (!byEmail.has(u.email)) byEmail.set(u.email, u);
+    }
+    const dedupedExperts = [...byEmail.values()];
+    const activeMap = new Map(dedupedExperts.map((u) => [u.name.toLowerCase(), u]));
     const uniqueNames = new Set(tasks.map((t) => (t.assignedExpert || '').trim()).filter(Boolean));
     const result: { value: string; label: string; sublabel?: string }[] = [];
     for (const name of uniqueNames) {
