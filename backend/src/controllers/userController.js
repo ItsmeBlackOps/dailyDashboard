@@ -249,14 +249,19 @@ export class UserController {
       }
       const docs = await db.collection('users')
         .find(filter)
-        .project({ email: 1, role: 1, teamLead: 1, manager: 1, name: 1, displayName: 1 })
+        .project({ email: 1, role: 1, team: 1, teamLead: 1, manager: 1, name: 1, displayName: 1, acceptsTasks: 1 })
         .toArray();
       const users = docs.map(u => ({
         email: u.email,
         name: u.displayName || u.name || nameFromEmail(u.email),
         role: u.role,
+        team: u.team || null,
         teamLead: u.teamLead || '',
         manager: u.manager || '',
+        // Surfaces the "this user takes interview assignments" flag so
+        // the frontend Expert dropdown can include teamLeads/AMs who
+        // explicitly opt in (Darshan, Anusree, etc.).
+        acceptsTasks: u.acceptsTasks === true,
       }));
       const byRole = {};
       for (const u of users) {
