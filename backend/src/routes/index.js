@@ -51,6 +51,7 @@ async function adminPerformance(req, res) {
 import dashboardRoutes from './dashboardRoutes.js';
 import poRoutes from './po.js';
 import interviewSupportAdminRoutes from './interviewSupportAdmin.js';
+import firefliesDiagnoseRoutes from './firefliesDiagnose.js';
 import jobsRoutes from './jobs.js';
 import jobApplicationsRoutes from './jobApplications.js';
 import delegationRoutes from './delegations.js';
@@ -143,6 +144,7 @@ router.get('/info', (req, res) => {
 // Admin performance endpoint
 router.get('/admin/performance', adminPerformance);
 router.use('/admin/interview-support', interviewSupportAdminRoutes);
+router.use('/admin/fireflies', firefliesDiagnoseRoutes);
 
 // Catch-all for undefined API routes (Express 5 requires handler without wildcard string)
 router.use((req, res) => {
