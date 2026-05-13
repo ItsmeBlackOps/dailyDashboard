@@ -433,3 +433,8 @@ export function startFirefliesBotScheduler() {
     tick().catch((err) => logger.error('Fireflies scheduler tick threw', { error: err.message }));
   }, TICK_INTERVAL_MS);
 }
+
+// Exported for the admin /api/admin/fireflies/run-tick endpoint —
+// lets ops kick a single tick on demand (e.g. after a cooldown reset
+// or to confirm the scheduler is healthy without waiting 60s).
+export const _tick = tick;

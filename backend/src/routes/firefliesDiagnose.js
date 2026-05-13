@@ -14,6 +14,15 @@ import { requireHTTPRole } from '../middleware/auth.js';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
+// Lazy-imported to avoid circular dep at module load.
+let _schedulerTick = null;
+const getSchedulerTick = async () => {
+  if (_schedulerTick) return _schedulerTick;
+  const mod = await import('../jobs/firefliesBotScheduler.js');
+  _schedulerTick = mod._tick || mod.tick || null;
+  return _schedulerTick;
+};
+
 const router = express.Router();
 
 router.get('/diagnose', requireHTTPRole(['admin']), async (req, res) => {
@@ -120,6 +129,81 @@ router.get('/diagnose', requireHTTPRole(['admin']), async (req, res) => {
     });
   } catch (error) {
     logger.error('fireflies diagnose endpoint failed', { error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/admin/fireflies/reset-cooldown — force-clear the in-memory
+// rate-limit clock. Use when a wedge state stopped tick() from
+// processing real candidates. Idempotent; safe to call repeatedly.
+// Logs the action so we can correlate with later behavior.
+router.post('/reset-cooldown', requireHTTPRole(['admin']), async (req, res) => {
+  try {
+    const before = firefliesService._rateLimitedUntil ?? 0;
+    firefliesService._rateLimitedUntil = 0;
+    logger.warn('admin reset Fireflies cooldown', {
+      actor: req.user?.email,
+      previousCooldownUntilISO: before ? new Date(before).toISOString() : null,
+    });
+    return res.json({
+      success: true,
+      previousCooldownUntilEpochMs: before,
+      previousCooldownUntilISO: before ? new Date(before).toISOString() : null,
+      cleared: true,
+    });
+  } catch (error) {
+    logger.error('reset-cooldown failed', { error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/admin/fireflies/run-tick — kick the scheduler manually so
+// we don't have to wait for the next 60s cycle after a reset/redeploy.
+// Returns the in-memory state before and after the tick so we can see
+// whether anything moved.
+router.post('/run-tick', requireHTTPRole(['admin']), async (req, res) => {
+  try {
+    const tick = await getSchedulerTick();
+    if (typeof tick !== 'function') {
+      return res.status(503).json({
+        success: false,
+        error: 'scheduler tick not exported — check that firefliesBotScheduler.js exports _tick or tick',
+      });
+    }
+    const startedAt = new Date();
+    const stateBefore = {
+      enabled: Boolean(firefliesService?.enabled),
+      isRateLimited: typeof firefliesService?.isRateLimited === 'function'
+        ? firefliesService.isRateLimited() : null,
+      rateLimitedUntilEpochMs: firefliesService?._rateLimitedUntil ?? null,
+    };
+
+    let tickError = null;
+    try { await tick(); } catch (e) { tickError = e.message; }
+
+    const stateAfter = {
+      isRateLimited: typeof firefliesService?.isRateLimited === 'function'
+        ? firefliesService.isRateLimited() : null,
+      rateLimitedUntilEpochMs: firefliesService?._rateLimitedUntil ?? null,
+    };
+    const completedAt = new Date();
+    logger.warn('admin ran Fireflies scheduler tick manually', {
+      actor: req.user?.email,
+      durationMs: completedAt - startedAt,
+      tickError,
+    });
+
+    return res.json({
+      success: true,
+      startedAt: startedAt.toISOString(),
+      completedAt: completedAt.toISOString(),
+      durationMs: completedAt - startedAt,
+      stateBefore,
+      stateAfter,
+      tickError,
+    });
+  } catch (error) {
+    logger.error('run-tick failed', { error: error.message });
     return res.status(500).json({ success: false, error: error.message });
   }
 });
