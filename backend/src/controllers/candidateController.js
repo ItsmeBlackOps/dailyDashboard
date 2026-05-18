@@ -228,51 +228,6 @@ class CandidateController {
     }
   }
 
-  async getMissingResumes(req, res) {
-    try {
-      const user = req.user;
-      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
-
-      // Marketing team only — mm / mam / mlead / recruiter. Admin
-      // manages globally and gets flooded by this prompt, so excluded.
-      const role = (user.role || '').trim().toLowerCase();
-      if (!['mm', 'mam', 'mlead', 'recruiter'].includes(role)) {
-        return res.json({ success: true, total: 0, candidates: [] });
-      }
-
-      // Reuse the SAME service the Branch Candidates socket handler
-      // uses so the scope is exactly identical — whatever the user can
-      // see in Branch Candidates, this set is a subset of.
-      const result = await candidateService.getCandidatesForUser(user, {});
-      const all = Array.isArray(result?.candidates) ? result.candidates : [];
-
-      // Filter to Active + missing resume in JS — the service's return
-      // shape varies between role paths; this avoids re-implementing
-      // each scope's mongo filter.
-      const missing = all.filter((c) => {
-        const status = (c.status || c.Status || '').trim().toLowerCase();
-        if (status !== 'active') return false;
-        const link = c.resumeLink || c.resumeUrl || '';
-        return !link;
-      });
-
-      return res.json({
-        success: true,
-        total: missing.length,
-        candidates: missing.slice(0, 100).map((c) => ({
-          id: c.id || c._id?.toString?.() || c._id || '',
-          name: c['Candidate Name'] || c.name || c.candidateName || '',
-          technology: c.Technology || c.technology || '',
-          recruiter: c.recruiter || c.Recruiter || '',
-          branch: c.Branch || c.branch || '',
-        })),
-      });
-    } catch (error) {
-      logger.error('getMissingResumes failed', { error: error.message });
-      return res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-  }
-
   async getHubStats(req, res) {
     try {
       const user = req.user;
