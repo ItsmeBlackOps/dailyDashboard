@@ -3985,12 +3985,14 @@ export default function TasksToday() {
     return result.sort((a, b) => a.label.localeCompare(b.label));
   }, [tasks, activeUsersByRole]);
 
-  const expertOptions = useMemo(() => {
-    // Source includes legacy 'user' role + new 'expert' role, technical
-    // teamLeads by role+team (legacy 'lead' bucket + post-rename
-    // 'teamLead' bucket filtered to team:'technical'), and any user
-    // with acceptsTasks=true (covers cross-team opt-ins).
-    const activeExperts = [
+  // Widened expert pool used by BOTH the dropdown and the filter below.
+  // Must be a single source — if these two diverge, selecting a user
+  // from the dropdown silently matches zero tasks (root cause of the
+  // Anusree-not-filtering bug). Includes legacy 'user'/'expert', the
+  // technical teamLead buckets (legacy 'lead' + post-rename 'teamLead'
+  // with team:'technical'), and anyone with acceptsTasks=true.
+  const wideActiveExperts = useMemo(() => {
+    const list = [
       ...(activeUsersByRole.user || []),
       ...(activeUsersByRole.expert || []),
       ...(activeUsersByRole.lead || []),
@@ -4001,14 +4003,15 @@ export default function TasksToday() {
         (u) => u.acceptsTasks === true
       ),
     ];
-    // Dedupe by email (a teamLead with acceptsTasks=true might also
-    // land in the bucket scan above if their role bucket changes).
-    const byEmail = new Map<string, typeof activeExperts[number]>();
-    for (const u of activeExperts) {
-      if (!byEmail.has(u.email)) byEmail.set(u.email, u);
+    const byEmail = new Map<string, typeof list[number]>();
+    for (const u of list) {
+      if (u.email && !byEmail.has(u.email)) byEmail.set(u.email, u);
     }
-    const dedupedExperts = [...byEmail.values()];
-    const activeMap = new Map(dedupedExperts.map((u) => [u.name.toLowerCase(), u]));
+    return [...byEmail.values()];
+  }, [activeUsersByRole]);
+
+  const expertOptions = useMemo(() => {
+    const activeMap = new Map(wideActiveExperts.map((u) => [u.name.toLowerCase(), u]));
     const uniqueNames = new Set(tasks.map((t) => (t.assignedExpert || '').trim()).filter(Boolean));
     const result: { value: string; label: string; sublabel?: string }[] = [];
     for (const name of uniqueNames) {
@@ -4017,7 +4020,7 @@ export default function TasksToday() {
       result.push({ value: u.email, label: u.name, sublabel: u.teamLead ? `Under ${u.teamLead}` : '' });
     }
     return result.sort((a, b) => a.label.localeCompare(b.label));
-  }, [tasks, activeUsersByRole]);
+  }, [tasks, wideActiveExperts]);
 
   const leadOptions = useMemo(() => {
     const activeLeads = activeUsersByRole.lead || [];
@@ -4072,7 +4075,10 @@ export default function TasksToday() {
       // Multi-select role filters
       const activeRecruiters = activeUsersByRole.recruiter || [];
       const activeRecruitersByEmail = new Map(activeRecruiters.map((u) => [u.email, u]));
-      const allExperts = [...(activeUsersByRole.user || []), ...(activeUsersByRole.expert || [])];
+      // Use the same widened pool as the dropdown — otherwise teamLeads
+      // (Anusree, etc.) appear in the dropdown but selecting them
+      // matches zero tasks.
+      const allExperts = wideActiveExperts;
       const activeExpertsByEmail = new Map(allExperts.map((u) => [u.email, u]));
       const activeMleads = activeUsersByRole.mlead || [];
       const activeMleadsByEmail = new Map(activeMleads.map((u) => [u.email, u]));
@@ -4335,6 +4341,7 @@ export default function TasksToday() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12 text-center">#</TableHead>
                 {showSubject && <TableHead>Subject</TableHead>}
                 <TableHead>Candidate</TableHead>
                 <TableHead>Date</TableHead>
@@ -4365,7 +4372,7 @@ export default function TasksToday() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {displayed.map((task) => {
+              {displayed.map((task, index) => {
                 const start = parseStart(task);
                 const end = parseEnd(task);
                 const isMeetingBusy = Boolean(meetingBusy[task._id]);
@@ -4394,6 +4401,7 @@ export default function TasksToday() {
                     className={`${getRowClasses(task.status)} cursor-pointer`}
                     onClick={() => task._id && setSheetTaskId(task._id)}
                   >
+                    <TableCell className="w-12 text-center text-muted-foreground tabular-nums">{index + 1}</TableCell>
                     {showSubject && (
                       <TableCell>
                         {DOMPurify.sanitize(task.subject || "")}
