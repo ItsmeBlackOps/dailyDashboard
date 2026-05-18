@@ -526,7 +526,7 @@ export default function TasksToday() {
   const [teamLeadError, setTeamLeadError] = useState("");
   const [selectedTeamLead, setSelectedTeamLead] = useState<string>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [activeUsersByRole, setActiveUsersByRole] = useState<Record<string, Array<{ email: string; name: string; teamLead: string; manager: string; role: string }>>>({});
+  const [activeUsersByRole, setActiveUsersByRole] = useState<Record<string, Array<{ email: string; name: string; teamLead: string; manager: string; role: string; team?: string | null; acceptsTasks?: boolean }>>>({});
   const [selectedRecruiters, setSelectedRecruiters] = useState<string[]>([]);
   const [selectedMleads, setSelectedMleads] = useState<string[]>([]);
   const [selectedExperts, setSelectedExperts] = useState<string[]>([]);
@@ -3986,16 +3986,19 @@ export default function TasksToday() {
   }, [tasks, activeUsersByRole]);
 
   const expertOptions = useMemo(() => {
-    // Source includes legacy 'user' role + new 'expert' role + any
-    // teamLead/AM/manager who explicitly opts in via acceptsTasks=true.
-    // Covers the Darshan / Anusree case — technical teamLeads who
-    // actively do IC interview work and need to be filterable +
-    // assignable like an expert.
+    // Source includes legacy 'user' role + new 'expert' role, technical
+    // teamLeads by role+team (legacy 'lead' bucket + post-rename
+    // 'teamLead' bucket filtered to team:'technical'), and any user
+    // with acceptsTasks=true (covers cross-team opt-ins).
     const activeExperts = [
       ...(activeUsersByRole.user || []),
       ...(activeUsersByRole.expert || []),
+      ...(activeUsersByRole.lead || []),
+      ...(activeUsersByRole.teamLead || []).filter(
+        (u) => (u.team || '').toLowerCase() === 'technical'
+      ),
       ...Object.values(activeUsersByRole).flat().filter(
-        (u) => (u as { acceptsTasks?: boolean }).acceptsTasks === true
+        (u) => u.acceptsTasks === true
       ),
     ];
     // Dedupe by email (a teamLead with acceptsTasks=true might also

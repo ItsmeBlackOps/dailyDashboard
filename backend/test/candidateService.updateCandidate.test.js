@@ -444,6 +444,35 @@ describe('candidateService.getCandidatesForUser expert scopes', () => {
       ])
     );
   });
+
+  it('AM expert scope includes post-rename teamLead with team:technical and excludes marketing teamLeads', async () => {
+    candidateModel.getCandidatesByExperts = jest.fn().mockResolvedValue([]);
+
+    userModel.getAllUsers = jest.fn().mockReturnValue([
+      { email: 'lead.alpha@company.com', role: 'lead', teamLead: 'Am User' },
+      { email: 'lead.beta@company.com', role: 'teamLead', team: 'technical', teamLead: 'Am User' },
+      { email: 'lead.gamma@company.com', role: 'teamLead', team: 'marketing', teamLead: 'Am User' },
+      { email: 'user.one@company.com', role: 'user', teamLead: 'Lead Alpha' }
+    ]);
+
+    const result = await candidateService.getCandidatesForUser(
+      { email: 'am.user@company.com', role: 'AM' },
+      { limit: 50 }
+    );
+
+    expect(result.options?.expertChoices).toEqual(
+      expect.arrayContaining([
+        { value: 'lead.alpha@company.com', label: 'Lead Alpha' },
+        { value: 'lead.beta@company.com', label: 'Lead Beta' }
+      ])
+    );
+
+    expect(result.options?.expertChoices).not.toEqual(
+      expect.arrayContaining([
+        { value: 'lead.gamma@company.com', label: 'Lead Gamma' }
+      ])
+    );
+  });
 });
 
 describe('candidateService.getCandidatesForUser recruiter scope', () => {

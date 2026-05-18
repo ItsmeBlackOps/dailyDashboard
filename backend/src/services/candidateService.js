@@ -657,7 +657,15 @@ class CandidateService {
 
     const allUsers = userModel.getAllUsers();
     const expertEmails = allUsers
-      .filter((person) => ['lead', 'am', 'expert', 'user'].includes((person.role || '').toLowerCase()))
+      .filter((person) => {
+        const role = (person.role || '').toLowerCase();
+        if (['lead', 'am', 'expert', 'user'].includes(role)) return true;
+        // Post-rename teamLead+team:'technical' is the structural equivalent
+        // of legacy 'lead' — keep them in the Expert pool by default.
+        const team = (person.team || '').toLowerCase();
+        if (role === 'teamlead' && team === 'technical') return true;
+        return false;
+      })
       .map((person) => person.email)
       .filter(Boolean);
 
@@ -885,7 +893,15 @@ class CandidateService {
 
     const allUsers = userModel.getAllUsers();
     const expertEmails = allUsers
-      .filter((person) => ['lead', 'am', 'expert', 'user'].includes((person.role || '').toLowerCase()))
+      .filter((person) => {
+        const role = (person.role || '').toLowerCase();
+        if (['lead', 'am', 'expert', 'user'].includes(role)) return true;
+        // Post-rename teamLead+team:'technical' is the structural equivalent
+        // of legacy 'lead' — keep them in the Expert pool by default.
+        const team = (person.team || '').toLowerCase();
+        if (role === 'teamlead' && team === 'technical') return true;
+        return false;
+      })
       .map((person) => person.email)
       .filter(Boolean);
 
@@ -1676,7 +1692,13 @@ class CandidateService {
         const normalizedEmailValue = normalizeEmail(person.email);
         if (!normalizedEmailValue) continue;
 
-        if (roleKey === 'lead') {
+        // Match legacy 'lead' AND post-rename 'teamLead' with team:'technical'.
+        // Marketing teamLeads stay excluded so they don't bleed into the
+        // technical AM's expert pool.
+        const personTeam = (person.team || '').toLowerCase();
+        const isTechnicalTeamLead = roleKey === 'lead'
+          || (roleKey === 'teamlead' && personTeam === 'technical');
+        if (isTechnicalTeamLead) {
           const personTeamLeadName = normalizeName(person.teamLead || '');
           if (personTeamLeadName === amName) {
             experts.add(normalizedEmailValue);
@@ -1690,11 +1712,16 @@ class CandidateService {
 
       for (const person of allUsers) {
         const roleKey = (person.role || '').toLowerCase();
-        // Accept legacy/new expert role names AND any user explicitly
-        // flagged acceptsTasks=true (covers the teamLead-who-also-does-IC
-        // case — Darshan, Anusree, Bhavya).
+        // Accept legacy/new expert role names, any user with
+        // acceptsTasks=true (Darshan/Anusree/Bhavya), and technical
+        // teamLeads (legacy 'lead' + post-rename teamLead+team:'technical')
+        // — they're part of the IC interview pool by default, even
+        // without the per-user acceptsTasks opt-in.
+        const personTeam = (person.team || '').toLowerCase();
         const isAssignable = ['user', 'expert'].includes(roleKey)
-          || person.acceptsTasks === true;
+          || person.acceptsTasks === true
+          || roleKey === 'lead'
+          || (roleKey === 'teamlead' && personTeam === 'technical');
         if (!isAssignable) continue;
         const personLeadName = normalizeName(person.teamLead || '');
         if (!personLeadName) continue;
@@ -1723,11 +1750,16 @@ class CandidateService {
 
       for (const person of allUsers) {
         const roleKey = (person.role || '').toLowerCase();
-        // Accept legacy/new expert role names AND any user explicitly
-        // flagged acceptsTasks=true (covers the teamLead-who-also-does-IC
-        // case — Darshan, Anusree, Bhavya).
+        // Accept legacy/new expert role names, any user with
+        // acceptsTasks=true (Darshan/Anusree/Bhavya), and technical
+        // teamLeads (legacy 'lead' + post-rename teamLead+team:'technical')
+        // — they're part of the IC interview pool by default, even
+        // without the per-user acceptsTasks opt-in.
+        const personTeam = (person.team || '').toLowerCase();
         const isAssignable = ['user', 'expert'].includes(roleKey)
-          || person.acceptsTasks === true;
+          || person.acceptsTasks === true
+          || roleKey === 'lead'
+          || (roleKey === 'teamlead' && personTeam === 'technical');
         if (!isAssignable) continue;
         const personLeadName = normalizeName(person.teamLead || '');
         if (personLeadName === leadName) {
