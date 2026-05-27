@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { candidateModel, WORKFLOW_STATUS, RESUME_UNDERSTANDING_STATUS } from '../models/Candidate.js';
 import { userModel } from '../models/User.js';
-import { userService } from './userService.js';
+import { userService, roleLevel } from './userService.js';
 import { logger } from '../utils/logger.js';
 import { domainEventBus } from '../events/eventBus.js';
 import { DomainEvents } from '../events/eventTypes.js';
@@ -147,8 +147,11 @@ class CandidateService {
     }
 
     const managerRecord = userModel.getUserByEmail(resolvedManagerEmail);
-    const managerRole = (managerRecord?.role || '').toLowerCase();
-    if (managerRole !== ROLE_MM) {
+    // Match the MM by role *level*: roleLevel() maps both the legacy 'mm'
+    // and the post-rename 'manager' to 'manager', so MAM branch resolution
+    // works with the new role names (manager/assistantManager + team)
+    // without hardcoding legacy string lists.
+    if (roleLevel(managerRecord?.role) !== 'manager') {
       logger.warn('Unable to resolve MM for MAM: manager role is not MM', {
         mamEmail,
         managerEmail: resolvedManagerEmail,

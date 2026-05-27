@@ -59,7 +59,7 @@ const ROLE_LEVEL = new Map([
   ['expert',           'expert'],
 ]);
 
-const roleLevel = (role) => ROLE_LEVEL.get((role || '').toLowerCase().trim()) || null;
+export const roleLevel = (role) => ROLE_LEVEL.get((role || '').toLowerCase().trim()) || null;
 
 // Pre-built superset arrays — extend the existing permission gates so
 // they accept both legacy and new role names. Removing the legacy entries

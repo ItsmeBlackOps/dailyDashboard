@@ -218,6 +218,73 @@ describe('candidateService manager create flow', () => {
     );
   });
 
+  it('resolves MAM branch when the MM has the post-C20 role "manager" (not legacy "mm")', async () => {
+    const now = new Date();
+    candidateModel.createCandidate = jest.fn().mockResolvedValue({
+      _id: { toString: () => 'mam124' },
+      Branch: 'GGR',
+      Recruiter: 'recruiter@example.com',
+      Expert: '',
+      Technology: 'React',
+      'Candidate Name': 'Jane Doe',
+      'Email ID': 'jane.doe@example.com',
+      'Contact No': '12345',
+      resumeLink: SAMPLE_RESUME_LINK,
+      workflowStatus: WORKFLOW_STATUS.awaitingExpert,
+      resumeUnderstandingStatus: RESUME_UNDERSTANDING_STATUS.pending,
+      createdBy: 'mam.user@company.com',
+      updated_at: now,
+      _last_write: now
+    });
+
+    // Post-migration shape: MAM is stored as assistantManager+marketing, and
+    // the MM (Tushar) now carries the new role name 'manager', not 'mm'.
+    userModel.getUserByEmail = jest.fn((email) => {
+      const normalized = String(email || '').toLowerCase();
+      if (normalized === 'mam.user@company.com') {
+        return {
+          email: 'mam.user@company.com',
+          role: 'assistantManager',
+          team: 'marketing',
+          manager: 'tushar.ahuja@silverspaceinc.com',
+          active: true
+        };
+      }
+      if (normalized === 'tushar.ahuja@silverspaceinc.com') {
+        return {
+          email: 'tushar.ahuja@silverspaceinc.com',
+          role: 'manager',
+          team: 'marketing',
+          active: true
+        };
+      }
+      return null;
+    });
+
+    userService.collectManageableUsers = jest.fn().mockReturnValue([
+      { email: 'recruiter@example.com', role: 'recruiter', active: true }
+    ]);
+
+    // Requester role is the auth-translated legacy form ('MAM').
+    await candidateService.createCandidateFromManager(
+      { email: 'mam.user@company.com', role: 'MAM' },
+      {
+        name: 'Jane Doe',
+        email: 'jane.doe@example.com',
+        technology: 'react',
+        branch: 'LKN',
+        recruiter: 'recruiter@example.com',
+        resumeLink: SAMPLE_RESUME_LINK
+      }
+    );
+
+    expect(candidateModel.createCandidate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        branch: 'GGR'
+      })
+    );
+  });
+
   it('blocks MAM creation when MM mapping is missing', async () => {
     userModel.getUserByEmail = jest.fn((email) => {
       const normalized = String(email || '').toLowerCase();

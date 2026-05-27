@@ -2956,7 +2956,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   };
 
   const handleCreateFieldChange = (field: keyof typeof createForm, value: string) => {
-    if (field === 'branch' && normalizedRole === 'mam' && createPolicy.branchReadOnly) {
+    if (field === 'branch' && createPolicy.branchReadOnly) {
       return;
     }
     let nextValue = value;
@@ -2984,7 +2984,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         return { ...prev, contact: prev.contact.trim() };
       }
       if (field === 'branch') {
-        if (normalizedRole === 'mam' && createPolicy.branchReadOnly) {
+        if (createPolicy.branchReadOnly) {
           return prev;
         }
         return { ...prev, branch: prev.branch.trim().toUpperCase() };
@@ -3035,7 +3035,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       .map((branch) => String(branch || '').trim().toUpperCase())
       .filter(Boolean);
     const allowedBranchSet = new Set(effectiveAllowedBranches.length > 0 ? effectiveAllowedBranches : [...DEFAULT_ALLOWED_BRANCHES]);
-    const effectiveBranch = normalizedRole === 'mam' && createPolicy.branchReadOnly
+    const effectiveBranch = createPolicy.branchReadOnly
       ? (createPolicy.defaultBranch || trimmedBranch).toUpperCase()
       : trimmedBranch;
     const recruiterAllowedSet = new Set(
@@ -3062,7 +3062,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       return;
     }
 
-    if (normalizedRole === 'mam' && !createPolicy.canCreate) {
+    if (!createPolicy.canCreate) {
       setCreateError(createPolicy.reason || 'MAM branch mapping is missing. Contact admin.');
       setCreating(false);
       return;
@@ -3485,7 +3485,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 size="sm"
                 onClick={() => {
                   setCreateError('');
-                  if (normalizedRole === 'mam' && !createPolicy.canCreate) {
+                  if (!createPolicy.canCreate) {
                     toast({
                       title: 'Candidate creation unavailable',
                       description: createPolicy.reason || 'MAM branch mapping is missing. Contact admin.',
@@ -3495,7 +3495,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   }
                   setCreateForm((prev) => ({
                     ...prev,
-                    branch: normalizedRole === 'mam'
+                    branch: createPolicy.branchReadOnly
                       ? (createPolicy.defaultBranch || prev.branch || '')
                       : (prev.branch || (scope?.type === 'branch' && scope.value
                         ? String(scope.value).toUpperCase()
@@ -4177,17 +4177,22 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   placeholder="Primary technology"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="create-branch">Branch</Label>
-                <Input
-                  id="create-branch"
-                  value={createForm.branch}
-                  onChange={(event) => handleCreateFieldChange('branch', event.target.value)}
-                  onBlur={() => handleCreateFieldBlur('branch')}
-                  placeholder="e.g., GGR"
-                  readOnly={normalizedRole === 'mam' && createPolicy.branchReadOnly}
-                />
-              </div>
+              {/* Branch is auto-derived (and locked) when the server policy
+                  marks it read-only — e.g. assistantManager+marketing (MAM),
+                  whose branch comes from their MM. Hidden entirely in that case;
+                  the value is still prefilled, submitted, and required. */}
+              {!createPolicy.branchReadOnly && (
+                <div className="space-y-2">
+                  <Label htmlFor="create-branch">Branch</Label>
+                  <Input
+                    id="create-branch"
+                    value={createForm.branch}
+                    onChange={(event) => handleCreateFieldChange('branch', event.target.value)}
+                    onBlur={() => handleCreateFieldBlur('branch')}
+                    placeholder="e.g., GGR"
+                  />
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="create-recruiter">Recruiter</Label>
                 <Select
@@ -4240,7 +4245,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               <Button variant="outline" onClick={resetCreateState} disabled={creating}>
                 Cancel
               </Button>
-              <Button onClick={handleCreateCandidate} disabled={creating || recruiterOptions.length === 0 || !createResumeFile || (normalizedRole === 'mam' && !createPolicy.canCreate)}>
+              <Button onClick={handleCreateCandidate} disabled={creating || recruiterOptions.length === 0 || !createResumeFile || !createPolicy.canCreate}>
                 {creating ? 'Submitting…' : 'Submit Candidate'}
               </Button>
             </DialogFooter>
