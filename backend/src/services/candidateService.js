@@ -1,5 +1,41 @@
 import crypto from 'node:crypto';
-import { candidateModel, WORKFLOW_STATUS, RESUME_UNDERSTANDING_STATUS } from '../models/Candidate.js';
+import {
+  candidateModel,
+  WORKFLOW_STATUS,
+  RESUME_UNDERSTANDING_STATUS,
+  STATUS_VALUES,
+  STATUS_ALIASES,
+  TECHNOLOGY_VALUES,
+  VISA_TYPE_VALUES,
+  EAD_REQUIRED_VISA_TYPES,
+  COMPANY_VALUES,
+  ACK_EMAIL_VALUES,
+  CANDIDATE_AUDITED
+} from '../models/Candidate.js';
+
+// PRT scope: only marketing manager / AM / admin may WRITE PRT fields.
+// Marketing READ access (mm/mam/mlead/recruiter/admin) is enforced by
+// the PRT visibility filter on read paths (see _applyPrtVisibility).
+const PRT_WRITABLE_FIELDS = [
+  'teamLead', 'experienceYears', 'visaType', 'eadStartDate', 'eadEndDate',
+  'company', 'city', 'state', 'ackEmail'
+];
+const PRT_WRITE_ROLES = new Set(['admin', 'mm', 'mam']);
+
+// Fields stripped from the formatted candidate when the requester is NOT
+// in the marketing track. Includes both stored fields and derived getters
+// computed by formatCandidateRecord. Technical track (lead/am/expert/user)
+// sees the candidate exactly as before — no PRT surface area.
+const PRT_VISIBLE_FIELDS = [
+  'teamLead', 'experienceYears', 'visaType',
+  'eadStartDate', 'eadEndDate',
+  'company', 'city', 'state',
+  'ackEmail', 'ackEmailAt',
+  'marketingStartDate',
+  'attachments', 'editHistory', 'assignmentEmails',
+  'expiringInDays', 'daysInMarketing'
+];
+const PRT_READ_ROLES = new Set(['admin', 'mm', 'mam', 'mlead', 'recruiter']);
 import { userModel } from '../models/User.js';
 import { userService, roleLevel } from './userService.js';
 import { logger } from '../utils/logger.js';
@@ -579,7 +615,7 @@ class CandidateService {
       search: searchPattern
     });
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
 
     logger.info('Branch candidates retrieved', {
       userEmail: user.email,
@@ -621,7 +657,7 @@ class CandidateService {
       visibility
     });
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
 
     logger.info('Hierarchy candidates retrieved', {
       userEmail: user.email,
@@ -650,7 +686,7 @@ class CandidateService {
       search: searchPattern
     });
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
 
     logger.info('Admin candidates retrieved', {
       userEmail: user.email,
@@ -714,7 +750,7 @@ class CandidateService {
       search: searchPattern
     });
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
 
     logger.info('Expert candidates retrieved', {
       userEmail: user.email,
@@ -736,9 +772,13 @@ class CandidateService {
     };
   }
 
-  formatCandidateRecord(candidate) {
+  // Optional `user` arg drives the PRT visibility strip: when provided
+  // and non-marketing, the formatted record is post-processed to remove
+  // PRT-only fields. External callers (e.g. supportRequestService) can
+  // continue to call this with one arg for full-fidelity data.
+  formatCandidateRecord(candidate, user = null) {
     if (!candidate) {
-      return {
+      const emptyFormatted = {
         id: '',
         name: '',
         branch: '',
@@ -757,6 +797,7 @@ class CandidateService {
         resumeUnderstanding: false,
         createdBy: candidate?.createdBy ?? null
       };
+      return this._applyPrtVisibility(emptyFormatted, user);
     }
 
     const recruiterEmail = formatEmail(candidate.recruiter ?? candidate.Recruiter ?? candidate.recruiterRaw ?? '');
@@ -765,7 +806,27 @@ class CandidateService {
     const expertDisplay = formatDisplayName(expertValue);
     const resumeLink = (candidate.resumeLink || '').toString().trim();
 
-    return {
+    // PRT derived getters: re-evaluated on every read so the value is
+    // always current. The daily candidateAlertScheduler will additionally
+    // $set these on the doc for index-backed range queries (Phase 4).
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+    const toDateOrNull = (v) => {
+      if (v === null || v === undefined || v === '') return null;
+      if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+      const parsed = new Date(v);
+      return isNaN(parsed.getTime()) ? null : parsed;
+    };
+    const now = new Date();
+    const eadEndDate = toDateOrNull(candidate.eadEndDate);
+    const marketingStartDate = toDateOrNull(candidate.marketingStartDate);
+    const expiringInDays = eadEndDate
+      ? Math.floor((eadEndDate.getTime() - now.getTime()) / MS_PER_DAY)
+      : null;
+    const daysInMarketing = marketingStartDate
+      ? Math.floor((now.getTime() - marketingStartDate.getTime()) / MS_PER_DAY)
+      : null;
+
+    const formatted = {
       ...candidate,
       name: toTitleCase(candidate.name ?? candidate['Candidate Name'] ?? ''),
       branch: candidate.branch ?? candidate.Branch ?? '',
@@ -782,8 +843,49 @@ class CandidateService {
       resumeUnderstanding: (candidate.resumeUnderstandingStatus || RESUME_UNDERSTANDING_STATUS.pending) === RESUME_UNDERSTANDING_STATUS.done,
       createdBy: candidate.createdBy || null,
       Recruiter: recruiterEmail, // Compatibility
-      resumeLink
+      resumeLink,
+      // PRT projections (normalised) + derived
+      teamLead: candidate.teamLead ?? null,
+      experienceYears: candidate.experienceYears ?? null,
+      visaType: candidate.visaType ?? null,
+      eadStartDate: toDateOrNull(candidate.eadStartDate),
+      eadEndDate,
+      company: candidate.company ?? null,
+      city: candidate.city ?? null,
+      state: candidate.state ?? null,
+      ackEmail: candidate.ackEmail ?? null,
+      ackEmailAt: toDateOrNull(candidate.ackEmailAt),
+      marketingStartDate,
+      attachments: Array.isArray(candidate.attachments) ? candidate.attachments : [],
+      editHistory: Array.isArray(candidate.editHistory) ? candidate.editHistory : [],
+      assignmentEmails: Array.isArray(candidate.assignmentEmails) ? candidate.assignmentEmails : [],
+      expiringInDays,
+      daysInMarketing
     };
+    return this._applyPrtVisibility(formatted, user);
+  }
+
+  // PRT: strip PRT fields from a formatted candidate when the requester
+  // is NOT in the marketing track. Marketing readers (admin/mm/mam/mlead/
+  // recruiter) see the full surface. Non-marketing readers (am/lead/
+  // expert/user) see exactly the legacy projection — no behaviour change
+  // for them. Safe with missing user (no-op).
+  _applyPrtVisibility(formatted, user) {
+    if (!formatted || typeof formatted !== 'object') return formatted;
+    const role = (user?.role || '').toString().toLowerCase().trim();
+    if (!role || PRT_READ_ROLES.has(role)) return formatted;
+    const stripped = { ...formatted };
+    for (const f of PRT_VISIBLE_FIELDS) {
+      delete stripped[f];
+    }
+    return stripped;
+  }
+
+  _applyPrtVisibilityToList(list, user) {
+    if (!Array.isArray(list)) return list;
+    const role = (user?.role || '').toString().toLowerCase().trim();
+    if (!role || PRT_READ_ROLES.has(role)) return list;
+    return list.map((c) => this._applyPrtVisibility(c, user));
   }
 
   buildAssignablePeople(user) {
@@ -892,7 +994,7 @@ class CandidateService {
       ]
     );
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
 
     const allUsers = userModel.getAllUsers();
     const expertEmails = allUsers
@@ -955,7 +1057,7 @@ class CandidateService {
           : WORKFLOW_STATUS.needsResumeUnderstanding
       );
 
-      return candidates.map((candidate) => this.formatCandidateRecord(candidate));
+      return candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
     }
 
     // Marketing / Branch Roles (Visibility Logic)
@@ -1056,7 +1158,7 @@ class CandidateService {
         );
       }
 
-      return candidates.map((candidate) => this.formatCandidateRecord(candidate));
+      return candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
     }
 
     const error = new Error('Access denied');
@@ -1238,6 +1340,140 @@ class CandidateService {
     }
 
 
+    // ----- PRT (Placement & Recruiter Tracker) fields -----
+
+    if (payload.status !== undefined) {
+      let s = (payload.status || '').toString().trim();
+      const alias = STATUS_ALIASES.get(s.toLowerCase());
+      if (alias) s = alias;
+      if (!STATUS_VALUES.includes(s)) {
+        const error = new Error(`Status must be one of ${STATUS_VALUES.join(', ')}`);
+        error.statusCode = 400;
+        throw error;
+      }
+      sanitized.status = s;
+    }
+
+    if (payload.visaType !== undefined) {
+      const v = (payload.visaType || '').toString().trim();
+      if (!VISA_TYPE_VALUES.includes(v)) {
+        const error = new Error(`Visa Type must be one of ${VISA_TYPE_VALUES.join(', ')}`);
+        error.statusCode = 400;
+        throw error;
+      }
+      sanitized.visaType = v;
+    }
+
+    if (payload.experienceYears !== undefined) {
+      const n = Number(payload.experienceYears);
+      if (!Number.isInteger(n) || n < 1 || n > 20) {
+        const error = new Error('Experience Years must be an integer between 1 and 20');
+        error.statusCode = 400;
+        throw error;
+      }
+      sanitized.experienceYears = n;
+    }
+
+    if (payload.company !== undefined) {
+      const c = (payload.company || '').toString().trim().toUpperCase();
+      if (!COMPANY_VALUES.includes(c)) {
+        const error = new Error(`Company must be one of ${COMPANY_VALUES.join(', ')}`);
+        error.statusCode = 400;
+        throw error;
+      }
+      sanitized.company = c;
+    }
+
+    if (payload.ackEmail !== undefined) {
+      const a = (payload.ackEmail || '').toString().trim();
+      if (!ACK_EMAIL_VALUES.includes(a)) {
+        const error = new Error(`Ack Email must be one of ${ACK_EMAIL_VALUES.join(', ')}`);
+        error.statusCode = 400;
+        throw error;
+      }
+      sanitized.ackEmail = a;
+    }
+
+    if (payload.city !== undefined) {
+      sanitized.city = (payload.city ?? '').toString().trim();
+    }
+
+    if (payload.state !== undefined) {
+      sanitized.state = (payload.state ?? '').toString().trim();
+    }
+
+    if (payload.teamLead !== undefined) {
+      const tl = formatEmail(payload.teamLead);
+      if (!tl || !EMAIL_REGEX.test(tl)) {
+        const error = new Error('Invalid team lead email');
+        error.statusCode = 400;
+        throw error;
+      }
+      sanitized.teamLead = tl;
+    }
+
+    // EAD dates — conditional on visaType. Required when the candidate's
+    // visa carries an EAD card (see EAD_REQUIRED_VISA_TYPES). EAD End must
+    // be strictly after EAD Start.
+    const effectiveVisaType = sanitized.visaType ?? payload.visaType;
+    const eadRequiredByVisa = !!effectiveVisaType && EAD_REQUIRED_VISA_TYPES.has(effectiveVisaType);
+
+    if (payload.eadStartDate !== undefined || eadRequiredByVisa) {
+      const startRaw = payload.eadStartDate;
+      if (startRaw === null || startRaw === undefined || startRaw === '') {
+        if (eadRequiredByVisa) {
+          const error = new Error(`EAD Start Date is required for visa type ${effectiveVisaType}`);
+          error.statusCode = 400;
+          throw error;
+        }
+      } else {
+        const start = new Date(startRaw);
+        if (Number.isNaN(start.getTime())) {
+          const error = new Error('Invalid EAD Start Date');
+          error.statusCode = 400;
+          throw error;
+        }
+        sanitized.eadStartDate = start;
+      }
+    }
+
+    if (sanitized.eadStartDate || payload.eadEndDate !== undefined) {
+      const endRaw = payload.eadEndDate;
+      if (endRaw === null || endRaw === undefined || endRaw === '') {
+        if (sanitized.eadStartDate) {
+          const error = new Error('EAD End Date is required when EAD Start Date is set');
+          error.statusCode = 400;
+          throw error;
+        }
+      } else {
+        const end = new Date(endRaw);
+        if (Number.isNaN(end.getTime())) {
+          const error = new Error('Invalid EAD End Date');
+          error.statusCode = 400;
+          throw error;
+        }
+        if (sanitized.eadStartDate && end.getTime() <= sanitized.eadStartDate.getTime()) {
+          const error = new Error('EAD End Date must be after EAD Start Date');
+          error.statusCode = 400;
+          throw error;
+        }
+        sanitized.eadEndDate = end;
+      }
+    }
+
+    // Technology — warn-only for unknown values during the 60-day
+    // transition. Existing free-text values flow through; new creates
+    // should pick from TECHNOLOGY_VALUES. After the window this becomes
+    // a hard reject.
+    if (sanitized.technology && !TECHNOLOGY_VALUES.includes(sanitized.technology)) {
+      logger.warn('Unknown technology value (60-day grace period)', {
+        technology: sanitized.technology
+      });
+    }
+
+    // marketingStartDate is server-set on first save and immutable
+    // thereafter; the sanitizer never accepts it from the client payload.
+
     if (payload.workflowStatus !== undefined) {
       sanitized.workflowStatus = payload.workflowStatus;
     }
@@ -1310,7 +1546,7 @@ class CandidateService {
       fields: changedFields
     });
 
-    const formatted = this.formatCandidateRecord(updated);
+    const formatted = this.formatCandidateRecord(updated, user);
 
     domainEventBus.publish(DomainEvents.CandidateUpdated, {
       eventId: crypto.randomUUID(),
@@ -1383,9 +1619,58 @@ class CandidateService {
       throw error;
     }
 
+    // ----- PRT: sanitize updates + gate PRT-field writes to marketing roles -----
+    // The sanitizer validates enums (PO→Placement Offer alias, visaType,
+    // company, ackEmail, etc.), enforces the conditional EAD requirement,
+    // and normalises dates. We merge so internal fields added below
+    // (poDate, _changedBy, _source) and any unknown caller fields pass
+    // through unchanged.
+    const sanitizedUpdates = this.sanitizeCandidatePayload(updates);
+    updates = { ...updates, ...sanitizedUpdates };
+
+    // Only marketing manager / AM / admin may write PRT fields. Other
+    // roles (recruiter, mlead, am, lead, expert, user) get a 403. This
+    // does NOT touch the legacy-fields permission model — those keep
+    // their previous behaviour.
+    for (const f of PRT_WRITABLE_FIELDS) {
+      if (sanitizedUpdates[f] !== undefined && !PRT_WRITE_ROLES.has(normalizedRole)) {
+        const error = new Error(`Only marketing manager or assistant manager can update ${f}`);
+        error.statusCode = 403;
+        throw error;
+      }
+    }
+
     // Auto-set poDate on first Placement Offer
     if (updates.status === 'Placement Offer' && !oldDoc.poDate) {
       updates.poDate = new Date();
+    }
+
+    // PRT: auto-set ackEmailAt when ackEmail flips to 'Sent'.
+    if (updates.ackEmail === 'Sent' && oldDoc.ackEmail !== 'Sent') {
+      updates.ackEmailAt = updates.ackEmailAt instanceof Date ? updates.ackEmailAt : new Date();
+    }
+
+    // PRT: build editHistory entries for changed audited fields. The model
+    // layer ($push) appends them to the editHistory[] array on the doc.
+    const isAuditValueEqual = (a, b) => {
+      if (a === b) return true;
+      if (a == null && b == null) return true;
+      if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+      if (a instanceof Date && typeof b === 'string') return a.toISOString().slice(0, b.length) === b;
+      if (b instanceof Date && typeof a === 'string') return b.toISOString().slice(0, a.length) === a;
+      return false;
+    };
+    const editHistoryEntries = CANDIDATE_AUDITED
+      .filter((f) => updates[f] !== undefined && !isAuditValueEqual(oldDoc[f], updates[f]))
+      .map((f) => ({
+        field: f,
+        oldValue: oldDoc[f] ?? null,
+        newValue: updates[f],
+        actor: user.email,
+        ts: new Date()
+      }));
+    if (editHistoryEntries.length > 0) {
+      updates._pushEditHistory = editHistoryEntries;
     }
 
     // Pass caller identity + provenance for statusHistory.
@@ -1403,7 +1688,7 @@ class CandidateService {
       updates
     });
 
-    const formatted = this.formatCandidateRecord(updated);
+    const formatted = this.formatCandidateRecord(updated, user);
 
     // Filter changedFields to only include actual changes
     const changedFields = Object.keys(updates).filter(key => {
@@ -1429,7 +1714,11 @@ class CandidateService {
       occurredAt: new Date().toISOString()
     });
 
-    return formatted;
+    // PRT visibility: strip PRT fields for non-marketing readers (no-op
+    // for marketing-track callers). The full-fidelity `formatted` was
+    // already broadcast on the domain event above, so internal subscribers
+    // are unaffected.
+    return this._applyPrtVisibility(formatted, user);
   }
 
 
@@ -1495,15 +1784,42 @@ class CandidateService {
       throw error;
     }
 
+    // PRT: Team Lead is required on the candidate record. If the caller
+    // didn't supply one, derive it from the recruiter's user record
+    // (recruiter.teamLead is a display-name string; _findEmailByName
+    // resolves it to an email).
+    if (!sanitized.teamLead) {
+      const recruiterRecord = userModel.getUserByEmail(sanitized.recruiter);
+      const tlName = recruiterRecord?.teamLead?.toString().trim();
+      if (tlName) {
+        const tlEmail = this._findEmailByName(tlName);
+        if (tlEmail) {
+          sanitized.teamLead = formatEmail(tlEmail);
+        }
+      }
+      if (!sanitized.teamLead) {
+        const error = new Error('Team Lead is required (could not derive from recruiter — set teamLead on the recruiter\'s user record or supply teamLead explicitly)');
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
     const document = await candidateModel.createCandidate({
       ...sanitized,
       expert: '',
       workflowStatus: WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: RESUME_UNDERSTANDING_STATUS.pending,
-      createdBy: user.email
+      createdBy: user.email,
+      // PRT defaults (the model accepts these too; see Candidate.createCandidate).
+      status: sanitized.status || 'New',
+      ackEmail: sanitized.ackEmail || 'Pending',
+      marketingStartDate: new Date(),
+      attachments: [],
+      editHistory: [],
+      assignmentEmails: []
     });
 
-    const formatted = this.formatCandidateRecord(document);
+    const formatted = this.formatCandidateRecord(document, user);
 
     domainEventBus.publish(DomainEvents.CandidateCreated, {
       eventId: crypto.randomUUID(),
@@ -1554,7 +1870,7 @@ class CandidateService {
     }
 
     const updated = await candidateModel.assignExpertById(candidateId, email);
-    const formatted = this.formatCandidateRecord(updated);
+    const formatted = this.formatCandidateRecord(updated, user);
 
     domainEventBus.publish(DomainEvents.CandidateExpertAssigned, {
       eventId: crypto.randomUUID(),
@@ -1596,7 +1912,7 @@ class CandidateService {
     }
 
     const updated = await candidateModel.updateResumeUnderstandingStatus(candidateId, status);
-    const formatted = this.formatCandidateRecord(updated);
+    const formatted = this.formatCandidateRecord(updated, user);
 
     domainEventBus.publish(DomainEvents.CandidateResumeStatusChanged, {
       eventId: crypto.randomUUID(),
@@ -1858,7 +2174,7 @@ class CandidateService {
 
     // Try the main candidates collection first
     const candidate = await candidateModel.getCandidateById(candidateId);
-    if (candidate) return this.formatCandidateRecord(candidate);
+    if (candidate) return this.formatCandidateRecord(candidate, user);
 
     // Fallback: check candidateDetails collection (used by Resume Understanding)
     try {

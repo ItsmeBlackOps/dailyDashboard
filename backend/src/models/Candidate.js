@@ -37,6 +37,98 @@ export const RESUME_UNDERSTANDING_STATUS = {
   done: 'done'
 };
 
+// ---------------------------------------------------------------------------
+// PRT (Placement & Recruiter Tracker) — Section 4 enums.
+// `Placement Offer` is kept as the canonical DB value; PRD's term `PO`
+// is normalised to `Placement Offer` server-side (see candidateService
+// `sanitizeCandidatePayload`). UI may render either label.
+// ---------------------------------------------------------------------------
+
+export const STATUS_VALUES = [
+  'Active',
+  'Low Priority',
+  'Temp. Hold',
+  'Hold',
+  'New',
+  'Placement Offer',
+  'Backout'
+];
+
+// Display-synonym → canonical DB value.
+export const STATUS_ALIASES = new Map([
+  ['po', 'Placement Offer']
+]);
+
+export const TECHNOLOGY_VALUES = [
+  'Product Manager',
+  'Project Manager',
+  'Software Developer',
+  'Data Engineer',
+  'Data Analyst',
+  'Business Analyst',
+  'Network Engineer',
+  'Cyber Security Analyst',
+  'DevOps Engineer',
+  'Product Designer',
+  'Financial Analyst',
+  'Mechanical Engineer',
+  'QA Automation Engineer',
+  'SQL DBA',
+  'Cloud Engineer',
+  'Data Scientist',
+  'Salesforce Developer',
+  'BI Engineer',
+  'Non IT',
+  'AI ML Engineer'
+];
+
+export const VISA_TYPE_VALUES = [
+  'OPT',
+  'L2',
+  'Green Card',
+  'STEM OPT',
+  'USC',
+  'H4-EAD',
+  'PR',
+  'CPT',
+  'H1B',
+  'Day 1 CPT',
+  'Asylum'
+];
+
+// Visa types where the candidate carries an EAD card with a start/end date —
+// the PRT form requires EAD Start (and therefore EAD End) when the candidate
+// holds any of these.
+export const EAD_REQUIRED_VISA_TYPES = new Set([
+  'OPT',
+  'STEM OPT',
+  'CPT',
+  'Day 1 CPT',
+  'H4-EAD',
+  'L2'
+]);
+
+export const COMPANY_VALUES = ['SST', 'VCS', 'FED'];
+
+export const ACK_EMAIL_VALUES = ['Sent', 'Confirmed', 'Pending'];
+
+// Fields whose value changes are recorded in `editHistory[]` on every
+// update. Mirrors the User.AUDITED pattern in `backend/src/models/User.js`.
+export const CANDIDATE_AUDITED = [
+  'status',
+  'recruiter',
+  'expert',
+  'teamLead',
+  'branch',
+  'visaType',
+  'eadStartDate',
+  'eadEndDate',
+  'company',
+  'ackEmail',
+  'experienceYears',
+  'technology'
+];
+
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -247,9 +339,25 @@ export class CandidateModel {
         ...(updates.status !== undefined ? { status: updates.status } : {}),
         ...(updates.createdBy !== undefined ? { createdBy: updates.createdBy } : {}),
         ...(updates.poDate !== undefined ? { poDate: updates.poDate } : {}),
+        // PRT fields (camelCase DB keys). marketingStartDate is intentionally
+        // NOT settable via this path — it is immutable post-create and
+        // populated only by the create path or one-shot backfill script.
+        ...(updates.teamLead !== undefined ? { teamLead: updates.teamLead } : {}),
+        ...(updates.experienceYears !== undefined ? { experienceYears: updates.experienceYears } : {}),
+        ...(updates.visaType !== undefined ? { visaType: updates.visaType } : {}),
+        ...(updates.eadStartDate !== undefined ? { eadStartDate: updates.eadStartDate } : {}),
+        ...(updates.eadEndDate !== undefined ? { eadEndDate: updates.eadEndDate } : {}),
+        ...(updates.company !== undefined ? { company: updates.company } : {}),
+        ...(updates.city !== undefined ? { city: updates.city } : {}),
+        ...(updates.state !== undefined ? { state: updates.state } : {}),
+        ...(updates.ackEmail !== undefined ? { ackEmail: updates.ackEmail } : {}),
+        ...(updates.ackEmailAt !== undefined ? { ackEmailAt: updates.ackEmailAt } : {}),
         updated_at: now
       }
     };
+
+    // Combined $push for both statusHistory (existing) and editHistory (PRT).
+    const pushDoc = {};
 
     if (updates.status !== undefined) {
       // Rich statusHistory entry. Old shape kept as flat fields for
@@ -257,7 +365,7 @@ export class CandidateModel {
       // new value, identical to `to`). New consumers should read `from`
       // and `to` for the actual transition, plus `source`/`reason`/`sourceRef`
       // for provenance.
-      const entry = {
+      pushDoc.statusHistory = {
         status:    updates.status,                 // legacy: the new value
         from:      priorStatus,
         to:        updates.status,
@@ -267,7 +375,16 @@ export class CandidateModel {
         reason:    updates._reason    ?? null,
         sourceRef: updates._sourceRef ?? null,    // { kind, id, ...metadata }
       };
-      updateDoc.$push = { statusHistory: entry };
+    }
+
+    // PRT: editHistory $push. Caller (candidateService.updateCandidate) builds
+    // the entries by diffing CANDIDATE_AUDITED fields against the prior doc.
+    if (Array.isArray(updates._pushEditHistory) && updates._pushEditHistory.length > 0) {
+      pushDoc.editHistory = { $each: updates._pushEditHistory };
+    }
+
+    if (Object.keys(pushDoc).length > 0) {
+      updateDoc.$push = pushDoc;
     }
 
     const result = await this.collection.updateOne(filter, updateDoc);
@@ -308,7 +425,28 @@ export class CandidateModel {
       updated_at: now,
       _last_write: now,
       created_at: now,
-      docType: 'candidate'
+      docType: 'candidate',
+      // ----- PRT (Placement & Recruiter Tracker) fields -----
+      // The PRT create path (`createCandidateFromManager`) populates these.
+      // Other create paths (Intervue PO, Fireflies summary, admin-bulk)
+      // may omit them — defaults below keep those flows working.
+      teamLead: payload.teamLead || '',
+      experienceYears: payload.experienceYears ?? null,
+      visaType: payload.visaType || '',
+      eadStartDate: payload.eadStartDate || null,
+      eadEndDate: payload.eadEndDate || null,
+      company: payload.company || '',
+      city: payload.city || '',
+      state: payload.state || '',
+      ackEmail: payload.ackEmail || 'Pending',
+      ackEmailAt: payload.ackEmailAt || null,
+      // marketingStartDate is stamped server-side and is immutable after
+      // first insert. PRT path passes `now`; non-PRT paths leave it null
+      // and the backfill / next save will fill from `_last_write`.
+      marketingStartDate: payload.marketingStartDate || null,
+      attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
+      editHistory: Array.isArray(payload.editHistory) ? payload.editHistory : [],
+      assignmentEmails: Array.isArray(payload.assignmentEmails) ? payload.assignmentEmails : []
     };
 
     const result = await this.collection.insertOne(document);
