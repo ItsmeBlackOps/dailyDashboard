@@ -29,6 +29,16 @@ export async function ensurePerformanceIndexes() {
     await db.collection('candidateDetails').createIndex({ Recruiter: 1, status: 1 });
     await db.collection('candidateDetails').createIndex({ Branch: 1, status: 1 });
 
+    // ── PRT Phase 4 indexes ──
+    // Underpins the candidateAlertScheduler cursor + the "Expiring soon"
+    // filter on the candidate list. The compound status+eadEndDate keeps
+    // {Active,New} × <30d range queries index-resident.
+    await db.collection('candidateDetails').createIndex({ visaType: 1 });
+    await db.collection('candidateDetails').createIndex({ eadEndDate: 1 });
+    await db.collection('candidateDetails').createIndex({ marketingStartDate: 1 });
+    await db.collection('candidateDetails').createIndex({ status: 1, eadEndDate: 1 });
+    await db.collection('candidateDetails').createIndex({ 'attachments.id': 1 });
+
     // ── auditLog index (interview support admin) ──
     await db.collection('auditLog').createIndex({ subject: 1, timestamp: 1 });
     await db.collection('auditLog').createIndex({ phase: 1, timestamp: -1 });

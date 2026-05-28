@@ -235,6 +235,61 @@ export class UserController {
     });
   });
 
+  // PRT Phase 4: read the signed-in user's preferences subdoc.
+  getMyPreferences = asyncHandler(async (req, res) => {
+    const user = req.user;
+    if (!user?.email) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+    try {
+      const record = userModel.getUserByEmail(user.email) || {};
+      const preferences = record.preferences || {};
+      return res.json({
+        success: true,
+        preferences: {
+          eadEmailAlerts: Boolean(preferences.eadEmailAlerts)
+        }
+      });
+    } catch (error) {
+      logger.error('getMyPreferences failed', { error: error.message, email: user.email });
+      return res.status(500).json({ success: false, error: 'Unable to read preferences' });
+    }
+  });
+
+  // PRT Phase 4: write the signed-in user's preferences subdoc.
+  // Only `eadEmailAlerts` is recognised in v1; future keys plug in here
+  // with the same dot-notation $set pattern (no overwrite of siblings).
+  updateMyPreferences = asyncHandler(async (req, res) => {
+    const user = req.user;
+    if (!user?.email) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+    const body = req.body || {};
+    if (!('eadEmailAlerts' in body)) {
+      return res.status(400).json({ success: false, error: 'eadEmailAlerts is required' });
+    }
+    const value = body.eadEmailAlerts;
+    if (typeof value !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'eadEmailAlerts must be a boolean' });
+    }
+    try {
+      await userModel.updateUser(user.email, {
+        // Dot-notation so we $set ONLY the eadEmailAlerts subfield and
+        // don't accidentally wipe sibling preferences added later.
+        'preferences.eadEmailAlerts': value,
+        _changedBy: user.email,
+        _source: 'self-preferences'
+      });
+      return res.json({
+        success: true,
+        preferences: { eadEmailAlerts: value }
+      });
+    } catch (error) {
+      logger.error('updateMyPreferences failed', { error: error.message, email: user.email });
+      return res.status(500).json({ success: false, error: 'Unable to update preferences' });
+    }
+  });
+
   getActiveUsers = asyncHandler(async (req, res) => {
     try {
       const db = database.getDatabase();

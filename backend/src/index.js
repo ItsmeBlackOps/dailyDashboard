@@ -45,6 +45,7 @@ import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler.j
 
 // Import jobs
 import { startFirefliesBotScheduler } from './jobs/firefliesBotScheduler.js';
+import { startCandidateAlertScheduler } from './jobs/candidateAlertScheduler.js';
 import { startActiveJobScrapeScheduler } from './jobs/activeJobScrapeScheduler.js';
 import { startJobsPoolImportScheduler } from './jobs/jobsPoolImportScheduler.js';
 import { startPoolRefresherScheduler } from './jobs/poolRefresherScheduler.js';
@@ -308,6 +309,7 @@ class Application {
         }
 
         startFirefliesBotScheduler();
+        startCandidateAlertScheduler();
         startActiveJobScrapeScheduler();
         startJobsPoolImportScheduler();
         startPoolRefresherScheduler();

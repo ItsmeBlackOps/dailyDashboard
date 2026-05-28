@@ -63,6 +63,17 @@ interface CandidateRow {
   resumeUnderstandingStatus?: string;
   resumeUnderstanding?: boolean;
   resumeLink?: string;
+  // PRT Phase 4 — derived getters (server-side, marketing readers only).
+  expiringInDays?: number | null;
+  daysInMarketing?: number | null;
+}
+
+// PRT Phase 4 — row classnames keyed on expiringInDays bands per PRD §5.1.
+function expiringRowClass(d: number | null | undefined): string {
+  if (d === null || d === undefined) return '';
+  if (d < 30) return 'bg-destructive/10 hover:bg-destructive/15';
+  if (d <= 90) return 'bg-amber-100/60 hover:bg-amber-100 dark:bg-amber-900/30 dark:hover:bg-amber-900/40';
+  return '';
 }
 
 interface CandidateNotificationPayload {
@@ -3746,7 +3757,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                     visibleCandidates.map((candidate) => (
                       <TableRow
                         key={candidate.id}
-                        className="cursor-pointer hover:bg-muted/50"
+                        className={`cursor-pointer hover:bg-muted/50 ${expiringRowClass(candidate.expiringInDays)}`}
                         onClick={() => openCandidateSheet(candidate)}
                       >
                         {canEdit && (
