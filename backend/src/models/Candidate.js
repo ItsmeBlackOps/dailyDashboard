@@ -23,8 +23,62 @@ const DEFAULT_PROJECTION = {
   docType: 1,
   status: 1,
   poDate: 1,
-  statusHistory: 1
+  statusHistory: 1,
+  // PRT fields — needed so formatCandidateRecord can derive
+  // expiringInDays / daysInMarketing on the fly. Non-marketing
+  // readers are stripped server-side via _applyPrtVisibility.
+  teamLead: 1,
+  experienceYears: 1,
+  visaType: 1,
+  eadStartDate: 1,
+  eadEndDate: 1,
+  company: 1,
+  city: 1,
+  state: 1,
+  ackEmail: 1,
+  ackEmailAt: 1,
+  marketingStartDate: 1,
+  attachments: 1,
+  expiringInDays: 1,
+  daysInMarketing: 1
 };
+
+// Sort modes accepted by getCandidatesByBranch / getAllCandidates /
+// getCandidatesByRecruiters. Default keeps the historical "most recently
+// touched first" behaviour. `expiringIn` sorts ascending so the soonest
+// expiry surfaces at the top; candidates without an EAD end-date sink
+// to the bottom because Mongo treats missing values as the smallest
+// possible — we counter that by sorting on eadEndDate ASC with a
+// `_last_write` tiebreaker, which puts nulls last when paired with
+// `nullsLast` semantics enforced in the service layer (see
+// candidateService.buildSortStage).
+const SORT_PRESETS = {
+  updated: { _last_write: -1 },
+  name: { 'Candidate Name': 1, _last_write: -1 },
+  expiringIn: { eadEndDate: 1, _last_write: -1 }
+};
+const DEFAULT_SORT_KEY = 'updated';
+
+function resolveSort(sortKey) {
+  if (typeof sortKey === 'string' && Object.prototype.hasOwnProperty.call(SORT_PRESETS, sortKey)) {
+    return SORT_PRESETS[sortKey];
+  }
+  return SORT_PRESETS[DEFAULT_SORT_KEY];
+}
+
+function buildSearchFilter(search) {
+  if (!search) return null;
+  // Apply the regex to Candidate Name, Email ID and Recruiter so the
+  // single search box can find rows by any of the three. Each is
+  // case-insensitive; the caller pre-escapes the pattern.
+  return {
+    $or: [
+      { 'Candidate Name': { $regex: search, $options: 'i' } },
+      { 'Email ID': { $regex: search, $options: 'i' } },
+      { Recruiter: { $regex: search, $options: 'i' } }
+    ]
+  };
+}
 
 export const WORKFLOW_STATUS = {
   awaitingExpert: 'awaiting_expert',
@@ -156,19 +210,20 @@ export class CandidateModel {
     }
   }
 
-  async getCandidatesByBranch(branch, { limit, search } = {}) {
+  async getCandidatesByBranch(branch, { limit, search, sort } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
 
     const query = { Branch: branch, docType: { $in: [null, 'candidate'] } };
-    if (search) {
-      query['Candidate Name'] = { $regex: search, $options: 'i' };
+    const searchFilter = buildSearchFilter(search);
+    if (searchFilter) {
+      Object.assign(query, searchFilter);
     }
 
     let cursor = this.collection
       .find(query, { projection: DEFAULT_PROJECTION })
-      .sort({ _last_write: -1 });
+      .sort(resolveSort(sort));
 
     if (Number.isFinite(limit) && limit > 0) {
       cursor = cursor.limit(Math.floor(limit));
@@ -179,19 +234,20 @@ export class CandidateModel {
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getAllCandidates({ limit, search } = {}) {
+  async getAllCandidates({ limit, search, sort } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
 
     const query = { docType: { $in: [null, 'candidate'] } };
-    if (search) {
-      query['Candidate Name'] = { $regex: search, $options: 'i' };
+    const searchFilter = buildSearchFilter(search);
+    if (searchFilter) {
+      Object.assign(query, searchFilter);
     }
 
     let cursor = this.collection
       .find(query, { projection: DEFAULT_PROJECTION })
-      .sort({ _last_write: -1 });
+      .sort(resolveSort(sort));
 
     if (Number.isFinite(limit) && limit > 0) {
       cursor = cursor.limit(Math.floor(limit));
@@ -202,7 +258,7 @@ export class CandidateModel {
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getCandidatesByRecruiters(recruiterEmails, { limit, search, visibility, workflowStatus, resumeUnderstandingStatus } = {}) {
+  async getCandidatesByRecruiters(recruiterEmails, { limit, search, sort, visibility, workflowStatus, resumeUnderstandingStatus } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
@@ -272,13 +328,18 @@ export class CandidateModel {
       query.resumeUnderstandingStatus = resumeUnderstandingStatus;
     }
 
-    if (search) {
-      query['Candidate Name'] = { $regex: search, $options: 'i' };
+    // Combine the recruiter-scope OR with the search OR via $and so a
+    // search box matches across name/email/recruiter without breaking
+    // recruiter visibility.
+    const searchFilter = buildSearchFilter(search);
+    if (searchFilter) {
+      query.$and = [{ $or: query.$or }, searchFilter];
+      delete query.$or;
     }
 
     let cursor = this.collection
       .find(query, { projection: DEFAULT_PROJECTION })
-      .sort({ _last_write: -1 });
+      .sort(resolveSort(sort));
 
     if (Number.isFinite(limit) && limit > 0) {
       cursor = cursor.limit(Math.floor(limit));

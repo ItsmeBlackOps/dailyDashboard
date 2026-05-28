@@ -242,6 +242,8 @@ export default function AttachmentZone({
       <CardContent className="pb-5 pt-1 space-y-3">
         {canManage && (
           <div
+            role="region"
+            aria-label="Attachment upload area"
             onDragOver={(e) => {
               e.preventDefault();
               setDragOver(true);
@@ -250,13 +252,14 @@ export default function AttachmentZone({
             onDrop={onDrop}
             className={`rounded-md border border-dashed p-4 text-center text-xs ${dragOver ? 'bg-muted/60 border-primary' : 'bg-muted/20'} ${uploading ? 'opacity-60 pointer-events-none' : ''}`}
           >
-            <Upload className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
+            <Upload className="h-5 w-5 mx-auto mb-1 text-muted-foreground" aria-hidden="true" />
             <p>
               Drop a file here or{' '}
               <button
                 type="button"
                 className="underline text-primary"
                 onClick={() => inputRef.current?.click()}
+                aria-label="Browse for an attachment to upload"
               >
                 browse
               </button>
@@ -267,12 +270,13 @@ export default function AttachmentZone({
               type="file"
               accept={PRT_ATTACHMENT_ACCEPT_ATTR}
               className="hidden"
+              aria-label="Attachment file picker"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) uploadFile(f);
               }}
             />
-            {uploading && <p className="mt-1 text-muted-foreground">Uploading…</p>}
+            {uploading && <p className="mt-1 text-muted-foreground" role="status">Uploading…</p>}
           </div>
         )}
 
@@ -313,6 +317,7 @@ export default function AttachmentZone({
                     size="sm"
                     variant="ghost"
                     title="Download"
+                    aria-label={`Download ${att.filename}`}
                     onClick={() => downloadAttachment(att)}
                     disabled={busy}
                   >
@@ -324,6 +329,7 @@ export default function AttachmentZone({
                       size="sm"
                       variant="ghost"
                       title="Set as canonical resume"
+                      aria-label={`Set ${att.filename} as the canonical resume`}
                       onClick={() => setAsResume(att.id)}
                       disabled={busy}
                     >
@@ -336,6 +342,7 @@ export default function AttachmentZone({
                       size="sm"
                       variant="ghost"
                       title="Remove"
+                      aria-label={`Remove ${att.filename}`}
                       onClick={() => removeAttachment(att.id)}
                       disabled={busy}
                     >

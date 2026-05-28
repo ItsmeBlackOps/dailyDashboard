@@ -432,6 +432,13 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [loading, setLoading] = useState<boolean>(canView);
   const [error, setError] = useState<string>("");
   const [search, setSearch] = useState<string>("");
+  // PRT Phase 5 — UX toggles. `expiringSoonOnly` is a client-side filter
+  // chip; `sortBy` is forwarded to the backend so the server returns the
+  // list pre-sorted by Expiring In / Name / Last update. Default is
+  // 'updated' to preserve existing behaviour for users who don't change
+  // the dropdown.
+  const [expiringSoonOnly, setExpiringSoonOnly] = useState<boolean>(false);
+  const [sortBy, setSortBy] = useState<'updated' | 'name' | 'expiringIn'>('updated');
   const { refreshAccessToken, authFetch } = useAuth();
   const { toast } = useToast();
   const { notifications, markAsRead } = useNotifications();
@@ -2372,21 +2379,32 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   }, []);
 
   const filteredCandidates = useMemo(() => {
-    if (!search.trim()) return candidates;
+    let pool = candidates;
+    // PRT Phase 5 — Expiring-soon chip narrows the view to the
+    // <30-day band that already drives row colouring (Phase 4 spec).
+    if (expiringSoonOnly) {
+      pool = pool.filter((c) =>
+        typeof c.expiringInDays === 'number' && c.expiringInDays < 30
+      );
+    }
+    if (!search.trim()) return pool;
     const query = search.trim().toLowerCase();
-    return candidates.filter((candidate) => {
+    return pool.filter((candidate) => {
       const haystack = [
         candidate.name,
         candidate.technology,
         candidate.recruiter,
-        candidate.expert
+        candidate.expert,
+        // PRT Phase 5 — let the search box match an Email ID too.
+        // The backend search OR was extended to mirror this.
+        (candidate as { email?: string }).email
       ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [candidates, search]);
+  }, [candidates, search, expiringSoonOnly]);
 
 
   const handleSelectAll = useCallback((checked: boolean) => {
@@ -2662,7 +2680,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
     socket.emit(
       "getBranchCandidates",
-      {},
+      { sort: sortBy },
       (resp: BranchCandidatesResponse) => {
         if (!resp?.success) {
           setCandidates([]);
@@ -2719,7 +2737,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         setLoading(false);
       }
     );
-  }, [socket, normalizeOptionList, normalizeCreatePolicy]);
+  }, [socket, normalizeOptionList, normalizeCreatePolicy, sortBy]);
 
   useEffect(() => {
     if (!socket) {
@@ -3631,12 +3649,46 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder='Search by candidate, technology, recruiter or expert'
-              className="sm:max-w-sm"
-            />
+            <div className="flex flex-1 flex-wrap items-center gap-2">
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder='Search by candidate, technology, recruiter, expert or email'
+                aria-label='Search candidates'
+                className="sm:max-w-sm"
+              />
+              {/* PRT Phase 5 — Expiring-soon chip. Pure client-side filter
+                  that hides any candidate whose EAD is not within 30 days.
+                  Mirrors the row-colour banding so the chip lights up the
+                  same rows visible in red on the full list. */}
+              <Button
+                type="button"
+                size="sm"
+                variant={expiringSoonOnly ? 'default' : 'outline'}
+                onClick={() => setExpiringSoonOnly((v) => !v)}
+                aria-pressed={expiringSoonOnly}
+                aria-label={expiringSoonOnly ? 'Disable expiring soon filter' : 'Filter to candidates expiring within 30 days'}
+                className="whitespace-nowrap"
+              >
+                Expiring soon
+              </Button>
+              {/* PRT Phase 5 — Sort dropdown forwards to the backend so
+                  the cursor returns the list pre-sorted. Default is the
+                  historical "last updated" order. */}
+              <Select
+                value={sortBy}
+                onValueChange={(v) => setSortBy(v as 'updated' | 'name' | 'expiringIn')}
+              >
+                <SelectTrigger className="w-[170px] h-9" aria-label='Sort candidates'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="updated">Recently updated</SelectItem>
+                  <SelectItem value="name">Name (A–Z)</SelectItem>
+                  <SelectItem value="expiringIn">Expiring soonest</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             {renderScopeBadge()}
           </div>
 

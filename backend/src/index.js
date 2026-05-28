@@ -48,6 +48,7 @@ import { startFirefliesBotScheduler } from './jobs/firefliesBotScheduler.js';
 import { startCandidateAlertScheduler } from './jobs/candidateAlertScheduler.js';
 import { emailOutboxRepository } from './services/emailOutboxRepository.js';
 import { emailDeliveryWorker } from './services/emailDeliveryWorker.js';
+import { startEmailOutboxJanitor } from './jobs/emailOutboxJanitor.js';
 import { startActiveJobScrapeScheduler } from './jobs/activeJobScrapeScheduler.js';
 import { startJobsPoolImportScheduler } from './jobs/jobsPoolImportScheduler.js';
 import { startPoolRefresherScheduler } from './jobs/poolRefresherScheduler.js';
@@ -319,6 +320,8 @@ class Application {
         emailOutboxRepository.initialize()
           .then(() => {
             emailDeliveryWorker.start();
+            // PRT Phase 5: daily janitor sweeps terminal rows > 30d old.
+            startEmailOutboxJanitor();
           })
           .catch((err) => {
             logger.error('Failed to initialise emailOutboxRepository / worker', {

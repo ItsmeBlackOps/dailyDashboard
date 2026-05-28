@@ -567,6 +567,17 @@ class CandidateService {
     return escapeRegex(trimmed);
   }
 
+  // Whitelist sort keys so the socket / HTTP boundary can't smuggle in
+  // arbitrary Mongo sort objects. Keys here map to SORT_PRESETS in
+  // Candidate.js. Unknown values fall back to the default.
+  resolveSortKey(sort) {
+    const ALLOWED = new Set(['updated', 'name', 'expiringIn']);
+    if (typeof sort !== 'string') return undefined;
+    const key = sort.trim();
+    if (!key) return undefined;
+    return ALLOWED.has(key) ? key : undefined;
+  }
+
   buildRecruiterVisibility(recruiterEmails, userForSelfPatterns = null) {
     const recruiterMatchers = new Set();
     const senderPatterns = new Set();
@@ -624,9 +635,11 @@ class CandidateService {
 
   async fetchCandidatesByBranch(user, branch, options) {
     const searchPattern = this.buildSearchPattern(options.search);
+    const sort = this.resolveSortKey(options.sort);
 
     const candidates = await candidateModel.getCandidatesByBranch(branch, {
-      search: searchPattern
+      search: searchPattern,
+      sort
     });
 
     const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
@@ -658,8 +671,9 @@ class CandidateService {
       throw error;
     }
 
-    const { includeSelfPatterns = false, search } = options;
+    const { includeSelfPatterns = false, search, sort } = options;
     const searchPattern = this.buildSearchPattern(search);
+    const resolvedSort = this.resolveSortKey(sort);
 
     const visibility = this.buildRecruiterVisibility(
       recruiterEmails,
@@ -668,6 +682,7 @@ class CandidateService {
 
     const candidates = await candidateModel.getCandidatesByRecruiters(recruiterEmails, {
       search: searchPattern,
+      sort: resolvedSort,
       visibility
     });
 
@@ -695,9 +710,11 @@ class CandidateService {
 
   async fetchAllCandidates(user, options) {
     const searchPattern = this.buildSearchPattern(options.search);
+    const sort = this.resolveSortKey(options.sort);
 
     const candidates = await candidateModel.getAllCandidates({
-      search: searchPattern
+      search: searchPattern,
+      sort
     });
 
     const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));

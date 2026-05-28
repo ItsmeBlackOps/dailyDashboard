@@ -161,8 +161,9 @@ export default function AssignmentEmailModal({
               <span
                 className="rounded bg-amber-100 text-amber-900 px-2 py-0.5 inline-flex items-center gap-1"
                 title="Permanent CC — re-injected by the server on every send."
+                aria-label={`Locked permanent CC: ${PERMANENT_CC_LABEL}`}
               >
-                <Lock className="h-3 w-3" /> {PERMANENT_CC_LABEL}
+                <Lock className="h-3 w-3" aria-hidden="true" /> {PERMANENT_CC_LABEL}
               </span>
             </div>
           </div>
