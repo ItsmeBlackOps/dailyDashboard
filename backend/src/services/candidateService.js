@@ -48,6 +48,9 @@ const PRT_ATTACHMENT_ROLES = new Set([
 import { userModel } from '../models/User.js';
 import { userService, roleLevel } from './userService.js';
 import { storageService } from './storageService.js';
+import { graphMailService } from './graphMailService.js';
+import { notificationService } from './notificationService.js';
+import { buildAssignmentEmail } from './assignmentEmailService.js';
 import { logger } from '../utils/logger.js';
 import { domainEventBus } from '../events/eventBus.js';
 import { DomainEvents } from '../events/eventTypes.js';
@@ -1961,6 +1964,271 @@ class CandidateService {
     });
 
     return { id: attachmentId, resumeLink: attachment.url };
+  }
+
+  // ---------- PRT Phase 3: Assignment Email ----------
+  //
+  // Orchestrates: gate -> validate -> resolve recipients -> fetch
+  // attachment bytes -> build payload -> send (with retry) -> audit ->
+  // flip ackEmail on success, notify admins on final failure.
+  //
+  // `userAssertion` is the user's Bearer token (Microsoft access token)
+  // from the request — graphMailService runs the OBO exchange.
+
+  async _notifyAdminsAssignmentFailed(candidateId, candidate, user, error) {
+    try {
+      const admins = (userModel.getAllUsers() || [])
+        .filter((u) => (u?.role || '').toLowerCase() === 'admin' && u?.active !== false)
+        .map((u) => u.email)
+        .filter(Boolean);
+      if (admins.length === 0) return;
+      await notificationService.broadcastToWatchers(admins, {
+        type: 'assignment-email-failed',
+        title: 'Assignment email failed',
+        description:
+          `Send for "${candidate?.['Candidate Name'] || candidate?.name || candidateId}" ` +
+          `failed after retries. ${(error && error.message) || ''}`.trim(),
+        candidateId,
+        actor: { email: user.email, role: user.role },
+        link: `/candidates/${candidateId}`
+      });
+    } catch (notifyErr) {
+      logger.warn('Admin notification for assignment-email failure threw', {
+        error: notifyErr.message,
+        candidateId
+      });
+    }
+  }
+
+  async sendAssignmentEmail(user, userAssertion, candidateId, options = {}) {
+    if (!user?.email || !user?.role) {
+      const err = new Error('Authentication required');
+      err.statusCode = 401;
+      throw err;
+    }
+    const role = (user.role || '').toString().toLowerCase().trim();
+    if (!PRT_ATTACHMENT_ROLES.has(role)) {
+      const err = new Error('You do not have permission to send the assignment email');
+      err.statusCode = 403;
+      throw err;
+    }
+    if (!userAssertion || typeof userAssertion !== 'string') {
+      const err = new Error('Microsoft auth token is required for sending mail');
+      err.statusCode = 401;
+      throw err;
+    }
+    if (!candidateId) {
+      const err = new Error('Candidate id is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const candidate = await candidateModel.getCandidateById(candidateId);
+    if (!candidate) {
+      const err = new Error('Candidate not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Reuse the attachment-permission gate (role + assertRecruiterInScope).
+    await this._assertAttachmentPermission(user, candidate);
+
+    // Gate per PRD §5.2.3: Recruiter + Team Lead + ≥1 attachment.
+    const recruiterEmail = formatEmail(candidate.recruiter || candidate.Recruiter || '');
+    if (!recruiterEmail) {
+      const err = new Error('Candidate has no recruiter — assign one before sending the assignment email');
+      err.statusCode = 400;
+      throw err;
+    }
+    const teamLeadEmailStored = (candidate.teamLead || '').toString().trim().toLowerCase();
+    if (!teamLeadEmailStored) {
+      const err = new Error('Candidate has no Team Lead — set teamLead before sending the assignment email');
+      err.statusCode = 400;
+      throw err;
+    }
+    const allAttachments = Array.isArray(candidate.attachments) ? candidate.attachments : [];
+    if (allAttachments.length === 0) {
+      const err = new Error('At least one attachment is required to send the assignment email');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Default to ALL attachments when the client did not pass a selection.
+    const requestedIds = Array.isArray(options.attachmentIds) && options.attachmentIds.length > 0
+      ? new Set(options.attachmentIds.map(String))
+      : null;
+    const selected = requestedIds
+      ? allAttachments.filter((a) => a && requestedIds.has(String(a.id)))
+      : allAttachments;
+    if (selected.length === 0) {
+      const err = new Error('No matching attachments selected');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Resolve display names + recruiter's manager email.
+    const senderDisplayName =
+      user.name || user.displayName || formatDisplayName(user.email);
+    const recruiterRecord = userModel.getUserByEmail(recruiterEmail) || {};
+    const recruiterDisplayName =
+      recruiterRecord.displayName || recruiterRecord.name || formatDisplayName(recruiterEmail);
+    const tlRecord = userModel.getUserByEmail(teamLeadEmailStored) || {};
+    const teamLeadDisplayName =
+      tlRecord.displayName || tlRecord.name || formatDisplayName(teamLeadEmailStored);
+    const managerNameRef = (recruiterRecord.manager || '').toString().trim();
+    const managerEmail = managerNameRef
+      ? formatEmail(this._findEmailByName(managerNameRef) || managerNameRef)
+      : '';
+
+    const permanentCcEmail = (config?.assignmentEmail?.permanentCc || '').toLowerCase();
+
+    // Pull attachment bytes. Each is a separate S3 GET — for v1 this is
+    // sequential and bounded by 10 MB × ~few-files; if it ever becomes a
+    // hotspot, parallelise with Promise.all.
+    const attachmentsWithBytes = [];
+    for (const att of selected) {
+      if (!att?.s3Key) continue;
+      const fetched = await storageService.fetchObjectAsBase64(att.s3Key);
+      attachmentsWithBytes.push({
+        id: att.id,
+        filename: att.filename,
+        mimeType: att.mimeType || fetched.contentType,
+        contentBytesBase64: fetched.base64
+      });
+    }
+    if (attachmentsWithBytes.length === 0) {
+      const err = new Error('Could not load any attachment bytes for the email');
+      err.statusCode = 500;
+      throw err;
+    }
+
+    const built = buildAssignmentEmail({
+      candidateName: candidate.name || candidate['Candidate Name'] || '',
+      technology: candidate.technology || candidate.Technology || '',
+      visaType: candidate.visaType || '',
+      recruiterEmail,
+      recruiterDisplayName,
+      teamLeadEmail: teamLeadEmailStored,
+      teamLeadDisplayName,
+      managerEmail,
+      permanentCcEmail,
+      senderEmail: user.email,
+      senderDisplayName,
+      attachments: attachmentsWithBytes,
+      appendBody: options.appendBody || ''
+    });
+
+    // Optional subject override per PRD §6.3 ("User may edit the Subject").
+    if (options.subject && typeof options.subject === 'string' && options.subject.trim()) {
+      built.message.subject = options.subject.trim();
+      built._audit.subject = options.subject.trim();
+    }
+
+    // In-request retry: transient Graph errors (5xx + 429) only.
+    const retryDelays = Array.isArray(config?.assignmentEmail?.retryDelaysMs)
+      ? config.assignmentEmail.retryDelaysMs
+      : [1000, 4000, 16000];
+    const isTransientGraphError = (err) => {
+      const status =
+        err?.statusCode ||
+        err?.responseStatus ||
+        err?.response?.status ||
+        0;
+      return status === 0 || status >= 500 || status === 429;
+    };
+
+    let attempts = 0;
+    let lastError = null;
+    let sentResponse = null;
+    for (let i = 0; i <= retryDelays.length; i++) {
+      attempts = i + 1;
+      try {
+        sentResponse = await graphMailService.sendMail(userAssertion, {
+          message: built.message,
+          saveToSentItems: built.saveToSentItems
+        });
+        lastError = null;
+        break;
+      } catch (sendErr) {
+        lastError = sendErr;
+        if (i === retryDelays.length || !isTransientGraphError(sendErr)) {
+          break;
+        }
+        logger.warn('Assignment email send attempt failed — retrying', {
+          candidateId,
+          attempt: attempts,
+          nextDelayMs: retryDelays[i],
+          status: sendErr?.statusCode || sendErr?.responseStatus || null,
+          message: sendErr?.message
+        });
+        await new Promise((r) => setTimeout(r, retryDelays[i]));
+      }
+    }
+
+    // Audit row — always written (sent OR failed).
+    const auditEntry = {
+      ts: new Date(),
+      sender: user.email.toLowerCase(),
+      to: built._audit.to,
+      cc: built._audit.cc,
+      bcc: built._audit.bcc,
+      subject: built._audit.subject,
+      attachmentIds: built._audit.attachmentIds,
+      attempts,
+      status: lastError ? 'failed' : 'sent',
+      ...(lastError
+        ? { lastError: (lastError.message || String(lastError)).slice(0, 500) }
+        : {})
+    };
+
+    const dbUpdates = {
+      _pushAssignmentEmail: auditEntry,
+      _changedBy: user.email,
+      _source: 'assignment-email'
+    };
+    if (!lastError) {
+      dbUpdates.ackEmail = 'Sent';
+      dbUpdates.ackEmailAt = new Date();
+    }
+    await candidateModel.updateCandidateById(candidateId, dbUpdates);
+
+    if (lastError) {
+      // Admin notification + structured 502 to the caller. Preserves the
+      // draft on the client (UI keeps the modal open with the body).
+      await this._notifyAdminsAssignmentFailed(candidateId, candidate, user, lastError);
+      const err = new Error(
+        `Assignment email failed after ${attempts} attempt(s): ${lastError.message || lastError}`
+      );
+      err.statusCode = 502;
+      err.audit = auditEntry;
+      throw err;
+    }
+
+    domainEventBus.publish(DomainEvents.CandidateAssignmentEmailSent, {
+      eventId: crypto.randomUUID(),
+      candidateId,
+      actor: {
+        email: user.email,
+        role: user.role,
+        name: senderDisplayName
+      },
+      audit: auditEntry,
+      occurredAt: new Date().toISOString()
+    });
+
+    logger.info('Assignment email sent', {
+      candidateId,
+      to: built._audit.to,
+      cc: built._audit.cc,
+      attempts,
+      sender: user.email
+    });
+
+    return {
+      success: true,
+      audit: auditEntry,
+      graphResponse: sentResponse
+    };
   }
 
   // Used by the controller's streaming download proxy. Validates

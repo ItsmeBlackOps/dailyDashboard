@@ -101,6 +101,12 @@ router.post(
   (req, res) => candidateController.setAttachmentAsResume(req, res)
 );
 
+// PRT Phase 3: Assignment Email send.
+router.post(
+  '/:id/send-assignment-email',
+  (req, res) => candidateController.sendAssignmentEmail(req, res)
+);
+
 router.get('/:id',            (req, res) => candidateController.getCandidateById(req, res));
 
 export default router;

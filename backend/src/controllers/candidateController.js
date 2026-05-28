@@ -248,6 +248,47 @@ class CandidateController {
     }
   }
 
+  async sendAssignmentEmail(req, res) {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      // Graph OBO needs the user's Bearer token from this very request.
+      const auth = req.headers?.authorization || '';
+      const userAssertion = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+      if (!userAssertion) {
+        return res.status(401).json({
+          success: false,
+          error: 'Microsoft access token is required (sign in again if needed)'
+        });
+      }
+      const { id: candidateId } = req.params;
+      const body = req.body || {};
+      const result = await candidateService.sendAssignmentEmail(user, userAssertion, candidateId, {
+        appendBody: body.appendBody,
+        attachmentIds: body.attachmentIds,
+        subject: body.subject
+      });
+      return res.json({ success: true, audit: result.audit });
+    } catch (error) {
+      const status = error.statusCode || 500;
+      logger.error('sendAssignmentEmail failed', {
+        error: error.message,
+        candidateId: req.params?.id,
+        userEmail: req.user?.email,
+        attempts: error.audit?.attempts
+      });
+      return res.status(status).json({
+        success: false,
+        error: status === 500 ? 'Unable to send assignment email' : error.message,
+        // On 502 the audit row is already persisted — surface it so the
+        // UI can show "Failed (3 attempts)" without an extra fetch.
+        ...(error.audit ? { audit: error.audit } : {})
+      });
+    }
+  }
+
   async downloadAttachment(req, res) {
     try {
       const user = req.user;

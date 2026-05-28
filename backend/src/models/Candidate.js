@@ -389,6 +389,13 @@ export class CandidateModel {
       pushDoc.attachments = updates._pushAttachment;
     }
 
+    // PRT Phase 3: assignmentEmails $push (one entry per send attempt,
+    // success OR failure). Service callers pass updates._pushAssignmentEmail
+    // as the full audit object.
+    if (updates._pushAssignmentEmail && typeof updates._pushAssignmentEmail === 'object') {
+      pushDoc.assignmentEmails = updates._pushAssignmentEmail;
+    }
+
     if (Object.keys(pushDoc).length > 0) {
       updateDoc.$push = pushDoc;
     }

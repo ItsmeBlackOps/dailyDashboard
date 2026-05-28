@@ -3,7 +3,9 @@ export const DomainEvents = Object.freeze({
   CandidateUpdated: 'candidate.updated',
   CandidateExpertAssigned: 'candidate.expertAssigned',
   CandidateResumeStatusChanged: 'candidate.resumeStatusChanged',
-  CandidateSupportRequested: 'candidate.supportRequested'
+  CandidateSupportRequested: 'candidate.supportRequested',
+  // PRT Phase 3
+  CandidateAssignmentEmailSent: 'candidate.assignmentEmailSent'
 });
 
 export const NotificationEvents = Object.freeze({
