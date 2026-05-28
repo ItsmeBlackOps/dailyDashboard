@@ -51,6 +51,7 @@ import { storageService } from './storageService.js';
 import { graphMailService } from './graphMailService.js';
 import { notificationService } from './notificationService.js';
 import { buildAssignmentEmail } from './assignmentEmailService.js';
+import { emailOutboxRepository } from './emailOutboxRepository.js';
 import { logger } from '../utils/logger.js';
 import { domainEventBus } from '../events/eventBus.js';
 import { DomainEvents } from '../events/eventTypes.js';
@@ -2000,14 +2001,13 @@ class CandidateService {
     }
   }
 
-  // graphAccessToken is the user's MSAL-acquired Microsoft Graph access
-  // token (NOT the app's JWT). Matches the pattern used by
-  // supportRequestService — the frontend acquires it via
-  // instance.acquireTokenSilent({ scopes: GRAPH_MAIL_SCOPES }) and
-  // passes it through the `x-graph-access-token` request header. The
-  // server forwards it straight to graphMailService.sendDelegatedMail,
-  // which uses it as the Authorization bearer to the Graph endpoint.
-  async sendAssignmentEmail(user, graphAccessToken, candidateId, options = {}) {
+  // Phase 3.5 — enqueue-mode. The send no longer happens synchronously
+  // in this request: it goes into the EmailOutbox collection and the
+  // emailDeliveryWorker dispatches it via app-only Graph (sendApplicationMail).
+  // "From" address therefore becomes the configured app sender, NOT the
+  // clicker — deliberate trade-off chosen for durable retry over a 24h
+  // window. No MSAL token is needed from the request.
+  async sendAssignmentEmail(user, _unused, candidateId, options = {}) {
     if (!user?.email || !user?.role) {
       const err = new Error('Authentication required');
       err.statusCode = 401;
@@ -2017,11 +2017,6 @@ class CandidateService {
     if (!PRT_ATTACHMENT_ROLES.has(role)) {
       const err = new Error('You do not have permission to send the assignment email');
       err.statusCode = 403;
-      throw err;
-    }
-    if (!graphAccessToken || typeof graphAccessToken !== 'string') {
-      const err = new Error('Microsoft Graph access token is required for sending mail');
-      err.statusCode = 401;
       throw err;
     }
     if (!candidateId) {
@@ -2131,112 +2126,40 @@ class CandidateService {
       built._audit.subject = options.subject.trim();
     }
 
-    // In-request retry: transient Graph errors (5xx + 429) only.
-    const retryDelays = Array.isArray(config?.assignmentEmail?.retryDelaysMs)
-      ? config.assignmentEmail.retryDelaysMs
-      : [1000, 4000, 16000];
-    const isTransientGraphError = (err) => {
-      const status =
-        err?.statusCode ||
-        err?.responseStatus ||
-        err?.response?.status ||
-        0;
-      return status === 0 || status >= 500 || status === 429;
-    };
-
-    let attempts = 0;
-    let lastError = null;
-    let sentResponse = null;
-    for (let i = 0; i <= retryDelays.length; i++) {
-      attempts = i + 1;
-      try {
-        // sendDelegatedMail uses the access token directly (no OBO
-        // exchange). This mirrors supportRequestService.sendXxxRequest.
-        sentResponse = await graphMailService.sendDelegatedMail(graphAccessToken, {
-          message: built.message,
-          saveToSentItems: built.saveToSentItems
-        });
-        lastError = null;
-        break;
-      } catch (sendErr) {
-        lastError = sendErr;
-        if (i === retryDelays.length || !isTransientGraphError(sendErr)) {
-          break;
-        }
-        logger.warn('Assignment email send attempt failed — retrying', {
-          candidateId,
-          attempt: attempts,
-          nextDelayMs: retryDelays[i],
-          status: sendErr?.statusCode || sendErr?.responseStatus || null,
-          message: sendErr?.message
-        });
-        await new Promise((r) => setTimeout(r, retryDelays[i]));
-      }
-    }
-
-    // Audit row — always written (sent OR failed).
-    const auditEntry = {
-      ts: new Date(),
-      sender: user.email.toLowerCase(),
-      to: built._audit.to,
-      cc: built._audit.cc,
-      bcc: built._audit.bcc,
-      subject: built._audit.subject,
-      attachmentIds: built._audit.attachmentIds,
-      attempts,
-      status: lastError ? 'failed' : 'sent',
-      ...(lastError
-        ? { lastError: (lastError.message || String(lastError)).slice(0, 500) }
-        : {})
-    };
-
-    const dbUpdates = {
-      _pushAssignmentEmail: auditEntry,
-      _changedBy: user.email,
-      _source: 'assignment-email'
-    };
-    if (!lastError) {
-      dbUpdates.ackEmail = 'Sent';
-      dbUpdates.ackEmailAt = new Date();
-    }
-    await candidateModel.updateCandidateById(candidateId, dbUpdates);
-
-    if (lastError) {
-      // Admin notification + structured 502 to the caller. Preserves the
-      // draft on the client (UI keeps the modal open with the body).
-      await this._notifyAdminsAssignmentFailed(candidateId, candidate, user, lastError);
-      const err = new Error(
-        `Assignment email failed after ${attempts} attempt(s): ${lastError.message || lastError}`
-      );
-      err.statusCode = 502;
-      err.audit = auditEntry;
-      throw err;
-    }
-
-    domainEventBus.publish(DomainEvents.CandidateAssignmentEmailSent, {
-      eventId: crypto.randomUUID(),
-      candidateId,
-      actor: {
-        email: user.email,
-        role: user.role,
-        name: senderDisplayName
+    // Phase 3.5 — enqueue into the EmailOutbox. The emailDeliveryWorker
+    // dispatches via app-only Graph (sendApplicationMail) with
+    // exponential backoff up to a 24h budget; on terminal sent/failed
+    // it writes the assignmentEmails[] audit row + flips ackEmail.
+    const outboxRow = await emailOutboxRepository.enqueue({
+      candidateId: String(candidateId),
+      payload: {
+        message: built.message,
+        saveToSentItems: built.saveToSentItems
       },
-      audit: auditEntry,
-      occurredAt: new Date().toISOString()
+      audit: {
+        sender: user.email.toLowerCase(),
+        to: built._audit.to,
+        cc: built._audit.cc,
+        bcc: built._audit.bcc,
+        subject: built._audit.subject,
+        attachmentIds: built._audit.attachmentIds
+      },
+      enqueuedBy: user.email
     });
 
-    logger.info('Assignment email sent', {
+    logger.info('Assignment email enqueued', {
       candidateId,
+      outboxId: String(outboxRow._id),
       to: built._audit.to,
       cc: built._audit.cc,
-      attempts,
       sender: user.email
     });
 
     return {
       success: true,
-      audit: auditEntry,
-      graphResponse: sentResponse
+      status: 'queued',
+      outboxId: String(outboxRow._id),
+      message: 'Assignment email queued — the dispatcher will send it shortly.'
     };
   }
 

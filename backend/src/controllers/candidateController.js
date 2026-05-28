@@ -254,21 +254,13 @@ class CandidateController {
       if (!user) {
         return res.status(401).json({ success: false, error: 'Authentication required' });
       }
-      // Match the existing support-request pattern: frontend acquires an
-      // MSAL Graph access token (Mail.Send scope) and passes it through
-      // the `x-graph-access-token` header. The server forwards it to
-      // graphMailService.sendDelegatedMail. See supportRequestController.
-      const graphTokenHeader = req.headers?.['x-graph-access-token'];
-      const graphAccessToken =
-        typeof graphTokenHeader === 'string' ? graphTokenHeader.trim() : '';
-      if (!graphAccessToken) {
-        return res.status(401).json({ success: false, error: 'missing_graph_token' });
-      }
+      // Phase 3.5 — enqueue-mode. No MSAL Graph token from the request:
+      // the emailDeliveryWorker sends via app-only token (sendApplicationMail).
       const { id: candidateId } = req.params;
       const body = req.body || {};
       const result = await candidateService.sendAssignmentEmail(
         user,
-        graphAccessToken,
+        /* graphAccessToken */ null,
         candidateId,
         {
           appendBody: body.appendBody,
@@ -276,21 +268,23 @@ class CandidateController {
           subject: body.subject
         }
       );
-      return res.json({ success: true, audit: result.audit });
+      // 202 Accepted: the dispatch is decoupled from this request.
+      return res.status(202).json({
+        success: true,
+        status: result.status,
+        outboxId: result.outboxId,
+        message: result.message
+      });
     } catch (error) {
       const status = error.statusCode || 500;
-      logger.error('sendAssignmentEmail failed', {
+      logger.error('sendAssignmentEmail enqueue failed', {
         error: error.message,
         candidateId: req.params?.id,
-        userEmail: req.user?.email,
-        attempts: error.audit?.attempts
+        userEmail: req.user?.email
       });
       return res.status(status).json({
         success: false,
-        error: status === 500 ? 'Unable to send assignment email' : error.message,
-        // On 502 the audit row is already persisted — surface it so the
-        // UI can show "Failed (3 attempts)" without an extra fetch.
-        ...(error.audit ? { audit: error.audit } : {})
+        error: status === 500 ? 'Unable to queue assignment email' : error.message
       });
     }
   }

@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMsal } from '@azure/msal-react';
-import { InteractionRequiredAuthError } from '@azure/msal-browser';
 import { useAuth, API_URL } from '@/hooks/useAuth';
-import { GRAPH_MAIL_SCOPES } from '@/constants';
 import {
   Dialog,
   DialogContent,
@@ -54,7 +51,6 @@ export default function AssignmentEmailModal({
   onSent,
 }: AssignmentEmailModalProps) {
   const { authFetch } = useAuth();
-  const { instance, accounts } = useMsal();
   const { toast } = useToast();
 
   const defaultSubject = useMemo(
@@ -95,38 +91,14 @@ export default function AssignmentEmailModal({
     selectedAttachmentIds.size > 0 &&
     subject.trim().length > 0;
 
-  // Acquire an MSAL Graph access token (Mail.Send scope). Mirrors the
-  // pattern in BranchCandidates / TasksToday — silent first, popup
-  // fallback on InteractionRequiredAuthError so a stale refresh
-  // doesn't fail the send.
-  const acquireGraphToken = async (): Promise<string> => {
-    const activeAccount = accounts?.[0];
-    if (!activeAccount) {
-      throw new Error('No signed-in Microsoft account — please sign in again.');
-    }
-    try {
-      const resp = await instance.acquireTokenSilent({
-        account: activeAccount,
-        scopes: GRAPH_MAIL_SCOPES,
-      });
-      return resp.accessToken;
-    } catch (err) {
-      if (err instanceof InteractionRequiredAuthError) {
-        const popup = await instance.acquireTokenPopup({
-          account: activeAccount,
-          scopes: GRAPH_MAIL_SCOPES,
-        });
-        return popup.accessToken;
-      }
-      throw err;
-    }
-  };
-
+  // Phase 3.5 — enqueue-mode. The server queues the send into the
+  // EmailOutbox and the worker dispatches via app-only Graph. No MSAL
+  // token is acquired from the browser; "From" becomes the configured
+  // app sender (deliberate trade-off for durable retry over 24h).
   const handleSend = async () => {
     if (!canSend) return;
     setSending(true);
     try {
-      const graphToken = await acquireGraphToken();
       const body = {
         subject: subject.trim(),
         appendBody: appendBody.trim() || undefined,
@@ -136,30 +108,24 @@ export default function AssignmentEmailModal({
         `${API_URL}/api/candidates/${candidateId}/send-assignment-email`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            // Same header contract as supportRequestController.
-            'x-graph-access-token': graphToken,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         },
       );
       const json = await resp.json().catch(() => ({}));
+      // 202 Accepted is the happy path now.
       if (!resp.ok || !json.success) {
-        throw new Error(json.error || 'Send failed');
+        throw new Error(json.error || 'Queue failed');
       }
       toast({
-        title: 'Assignment email sent',
-        description:
-          json.audit?.cc?.length
-            ? `CC: ${(json.audit.cc as string[]).join(', ')}`
-            : undefined,
+        title: 'Assignment email queued',
+        description: 'The dispatcher will send it shortly. Refresh the page in a few minutes to see the confirmation.',
       });
       onSent?.();
       onOpenChange(false);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to send';
-      toast({ title: 'Send failed', description: message, variant: 'destructive' });
+      const message = err instanceof Error ? err.message : 'Unable to queue';
+      toast({ title: 'Queue failed', description: message, variant: 'destructive' });
     } finally {
       setSending(false);
     }
@@ -173,8 +139,9 @@ export default function AssignmentEmailModal({
             <Mail className="h-4 w-4" /> Send Assignment Email
           </DialogTitle>
           <DialogDescription>
-            The body uses the standard PRD §6.2 template (tokens replaced server-side). You
-            can edit the subject or add a preamble above the template.
+            The body uses the standard PRD §6.2 template (tokens replaced server-side).
+            On submit, the email is queued in the outbox and dispatched in the background.
+            "From" address is the configured shared sender, not your mailbox.
           </DialogDescription>
         </DialogHeader>
 
@@ -278,7 +245,7 @@ export default function AssignmentEmailModal({
             Cancel
           </Button>
           <Button type="button" onClick={handleSend} disabled={!canSend}>
-            {sending ? 'Sending…' : 'Send'}
+            {sending ? 'Queueing…' : 'Queue & Send'}
           </Button>
         </DialogFooter>
       </DialogContent>
