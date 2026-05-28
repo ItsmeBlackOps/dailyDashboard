@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, User, MapPin, Briefcase, Mail, Phone, Calendar, ExternalLink,
@@ -19,6 +19,7 @@ import { TaskSheet } from '@/components/shared/TaskSheet';
 import { PODraftSheet } from '@/components/shared/PODraftSheet';
 import type { TaskSheetPrefill } from '@/components/shared/TaskSheet';
 import FindJobsDialog from '@/components/jobs/FindJobsDialog';
+import AttachmentZone, { type CandidateAttachment } from '@/components/candidates/AttachmentZone';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Candidate {
@@ -28,6 +29,9 @@ interface Candidate {
   updatedAt: string | null; resumeLink: string | null;
   statusHistory: { status: string; changedAt: string; changedBy: string }[];
   workflowStatus: string;
+  // PRT Phase 2: server returns attachments[] in the marketing-track
+  // projection. Absent for non-marketing readers (server-side strip).
+  attachments?: CandidateAttachment[];
 }
 
 interface ForgeProfile {
@@ -234,9 +238,8 @@ export default function CandidateDetailPage() {
   const [deriving, setDeriving] = useState(false);
   const { toast } = useToast();
 
-  useEffect(() => {
+  const fetchCandidate = useCallback(() => {
     if (!id) return;
-    setLoading(true);
     authFetch(`${API_URL}/api/candidates/${id}`)
       .then(r => r.json())
       .then(json => {
@@ -247,6 +250,12 @@ export default function CandidateDetailPage() {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [id, authFetch]);
+
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    fetchCandidate();
+  }, [id, fetchCandidate]);
 
   // Fetch cached forge profile
   useEffect(() => {
@@ -522,6 +531,16 @@ export default function CandidateDetailPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* ── PRT Phase 2: Attachments ── */}
+            {candidate && (
+              <AttachmentZone
+                candidateId={candidate.id}
+                attachments={candidate.attachments ?? []}
+                resumeLink={candidate.resumeLink}
+                onChange={fetchCandidate}
+              />
+            )}
 
             {/* ── Vertical Timeline ── */}
             <Card>

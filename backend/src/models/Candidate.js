@@ -383,8 +383,20 @@ export class CandidateModel {
       pushDoc.editHistory = { $each: updates._pushEditHistory };
     }
 
+    // PRT Phase 2: attachments $push (one entry per upload). Service callers
+    // pass updates._pushAttachment as the full attachment object.
+    if (updates._pushAttachment && typeof updates._pushAttachment === 'object') {
+      pushDoc.attachments = updates._pushAttachment;
+    }
+
     if (Object.keys(pushDoc).length > 0) {
       updateDoc.$push = pushDoc;
+    }
+
+    // PRT Phase 2: attachments $pull by id (remove). Distinct operation —
+    // never combined with a push to the same field on a single call.
+    if (updates._pullAttachmentId) {
+      updateDoc.$pull = { attachments: { id: updates._pullAttachmentId } };
     }
 
     const result = await this.collection.updateOne(filter, updateDoc);

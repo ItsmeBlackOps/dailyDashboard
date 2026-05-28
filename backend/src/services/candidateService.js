@@ -36,8 +36,18 @@ const PRT_VISIBLE_FIELDS = [
   'expiringInDays', 'daysInMarketing'
 ];
 const PRT_READ_ROLES = new Set(['admin', 'mm', 'mam', 'mlead', 'recruiter']);
+
+// PRT Phase 2: attachment operations (upload / remove / set-as-resume).
+// Broader than PRT_WRITE_ROLES because the operational reality is that
+// recruiters handle their candidates' documents day-to-day. Scope is
+// always validated through assertRecruiterInScope on the candidate's
+// own recruiter so cross-team access is still blocked.
+const PRT_ATTACHMENT_ROLES = new Set([
+  'admin', 'mm', 'mam', 'mlead', 'recruiter'
+]);
 import { userModel } from '../models/User.js';
 import { userService, roleLevel } from './userService.js';
+import { storageService } from './storageService.js';
 import { logger } from '../utils/logger.js';
 import { domainEventBus } from '../events/eventBus.js';
 import { DomainEvents } from '../events/eventTypes.js';
@@ -1721,6 +1731,263 @@ class CandidateService {
     return this._applyPrtVisibility(formatted, user);
   }
 
+  // ---------- PRT Phase 2: attachment operations ----------
+  //
+  // Permission model:
+  //   role in PRT_ATTACHMENT_ROLES (admin/mm/mam/mlead/recruiter)
+  //   + assertRecruiterInScope(user, candidate.recruiter)
+  //
+  // This is broader than the PRT field write-gate (mm/mam/admin) because
+  // attachments are the operational artefact recruiters work with daily,
+  // and the existing scope walk already prevents cross-team access.
+
+  async _assertAttachmentPermission(user, candidate) {
+    if (!user?.email || !user?.role) {
+      const error = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+    const role = (user.role || '').toString().toLowerCase().trim();
+    if (!PRT_ATTACHMENT_ROLES.has(role)) {
+      const error = new Error('You do not have permission to manage candidate attachments');
+      error.statusCode = 403;
+      throw error;
+    }
+    // Scope: the candidate's recruiter must be reachable from the user's
+    // hierarchy. Admins bypass via assertRecruiterInScope's existing
+    // self-or-hierarchy semantics. If the candidate has no recruiter on
+    // record yet (rare), only admin / mm / mam / mlead can act.
+    const recruiterEmail = formatEmail(
+      candidate?.recruiter || candidate?.Recruiter || ''
+    );
+    if (recruiterEmail) {
+      this.assertRecruiterInScope(user, recruiterEmail);
+    } else if (!['admin', 'mm', 'mam', 'mlead'].includes(role)) {
+      const error = new Error('Candidate has no recruiter assigned — escalate to manager');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
+  async addAttachment(user, candidateId, fileInput) {
+    if (!candidateId) {
+      const error = new Error('Candidate id is required');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!fileInput || !fileInput.buffer || !(fileInput.buffer instanceof Buffer)) {
+      const error = new Error('File payload is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const candidate = await candidateModel.getCandidateById(candidateId);
+    if (!candidate) {
+      const error = new Error('Candidate not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    await this._assertAttachmentPermission(user, candidate);
+
+    // Storage layer enforces MIME whitelist + 10 MB cap and throws 4xx-style
+    // Errors on rejection. Bubble them up unchanged.
+    const uploadResult = await storageService.uploadAttachment({
+      buffer: fileInput.buffer,
+      contentType: fileInput.mimetype || fileInput.contentType,
+      originalName: fileInput.originalname || fileInput.originalName,
+      uploadedBy: user.email,
+      candidateId
+    });
+
+    const attachment = {
+      id: crypto.randomUUID(),
+      filename: fileInput.originalname || fileInput.originalName || 'untitled',
+      mimeType: uploadResult.contentType,
+      size: uploadResult.size,
+      s3Key: uploadResult.objectKey,
+      url: uploadResult.url,
+      uploadedAt: new Date(),
+      uploadedBy: user.email
+    };
+
+    await candidateModel.updateCandidateById(candidateId, {
+      _pushAttachment: attachment,
+      _changedBy: user.email,
+      _source: 'attachment-upload'
+    });
+
+    logger.info('Attachment added to candidate', {
+      candidateId,
+      attachmentId: attachment.id,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      uploadedBy: user.email
+    });
+
+    domainEventBus.publish(DomainEvents.CandidateUpdated, {
+      eventId: crypto.randomUUID(),
+      candidateId,
+      actor: {
+        email: user.email,
+        role: user.role,
+        name: user.name || user.displayName || formatDisplayName(user.email)
+      },
+      changes: ['attachments'],
+      changeDetails: { added: [attachment.id] },
+      occurredAt: new Date().toISOString()
+    });
+
+    return attachment;
+  }
+
+  async removeAttachment(user, candidateId, attachmentId) {
+    if (!candidateId || !attachmentId) {
+      const error = new Error('Candidate id and attachment id are required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const candidate = await candidateModel.getCandidateById(candidateId);
+    if (!candidate) {
+      const error = new Error('Candidate not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const attachment = (Array.isArray(candidate.attachments) ? candidate.attachments : [])
+      .find((a) => a && a.id === attachmentId);
+    if (!attachment) {
+      const error = new Error('Attachment not found on this candidate');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    await this._assertAttachmentPermission(user, candidate);
+
+    // DB pull first so the UI clears the entry even if storage delete is
+    // slow. If the attachment was the canonical resume, clear that too —
+    // a removed file can't be the source of truth for Resume Forge AI.
+    const updates = {
+      _pullAttachmentId: attachmentId,
+      _changedBy: user.email,
+      _source: 'attachment-delete'
+    };
+    if (candidate.resumeLink && attachment.url && candidate.resumeLink === attachment.url) {
+      updates.resumeLink = '';
+    }
+    await candidateModel.updateCandidateById(candidateId, updates);
+
+    // Best-effort storage cleanup. Failures here are logged but don't
+    // fail the request — the DB is already consistent.
+    try {
+      if (attachment.s3Key) {
+        await storageService.deleteObject(attachment.s3Key);
+      }
+    } catch (err) {
+      logger.warn('Attachment storage delete failed (DB entry already removed)', {
+        candidateId,
+        attachmentId,
+        s3Key: attachment.s3Key,
+        error: err.message
+      });
+    }
+
+    logger.info('Attachment removed from candidate', {
+      candidateId,
+      attachmentId,
+      removedBy: user.email,
+      wasCanonicalResume: candidate.resumeLink === attachment.url
+    });
+
+    domainEventBus.publish(DomainEvents.CandidateUpdated, {
+      eventId: crypto.randomUUID(),
+      candidateId,
+      actor: {
+        email: user.email,
+        role: user.role,
+        name: user.name || user.displayName || formatDisplayName(user.email)
+      },
+      changes: ['attachments'],
+      changeDetails: { removed: [attachmentId] },
+      occurredAt: new Date().toISOString()
+    });
+
+    return { id: attachmentId, removed: true };
+  }
+
+  async setAttachmentAsResume(user, candidateId, attachmentId) {
+    if (!candidateId || !attachmentId) {
+      const error = new Error('Candidate id and attachment id are required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const candidate = await candidateModel.getCandidateById(candidateId);
+    if (!candidate) {
+      const error = new Error('Candidate not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const attachment = (Array.isArray(candidate.attachments) ? candidate.attachments : [])
+      .find((a) => a && a.id === attachmentId);
+    if (!attachment) {
+      const error = new Error('Attachment not found on this candidate');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Resume Forge AI expects a PDF at resumeLink; non-PDF attachments
+    // cannot be promoted (would break the cache key + downstream parse).
+    if ((attachment.mimeType || '').toLowerCase() !== 'application/pdf') {
+      const error = new Error('Only PDF attachments can be set as the canonical resume');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    await this._assertAttachmentPermission(user, candidate);
+
+    await candidateModel.updateCandidateById(candidateId, {
+      resumeLink: attachment.url,
+      _changedBy: user.email,
+      _source: 'attachment-set-resume'
+    });
+
+    logger.info('Attachment set as canonical resume', {
+      candidateId,
+      attachmentId,
+      setBy: user.email
+    });
+
+    return { id: attachmentId, resumeLink: attachment.url };
+  }
+
+  // Used by the controller's streaming download proxy. Validates
+  // permission + returns enough metadata for the controller to set
+  // Content-Type / Content-Disposition before piping.
+  async resolveAttachmentForDownload(user, candidateId, attachmentId) {
+    if (!candidateId || !attachmentId) {
+      const error = new Error('Candidate id and attachment id are required');
+      error.statusCode = 400;
+      throw error;
+    }
+    const candidate = await candidateModel.getCandidateById(candidateId);
+    if (!candidate) {
+      const error = new Error('Candidate not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    const attachment = (Array.isArray(candidate.attachments) ? candidate.attachments : [])
+      .find((a) => a && a.id === attachmentId);
+    if (!attachment) {
+      const error = new Error('Attachment not found on this candidate');
+      error.statusCode = 404;
+      throw error;
+    }
+    await this._assertAttachmentPermission(user, candidate);
+    return attachment;
+  }
 
   async createCandidateFromManager(user, payload = {}) {
     if (!user?.email || !user?.role) {
