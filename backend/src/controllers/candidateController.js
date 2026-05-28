@@ -254,22 +254,28 @@ class CandidateController {
       if (!user) {
         return res.status(401).json({ success: false, error: 'Authentication required' });
       }
-      // Graph OBO needs the user's Bearer token from this very request.
-      const auth = req.headers?.authorization || '';
-      const userAssertion = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
-      if (!userAssertion) {
-        return res.status(401).json({
-          success: false,
-          error: 'Microsoft access token is required (sign in again if needed)'
-        });
+      // Match the existing support-request pattern: frontend acquires an
+      // MSAL Graph access token (Mail.Send scope) and passes it through
+      // the `x-graph-access-token` header. The server forwards it to
+      // graphMailService.sendDelegatedMail. See supportRequestController.
+      const graphTokenHeader = req.headers?.['x-graph-access-token'];
+      const graphAccessToken =
+        typeof graphTokenHeader === 'string' ? graphTokenHeader.trim() : '';
+      if (!graphAccessToken) {
+        return res.status(401).json({ success: false, error: 'missing_graph_token' });
       }
       const { id: candidateId } = req.params;
       const body = req.body || {};
-      const result = await candidateService.sendAssignmentEmail(user, userAssertion, candidateId, {
-        appendBody: body.appendBody,
-        attachmentIds: body.attachmentIds,
-        subject: body.subject
-      });
+      const result = await candidateService.sendAssignmentEmail(
+        user,
+        graphAccessToken,
+        candidateId,
+        {
+          appendBody: body.appendBody,
+          attachmentIds: body.attachmentIds,
+          subject: body.subject
+        }
+      );
       return res.json({ success: true, audit: result.audit });
     } catch (error) {
       const status = error.statusCode || 500;

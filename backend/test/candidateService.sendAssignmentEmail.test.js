@@ -14,7 +14,7 @@ const originalGetUserByEmail = userModel.getUserByEmail;
 const originalGetAllUsers = userModel.getAllUsers;
 const originalCollectManageableUsers = userService.collectManageableUsers;
 const originalFetchObjectAsBase64 = storageService.fetchObjectAsBase64;
-const originalSendMail = graphMailService.sendMail;
+const originalSendDelegatedMail = graphMailService.sendDelegatedMail;
 const originalBroadcastToWatchers = notificationService.broadcastToWatchers;
 const originalRetryDelays = config.assignmentEmail?.retryDelaysMs;
 
@@ -25,7 +25,7 @@ afterEach(() => {
   userModel.getAllUsers = originalGetAllUsers;
   userService.collectManageableUsers = originalCollectManageableUsers;
   storageService.fetchObjectAsBase64 = originalFetchObjectAsBase64;
-  graphMailService.sendMail = originalSendMail;
+  graphMailService.sendDelegatedMail = originalSendDelegatedMail;
   notificationService.broadcastToWatchers = originalBroadcastToWatchers;
   if (config.assignmentEmail) {
     config.assignmentEmail.retryDelaysMs = originalRetryDelays;
@@ -96,7 +96,7 @@ function setupHappyPath(overrides = {}) {
     contentLength: 3
   });
 
-  graphMailService.sendMail = jest.fn().mockResolvedValue({});
+  graphMailService.sendDelegatedMail = jest.fn().mockResolvedValue({});
   notificationService.broadcastToWatchers = jest.fn().mockResolvedValue([]);
 
   // Zero retry delays so tests don't wait real seconds.
@@ -122,7 +122,7 @@ describe('candidateService.sendAssignmentEmail — happy path', () => {
     expect(result.audit.cc).toEqual(expect.arrayContaining(['tushar.ahuja@silverspaceinc.com', 'lead.one@company.com']));
     expect(result.audit.attachmentIds).toEqual(['att-1']);
 
-    expect(graphMailService.sendMail).toHaveBeenCalledTimes(1);
+    expect(graphMailService.sendDelegatedMail).toHaveBeenCalledTimes(1);
     expect(candidateModel.updateCandidateById).toHaveBeenCalledWith(
       'cand1',
       expect.objectContaining({
@@ -141,7 +141,7 @@ describe('candidateService.sendAssignmentEmail — happy path', () => {
       'cand1',
       {}
     );
-    const payload = graphMailService.sendMail.mock.calls[0][1];
+    const payload = graphMailService.sendDelegatedMail.mock.calls[0][1];
     expect(payload.message.subject).toBe('Assignment: Jane Doe – Software Developer – OPT');
     const html = payload.message.body.content;
     expect(html).toContain('Hi Lead One,'); // teamLead display
@@ -167,7 +167,7 @@ describe('candidateService.sendAssignmentEmail — happy path', () => {
       'cand1',
       {}
     );
-    const payload = graphMailService.sendMail.mock.calls[0][1];
+    const payload = graphMailService.sendDelegatedMail.mock.calls[0][1];
     const ccs = payload.message.ccRecipients.map((r) => r.emailAddress.address);
     expect(ccs).toContain('tushar.ahuja@silverspaceinc.com');
   });
@@ -186,7 +186,7 @@ describe('candidateService.sendAssignmentEmail — happy path', () => {
       { attachmentIds: ['att-2'] }
     );
     expect(storageService.fetchObjectAsBase64).toHaveBeenCalledTimes(1);
-    const payload = graphMailService.sendMail.mock.calls[0][1];
+    const payload = graphMailService.sendDelegatedMail.mock.calls[0][1];
     expect(payload.message.attachments).toHaveLength(1);
     expect(payload.message.attachments[0].name).toBe('cred.pdf');
     void candidate;
@@ -200,7 +200,7 @@ describe('candidateService.sendAssignmentEmail — happy path', () => {
       'cand1',
       { subject: 'Custom Subject — urgent' }
     );
-    const payload = graphMailService.sendMail.mock.calls[0][1];
+    const payload = graphMailService.sendDelegatedMail.mock.calls[0][1];
     expect(payload.message.subject).toBe('Custom Subject — urgent');
   });
 });
@@ -228,7 +228,7 @@ describe('candidateService.sendAssignmentEmail — gates', () => {
     }
   });
 
-  it('401 if Bearer/userAssertion is missing', async () => {
+  it('401 if Graph access token is missing', async () => {
     setupHappyPath();
     await expect(candidateService.sendAssignmentEmail(
       { email: 'mm.user@company.com', role: 'mm', name: 'MM' },
@@ -276,7 +276,7 @@ describe('candidateService.sendAssignmentEmail — retry + failure', () => {
     setupHappyPath();
     const transient = new Error('Graph 500');
     transient.statusCode = 500;
-    graphMailService.sendMail = jest.fn()
+    graphMailService.sendDelegatedMail = jest.fn()
       .mockRejectedValueOnce(transient)
       .mockResolvedValueOnce({});
     const result = await candidateService.sendAssignmentEmail(
@@ -288,27 +288,27 @@ describe('candidateService.sendAssignmentEmail — retry + failure', () => {
     expect(result.success).toBe(true);
     expect(result.audit.status).toBe('sent');
     expect(result.audit.attempts).toBe(2);
-    expect(graphMailService.sendMail).toHaveBeenCalledTimes(2);
+    expect(graphMailService.sendDelegatedMail).toHaveBeenCalledTimes(2);
   });
 
   it('does NOT retry on a non-transient 400', async () => {
     setupHappyPath();
     const nonTransient = new Error('Bad payload');
     nonTransient.statusCode = 400;
-    graphMailService.sendMail = jest.fn().mockRejectedValue(nonTransient);
+    graphMailService.sendDelegatedMail = jest.fn().mockRejectedValue(nonTransient);
     await expect(candidateService.sendAssignmentEmail(
       { email: 'mm.user@company.com', role: 'mm', name: 'MM' },
       'fake-assertion',
       'cand1',
       {}
     )).rejects.toMatchObject({ statusCode: 502, audit: expect.objectContaining({ status: 'failed', attempts: 1 }) });
-    expect(graphMailService.sendMail).toHaveBeenCalledTimes(1);
+    expect(graphMailService.sendDelegatedMail).toHaveBeenCalledTimes(1);
   });
 
   it('after exhausting all transient retries writes a failed audit + notifies admins', async () => {
     setupHappyPath();
     const transient = Object.assign(new Error('Graph 503'), { statusCode: 503 });
-    graphMailService.sendMail = jest.fn().mockRejectedValue(transient);
+    graphMailService.sendDelegatedMail = jest.fn().mockRejectedValue(transient);
     await expect(candidateService.sendAssignmentEmail(
       { email: 'mm.user@company.com', role: 'mm', name: 'MM' },
       'fake-assertion',
@@ -319,7 +319,7 @@ describe('candidateService.sendAssignmentEmail — retry + failure', () => {
       audit: expect.objectContaining({ status: 'failed', attempts: 4 })
     });
     // 1 initial + 3 retries
-    expect(graphMailService.sendMail).toHaveBeenCalledTimes(4);
+    expect(graphMailService.sendDelegatedMail).toHaveBeenCalledTimes(4);
 
     // Failed audit row was persisted
     const updateArg = candidateModel.updateCandidateById.mock.calls.at(-1)[1];

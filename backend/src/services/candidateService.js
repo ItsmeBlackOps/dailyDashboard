@@ -2000,7 +2000,14 @@ class CandidateService {
     }
   }
 
-  async sendAssignmentEmail(user, userAssertion, candidateId, options = {}) {
+  // graphAccessToken is the user's MSAL-acquired Microsoft Graph access
+  // token (NOT the app's JWT). Matches the pattern used by
+  // supportRequestService — the frontend acquires it via
+  // instance.acquireTokenSilent({ scopes: GRAPH_MAIL_SCOPES }) and
+  // passes it through the `x-graph-access-token` request header. The
+  // server forwards it straight to graphMailService.sendDelegatedMail,
+  // which uses it as the Authorization bearer to the Graph endpoint.
+  async sendAssignmentEmail(user, graphAccessToken, candidateId, options = {}) {
     if (!user?.email || !user?.role) {
       const err = new Error('Authentication required');
       err.statusCode = 401;
@@ -2012,8 +2019,8 @@ class CandidateService {
       err.statusCode = 403;
       throw err;
     }
-    if (!userAssertion || typeof userAssertion !== 'string') {
-      const err = new Error('Microsoft auth token is required for sending mail');
+    if (!graphAccessToken || typeof graphAccessToken !== 'string') {
+      const err = new Error('Microsoft Graph access token is required for sending mail');
       err.statusCode = 401;
       throw err;
     }
@@ -2143,7 +2150,9 @@ class CandidateService {
     for (let i = 0; i <= retryDelays.length; i++) {
       attempts = i + 1;
       try {
-        sentResponse = await graphMailService.sendMail(userAssertion, {
+        // sendDelegatedMail uses the access token directly (no OBO
+        // exchange). This mirrors supportRequestService.sendXxxRequest.
+        sentResponse = await graphMailService.sendDelegatedMail(graphAccessToken, {
           message: built.message,
           saveToSentItems: built.saveToSentItems
         });

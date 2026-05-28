@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useMsal } from '@azure/msal-react';
+import { InteractionRequiredAuthError } from '@azure/msal-browser';
 import { useAuth, API_URL } from '@/hooks/useAuth';
+import { GRAPH_MAIL_SCOPES } from '@/constants';
 import {
   Dialog,
   DialogContent,
@@ -51,6 +54,7 @@ export default function AssignmentEmailModal({
   onSent,
 }: AssignmentEmailModalProps) {
   const { authFetch } = useAuth();
+  const { instance, accounts } = useMsal();
   const { toast } = useToast();
 
   const defaultSubject = useMemo(
@@ -91,10 +95,38 @@ export default function AssignmentEmailModal({
     selectedAttachmentIds.size > 0 &&
     subject.trim().length > 0;
 
+  // Acquire an MSAL Graph access token (Mail.Send scope). Mirrors the
+  // pattern in BranchCandidates / TasksToday — silent first, popup
+  // fallback on InteractionRequiredAuthError so a stale refresh
+  // doesn't fail the send.
+  const acquireGraphToken = async (): Promise<string> => {
+    const activeAccount = accounts?.[0];
+    if (!activeAccount) {
+      throw new Error('No signed-in Microsoft account — please sign in again.');
+    }
+    try {
+      const resp = await instance.acquireTokenSilent({
+        account: activeAccount,
+        scopes: GRAPH_MAIL_SCOPES,
+      });
+      return resp.accessToken;
+    } catch (err) {
+      if (err instanceof InteractionRequiredAuthError) {
+        const popup = await instance.acquireTokenPopup({
+          account: activeAccount,
+          scopes: GRAPH_MAIL_SCOPES,
+        });
+        return popup.accessToken;
+      }
+      throw err;
+    }
+  };
+
   const handleSend = async () => {
     if (!canSend) return;
     setSending(true);
     try {
+      const graphToken = await acquireGraphToken();
       const body = {
         subject: subject.trim(),
         appendBody: appendBody.trim() || undefined,
@@ -104,7 +136,11 @@ export default function AssignmentEmailModal({
         `${API_URL}/api/candidates/${candidateId}/send-assignment-email`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            // Same header contract as supportRequestController.
+            'x-graph-access-token': graphToken,
+          },
           body: JSON.stringify(body),
         },
       );
