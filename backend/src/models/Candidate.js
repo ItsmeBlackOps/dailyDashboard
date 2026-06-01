@@ -37,6 +37,7 @@ const DEFAULT_PROJECTION = {
   state: 1,
   ackEmail: 1,
   ackEmailAt: 1,
+  team: 1,
   marketingStartDate: 1,
   attachments: 1,
   expiringInDays: 1,
@@ -180,7 +181,8 @@ export const CANDIDATE_AUDITED = [
   'company',
   'ackEmail',
   'experienceYears',
-  'technology'
+  'technology',
+  'team'
 ];
 
 function escapeRegex(value) {
@@ -413,6 +415,7 @@ export class CandidateModel {
         ...(updates.state !== undefined ? { state: updates.state } : {}),
         ...(updates.ackEmail !== undefined ? { ackEmail: updates.ackEmail } : {}),
         ...(updates.ackEmailAt !== undefined ? { ackEmailAt: updates.ackEmailAt } : {}),
+        ...(updates.team !== undefined ? { team: updates.team } : {}),
         updated_at: now
       }
     };

@@ -30,6 +30,7 @@ class CandidateSocketHandler {
     socket.on('getResumeUnderstandingCount', socketAsyncHandler(this.handleGetResumeUnderstandingCount.bind(this)));
     socket.on('updateCandidateStatus', socketAsyncHandler(this.handleUpdateStatus.bind(this)));
     socket.on('bulkUpdateCandidateStatus', socketAsyncHandler(this.handleBulkUpdateStatus.bind(this)));
+    socket.on('moveCandidatesToMarketing', socketAsyncHandler(this.handleMoveToMarketing.bind(this)));
     socket.on('getResumeComments', socketAsyncHandler(this.handleGetResumeComments.bind(this)));
     socket.on('addResumeComment', socketAsyncHandler(this.handleAddResumeComment.bind(this)));
     socket.on('joinCandidateRoom', (candidateId) => {
@@ -577,6 +578,29 @@ class CandidateSocketHandler {
     } catch (e) {
       logger.error('Bulk Update Failed', e);
       callback({ success: false, error: e.message });
+    }
+  }
+
+  async handleMoveToMarketing(socket, data, callback) {
+    if (!callback) return;
+    const user = socket.data.user;
+    if (!user) return callback({ success: false, error: 'Authentication required' });
+
+    const ids = Array.isArray(data?.candidateIds) ? data.candidateIds : data?.ids;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return callback({ success: false, error: 'No candidates specified' });
+    }
+
+    try {
+      const result = await candidateService.moveCandidatesToMarketing(user, ids);
+      return callback({ success: true, moved: result.moved, failed: result.failed });
+    } catch (error) {
+      logger.error('Socket moveCandidatesToMarketing failed', {
+        error: error.message,
+        socketId: socket.id,
+        userEmail: user?.email
+      });
+      return callback({ success: false, error: error.message });
     }
   }
 

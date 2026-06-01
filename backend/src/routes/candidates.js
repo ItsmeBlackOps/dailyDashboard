@@ -51,6 +51,15 @@ const attachmentUpload = multer({
   }
 });
 
+// PRT — "additional attachments" accept ANY format (no MIME allowlist),
+// same 10 MB cap. Low-risk: files are served via the authenticated
+// streaming proxy and never executed. The resume slot keeps the
+// whitelisted `attachmentUpload` above.
+const additionalAttachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: attachmentMaxBytes, files: 1 }
+});
+
 router.use(authenticateHTTP);
 
 router.post('/resume', upload.single('resume'), (req, res) =>
@@ -86,6 +95,12 @@ router.post('/:id/status',        (req, res) => candidateController.updateStatus
 router.post(
   '/:id/attachments',
   attachmentUpload.single('file'),
+  (req, res) => candidateController.uploadAttachment(req, res)
+);
+// PRT — additional attachments: any format, same 10 MB cap, same handler.
+router.post(
+  '/:id/attachments/additional',
+  additionalAttachmentUpload.single('file'),
   (req, res) => candidateController.uploadAttachment(req, res)
 );
 router.delete(
