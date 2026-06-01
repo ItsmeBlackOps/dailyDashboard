@@ -123,7 +123,9 @@ describe('graphMeetingController', () => {
     expect(createMeetingMock).toHaveBeenCalledWith('user-token', {
       subject: 'alert("x") Standup',
       startDateTime: '2024-06-01T10:00:00.000Z',
-      endDateTime: '2024-06-01T10:30:00.000Z'
+      endDateTime: '2024-06-01T10:30:00.000Z',
+      // Default everyone-bypass so the Fireflies bot is auto-admitted.
+      lobbyBypassSettings: { scope: 'everyone', isDialInBypassEnabled: true }
     });
     expect(res.status).toHaveBeenCalledWith(201);
     expect(res.body).toEqual({ meeting: fakeMeeting, joinUrl: 'https://teams.microsoft.com/l/meetup-join/abc', joinWebUrl: '' });
@@ -147,7 +149,9 @@ describe('graphMeetingController', () => {
     expect(createMeetingMock).toHaveBeenCalledWith('user-token', {
       subject: 'Status Update',
       startDateTime: '2024-07-01T14:00:00.000Z',
-      recordAutomatically: true
+      recordAutomatically: true,
+      // Default everyone-bypass so the Fireflies bot is auto-admitted.
+      lobbyBypassSettings: { scope: 'everyone', isDialInBypassEnabled: true }
     });
   });
 
