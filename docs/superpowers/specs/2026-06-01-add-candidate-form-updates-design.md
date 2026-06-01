@@ -78,15 +78,23 @@ Two facts from exploration that shape the design:
 - **Team Lead**: replace the editable `Input` with a read-only field
   (disabled input / static text) bound to the selected recruiter's team
   lead; shows "—" until a recruiter is chosen. No longer user-editable.
+- **Attachments box** (replaces the single resume upload):
+  - **Resume** — one **fixed, required** slot. Resume-appropriate types
+    (PDF / DOC / DOCX). Becomes the canonical resume (`resumeLink`, via
+    set-as-resume) and is the file the auto-queued assignment email carries.
+  - **Additional attachments** — **optional**, **multiple**, **any
+    format**. Stored as `attachments[]` entries on the candidate (available
+    for later manual sends); not attached to the create-time email.
 - **Notes**: optional `Textarea` with a 2000-char counter, below the PRT
   fields.
 - **Submit (`handleCreateCandidate`)** becomes the post-create sequence in
   Decision 5. Order: validate → `createCandidate` (socket) → on success,
-  with the returned `candidateId`: (a) upload the resume via the P2
-  attachment endpoint (which also set-as-resume to preserve `resumeLink`),
-  (b) `POST /api/candidates/:id/send-assignment-email` to enqueue, (c) save
-  the note to `candidatecomments`. Each post-step is try/caught with its
-  own toast; none blocks the others or the create.
+  with the returned `candidateId`: (a) upload the **resume** via the P2
+  attachment endpoint + set-as-resume (preserves `resumeLink`), (b) upload
+  each **additional attachment** via the P2 endpoint, (c) `POST
+  /api/candidates/:id/send-assignment-email` to enqueue (attaches the
+  resume), (d) save the note to `candidatecomments`. Each post-step is
+  try/caught with its own toast; none blocks the others or the create.
 
 ### Frontend — `Sidebar.tsx`
 
@@ -113,6 +121,15 @@ Two facts from exploration that shape the design:
 
 - Extend `buildCandidateOptions` recruiter choices with each recruiter's
   `teamLead` display name, so the form can auto-fill Team Lead client-side.
+
+### Backend — attachment MIME for additional files
+
+- The existing attachment upload enforces a MIME whitelist (PDF/DOCX/XLSX/
+  PNG/JPEG) + 10 MB cap. Add an **"additional"** upload path/flag that
+  **skips the MIME whitelist** (accepts any type) while keeping the 10 MB
+  cap. Resume uploads continue to use the whitelisted path. Low-risk:
+  downloads are served via the authenticated streaming proxy, never
+  executed. (Flagged in the PR as the one security-adjacent change.)
 
 ### Backend — assignment email on create
 
