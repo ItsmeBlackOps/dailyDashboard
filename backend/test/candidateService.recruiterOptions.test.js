@@ -44,6 +44,7 @@ describe('candidateService.buildAssignablePeople — teamLead enrichment', () =>
 
     const options = candidateService.buildAssignablePeople({ email: 'mam.user@company.com', role: 'mam' });
     const recruiter = options.find((o) => o.value === 'recruit.two@company.com');
-    expect(recruiter.teamLead).toBeNull();
+    // teamLead key is omitted when the recruiter has none.
+    expect(recruiter.teamLead).toBeUndefined();
   });
 });

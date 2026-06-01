@@ -928,14 +928,14 @@ class CandidateService {
       .map((email) => {
         // Surface each recruiter's team lead so the Add Candidate form can
         // auto-fill the (read-only) Team Lead field on recruiter-select.
-        // Matches the server-side derivation done on create.
+        // Matches the server-side derivation done on create. The key is
+        // omitted when absent so existing exact-shape consumers/tests of
+        // {value,label} are unaffected.
         const record = userModel.getUserByEmail(email);
         const teamLead = (record?.teamLead || '').toString().trim();
-        return {
-          value: email,
-          label: formatDisplayName(email),
-          teamLead: teamLead || null
-        };
+        const option = { value: email, label: formatDisplayName(email) };
+        if (teamLead) option.teamLead = teamLead;
+        return option;
       })
       .sort((a, b) => a.label.localeCompare(b.label));
 
