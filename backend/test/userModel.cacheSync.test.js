@@ -25,9 +25,12 @@ describe('UserModel cache synchronization', () => {
 
   it('writes newly created users to the cache immediately', async () => {
     await model.createUser({
-      email: 'New.User@example.com',
+      // C9 (_validateBeforeWrite) requires callers to pass a lowercased,
+      // trimmed email and a team for non-admin roles on create.
+      email: 'new.user@example.com',
       password: 'secret1',
       role: 'lead',
+      team: 'technical',
       teamLead: 'Manager Example',
       manager: 'Director Example',
       active: true
@@ -76,7 +79,10 @@ describe('UserModel cache synchronization', () => {
     );
     expect(findOne).toHaveBeenCalledWith(
       { email: 'lead@example.com' },
-      expect.objectContaining({ projection: { _id: 1 } })
+      // updateUser's pre-update lookup now also projects role/active (used
+      // for the change-history audit); assert _id is projected without
+      // pinning the rest.
+      expect.objectContaining({ projection: expect.objectContaining({ _id: 1 }) })
     );
     expect(model.cache.get('lead@example.com')).toMatchObject({
       passwordHash: 'newhash',
