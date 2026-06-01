@@ -2,7 +2,11 @@ import { jest } from '@jest/globals';
 
 const mockUserModel = {
   getUserByEmail: jest.fn(),
-  createUser: jest.fn()
+  createUser: jest.fn(),
+  // C9 validator (validateTeamLeadCompatibility) reads the full roster to
+  // resolve a teamLead display name back to its role/level. Without this the
+  // create path throws "userModel.getAllUsers is not a function".
+  getAllUsers: jest.fn()
 };
 
 const mockRefreshTokenModel = {
@@ -36,10 +40,16 @@ describe('userService.bulkCreateUsers', () => {
   it('stores creator password hash as adminHash for new users', async () => {
     mockUserModel.getUserByEmail.mockImplementation((email) => {
       if (email === 'admin@example.com') {
-        return { passwordHash: 'creator-hash' };
+        return { email: 'admin@example.com', role: 'admin', passwordHash: 'creator-hash' };
       }
       return null;
     });
+
+    // Roster used by the C9 teamLead validator. The explicit teamLead below
+    // (the admin) must resolve to an active user at an allowed level (admin).
+    mockUserModel.getAllUsers.mockReturnValue([
+      { email: 'admin@example.com', role: 'admin', active: true }
+    ]);
 
     mockUserModel.createUser.mockResolvedValue({ insertedId: 'user-1' });
 
@@ -50,6 +60,9 @@ describe('userService.bulkCreateUsers', () => {
           email: 'new.user@example.com',
           password: 'Secure123',
           role: 'user',
+          // C9: an expert's teamLead must resolve to a teamLead/AM/manager/admin.
+          // Point it at the admin creator so the compatibility check passes.
+          teamLead: 'admin@example.com',
           active: true
         }
       ]
