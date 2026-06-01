@@ -1,8 +1,17 @@
 /* @vitest-environment jsdom */
 import * as React from 'react';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { CompanyCombobox, invalidateClientsCache } from './CompanyCombobox';
+
+// CompanyCombobox calls useAuth(), which uses useNavigate() from
+// react-router-dom and therefore must run inside a Router. Wrap every
+// render in a MemoryRouter (mirrors WorkloadTab.test.tsx and the other
+// profile-hub component tests in this repo).
+function render(ui: React.ReactElement) {
+  return rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 // ── Global stubs ─────────────────────────────────────────────────────────────
 // cmdk uses ResizeObserver internally
@@ -52,7 +61,10 @@ function clickTrigger() {
 }
 
 beforeEach(() => {
-  localStorage.setItem('token', 'test-token');
+  // useAuth().authFetch reads the 'accessToken' key; without it, authFetch
+  // calls logout() and throws 'No token' before fetching, leaving the client
+  // list empty. (The legacy 'token' key this test used no longer matches.)
+  localStorage.setItem('accessToken', 'test-token');
   invalidateClientsCache();
 });
 
