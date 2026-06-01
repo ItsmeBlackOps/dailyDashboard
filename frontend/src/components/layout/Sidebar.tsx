@@ -17,6 +17,7 @@ import {
   Activity,
   Headphones,
   Briefcase,
+  Megaphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -425,6 +426,17 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 <NavItem
                   icon={Database}
                   label="Branch Candidates"
+                  href="/branch-candidates"
+                  isOpen={isOpen}
+                />
+              )}
+              {/* PRT — Move to Marketing: admin + marketing manager +
+                  marketing assistant manager only. Links to Branch
+                  Candidates where the bulk action lives. */}
+              {['admin', 'mm', 'mam', 'manager', 'assistantmanager'].includes(normalizedRole) && (
+                <NavItem
+                  icon={Megaphone}
+                  label="Move to Marketing"
                   href="/branch-candidates"
                   isOpen={isOpen}
                 />

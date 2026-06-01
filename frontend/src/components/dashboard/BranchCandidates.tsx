@@ -94,6 +94,7 @@ interface CandidateNotificationPayload {
 interface RecruiterOption {
   value: string;
   label: string;
+  teamLead?: string | null;
 }
 
 interface CandidateCreatePolicy {
@@ -348,6 +349,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                    "manager", "assistantmanager", "teamlead", "expert"].includes(normalizedRole);
   const canEdit = ["admin", "mm", "mam", "mlead", "recruiter", "lead", "am",
                    "manager", "assistantmanager", "teamlead"].includes(normalizedRole);
+  // PRT — "Move to Marketing" is admin + marketing manager + marketing
+  // assistant manager only. Legacy mm/mam are marketing by definition;
+  // new manager/assistantManager default to marketing (matches the
+  // toLegacyRole shim). Technical 'am'/'lead', team leads and recruiters
+  // are excluded. The server re-enforces the precise (role,team) gate.
+  const canMoveToMarketing = ["admin", "mm", "mam", "manager", "assistantmanager"].includes(normalizedRole);
   const canEditBasicFields = ["admin", "mm", "mam", "mlead", "recruiter",
                               "manager", "assistantmanager", "teamlead"].includes(normalizedRole);
   const canChangeRecruiterField = ['admin', 'mm', 'mam', 'mlead',
@@ -488,6 +495,11 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [createResumeFile, setCreateResumeFile] = useState<File | null>(null);
   const [createResumeError, setCreateResumeError] = useState('');
   const [createError, setCreateError] = useState('');
+  // PRT Add-Candidate updates: optional additional attachments (any format),
+  // a Notes box, and a free-text "+ Add new technology" toggle.
+  const [createAdditionalFiles, setCreateAdditionalFiles] = useState<File[]>([]);
+  const [createNotes, setCreateNotes] = useState('');
+  const [createTechCustom, setCreateTechCustom] = useState(false);
   const [creating, setCreating] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState<string>('');
@@ -674,7 +686,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       seen.add(value);
       normalized.push({
         value,
-        label: option.label?.trim() || formatEmailDisplay(value)
+        label: option.label?.trim() || formatEmailDisplay(value),
+        teamLead: option.teamLead ?? null
       });
     }
 
@@ -2459,6 +2472,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     });
   }, [selectedIds, toast, posthog]);
 
+  const [movingToMarketing, setMovingToMarketing] = useState(false);
+
   const handleResumeUnderstandingTrigger = (candidateId: string) => {
     if (!socket) return;
 
@@ -2739,6 +2754,27 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     );
   }, [socket, normalizeOptionList, normalizeCreatePolicy, sortBy]);
 
+  const handleMoveToMarketing = useCallback(() => {
+    if (!socket || selectedIds.size === 0) return;
+    setMovingToMarketing(true);
+    const ids = Array.from(selectedIds);
+    socket.emit('moveCandidatesToMarketing', { candidateIds: ids }, (resp: { success?: boolean; error?: string; moved?: string[]; failed?: unknown[] }) => {
+      setMovingToMarketing(false);
+      if (!resp?.success) {
+        toast({ title: 'Move to Marketing failed', description: resp?.error || 'Unable to move candidates', variant: 'destructive' });
+        return;
+      }
+      const movedCount = Array.isArray(resp.moved) ? resp.moved.length : 0;
+      const failedCount = Array.isArray(resp.failed) ? resp.failed.length : 0;
+      toast({
+        title: 'Moved to Marketing',
+        description: `${movedCount} moved${failedCount ? `, ${failedCount} skipped (out of scope)` : ''}.`
+      });
+      handleSelectAll(false);
+      fetchCandidates();
+    });
+  }, [socket, selectedIds, toast, handleSelectAll, fetchCandidates]);
+
   useEffect(() => {
     if (!socket) {
       setLoading(false);
@@ -3009,6 +3045,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setCreating(false);
     setCreateResumeFile(null);
     setCreateResumeError('');
+    setCreateAdditionalFiles([]);
+    setCreateNotes('');
+    setCreateTechCustom(false);
   };
 
   const handleCreateFieldChange = (field: keyof typeof createForm, value: string) => {
@@ -3088,7 +3127,6 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     const trimmedRecruiter = createForm.recruiter.trim().toLowerCase();
     const trimmedContact = createForm.contact.trim();
     // PRT field reads (marketing-only create surface).
-    const trimmedTeamLead = createForm.teamLead.trim().toLowerCase();
     const trimmedExperienceYears = createForm.experienceYears.trim();
     const trimmedVisaType = createForm.visaType.trim();
     const trimmedEadStart = createForm.eadStartDate.trim();
@@ -3153,6 +3191,14 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
     if (!recruiterAllowedSet.has(trimmedRecruiter)) {
       setCreateError('Please select an active recruiter from your hierarchy list');
+      setCreating(false);
+      return;
+    }
+
+    // Team Lead is mandatory and auto-filled from the recruiter; the server
+    // derives the stored value, so we only require that one exists.
+    if (!createForm.teamLead.trim()) {
+      setCreateError('Selected recruiter has no Team Lead set — pick a recruiter with a team lead');
       setCreating(false);
       return;
     }
@@ -3237,13 +3283,14 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     };
 
     if (trimmedContact) payload.contact = trimmedContact;
-    if (trimmedTeamLead) payload.teamLead = trimmedTeamLead;
+    // teamLead intentionally NOT sent — the server derives it from the
+    // recruiter's record (display-name → email). The form only displays it.
     if (trimmedEadStart) payload.eadStartDate = trimmedEadStart;
     if (trimmedEadEnd) payload.eadEndDate = trimmedEadEnd;
     if (trimmedCity) payload.city = trimmedCity;
     if (trimmedState) payload.state = trimmedState;
 
-    socket.emit('createCandidate', payload, (response: any) => {
+    socket.emit('createCandidate', payload, async (response: any) => {
       if (!response?.success) {
         const details = Array.isArray(response?.details) ? response.details.join(', ') : '';
         setCreateError(response?.error || details || 'Unable to create candidate');
@@ -3251,9 +3298,70 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         return;
       }
 
+      const candidateId = String(response?.candidate?.id || response?.candidate?._id || '');
+
+      // Post-create enrichment. The candidate is already saved, so each
+      // step is non-blocking — a failure only surfaces a toast.
+      if (candidateId) {
+        let resumeAttachmentId = '';
+        // 1) Persist the resume as an attachment (so the assignment email
+        //    can carry it) and mark it the canonical resume.
+        try {
+          if (createResumeFile) {
+            const fd = new FormData();
+            fd.append('file', createResumeFile);
+            const r = await authFetch(`${API_URL}/api/candidates/${candidateId}/attachments`, { method: 'POST', body: fd });
+            const j = await r.json();
+            if (r.ok && j?.success && j?.attachment?.id) {
+              resumeAttachmentId = String(j.attachment.id);
+              await authFetch(`${API_URL}/api/candidates/${candidateId}/attachments/${resumeAttachmentId}/set-as-resume`, { method: 'POST' });
+            }
+          }
+        } catch { /* non-blocking */ }
+
+        // 2) Upload additional attachments (any format).
+        for (const file of createAdditionalFiles) {
+          try {
+            const fd = new FormData();
+            fd.append('file', file);
+            await authFetch(`${API_URL}/api/candidates/${candidateId}/attachments/additional`, { method: 'POST', body: fd });
+          } catch { /* non-blocking */ }
+        }
+
+        // 3) Auto-queue the §6.2 Assignment Email (carries the resume).
+        try {
+          const r = await authFetch(`${API_URL}/api/candidates/${candidateId}/send-assignment-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(resumeAttachmentId ? { attachmentIds: [resumeAttachmentId] } : {})
+          });
+          if (!r.ok) {
+            const j = await r.json().catch(() => ({}));
+            toast({
+              title: 'Assignment email not queued',
+              description: j?.error || 'You can send it from the candidate page.',
+              variant: 'destructive'
+            });
+          }
+        } catch {
+          toast({
+            title: 'Assignment email not queued',
+            description: 'You can send it from the candidate page.',
+            variant: 'destructive'
+          });
+        }
+
+        // 4) Save the note as a candidatecomments type='notes' entry.
+        if (createNotes.trim()) {
+          try {
+            socket.emit('addResumeComment', { candidateId, content: createNotes.trim(), type: 'notes' }, () => {});
+          } catch { /* non-blocking */ }
+        }
+      }
+
       toast({
-        title: 'Candidate submitted',
-        description: 'Candidate sent to admin alerts for expert assignment.'
+        title: 'Candidate created',
+        description: 'Assignment email queued. Candidate sent to admin alerts for expert assignment.'
       });
 
       resetCreateState();
@@ -3714,16 +3822,26 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   <SelectItem value="Placement Offer">Placement Offer</SelectItem>
                 </SelectContent>
               </Select>
+              {canMoveToMarketing && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleMoveToMarketing}
+                  disabled={movingToMarketing || bulkUpdating}
+                >
+                  {movingToMarketing ? 'Moving…' : 'Move to Marketing'}
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => handleSelectAll(false)}
-                disabled={bulkUpdating}
+                disabled={bulkUpdating || movingToMarketing}
                 className="ml-auto"
               >
                 Clear Selection
               </Button>
-              {bulkUpdating && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+              {(bulkUpdating || movingToMarketing) && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
             </div>
           )}
 
@@ -4298,7 +4416,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="create-email">Email</Label>
+                <Label htmlFor="create-email">Candidate Email</Label>
                 <Input
                   id="create-email"
                   type="email"
@@ -4310,20 +4428,47 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-technology">Technology</Label>
-                <Select
-                  value={createForm.technology || 'none'}
-                  onValueChange={(value) => handleCreateFieldChange('technology', value === 'none' ? '' : value)}
-                >
-                  <SelectTrigger id="create-technology">
-                    <SelectValue placeholder="Select technology" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Select technology</SelectItem>
-                    {PRT_TECHNOLOGY_VALUES.map((tech) => (
-                      <SelectItem key={tech} value={tech}>{tech}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {createTechCustom ? (
+                  <div className="space-y-1">
+                    <Input
+                      id="create-technology-custom"
+                      value={createForm.technology}
+                      onChange={(event) => handleCreateFieldChange('technology', event.target.value)}
+                      placeholder="Enter a new technology"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      className="text-xs text-primary underline"
+                      onClick={() => { setCreateTechCustom(false); handleCreateFieldChange('technology', ''); }}
+                    >
+                      Choose from list
+                    </button>
+                  </div>
+                ) : (
+                  <Select
+                    value={createForm.technology || 'none'}
+                    onValueChange={(value) => {
+                      if (value === '__add_new__') {
+                        setCreateTechCustom(true);
+                        handleCreateFieldChange('technology', '');
+                        return;
+                      }
+                      handleCreateFieldChange('technology', value === 'none' ? '' : value);
+                    }}
+                  >
+                    <SelectTrigger id="create-technology">
+                      <SelectValue placeholder="Select technology" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select technology</SelectItem>
+                      {PRT_TECHNOLOGY_VALUES.map((tech) => (
+                        <SelectItem key={tech} value={tech}>{tech}</SelectItem>
+                      ))}
+                      <SelectItem value="__add_new__">+ Add new technology…</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               {/* Branch is auto-derived (and locked) when the server policy
                   marks it read-only — e.g. assistantManager+marketing (MAM),
@@ -4345,7 +4490,14 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 <Label htmlFor="create-recruiter">Recruiter</Label>
                 <Select
                   value={createForm.recruiter || 'none'}
-                  onValueChange={(value) => handleCreateFieldChange('recruiter', value === 'none' ? '' : value)}
+                  onValueChange={(value) => {
+                    const rec = value === 'none' ? '' : value.trim().toLowerCase();
+                    const opt = recruiterOptions.find((o) => o.value === rec);
+                    // Auto-fill the read-only Team Lead from the recruiter's
+                    // record (display only — the server derives the stored
+                    // value from the recruiter on create).
+                    setCreateForm((prev) => ({ ...prev, recruiter: rec, teamLead: opt?.teamLead || '' }));
+                  }}
                   disabled={recruiterOptions.length === 0}
                 >
                   <SelectTrigger id="create-recruiter">
@@ -4452,12 +4604,14 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="create-team-lead">Team Lead (optional)</Label>
+                  <Label htmlFor="create-team-lead">Team Lead (auto)</Label>
                   <Input
                     id="create-team-lead"
-                    value={createForm.teamLead}
-                    onChange={(e) => handleCreateFieldChange('teamLead', e.target.value)}
-                    placeholder="Auto-derived from recruiter if blank"
+                    value={createForm.teamLead || '—'}
+                    readOnly
+                    disabled
+                    className="bg-muted"
+                    title="Auto-filled from the selected recruiter"
                   />
                 </div>
               </div>
@@ -4481,7 +4635,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               </div>
               {/* ---------- /PRT fields ---------- */}
               <div className="space-y-2">
-                <Label htmlFor="create-resume">Resume (PDF)</Label>
+                <Label htmlFor="create-resume">Resume (PDF) — required</Label>
                 <Input
                   id="create-resume"
                   type="file"
@@ -4492,6 +4646,58 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   <p className="text-xs text-muted-foreground">{createResumeFile.name}</p>
                 )}
                 {createResumeError && <p className="text-xs text-destructive">{createResumeError}</p>}
+              </div>
+              {/* Additional attachments — optional, multiple, any format. */}
+              <div className="space-y-2">
+                <Label htmlFor="create-additional">Additional attachments (optional, any format)</Label>
+                <Input
+                  id="create-additional"
+                  type="file"
+                  multiple
+                  onChange={(event) => {
+                    const picked = Array.from(event.target.files || []);
+                    const tooBig = picked.filter((f) => f.size > 10 * 1024 * 1024);
+                    if (tooBig.length) {
+                      toast({
+                        title: 'File too large',
+                        description: `${tooBig.map((f) => f.name).join(', ')} exceeds the 10 MB limit`,
+                        variant: 'destructive'
+                      });
+                    }
+                    setCreateAdditionalFiles((prev) => [...prev, ...picked.filter((f) => f.size <= 10 * 1024 * 1024)]);
+                    event.target.value = '';
+                  }}
+                />
+                {createAdditionalFiles.length > 0 && (
+                  <ul className="space-y-1">
+                    {createAdditionalFiles.map((file, idx) => (
+                      <li key={`${file.name}-${idx}`} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="truncate text-muted-foreground">{file.name}</span>
+                        <button
+                          type="button"
+                          className="text-destructive underline shrink-0"
+                          onClick={() => setCreateAdditionalFiles((prev) => prev.filter((_, i) => i !== idx))}
+                        >
+                          remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {/* Notes — optional, saved as a candidatecomments type='notes' entry. */}
+              <div className="space-y-2">
+                <Label htmlFor="create-notes">Notes (optional)</Label>
+                <textarea
+                  id="create-notes"
+                  value={createNotes}
+                  onChange={(event) => setCreateNotes(event.target.value.slice(0, 2000))}
+                  className="w-full rounded border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="Any context to attach to this candidate."
+                />
+                <p className="text-xs text-muted-foreground text-right">{createNotes.length} / 2000</p>
               </div>
               {createError && <p className="text-sm text-destructive">{createError}</p>}
             </div>

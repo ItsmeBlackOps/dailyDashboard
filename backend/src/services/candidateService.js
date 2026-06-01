@@ -31,6 +31,7 @@ const PRT_VISIBLE_FIELDS = [
   'eadStartDate', 'eadEndDate',
   'company', 'city', 'state',
   'ackEmail', 'ackEmailAt',
+  'team',
   'marketingStartDate',
   'attachments', 'editHistory', 'assignmentEmails',
   'expiringInDays', 'daysInMarketing'
@@ -887,6 +888,7 @@ class CandidateService {
       state: candidate.state ?? null,
       ackEmail: candidate.ackEmail ?? null,
       ackEmailAt: toDateOrNull(candidate.ackEmailAt),
+      team: candidate.team ?? null,
       marketingStartDate,
       attachments: Array.isArray(candidate.attachments) ? candidate.attachments : [],
       editHistory: Array.isArray(candidate.editHistory) ? candidate.editHistory : [],
@@ -923,10 +925,18 @@ class CandidateService {
   buildAssignablePeople(user) {
     const inScopeActiveEmails = this.resolveActiveHierarchyEmails(user);
     const options = Array.from(inScopeActiveEmails)
-      .map((email) => ({
-        value: email,
-        label: formatDisplayName(email)
-      }))
+      .map((email) => {
+        // Surface each recruiter's team lead so the Add Candidate form can
+        // auto-fill the (read-only) Team Lead field on recruiter-select.
+        // Matches the server-side derivation done on create. The key is
+        // omitted when absent so existing exact-shape consumers/tests of
+        // {value,label} are unaffected.
+        const record = userModel.getUserByEmail(email);
+        const teamLead = (record?.teamLead || '').toString().trim();
+        const option = { value: email, label: formatDisplayName(email) };
+        if (teamLead) option.teamLead = teamLead;
+        return option;
+      })
       .sort((a, b) => a.label.localeCompare(b.label));
 
     logger.debug('Built hierarchy-scoped recruiter choices', {
@@ -982,6 +992,71 @@ class CandidateService {
       error.statusCode = 403;
       throw error;
     }
+  }
+
+  // PRT — bulk "Move to Marketing". Sets team='marketing' on each in-scope
+  // candidate. Gated to admin + marketing manager + marketing assistant
+  // manager (toLegacyRole ∈ {admin, mm, mam}); technical AM, team leads and
+  // recruiters are excluded. Each candidate is scope-checked via its
+  // recruiter and the change is appended to editHistory.
+  async moveCandidatesToMarketing(user, candidateIds = []) {
+    if (!user?.email || !user?.role) {
+      const error = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+    const legacyRole = toLegacyRole(user.role, user.team);
+    if (!['admin', 'mm', 'mam'].includes(legacyRole)) {
+      const error = new Error('Access denied. Only marketing managers, assistant managers, or admins can move candidates to Marketing.');
+      error.statusCode = 403;
+      throw error;
+    }
+    const ids = Array.isArray(candidateIds) ? candidateIds.filter(Boolean) : [];
+    if (ids.length === 0) {
+      const error = new Error('No candidates specified');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const moved = [];
+    const failed = [];
+    for (const id of ids) {
+      try {
+        const candidate = await candidateModel.getCandidateById(id);
+        if (!candidate) {
+          failed.push({ id, error: 'Candidate not found' });
+          continue;
+        }
+        const recruiterEmail = formatEmail(candidate.recruiter || candidate.Recruiter || '');
+        this.assertRecruiterInScope(user, recruiterEmail);
+        const previousTeam = candidate.team ?? null;
+        if (previousTeam === 'marketing') {
+          moved.push(id); // already in marketing — idempotent no-op
+          continue;
+        }
+        await candidateModel.updateCandidateById(id, {
+          team: 'marketing',
+          _changedBy: user.email,
+          _source: 'move-to-marketing',
+          _pushEditHistory: [{
+            field: 'team',
+            oldValue: previousTeam,
+            newValue: 'marketing',
+            actor: user.email,
+            ts: new Date()
+          }]
+        });
+        moved.push(id);
+      } catch (err) {
+        failed.push({ id, error: err.message });
+      }
+    }
+    logger.info('moveCandidatesToMarketing complete', {
+      userEmail: user.email,
+      moved: moved.length,
+      failed: failed.length
+    });
+    return { moved, failed };
   }
 
   buildExpertChoices(expertEmails = []) {
