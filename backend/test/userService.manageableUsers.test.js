@@ -27,7 +27,7 @@ describe('UserService.getManageableUsers admin/manager coverage', () => {
     expect(emails).toEqual(['lead1@example.com', 'user1@example.com']);
   });
 
-  it('returns all other users for manager', async () => {
+  it('returns manageable reports for manager (excludes expert per C20 contract)', async () => {
     const users = [
       { email: 'manager@example.com', role: 'manager', active: true },
       { email: 'user2@example.com', role: 'user', teamLead: 'Manager', active: true },
@@ -40,9 +40,15 @@ describe('UserService.getManageableUsers admin/manager coverage', () => {
 
     const result = await service.getManageableUsers({ email: 'manager@example.com', role: 'manager' });
     expect(result.success).toBe(true);
-    expect(result.users).toHaveLength(2);
+    // C20: `manager` (canonical for legacy `mm`) manages mam/mlead/recruiter
+    // but NOT expert/user — those are managed by team leads. The pre-rename
+    // `manager` role was a superadmin alias that returned every user; after
+    // the C20 rename `manager` means `mm`, so the BFS role gate
+    // (canManageTargetRole) correctly drops the expert (`user2`) and keeps
+    // only the team lead (`mlead1`) from this manager's subtree.
+    expect(result.users).toHaveLength(1);
     const emails = result.users.map((u) => u.email).sort();
-    expect(emails).toEqual(['mlead1@example.com', 'user2@example.com']);
+    expect(emails).toEqual(['mlead1@example.com']);
   });
 
   it('builds hierarchy scope with self + manageable aliases', () => {

@@ -28,7 +28,13 @@ jest.unstable_mockModule('../../config/database.js', () => ({
   },
 }));
 
+// Spread the REAL module so candidateService's named-constant imports
+// (STATUS_VALUES, ACK_EMAIL_VALUES, …) still resolve; override only the
+// model instance with our stubbed collection. Without the spread, the
+// partial mock omits those exports and ESM linking fails.
+const ActualCandidate = await import('../../models/Candidate.js');
 jest.unstable_mockModule('../../models/Candidate.js', () => ({
+  ...ActualCandidate,
   candidateModel: {
     collection: candidateCol,
   },

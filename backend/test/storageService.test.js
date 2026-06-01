@@ -10,7 +10,12 @@ const sendMock = jest.fn();
 
 jest.unstable_mockModule('@aws-sdk/client-s3', () => ({
   S3Client: jest.fn(() => ({ send: sendMock })),
-  PutObjectCommand: jest.fn((input) => input)
+  PutObjectCommand: jest.fn((input) => input),
+  // PRT Phase 2 added deleteObject/streamObject/fetchObjectAsBase64 to
+  // storageService.js, which import these commands. The mock must export
+  // them too or the ESM import of storageService.js fails to link.
+  DeleteObjectCommand: jest.fn((input) => input),
+  GetObjectCommand: jest.fn((input) => input)
 }));
 
 const { storageService } = await import('../src/services/storageService.js');

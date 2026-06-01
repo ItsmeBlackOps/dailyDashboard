@@ -30,20 +30,23 @@ describe('Notification Change Tracking', () => {
     });
 
     it('captures change details when status is updated', async () => {
+        // PRT status enum (Candidate.js STATUS_VALUES) replaced the old
+        // free-form workflow statuses. 'New' -> 'Active' is a valid PRT
+        // transition; the old 'Active' -> 'Joined' is no longer a legal status.
         const oldCandidate = {
             _id: 'cand123',
             id: 'cand123',
             name: 'John Doe',
-            workflowStatus: 'Active',
-            status: 'Active',
+            workflowStatus: 'New',
+            status: 'New',
             branch: 'DEL',
             recruiter: 'recruiter@example.com'
         };
 
         const newCandidate = {
             ...oldCandidate,
-            workflowStatus: 'Joined',
-            status: 'Joined'
+            workflowStatus: 'Active',
+            status: 'Active'
         };
 
         candidateModel.getCandidateById.mockResolvedValue(oldCandidate);
@@ -54,7 +57,7 @@ describe('Notification Change Tracking', () => {
         await candidateService.updateCandidate(
             user,
             'cand123',
-            { status: 'Joined' }
+            { status: 'Active' }
         );
 
         // Verify Event was published with changeDetails
@@ -65,12 +68,17 @@ describe('Notification Change Tracking', () => {
         const payload = callArgs[1];
 
         expect(payload.changeDetails).toBeDefined();
-        // Production injects _changedBy into updates before computing changedFields,
-        // so _changedBy appears in changedFields and old/newValue alongside status.
+        // Production injects several internal keys into updates before computing
+        // changedFields, in this order: the changed audited field (status), then
+        // _pushEditHistory (because status is in CANDIDATE_AUDITED, so an edit-
+        // history entry is appended), then _changedBy and _source (provenance,
+        // default 'manual-ui'). All four therefore appear in changedFields. The
+        // mocked updateCandidateById returns a doc without these internal fields,
+        // so each newValue resolves to null (?? null) just like oldValue.
         expect(payload.changeDetails).toEqual({
-            changedFields: ['status', '_changedBy'],
-            oldValue: { status: 'Active', _changedBy: null },
-            newValue: { status: 'Joined', _changedBy: null }
+            changedFields: ['status', '_pushEditHistory', '_changedBy', '_source'],
+            oldValue: { status: 'New', _pushEditHistory: null, _changedBy: null, _source: null },
+            newValue: { status: 'Active', _pushEditHistory: null, _changedBy: null, _source: null }
         });
 
         expect(payload.actor).toEqual({
@@ -116,10 +124,12 @@ describe('Notification Change Tracking', () => {
         // Based on my implementation:
         // updates.status !== oldStatus
 
-        // Production always injects _changedBy into updates, so even when status is
-        // unchanged, _changedBy is detected as a changed field (undefined -> email).
+        // Production always injects _changedBy AND _source into updates, so even
+        // when status is unchanged both are detected as changed fields
+        // (undefined -> email / undefined -> 'manual-ui'). Status itself is
+        // filtered out because it is unchanged.
         if (payload.changeDetails) {
-            expect(payload.changeDetails.changedFields).toEqual(['_changedBy']);
+            expect(payload.changeDetails.changedFields).toEqual(['_changedBy', '_source']);
         } else {
             expect(payload.changeDetails).toBeUndefined();
         }

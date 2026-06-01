@@ -62,23 +62,32 @@ describe('candidateService manager create flow', () => {
         technology: 'react',
         branch: 'ggr',
         recruiter: 'recruiter@example.com',
+        // PRT Phase 1 requires a teamLead (derived from the recruiter or
+        // supplied explicitly). Supplied here so the create proceeds.
+        teamLead: 'tlead@example.com',
         expert: 'should@not.persist',
         resumeLink: SAMPLE_RESUME_LINK
       }
     );
 
-    expect(candidateModel.createCandidate).toHaveBeenCalledWith({
+    // objectContaining: PRT Phase 1 also stamps status/ackEmail/marketing
+    // defaults onto the create payload — assert the fields this test cares
+    // about without pinning the full PRT surface.
+    expect(candidateModel.createCandidate).toHaveBeenCalledWith(expect.objectContaining({
       name: 'Jane Doe',
       email: 'jane.doe@example.com',
       technology: 'React',
       branch: 'GGR',
       recruiter: 'recruiter@example.com',
+      teamLead: 'tlead@example.com',
       resumeLink: SAMPLE_RESUME_LINK,
       expert: '',
       workflowStatus: WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: RESUME_UNDERSTANDING_STATUS.pending,
-      createdBy: 'manager@example.com'
-    });
+      createdBy: 'manager@example.com',
+      status: 'New',
+      ackEmail: 'Pending'
+    }));
 
     expect(result.workflowStatus).toBe(WORKFLOW_STATUS.awaitingExpert);
     expect(result.expertRaw).toBe('');

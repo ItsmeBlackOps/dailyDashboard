@@ -1457,9 +1457,20 @@ export class UserService {
           const finalLead = updatePayload.teamLead !== undefined
             ? updatePayload.teamLead
             : targetUser.teamLead;
-          const check = this.validateTeamLeadCompatibility(finalRole, finalLead);
-          if (!check.valid) {
-            throw new Error(`Invalid role/teamLead combination: ${check.reason}`);
+          // A newly-promoted team lead is assigned as their OWN chain-root
+          // lead (self-reference; see the roleChangedToMlead branch above,
+          // which sets teamLead = derivedSelfName). A self-lead can never
+          // resolve to a higher level, so validateTeamLeadCompatibility
+          // would always reject it — that's the C9/C15 regression that broke
+          // bulk promote-to-lead. Skip the hierarchy check for the self-lead
+          // chain-root case; all other (role, lead) pairs are still checked.
+          const isSelfLead = Boolean(finalLead) &&
+            this.formatNameValue(finalLead) === derivedSelfName;
+          if (!isSelfLead) {
+            const check = this.validateTeamLeadCompatibility(finalRole, finalLead);
+            if (!check.valid) {
+              throw new Error(`Invalid role/teamLead combination: ${check.reason}`);
+            }
           }
         }
 

@@ -23,7 +23,13 @@ jest.unstable_mockModule('../../config/database.js', () => ({
   },
 }));
 
+// Spread the REAL module so candidateService's named-constant imports
+// (STATUS_VALUES, ACK_EMAIL_VALUES, …) still resolve; override only the
+// model instance. Without the spread, ESM linking fails on the missing
+// constant exports.
+const ActualCandidate = await import('../../models/Candidate.js');
 jest.unstable_mockModule('../../models/Candidate.js', () => ({
+  ...ActualCandidate,
   candidateModel: {
     collection: { find: jest.fn(), aggregate: jest.fn() },
   },
@@ -55,6 +61,9 @@ function createRes() {
   return res;
 }
 
+// Mutated to a unique value per test (see beforeEach) to defeat the
+// module-level per-email cache in getDistinctClients.
+let _distinctUid = 0;
 const ADMIN_USER     = { email: 'admin@vizvainc.com', role: 'admin' };
 const RECRUITER_USER = { email: 'r@vizvainc.com',    role: 'recruiter' };
 
@@ -65,6 +74,13 @@ describe('candidateController.getDistinctClients', () => {
     // Default: endClients collection returns empty
     mockEndClinetsToArray.mockResolvedValue([]);
     endClientsColMock.find.mockReturnValue({ toArray: mockEndClinetsToArray });
+    // getDistinctClients caches results in a module-level Map keyed by
+    // user.email (5-min TTL). Without isolation the first test's cached
+    // value leaks into later tests. Give every test a unique email so
+    // each one is a guaranteed cache miss.
+    _distinctUid += 1;
+    ADMIN_USER.email = `admin${_distinctUid}@vizvainc.com`;
+    RECRUITER_USER.email = `r${_distinctUid}@vizvainc.com`;
   });
 
   it('calls distinct with a filter that excludes null/empty End Client values', async () => {

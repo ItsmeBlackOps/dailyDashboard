@@ -1,7 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import JobRow from './JobRow';
 import type { Job } from './types';
+
+// This project's vitest config does not enable globals / RTL auto-cleanup,
+// so each render() accumulates in document.body. Without an explicit
+// cleanup, getByTestId finds duplicate rows from earlier tests and throws
+// "Found multiple elements". Unmount after every test.
+afterEach(cleanup);
 
 const JOB: Job = {
   id: 'j1',

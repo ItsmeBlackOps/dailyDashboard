@@ -147,7 +147,13 @@ describe('UserService bulk update defaults', () => {
 
     service.userModel = {
       getUserByEmail,
-      updateUser
+      updateUser,
+      // C9 validator resolves the auto-assigned teamLead ('Lead User')
+      // back to a role/level via the roster; the requesting lead must
+      // appear so the expert report's lead resolves to teamLead level.
+      getAllUsers: () => [
+        { email: 'lead.user@vizvainc.com', role: 'lead', active: true }
+      ]
     };
 
     service.refreshTokenModel = {
@@ -257,7 +263,10 @@ describe('UserService MM hierarchy rules', () => {
 
     service.userModel = {
       getUserByEmail,
-      createUser
+      createUser,
+      // C9 validator reads the roster; an empty MAM teamLead short-circuits
+      // to valid, but getAllUsers must still be a function.
+      getAllUsers: () => []
     };
 
     const result = await service.bulkCreateUsers(
@@ -266,18 +275,29 @@ describe('UserService MM hierarchy rules', () => {
     );
 
     expect(result.success).toBe(true);
+    // C20: the role is normalised to its canonical lowercase form (`mam`) and
+    // a `team` field is now persisted (null here — MM creator has no team in
+    // this fixture, so the new user inherits none).
     expect(createUser).toHaveBeenCalledWith({
       email: 'priya.singh@vizvainc.com',
       password: 'secret1',
       adminHash: null,
-      role: 'MAM',
+      role: 'mam',
+      team: null,
       teamLead: '',
       manager: 'Neha Malik',
       active: true
     });
   });
 
-  it('prevents MM from creating recruiters directly', async () => {
+  it('allows MM to create recruiters directly (C20 broadened mm create scope)', async () => {
+    // Pre-C20, `canCreateRole('mm', ...)` allowed only `['mam']`, so this case
+    // was a rejection. The C20 role-rename (PR #101) broadened mm/manager to
+    // `['mam','mlead','recruiter','assistantManager','teamLead']` — documented
+    // in CLAUDE.md §3 and the canCreateRole comment — so an MM may now create a
+    // recruiter directly. The "MM cannot assign an unsupported role" path is
+    // still covered by the sibling bulk-update test that rejects `admin`.
+    const createUser = jest.fn().mockResolvedValue(null);
     const getUserByEmail = jest.fn().mockImplementation((email) => {
       if (email === 'neha.malik@silverspaceinc.com') {
         return { email, role: 'MM' };
@@ -287,7 +307,12 @@ describe('UserService MM hierarchy rules', () => {
 
     service.userModel = {
       getUserByEmail,
-      createUser: jest.fn()
+      createUser,
+      // C9 validator resolves the derived teamLead ('Neha Malik') back to a
+      // role/level; the MM requester must appear in the roster at mm level.
+      getAllUsers: () => [
+        { email: 'neha.malik@silverspaceinc.com', role: 'mm', active: true }
+      ]
     };
 
     const result = await service.bulkCreateUsers(
@@ -295,9 +320,11 @@ describe('UserService MM hierarchy rules', () => {
       [{ email: 'recruit.new@vizvainc.com', password: 'secret1', role: 'recruiter' }]
     );
 
-    expect(result.success).toBe(false);
-    expect(result.failures).toHaveLength(1);
-    expect(result.failures[0].error).toBe('Not allowed to create this role');
+    expect(result.success).toBe(true);
+    expect(result.failures).toHaveLength(0);
+    expect(createUser).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'recruit.new@vizvainc.com', role: 'recruiter' })
+    );
   });
 
   it('fills manager automatically when MM updates a MAM', async () => {
@@ -344,7 +371,16 @@ describe('UserService MM hierarchy rules', () => {
 
     service.userModel = {
       getUserByEmail,
-      updateUser
+      updateUser,
+      // C9 validator resolves the preserved teamLead ('Existing Lead') back to
+      // a role/level. The recruiter's lead must resolve to an active user at
+      // teamLead/AM/manager/admin level, so the roster includes existing.lead
+      // (a MAM) plus the MM requester.
+      getAllUsers: () => [
+        { email: 'recruit.one@vizvainc.com', role: 'recruiter', active: true },
+        { email: 'existing.lead@vizvainc.com', role: 'mam', active: true },
+        { email: 'neha.malik@silverspaceinc.com', role: 'mm', active: true }
+      ]
     };
 
     service.refreshTokenModel = {
