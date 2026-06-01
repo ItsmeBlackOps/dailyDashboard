@@ -78,9 +78,11 @@ class CandidateSocketHandler {
       }
 
       const search = typeof sanitizedData.search === 'string' ? sanitizedData.search : undefined;
+      const sort = typeof sanitizedData.sort === 'string' ? sanitizedData.sort : undefined;
 
       const result = await candidateService.getCandidatesForUser(user, {
-        search
+        search,
+        sort
       });
 
       const response = {

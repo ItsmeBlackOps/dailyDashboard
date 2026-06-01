@@ -1,7 +1,57 @@
 import crypto from 'node:crypto';
-import { candidateModel, WORKFLOW_STATUS, RESUME_UNDERSTANDING_STATUS } from '../models/Candidate.js';
+import {
+  candidateModel,
+  WORKFLOW_STATUS,
+  RESUME_UNDERSTANDING_STATUS,
+  STATUS_VALUES,
+  STATUS_ALIASES,
+  TECHNOLOGY_VALUES,
+  VISA_TYPE_VALUES,
+  EAD_REQUIRED_VISA_TYPES,
+  COMPANY_VALUES,
+  ACK_EMAIL_VALUES,
+  CANDIDATE_AUDITED
+} from '../models/Candidate.js';
+
+// PRT scope: only marketing manager / AM / admin may WRITE PRT fields.
+// Marketing READ access (mm/mam/mlead/recruiter/admin) is enforced by
+// the PRT visibility filter on read paths (see _applyPrtVisibility).
+const PRT_WRITABLE_FIELDS = [
+  'teamLead', 'experienceYears', 'visaType', 'eadStartDate', 'eadEndDate',
+  'company', 'city', 'state', 'ackEmail'
+];
+const PRT_WRITE_ROLES = new Set(['admin', 'mm', 'mam']);
+
+// Fields stripped from the formatted candidate when the requester is NOT
+// in the marketing track. Includes both stored fields and derived getters
+// computed by formatCandidateRecord. Technical track (lead/am/expert/user)
+// sees the candidate exactly as before — no PRT surface area.
+const PRT_VISIBLE_FIELDS = [
+  'teamLead', 'experienceYears', 'visaType',
+  'eadStartDate', 'eadEndDate',
+  'company', 'city', 'state',
+  'ackEmail', 'ackEmailAt',
+  'marketingStartDate',
+  'attachments', 'editHistory', 'assignmentEmails',
+  'expiringInDays', 'daysInMarketing'
+];
+const PRT_READ_ROLES = new Set(['admin', 'mm', 'mam', 'mlead', 'recruiter']);
+
+// PRT Phase 2: attachment operations (upload / remove / set-as-resume).
+// Broader than PRT_WRITE_ROLES because the operational reality is that
+// recruiters handle their candidates' documents day-to-day. Scope is
+// always validated through assertRecruiterInScope on the candidate's
+// own recruiter so cross-team access is still blocked.
+const PRT_ATTACHMENT_ROLES = new Set([
+  'admin', 'mm', 'mam', 'mlead', 'recruiter'
+]);
 import { userModel } from '../models/User.js';
 import { userService, roleLevel } from './userService.js';
+import { storageService } from './storageService.js';
+import { graphMailService } from './graphMailService.js';
+import { notificationService } from './notificationService.js';
+import { buildAssignmentEmail } from './assignmentEmailService.js';
+import { emailOutboxRepository } from './emailOutboxRepository.js';
 import { logger } from '../utils/logger.js';
 import { domainEventBus } from '../events/eventBus.js';
 import { DomainEvents } from '../events/eventTypes.js';
@@ -517,6 +567,17 @@ class CandidateService {
     return escapeRegex(trimmed);
   }
 
+  // Whitelist sort keys so the socket / HTTP boundary can't smuggle in
+  // arbitrary Mongo sort objects. Keys here map to SORT_PRESETS in
+  // Candidate.js. Unknown values fall back to the default.
+  resolveSortKey(sort) {
+    const ALLOWED = new Set(['updated', 'name', 'expiringIn']);
+    if (typeof sort !== 'string') return undefined;
+    const key = sort.trim();
+    if (!key) return undefined;
+    return ALLOWED.has(key) ? key : undefined;
+  }
+
   buildRecruiterVisibility(recruiterEmails, userForSelfPatterns = null) {
     const recruiterMatchers = new Set();
     const senderPatterns = new Set();
@@ -574,12 +635,14 @@ class CandidateService {
 
   async fetchCandidatesByBranch(user, branch, options) {
     const searchPattern = this.buildSearchPattern(options.search);
+    const sort = this.resolveSortKey(options.sort);
 
     const candidates = await candidateModel.getCandidatesByBranch(branch, {
-      search: searchPattern
+      search: searchPattern,
+      sort
     });
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
 
     logger.info('Branch candidates retrieved', {
       userEmail: user.email,
@@ -608,8 +671,9 @@ class CandidateService {
       throw error;
     }
 
-    const { includeSelfPatterns = false, search } = options;
+    const { includeSelfPatterns = false, search, sort } = options;
     const searchPattern = this.buildSearchPattern(search);
+    const resolvedSort = this.resolveSortKey(sort);
 
     const visibility = this.buildRecruiterVisibility(
       recruiterEmails,
@@ -618,10 +682,11 @@ class CandidateService {
 
     const candidates = await candidateModel.getCandidatesByRecruiters(recruiterEmails, {
       search: searchPattern,
+      sort: resolvedSort,
       visibility
     });
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
 
     logger.info('Hierarchy candidates retrieved', {
       userEmail: user.email,
@@ -645,12 +710,14 @@ class CandidateService {
 
   async fetchAllCandidates(user, options) {
     const searchPattern = this.buildSearchPattern(options.search);
+    const sort = this.resolveSortKey(options.sort);
 
     const candidates = await candidateModel.getAllCandidates({
-      search: searchPattern
+      search: searchPattern,
+      sort
     });
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
 
     logger.info('Admin candidates retrieved', {
       userEmail: user.email,
@@ -714,7 +781,7 @@ class CandidateService {
       search: searchPattern
     });
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
 
     logger.info('Expert candidates retrieved', {
       userEmail: user.email,
@@ -736,9 +803,13 @@ class CandidateService {
     };
   }
 
-  formatCandidateRecord(candidate) {
+  // Optional `user` arg drives the PRT visibility strip: when provided
+  // and non-marketing, the formatted record is post-processed to remove
+  // PRT-only fields. External callers (e.g. supportRequestService) can
+  // continue to call this with one arg for full-fidelity data.
+  formatCandidateRecord(candidate, user = null) {
     if (!candidate) {
-      return {
+      const emptyFormatted = {
         id: '',
         name: '',
         branch: '',
@@ -757,6 +828,7 @@ class CandidateService {
         resumeUnderstanding: false,
         createdBy: candidate?.createdBy ?? null
       };
+      return this._applyPrtVisibility(emptyFormatted, user);
     }
 
     const recruiterEmail = formatEmail(candidate.recruiter ?? candidate.Recruiter ?? candidate.recruiterRaw ?? '');
@@ -765,7 +837,27 @@ class CandidateService {
     const expertDisplay = formatDisplayName(expertValue);
     const resumeLink = (candidate.resumeLink || '').toString().trim();
 
-    return {
+    // PRT derived getters: re-evaluated on every read so the value is
+    // always current. The daily candidateAlertScheduler will additionally
+    // $set these on the doc for index-backed range queries (Phase 4).
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+    const toDateOrNull = (v) => {
+      if (v === null || v === undefined || v === '') return null;
+      if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+      const parsed = new Date(v);
+      return isNaN(parsed.getTime()) ? null : parsed;
+    };
+    const now = new Date();
+    const eadEndDate = toDateOrNull(candidate.eadEndDate);
+    const marketingStartDate = toDateOrNull(candidate.marketingStartDate);
+    const expiringInDays = eadEndDate
+      ? Math.floor((eadEndDate.getTime() - now.getTime()) / MS_PER_DAY)
+      : null;
+    const daysInMarketing = marketingStartDate
+      ? Math.floor((now.getTime() - marketingStartDate.getTime()) / MS_PER_DAY)
+      : null;
+
+    const formatted = {
       ...candidate,
       name: toTitleCase(candidate.name ?? candidate['Candidate Name'] ?? ''),
       branch: candidate.branch ?? candidate.Branch ?? '',
@@ -782,8 +874,49 @@ class CandidateService {
       resumeUnderstanding: (candidate.resumeUnderstandingStatus || RESUME_UNDERSTANDING_STATUS.pending) === RESUME_UNDERSTANDING_STATUS.done,
       createdBy: candidate.createdBy || null,
       Recruiter: recruiterEmail, // Compatibility
-      resumeLink
+      resumeLink,
+      // PRT projections (normalised) + derived
+      teamLead: candidate.teamLead ?? null,
+      experienceYears: candidate.experienceYears ?? null,
+      visaType: candidate.visaType ?? null,
+      eadStartDate: toDateOrNull(candidate.eadStartDate),
+      eadEndDate,
+      company: candidate.company ?? null,
+      city: candidate.city ?? null,
+      state: candidate.state ?? null,
+      ackEmail: candidate.ackEmail ?? null,
+      ackEmailAt: toDateOrNull(candidate.ackEmailAt),
+      marketingStartDate,
+      attachments: Array.isArray(candidate.attachments) ? candidate.attachments : [],
+      editHistory: Array.isArray(candidate.editHistory) ? candidate.editHistory : [],
+      assignmentEmails: Array.isArray(candidate.assignmentEmails) ? candidate.assignmentEmails : [],
+      expiringInDays,
+      daysInMarketing
     };
+    return this._applyPrtVisibility(formatted, user);
+  }
+
+  // PRT: strip PRT fields from a formatted candidate when the requester
+  // is NOT in the marketing track. Marketing readers (admin/mm/mam/mlead/
+  // recruiter) see the full surface. Non-marketing readers (am/lead/
+  // expert/user) see exactly the legacy projection — no behaviour change
+  // for them. Safe with missing user (no-op).
+  _applyPrtVisibility(formatted, user) {
+    if (!formatted || typeof formatted !== 'object') return formatted;
+    const role = (user?.role || '').toString().toLowerCase().trim();
+    if (!role || PRT_READ_ROLES.has(role)) return formatted;
+    const stripped = { ...formatted };
+    for (const f of PRT_VISIBLE_FIELDS) {
+      delete stripped[f];
+    }
+    return stripped;
+  }
+
+  _applyPrtVisibilityToList(list, user) {
+    if (!Array.isArray(list)) return list;
+    const role = (user?.role || '').toString().toLowerCase().trim();
+    if (!role || PRT_READ_ROLES.has(role)) return list;
+    return list.map((c) => this._applyPrtVisibility(c, user));
   }
 
   buildAssignablePeople(user) {
@@ -892,7 +1025,7 @@ class CandidateService {
       ]
     );
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
 
     const allUsers = userModel.getAllUsers();
     const expertEmails = allUsers
@@ -955,7 +1088,7 @@ class CandidateService {
           : WORKFLOW_STATUS.needsResumeUnderstanding
       );
 
-      return candidates.map((candidate) => this.formatCandidateRecord(candidate));
+      return candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
     }
 
     // Marketing / Branch Roles (Visibility Logic)
@@ -1056,7 +1189,7 @@ class CandidateService {
         );
       }
 
-      return candidates.map((candidate) => this.formatCandidateRecord(candidate));
+      return candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
     }
 
     const error = new Error('Access denied');
@@ -1238,6 +1371,140 @@ class CandidateService {
     }
 
 
+    // ----- PRT (Placement & Recruiter Tracker) fields -----
+
+    if (payload.status !== undefined) {
+      let s = (payload.status || '').toString().trim();
+      const alias = STATUS_ALIASES.get(s.toLowerCase());
+      if (alias) s = alias;
+      if (!STATUS_VALUES.includes(s)) {
+        const error = new Error(`Status must be one of ${STATUS_VALUES.join(', ')}`);
+        error.statusCode = 400;
+        throw error;
+      }
+      sanitized.status = s;
+    }
+
+    if (payload.visaType !== undefined) {
+      const v = (payload.visaType || '').toString().trim();
+      if (!VISA_TYPE_VALUES.includes(v)) {
+        const error = new Error(`Visa Type must be one of ${VISA_TYPE_VALUES.join(', ')}`);
+        error.statusCode = 400;
+        throw error;
+      }
+      sanitized.visaType = v;
+    }
+
+    if (payload.experienceYears !== undefined) {
+      const n = Number(payload.experienceYears);
+      if (!Number.isInteger(n) || n < 1 || n > 20) {
+        const error = new Error('Experience Years must be an integer between 1 and 20');
+        error.statusCode = 400;
+        throw error;
+      }
+      sanitized.experienceYears = n;
+    }
+
+    if (payload.company !== undefined) {
+      const c = (payload.company || '').toString().trim().toUpperCase();
+      if (!COMPANY_VALUES.includes(c)) {
+        const error = new Error(`Company must be one of ${COMPANY_VALUES.join(', ')}`);
+        error.statusCode = 400;
+        throw error;
+      }
+      sanitized.company = c;
+    }
+
+    if (payload.ackEmail !== undefined) {
+      const a = (payload.ackEmail || '').toString().trim();
+      if (!ACK_EMAIL_VALUES.includes(a)) {
+        const error = new Error(`Ack Email must be one of ${ACK_EMAIL_VALUES.join(', ')}`);
+        error.statusCode = 400;
+        throw error;
+      }
+      sanitized.ackEmail = a;
+    }
+
+    if (payload.city !== undefined) {
+      sanitized.city = (payload.city ?? '').toString().trim();
+    }
+
+    if (payload.state !== undefined) {
+      sanitized.state = (payload.state ?? '').toString().trim();
+    }
+
+    if (payload.teamLead !== undefined) {
+      const tl = formatEmail(payload.teamLead);
+      if (!tl || !EMAIL_REGEX.test(tl)) {
+        const error = new Error('Invalid team lead email');
+        error.statusCode = 400;
+        throw error;
+      }
+      sanitized.teamLead = tl;
+    }
+
+    // EAD dates — conditional on visaType. Required when the candidate's
+    // visa carries an EAD card (see EAD_REQUIRED_VISA_TYPES). EAD End must
+    // be strictly after EAD Start.
+    const effectiveVisaType = sanitized.visaType ?? payload.visaType;
+    const eadRequiredByVisa = !!effectiveVisaType && EAD_REQUIRED_VISA_TYPES.has(effectiveVisaType);
+
+    if (payload.eadStartDate !== undefined || eadRequiredByVisa) {
+      const startRaw = payload.eadStartDate;
+      if (startRaw === null || startRaw === undefined || startRaw === '') {
+        if (eadRequiredByVisa) {
+          const error = new Error(`EAD Start Date is required for visa type ${effectiveVisaType}`);
+          error.statusCode = 400;
+          throw error;
+        }
+      } else {
+        const start = new Date(startRaw);
+        if (Number.isNaN(start.getTime())) {
+          const error = new Error('Invalid EAD Start Date');
+          error.statusCode = 400;
+          throw error;
+        }
+        sanitized.eadStartDate = start;
+      }
+    }
+
+    if (sanitized.eadStartDate || payload.eadEndDate !== undefined) {
+      const endRaw = payload.eadEndDate;
+      if (endRaw === null || endRaw === undefined || endRaw === '') {
+        if (sanitized.eadStartDate) {
+          const error = new Error('EAD End Date is required when EAD Start Date is set');
+          error.statusCode = 400;
+          throw error;
+        }
+      } else {
+        const end = new Date(endRaw);
+        if (Number.isNaN(end.getTime())) {
+          const error = new Error('Invalid EAD End Date');
+          error.statusCode = 400;
+          throw error;
+        }
+        if (sanitized.eadStartDate && end.getTime() <= sanitized.eadStartDate.getTime()) {
+          const error = new Error('EAD End Date must be after EAD Start Date');
+          error.statusCode = 400;
+          throw error;
+        }
+        sanitized.eadEndDate = end;
+      }
+    }
+
+    // Technology — warn-only for unknown values during the 60-day
+    // transition. Existing free-text values flow through; new creates
+    // should pick from TECHNOLOGY_VALUES. After the window this becomes
+    // a hard reject.
+    if (sanitized.technology && !TECHNOLOGY_VALUES.includes(sanitized.technology)) {
+      logger.warn('Unknown technology value (60-day grace period)', {
+        technology: sanitized.technology
+      });
+    }
+
+    // marketingStartDate is server-set on first save and immutable
+    // thereafter; the sanitizer never accepts it from the client payload.
+
     if (payload.workflowStatus !== undefined) {
       sanitized.workflowStatus = payload.workflowStatus;
     }
@@ -1310,7 +1577,7 @@ class CandidateService {
       fields: changedFields
     });
 
-    const formatted = this.formatCandidateRecord(updated);
+    const formatted = this.formatCandidateRecord(updated, user);
 
     domainEventBus.publish(DomainEvents.CandidateUpdated, {
       eventId: crypto.randomUUID(),
@@ -1383,9 +1650,58 @@ class CandidateService {
       throw error;
     }
 
+    // ----- PRT: sanitize updates + gate PRT-field writes to marketing roles -----
+    // The sanitizer validates enums (PO→Placement Offer alias, visaType,
+    // company, ackEmail, etc.), enforces the conditional EAD requirement,
+    // and normalises dates. We merge so internal fields added below
+    // (poDate, _changedBy, _source) and any unknown caller fields pass
+    // through unchanged.
+    const sanitizedUpdates = this.sanitizeCandidatePayload(updates);
+    updates = { ...updates, ...sanitizedUpdates };
+
+    // Only marketing manager / AM / admin may write PRT fields. Other
+    // roles (recruiter, mlead, am, lead, expert, user) get a 403. This
+    // does NOT touch the legacy-fields permission model — those keep
+    // their previous behaviour.
+    for (const f of PRT_WRITABLE_FIELDS) {
+      if (sanitizedUpdates[f] !== undefined && !PRT_WRITE_ROLES.has(normalizedRole)) {
+        const error = new Error(`Only marketing manager or assistant manager can update ${f}`);
+        error.statusCode = 403;
+        throw error;
+      }
+    }
+
     // Auto-set poDate on first Placement Offer
     if (updates.status === 'Placement Offer' && !oldDoc.poDate) {
       updates.poDate = new Date();
+    }
+
+    // PRT: auto-set ackEmailAt when ackEmail flips to 'Sent'.
+    if (updates.ackEmail === 'Sent' && oldDoc.ackEmail !== 'Sent') {
+      updates.ackEmailAt = updates.ackEmailAt instanceof Date ? updates.ackEmailAt : new Date();
+    }
+
+    // PRT: build editHistory entries for changed audited fields. The model
+    // layer ($push) appends them to the editHistory[] array on the doc.
+    const isAuditValueEqual = (a, b) => {
+      if (a === b) return true;
+      if (a == null && b == null) return true;
+      if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+      if (a instanceof Date && typeof b === 'string') return a.toISOString().slice(0, b.length) === b;
+      if (b instanceof Date && typeof a === 'string') return b.toISOString().slice(0, a.length) === a;
+      return false;
+    };
+    const editHistoryEntries = CANDIDATE_AUDITED
+      .filter((f) => updates[f] !== undefined && !isAuditValueEqual(oldDoc[f], updates[f]))
+      .map((f) => ({
+        field: f,
+        oldValue: oldDoc[f] ?? null,
+        newValue: updates[f],
+        actor: user.email,
+        ts: new Date()
+      }));
+    if (editHistoryEntries.length > 0) {
+      updates._pushEditHistory = editHistoryEntries;
     }
 
     // Pass caller identity + provenance for statusHistory.
@@ -1403,7 +1719,7 @@ class CandidateService {
       updates
     });
 
-    const formatted = this.formatCandidateRecord(updated);
+    const formatted = this.formatCandidateRecord(updated, user);
 
     // Filter changedFields to only include actual changes
     const changedFields = Object.keys(updates).filter(key => {
@@ -1429,9 +1745,466 @@ class CandidateService {
       occurredAt: new Date().toISOString()
     });
 
-    return formatted;
+    // PRT visibility: strip PRT fields for non-marketing readers (no-op
+    // for marketing-track callers). The full-fidelity `formatted` was
+    // already broadcast on the domain event above, so internal subscribers
+    // are unaffected.
+    return this._applyPrtVisibility(formatted, user);
   }
 
+  // ---------- PRT Phase 2: attachment operations ----------
+  //
+  // Permission model:
+  //   role in PRT_ATTACHMENT_ROLES (admin/mm/mam/mlead/recruiter)
+  //   + assertRecruiterInScope(user, candidate.recruiter)
+  //
+  // This is broader than the PRT field write-gate (mm/mam/admin) because
+  // attachments are the operational artefact recruiters work with daily,
+  // and the existing scope walk already prevents cross-team access.
+
+  async _assertAttachmentPermission(user, candidate) {
+    if (!user?.email || !user?.role) {
+      const error = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+    const role = (user.role || '').toString().toLowerCase().trim();
+    if (!PRT_ATTACHMENT_ROLES.has(role)) {
+      const error = new Error('You do not have permission to manage candidate attachments');
+      error.statusCode = 403;
+      throw error;
+    }
+    // Scope: the candidate's recruiter must be reachable from the user's
+    // hierarchy. Admins bypass via assertRecruiterInScope's existing
+    // self-or-hierarchy semantics. If the candidate has no recruiter on
+    // record yet (rare), only admin / mm / mam / mlead can act.
+    const recruiterEmail = formatEmail(
+      candidate?.recruiter || candidate?.Recruiter || ''
+    );
+    if (recruiterEmail) {
+      this.assertRecruiterInScope(user, recruiterEmail);
+    } else if (!['admin', 'mm', 'mam', 'mlead'].includes(role)) {
+      const error = new Error('Candidate has no recruiter assigned — escalate to manager');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
+  async addAttachment(user, candidateId, fileInput) {
+    if (!candidateId) {
+      const error = new Error('Candidate id is required');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!fileInput || !fileInput.buffer || !(fileInput.buffer instanceof Buffer)) {
+      const error = new Error('File payload is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const candidate = await candidateModel.getCandidateById(candidateId);
+    if (!candidate) {
+      const error = new Error('Candidate not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    await this._assertAttachmentPermission(user, candidate);
+
+    // Storage layer enforces MIME whitelist + 10 MB cap and throws 4xx-style
+    // Errors on rejection. Bubble them up unchanged.
+    const uploadResult = await storageService.uploadAttachment({
+      buffer: fileInput.buffer,
+      contentType: fileInput.mimetype || fileInput.contentType,
+      originalName: fileInput.originalname || fileInput.originalName,
+      uploadedBy: user.email,
+      candidateId
+    });
+
+    const attachment = {
+      id: crypto.randomUUID(),
+      filename: fileInput.originalname || fileInput.originalName || 'untitled',
+      mimeType: uploadResult.contentType,
+      size: uploadResult.size,
+      s3Key: uploadResult.objectKey,
+      url: uploadResult.url,
+      uploadedAt: new Date(),
+      uploadedBy: user.email
+    };
+
+    await candidateModel.updateCandidateById(candidateId, {
+      _pushAttachment: attachment,
+      _changedBy: user.email,
+      _source: 'attachment-upload'
+    });
+
+    logger.info('Attachment added to candidate', {
+      candidateId,
+      attachmentId: attachment.id,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      uploadedBy: user.email
+    });
+
+    domainEventBus.publish(DomainEvents.CandidateUpdated, {
+      eventId: crypto.randomUUID(),
+      candidateId,
+      actor: {
+        email: user.email,
+        role: user.role,
+        name: user.name || user.displayName || formatDisplayName(user.email)
+      },
+      changes: ['attachments'],
+      changeDetails: { added: [attachment.id] },
+      occurredAt: new Date().toISOString()
+    });
+
+    return attachment;
+  }
+
+  async removeAttachment(user, candidateId, attachmentId) {
+    if (!candidateId || !attachmentId) {
+      const error = new Error('Candidate id and attachment id are required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const candidate = await candidateModel.getCandidateById(candidateId);
+    if (!candidate) {
+      const error = new Error('Candidate not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const attachment = (Array.isArray(candidate.attachments) ? candidate.attachments : [])
+      .find((a) => a && a.id === attachmentId);
+    if (!attachment) {
+      const error = new Error('Attachment not found on this candidate');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    await this._assertAttachmentPermission(user, candidate);
+
+    // DB pull first so the UI clears the entry even if storage delete is
+    // slow. If the attachment was the canonical resume, clear that too —
+    // a removed file can't be the source of truth for Resume Forge AI.
+    const updates = {
+      _pullAttachmentId: attachmentId,
+      _changedBy: user.email,
+      _source: 'attachment-delete'
+    };
+    if (candidate.resumeLink && attachment.url && candidate.resumeLink === attachment.url) {
+      updates.resumeLink = '';
+    }
+    await candidateModel.updateCandidateById(candidateId, updates);
+
+    // Best-effort storage cleanup. Failures here are logged but don't
+    // fail the request — the DB is already consistent.
+    try {
+      if (attachment.s3Key) {
+        await storageService.deleteObject(attachment.s3Key);
+      }
+    } catch (err) {
+      logger.warn('Attachment storage delete failed (DB entry already removed)', {
+        candidateId,
+        attachmentId,
+        s3Key: attachment.s3Key,
+        error: err.message
+      });
+    }
+
+    logger.info('Attachment removed from candidate', {
+      candidateId,
+      attachmentId,
+      removedBy: user.email,
+      wasCanonicalResume: candidate.resumeLink === attachment.url
+    });
+
+    domainEventBus.publish(DomainEvents.CandidateUpdated, {
+      eventId: crypto.randomUUID(),
+      candidateId,
+      actor: {
+        email: user.email,
+        role: user.role,
+        name: user.name || user.displayName || formatDisplayName(user.email)
+      },
+      changes: ['attachments'],
+      changeDetails: { removed: [attachmentId] },
+      occurredAt: new Date().toISOString()
+    });
+
+    return { id: attachmentId, removed: true };
+  }
+
+  async setAttachmentAsResume(user, candidateId, attachmentId) {
+    if (!candidateId || !attachmentId) {
+      const error = new Error('Candidate id and attachment id are required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const candidate = await candidateModel.getCandidateById(candidateId);
+    if (!candidate) {
+      const error = new Error('Candidate not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const attachment = (Array.isArray(candidate.attachments) ? candidate.attachments : [])
+      .find((a) => a && a.id === attachmentId);
+    if (!attachment) {
+      const error = new Error('Attachment not found on this candidate');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Resume Forge AI expects a PDF at resumeLink; non-PDF attachments
+    // cannot be promoted (would break the cache key + downstream parse).
+    if ((attachment.mimeType || '').toLowerCase() !== 'application/pdf') {
+      const error = new Error('Only PDF attachments can be set as the canonical resume');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    await this._assertAttachmentPermission(user, candidate);
+
+    await candidateModel.updateCandidateById(candidateId, {
+      resumeLink: attachment.url,
+      _changedBy: user.email,
+      _source: 'attachment-set-resume'
+    });
+
+    logger.info('Attachment set as canonical resume', {
+      candidateId,
+      attachmentId,
+      setBy: user.email
+    });
+
+    return { id: attachmentId, resumeLink: attachment.url };
+  }
+
+  // ---------- PRT Phase 3: Assignment Email ----------
+  //
+  // Orchestrates: gate -> validate -> resolve recipients -> fetch
+  // attachment bytes -> build payload -> send (with retry) -> audit ->
+  // flip ackEmail on success, notify admins on final failure.
+  //
+  // `userAssertion` is the user's Bearer token (Microsoft access token)
+  // from the request — graphMailService runs the OBO exchange.
+
+  async _notifyAdminsAssignmentFailed(candidateId, candidate, user, error) {
+    try {
+      const admins = (userModel.getAllUsers() || [])
+        .filter((u) => (u?.role || '').toLowerCase() === 'admin' && u?.active !== false)
+        .map((u) => u.email)
+        .filter(Boolean);
+      if (admins.length === 0) return;
+      await notificationService.broadcastToWatchers(admins, {
+        type: 'assignment-email-failed',
+        title: 'Assignment email failed',
+        description:
+          `Send for "${candidate?.['Candidate Name'] || candidate?.name || candidateId}" ` +
+          `failed after retries. ${(error && error.message) || ''}`.trim(),
+        candidateId,
+        actor: { email: user.email, role: user.role },
+        link: `/candidates/${candidateId}`
+      });
+    } catch (notifyErr) {
+      logger.warn('Admin notification for assignment-email failure threw', {
+        error: notifyErr.message,
+        candidateId
+      });
+    }
+  }
+
+  // Phase 3.5 — enqueue-mode. The send no longer happens synchronously
+  // in this request: it goes into the EmailOutbox collection and the
+  // emailDeliveryWorker dispatches it via app-only Graph (sendApplicationMail).
+  // "From" address therefore becomes the configured app sender, NOT the
+  // clicker — deliberate trade-off chosen for durable retry over a 24h
+  // window. No MSAL token is needed from the request.
+  async sendAssignmentEmail(user, _unused, candidateId, options = {}) {
+    if (!user?.email || !user?.role) {
+      const err = new Error('Authentication required');
+      err.statusCode = 401;
+      throw err;
+    }
+    const role = (user.role || '').toString().toLowerCase().trim();
+    if (!PRT_ATTACHMENT_ROLES.has(role)) {
+      const err = new Error('You do not have permission to send the assignment email');
+      err.statusCode = 403;
+      throw err;
+    }
+    if (!candidateId) {
+      const err = new Error('Candidate id is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const candidate = await candidateModel.getCandidateById(candidateId);
+    if (!candidate) {
+      const err = new Error('Candidate not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Reuse the attachment-permission gate (role + assertRecruiterInScope).
+    await this._assertAttachmentPermission(user, candidate);
+
+    // Gate per PRD §5.2.3: Recruiter + Team Lead + ≥1 attachment.
+    const recruiterEmail = formatEmail(candidate.recruiter || candidate.Recruiter || '');
+    if (!recruiterEmail) {
+      const err = new Error('Candidate has no recruiter — assign one before sending the assignment email');
+      err.statusCode = 400;
+      throw err;
+    }
+    const teamLeadEmailStored = (candidate.teamLead || '').toString().trim().toLowerCase();
+    if (!teamLeadEmailStored) {
+      const err = new Error('Candidate has no Team Lead — set teamLead before sending the assignment email');
+      err.statusCode = 400;
+      throw err;
+    }
+    const allAttachments = Array.isArray(candidate.attachments) ? candidate.attachments : [];
+    if (allAttachments.length === 0) {
+      const err = new Error('At least one attachment is required to send the assignment email');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Default to ALL attachments when the client did not pass a selection.
+    const requestedIds = Array.isArray(options.attachmentIds) && options.attachmentIds.length > 0
+      ? new Set(options.attachmentIds.map(String))
+      : null;
+    const selected = requestedIds
+      ? allAttachments.filter((a) => a && requestedIds.has(String(a.id)))
+      : allAttachments;
+    if (selected.length === 0) {
+      const err = new Error('No matching attachments selected');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Resolve display names + recruiter's manager email.
+    const senderDisplayName =
+      user.name || user.displayName || formatDisplayName(user.email);
+    const recruiterRecord = userModel.getUserByEmail(recruiterEmail) || {};
+    const recruiterDisplayName =
+      recruiterRecord.displayName || recruiterRecord.name || formatDisplayName(recruiterEmail);
+    const tlRecord = userModel.getUserByEmail(teamLeadEmailStored) || {};
+    const teamLeadDisplayName =
+      tlRecord.displayName || tlRecord.name || formatDisplayName(teamLeadEmailStored);
+    const managerNameRef = (recruiterRecord.manager || '').toString().trim();
+    const managerEmail = managerNameRef
+      ? formatEmail(this._findEmailByName(managerNameRef) || managerNameRef)
+      : '';
+
+    const permanentCcEmail = (config?.assignmentEmail?.permanentCc || '').toLowerCase();
+
+    // Pull attachment bytes. Each is a separate S3 GET — for v1 this is
+    // sequential and bounded by 10 MB × ~few-files; if it ever becomes a
+    // hotspot, parallelise with Promise.all.
+    const attachmentsWithBytes = [];
+    for (const att of selected) {
+      if (!att?.s3Key) continue;
+      const fetched = await storageService.fetchObjectAsBase64(att.s3Key);
+      attachmentsWithBytes.push({
+        id: att.id,
+        filename: att.filename,
+        mimeType: att.mimeType || fetched.contentType,
+        contentBytesBase64: fetched.base64
+      });
+    }
+    if (attachmentsWithBytes.length === 0) {
+      const err = new Error('Could not load any attachment bytes for the email');
+      err.statusCode = 500;
+      throw err;
+    }
+
+    const built = buildAssignmentEmail({
+      candidateName: candidate.name || candidate['Candidate Name'] || '',
+      technology: candidate.technology || candidate.Technology || '',
+      visaType: candidate.visaType || '',
+      recruiterEmail,
+      recruiterDisplayName,
+      teamLeadEmail: teamLeadEmailStored,
+      teamLeadDisplayName,
+      managerEmail,
+      permanentCcEmail,
+      senderEmail: user.email,
+      senderDisplayName,
+      attachments: attachmentsWithBytes,
+      appendBody: options.appendBody || ''
+    });
+
+    // Optional subject override per PRD §6.3 ("User may edit the Subject").
+    if (options.subject && typeof options.subject === 'string' && options.subject.trim()) {
+      built.message.subject = options.subject.trim();
+      built._audit.subject = options.subject.trim();
+    }
+
+    // Phase 3.5 — enqueue into the EmailOutbox. The emailDeliveryWorker
+    // dispatches via app-only Graph (sendApplicationMail) with
+    // exponential backoff up to a 24h budget; on terminal sent/failed
+    // it writes the assignmentEmails[] audit row + flips ackEmail.
+    const outboxRow = await emailOutboxRepository.enqueue({
+      candidateId: String(candidateId),
+      payload: {
+        message: built.message,
+        saveToSentItems: built.saveToSentItems
+      },
+      audit: {
+        sender: user.email.toLowerCase(),
+        to: built._audit.to,
+        cc: built._audit.cc,
+        bcc: built._audit.bcc,
+        subject: built._audit.subject,
+        attachmentIds: built._audit.attachmentIds
+      },
+      enqueuedBy: user.email
+    });
+
+    logger.info('Assignment email enqueued', {
+      candidateId,
+      outboxId: String(outboxRow._id),
+      to: built._audit.to,
+      cc: built._audit.cc,
+      sender: user.email
+    });
+
+    return {
+      success: true,
+      status: 'queued',
+      outboxId: String(outboxRow._id),
+      message: 'Assignment email queued — the dispatcher will send it shortly.'
+    };
+  }
+
+  // Used by the controller's streaming download proxy. Validates
+  // permission + returns enough metadata for the controller to set
+  // Content-Type / Content-Disposition before piping.
+  async resolveAttachmentForDownload(user, candidateId, attachmentId) {
+    if (!candidateId || !attachmentId) {
+      const error = new Error('Candidate id and attachment id are required');
+      error.statusCode = 400;
+      throw error;
+    }
+    const candidate = await candidateModel.getCandidateById(candidateId);
+    if (!candidate) {
+      const error = new Error('Candidate not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    const attachment = (Array.isArray(candidate.attachments) ? candidate.attachments : [])
+      .find((a) => a && a.id === attachmentId);
+    if (!attachment) {
+      const error = new Error('Attachment not found on this candidate');
+      error.statusCode = 404;
+      throw error;
+    }
+    await this._assertAttachmentPermission(user, candidate);
+    return attachment;
+  }
 
   async createCandidateFromManager(user, payload = {}) {
     if (!user?.email || !user?.role) {
@@ -1495,15 +2268,42 @@ class CandidateService {
       throw error;
     }
 
+    // PRT: Team Lead is required on the candidate record. If the caller
+    // didn't supply one, derive it from the recruiter's user record
+    // (recruiter.teamLead is a display-name string; _findEmailByName
+    // resolves it to an email).
+    if (!sanitized.teamLead) {
+      const recruiterRecord = userModel.getUserByEmail(sanitized.recruiter);
+      const tlName = recruiterRecord?.teamLead?.toString().trim();
+      if (tlName) {
+        const tlEmail = this._findEmailByName(tlName);
+        if (tlEmail) {
+          sanitized.teamLead = formatEmail(tlEmail);
+        }
+      }
+      if (!sanitized.teamLead) {
+        const error = new Error('Team Lead is required (could not derive from recruiter — set teamLead on the recruiter\'s user record or supply teamLead explicitly)');
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
     const document = await candidateModel.createCandidate({
       ...sanitized,
       expert: '',
       workflowStatus: WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: RESUME_UNDERSTANDING_STATUS.pending,
-      createdBy: user.email
+      createdBy: user.email,
+      // PRT defaults (the model accepts these too; see Candidate.createCandidate).
+      status: sanitized.status || 'New',
+      ackEmail: sanitized.ackEmail || 'Pending',
+      marketingStartDate: new Date(),
+      attachments: [],
+      editHistory: [],
+      assignmentEmails: []
     });
 
-    const formatted = this.formatCandidateRecord(document);
+    const formatted = this.formatCandidateRecord(document, user);
 
     domainEventBus.publish(DomainEvents.CandidateCreated, {
       eventId: crypto.randomUUID(),
@@ -1554,7 +2354,7 @@ class CandidateService {
     }
 
     const updated = await candidateModel.assignExpertById(candidateId, email);
-    const formatted = this.formatCandidateRecord(updated);
+    const formatted = this.formatCandidateRecord(updated, user);
 
     domainEventBus.publish(DomainEvents.CandidateExpertAssigned, {
       eventId: crypto.randomUUID(),
@@ -1596,7 +2396,7 @@ class CandidateService {
     }
 
     const updated = await candidateModel.updateResumeUnderstandingStatus(candidateId, status);
-    const formatted = this.formatCandidateRecord(updated);
+    const formatted = this.formatCandidateRecord(updated, user);
 
     domainEventBus.publish(DomainEvents.CandidateResumeStatusChanged, {
       eventId: crypto.randomUUID(),
@@ -1858,7 +2658,7 @@ class CandidateService {
 
     // Try the main candidates collection first
     const candidate = await candidateModel.getCandidateById(candidateId);
-    if (candidate) return this.formatCandidateRecord(candidate);
+    if (candidate) return this.formatCandidateRecord(candidate, user);
 
     // Fallback: check candidateDetails collection (used by Resume Understanding)
     try {

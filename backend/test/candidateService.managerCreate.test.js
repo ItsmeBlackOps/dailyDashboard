@@ -119,24 +119,29 @@ describe('candidateService manager create flow', () => {
         technology: 'react',
         branch: 'ggr',
         recruiter: 'recruiter@example.com',
+        teamLead: 'tlead@example.com',
         contact: '(123) 456-7890',
         resumeLink: SAMPLE_RESUME_LINK
       }
     );
 
-    expect(candidateModel.createCandidate).toHaveBeenCalledWith({
+    expect(candidateModel.createCandidate).toHaveBeenCalledWith(expect.objectContaining({
       name: 'Jane Doe',
       email: 'jane.doe@example.com',
       technology: 'React',
       branch: 'GGR',
       recruiter: 'recruiter@example.com',
+      teamLead: 'tlead@example.com',
       contact: '+11234567890',
       resumeLink: SAMPLE_RESUME_LINK,
       expert: '',
       workflowStatus: WORKFLOW_STATUS.awaitingExpert,
       resumeUnderstandingStatus: RESUME_UNDERSTANDING_STATUS.pending,
-      createdBy: 'mm.user@company.com'
-    });
+      createdBy: 'mm.user@company.com',
+      // PRT defaults stamped on create
+      status: 'New',
+      ackEmail: 'Pending'
+    }));
 
     expect(result.createdBy).toBe('mm.user@company.com');
   });
@@ -207,6 +212,7 @@ describe('candidateService manager create flow', () => {
         technology: 'react',
         branch: 'LKN',
         recruiter: 'recruiter@example.com',
+        teamLead: 'tlead@example.com',
         resumeLink: SAMPLE_RESUME_LINK
       }
     );
@@ -274,6 +280,7 @@ describe('candidateService manager create flow', () => {
         technology: 'react',
         branch: 'LKN',
         recruiter: 'recruiter@example.com',
+        teamLead: 'tlead@example.com',
         resumeLink: SAMPLE_RESUME_LINK
       }
     );

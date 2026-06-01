@@ -23,8 +23,62 @@ const DEFAULT_PROJECTION = {
   docType: 1,
   status: 1,
   poDate: 1,
-  statusHistory: 1
+  statusHistory: 1,
+  // PRT fields — needed so formatCandidateRecord can derive
+  // expiringInDays / daysInMarketing on the fly. Non-marketing
+  // readers are stripped server-side via _applyPrtVisibility.
+  teamLead: 1,
+  experienceYears: 1,
+  visaType: 1,
+  eadStartDate: 1,
+  eadEndDate: 1,
+  company: 1,
+  city: 1,
+  state: 1,
+  ackEmail: 1,
+  ackEmailAt: 1,
+  marketingStartDate: 1,
+  attachments: 1,
+  expiringInDays: 1,
+  daysInMarketing: 1
 };
+
+// Sort modes accepted by getCandidatesByBranch / getAllCandidates /
+// getCandidatesByRecruiters. Default keeps the historical "most recently
+// touched first" behaviour. `expiringIn` sorts ascending so the soonest
+// expiry surfaces at the top; candidates without an EAD end-date sink
+// to the bottom because Mongo treats missing values as the smallest
+// possible — we counter that by sorting on eadEndDate ASC with a
+// `_last_write` tiebreaker, which puts nulls last when paired with
+// `nullsLast` semantics enforced in the service layer (see
+// candidateService.buildSortStage).
+const SORT_PRESETS = {
+  updated: { _last_write: -1 },
+  name: { 'Candidate Name': 1, _last_write: -1 },
+  expiringIn: { eadEndDate: 1, _last_write: -1 }
+};
+const DEFAULT_SORT_KEY = 'updated';
+
+function resolveSort(sortKey) {
+  if (typeof sortKey === 'string' && Object.prototype.hasOwnProperty.call(SORT_PRESETS, sortKey)) {
+    return SORT_PRESETS[sortKey];
+  }
+  return SORT_PRESETS[DEFAULT_SORT_KEY];
+}
+
+function buildSearchFilter(search) {
+  if (!search) return null;
+  // Apply the regex to Candidate Name, Email ID and Recruiter so the
+  // single search box can find rows by any of the three. Each is
+  // case-insensitive; the caller pre-escapes the pattern.
+  return {
+    $or: [
+      { 'Candidate Name': { $regex: search, $options: 'i' } },
+      { 'Email ID': { $regex: search, $options: 'i' } },
+      { Recruiter: { $regex: search, $options: 'i' } }
+    ]
+  };
+}
 
 export const WORKFLOW_STATUS = {
   awaitingExpert: 'awaiting_expert',
@@ -36,6 +90,98 @@ export const RESUME_UNDERSTANDING_STATUS = {
   pending: 'pending',
   done: 'done'
 };
+
+// ---------------------------------------------------------------------------
+// PRT (Placement & Recruiter Tracker) — Section 4 enums.
+// `Placement Offer` is kept as the canonical DB value; PRD's term `PO`
+// is normalised to `Placement Offer` server-side (see candidateService
+// `sanitizeCandidatePayload`). UI may render either label.
+// ---------------------------------------------------------------------------
+
+export const STATUS_VALUES = [
+  'Active',
+  'Low Priority',
+  'Temp. Hold',
+  'Hold',
+  'New',
+  'Placement Offer',
+  'Backout'
+];
+
+// Display-synonym → canonical DB value.
+export const STATUS_ALIASES = new Map([
+  ['po', 'Placement Offer']
+]);
+
+export const TECHNOLOGY_VALUES = [
+  'Product Manager',
+  'Project Manager',
+  'Software Developer',
+  'Data Engineer',
+  'Data Analyst',
+  'Business Analyst',
+  'Network Engineer',
+  'Cyber Security Analyst',
+  'DevOps Engineer',
+  'Product Designer',
+  'Financial Analyst',
+  'Mechanical Engineer',
+  'QA Automation Engineer',
+  'SQL DBA',
+  'Cloud Engineer',
+  'Data Scientist',
+  'Salesforce Developer',
+  'BI Engineer',
+  'Non IT',
+  'AI ML Engineer'
+];
+
+export const VISA_TYPE_VALUES = [
+  'OPT',
+  'L2',
+  'Green Card',
+  'STEM OPT',
+  'USC',
+  'H4-EAD',
+  'PR',
+  'CPT',
+  'H1B',
+  'Day 1 CPT',
+  'Asylum'
+];
+
+// Visa types where the candidate carries an EAD card with a start/end date —
+// the PRT form requires EAD Start (and therefore EAD End) when the candidate
+// holds any of these.
+export const EAD_REQUIRED_VISA_TYPES = new Set([
+  'OPT',
+  'STEM OPT',
+  'CPT',
+  'Day 1 CPT',
+  'H4-EAD',
+  'L2'
+]);
+
+export const COMPANY_VALUES = ['SST', 'VCS', 'FED'];
+
+export const ACK_EMAIL_VALUES = ['Sent', 'Confirmed', 'Pending'];
+
+// Fields whose value changes are recorded in `editHistory[]` on every
+// update. Mirrors the User.AUDITED pattern in `backend/src/models/User.js`.
+export const CANDIDATE_AUDITED = [
+  'status',
+  'recruiter',
+  'expert',
+  'teamLead',
+  'branch',
+  'visaType',
+  'eadStartDate',
+  'eadEndDate',
+  'company',
+  'ackEmail',
+  'experienceYears',
+  'technology'
+];
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -64,19 +210,20 @@ export class CandidateModel {
     }
   }
 
-  async getCandidatesByBranch(branch, { limit, search } = {}) {
+  async getCandidatesByBranch(branch, { limit, search, sort } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
 
     const query = { Branch: branch, docType: { $in: [null, 'candidate'] } };
-    if (search) {
-      query['Candidate Name'] = { $regex: search, $options: 'i' };
+    const searchFilter = buildSearchFilter(search);
+    if (searchFilter) {
+      Object.assign(query, searchFilter);
     }
 
     let cursor = this.collection
       .find(query, { projection: DEFAULT_PROJECTION })
-      .sort({ _last_write: -1 });
+      .sort(resolveSort(sort));
 
     if (Number.isFinite(limit) && limit > 0) {
       cursor = cursor.limit(Math.floor(limit));
@@ -87,19 +234,20 @@ export class CandidateModel {
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getAllCandidates({ limit, search } = {}) {
+  async getAllCandidates({ limit, search, sort } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
 
     const query = { docType: { $in: [null, 'candidate'] } };
-    if (search) {
-      query['Candidate Name'] = { $regex: search, $options: 'i' };
+    const searchFilter = buildSearchFilter(search);
+    if (searchFilter) {
+      Object.assign(query, searchFilter);
     }
 
     let cursor = this.collection
       .find(query, { projection: DEFAULT_PROJECTION })
-      .sort({ _last_write: -1 });
+      .sort(resolveSort(sort));
 
     if (Number.isFinite(limit) && limit > 0) {
       cursor = cursor.limit(Math.floor(limit));
@@ -110,7 +258,7 @@ export class CandidateModel {
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getCandidatesByRecruiters(recruiterEmails, { limit, search, visibility, workflowStatus, resumeUnderstandingStatus } = {}) {
+  async getCandidatesByRecruiters(recruiterEmails, { limit, search, sort, visibility, workflowStatus, resumeUnderstandingStatus } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
@@ -180,13 +328,18 @@ export class CandidateModel {
       query.resumeUnderstandingStatus = resumeUnderstandingStatus;
     }
 
-    if (search) {
-      query['Candidate Name'] = { $regex: search, $options: 'i' };
+    // Combine the recruiter-scope OR with the search OR via $and so a
+    // search box matches across name/email/recruiter without breaking
+    // recruiter visibility.
+    const searchFilter = buildSearchFilter(search);
+    if (searchFilter) {
+      query.$and = [{ $or: query.$or }, searchFilter];
+      delete query.$or;
     }
 
     let cursor = this.collection
       .find(query, { projection: DEFAULT_PROJECTION })
-      .sort({ _last_write: -1 });
+      .sort(resolveSort(sort));
 
     if (Number.isFinite(limit) && limit > 0) {
       cursor = cursor.limit(Math.floor(limit));
@@ -247,9 +400,25 @@ export class CandidateModel {
         ...(updates.status !== undefined ? { status: updates.status } : {}),
         ...(updates.createdBy !== undefined ? { createdBy: updates.createdBy } : {}),
         ...(updates.poDate !== undefined ? { poDate: updates.poDate } : {}),
+        // PRT fields (camelCase DB keys). marketingStartDate is intentionally
+        // NOT settable via this path — it is immutable post-create and
+        // populated only by the create path or one-shot backfill script.
+        ...(updates.teamLead !== undefined ? { teamLead: updates.teamLead } : {}),
+        ...(updates.experienceYears !== undefined ? { experienceYears: updates.experienceYears } : {}),
+        ...(updates.visaType !== undefined ? { visaType: updates.visaType } : {}),
+        ...(updates.eadStartDate !== undefined ? { eadStartDate: updates.eadStartDate } : {}),
+        ...(updates.eadEndDate !== undefined ? { eadEndDate: updates.eadEndDate } : {}),
+        ...(updates.company !== undefined ? { company: updates.company } : {}),
+        ...(updates.city !== undefined ? { city: updates.city } : {}),
+        ...(updates.state !== undefined ? { state: updates.state } : {}),
+        ...(updates.ackEmail !== undefined ? { ackEmail: updates.ackEmail } : {}),
+        ...(updates.ackEmailAt !== undefined ? { ackEmailAt: updates.ackEmailAt } : {}),
         updated_at: now
       }
     };
+
+    // Combined $push for both statusHistory (existing) and editHistory (PRT).
+    const pushDoc = {};
 
     if (updates.status !== undefined) {
       // Rich statusHistory entry. Old shape kept as flat fields for
@@ -257,7 +426,7 @@ export class CandidateModel {
       // new value, identical to `to`). New consumers should read `from`
       // and `to` for the actual transition, plus `source`/`reason`/`sourceRef`
       // for provenance.
-      const entry = {
+      pushDoc.statusHistory = {
         status:    updates.status,                 // legacy: the new value
         from:      priorStatus,
         to:        updates.status,
@@ -267,7 +436,35 @@ export class CandidateModel {
         reason:    updates._reason    ?? null,
         sourceRef: updates._sourceRef ?? null,    // { kind, id, ...metadata }
       };
-      updateDoc.$push = { statusHistory: entry };
+    }
+
+    // PRT: editHistory $push. Caller (candidateService.updateCandidate) builds
+    // the entries by diffing CANDIDATE_AUDITED fields against the prior doc.
+    if (Array.isArray(updates._pushEditHistory) && updates._pushEditHistory.length > 0) {
+      pushDoc.editHistory = { $each: updates._pushEditHistory };
+    }
+
+    // PRT Phase 2: attachments $push (one entry per upload). Service callers
+    // pass updates._pushAttachment as the full attachment object.
+    if (updates._pushAttachment && typeof updates._pushAttachment === 'object') {
+      pushDoc.attachments = updates._pushAttachment;
+    }
+
+    // PRT Phase 3: assignmentEmails $push (one entry per send attempt,
+    // success OR failure). Service callers pass updates._pushAssignmentEmail
+    // as the full audit object.
+    if (updates._pushAssignmentEmail && typeof updates._pushAssignmentEmail === 'object') {
+      pushDoc.assignmentEmails = updates._pushAssignmentEmail;
+    }
+
+    if (Object.keys(pushDoc).length > 0) {
+      updateDoc.$push = pushDoc;
+    }
+
+    // PRT Phase 2: attachments $pull by id (remove). Distinct operation —
+    // never combined with a push to the same field on a single call.
+    if (updates._pullAttachmentId) {
+      updateDoc.$pull = { attachments: { id: updates._pullAttachmentId } };
     }
 
     const result = await this.collection.updateOne(filter, updateDoc);
@@ -308,7 +505,28 @@ export class CandidateModel {
       updated_at: now,
       _last_write: now,
       created_at: now,
-      docType: 'candidate'
+      docType: 'candidate',
+      // ----- PRT (Placement & Recruiter Tracker) fields -----
+      // The PRT create path (`createCandidateFromManager`) populates these.
+      // Other create paths (Intervue PO, Fireflies summary, admin-bulk)
+      // may omit them — defaults below keep those flows working.
+      teamLead: payload.teamLead || '',
+      experienceYears: payload.experienceYears ?? null,
+      visaType: payload.visaType || '',
+      eadStartDate: payload.eadStartDate || null,
+      eadEndDate: payload.eadEndDate || null,
+      company: payload.company || '',
+      city: payload.city || '',
+      state: payload.state || '',
+      ackEmail: payload.ackEmail || 'Pending',
+      ackEmailAt: payload.ackEmailAt || null,
+      // marketingStartDate is stamped server-side and is immutable after
+      // first insert. PRT path passes `now`; non-PRT paths leave it null
+      // and the backfill / next save will fill from `_last_write`.
+      marketingStartDate: payload.marketingStartDate || null,
+      attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
+      editHistory: Array.isArray(payload.editHistory) ? payload.editHistory : [],
+      assignmentEmails: Array.isArray(payload.assignmentEmails) ? payload.assignmentEmails : []
     };
 
     const result = await this.collection.insertOne(document);

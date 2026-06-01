@@ -9,6 +9,12 @@ router.use(authenticateHTTP);
 
 // General user routes
 router.get('/health', userController.healthCheck);
+
+// PRT Phase 4: signed-in user's preferences (currently just
+// eadEmailAlerts). Auth is already enforced by the route-level
+// authenticateHTTP middleware in app bootstrap.
+router.get('/me/preferences', userController.getMyPreferences);
+router.patch('/me/preferences', userController.updateMyPreferences);
 router.get('/active', userController.getActiveUsers);
 router.get('/team', userController.getTeamMembers);
 router.get('/manageable', requireHTTPRole(['admin', 'mm', 'mam', 'mlead', 'lead', 'am']), userController.getManageableUsers);

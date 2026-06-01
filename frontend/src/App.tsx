@@ -60,6 +60,7 @@ import AuthorizedRoute from './routes/AuthorizedRoute';
 // route's chunk loads only when navigated to. The Suspense boundary
 // below renders a fast skeleton while the chunk streams in.
 const TasksToday = lazy(() => import('./pages/TasksToday'));
+const NotificationSettings = lazy(() => import('./pages/NotificationSettings'));
 const Index = lazy(() => import('./pages/Index'));
 const DashboardV2 = lazy(() => import('./pages/DashboardV2'));
 const AdminAlertsPage = lazy(() => import('./pages/AdminAlerts'));
@@ -122,6 +123,7 @@ const App = () => (
                 <Route path="/branch-candidates" element={<BranchCandidatesPage />} />
                 <Route path="/admin-alerts" element={<AdminAlertsPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
+                <Route path="/settings/notifications" element={<NotificationSettings />} />
                 <Route path="/resume-understanding" element={<ResumeUnderstanding />} />
                 <Route path="/user-management" element={<UserManagementPage />} />
                 <Route path="/delegations" element={<DelegationsPage />} />

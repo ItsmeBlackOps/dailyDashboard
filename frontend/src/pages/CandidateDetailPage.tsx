@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, User, MapPin, Briefcase, Mail, Phone, Calendar, ExternalLink,
@@ -19,6 +19,8 @@ import { TaskSheet } from '@/components/shared/TaskSheet';
 import { PODraftSheet } from '@/components/shared/PODraftSheet';
 import type { TaskSheetPrefill } from '@/components/shared/TaskSheet';
 import FindJobsDialog from '@/components/jobs/FindJobsDialog';
+import AttachmentZone, { type CandidateAttachment } from '@/components/candidates/AttachmentZone';
+import AssignmentEmailModal from '@/components/candidates/AssignmentEmailModal';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Candidate {
@@ -28,6 +30,15 @@ interface Candidate {
   updatedAt: string | null; resumeLink: string | null;
   statusHistory: { status: string; changedAt: string; changedBy: string }[];
   workflowStatus: string;
+  // PRT Phase 2: server returns attachments[] in the marketing-track
+  // projection. Absent for non-marketing readers (server-side strip).
+  attachments?: CandidateAttachment[];
+  // PRT Phase 3 — gating + status display for the assignment email.
+  teamLead?: string | null;
+  visaType?: string | null;
+  ackEmail?: 'Sent' | 'Confirmed' | 'Pending' | null;
+  ackEmailAt?: string | null;
+  recruiterRaw?: string | null;
 }
 
 interface ForgeProfile {
@@ -229,14 +240,15 @@ export default function CandidateDetailPage() {
   const [poPrefill, setPoPrefill] = useState<TaskSheetPrefill | null>(null);
   const [poSheetOpen, setPoSheetOpen] = useState(false);
   const [findJobsOpen, setFindJobsOpen] = useState(false);
+  // PRT Phase 3
+  const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
   const [forgeProfile, setForgeProfile] = useState<ForgeProfile | null>(null);
   const [forgeLoading, setForgeLoading] = useState(false);
   const [deriving, setDeriving] = useState(false);
   const { toast } = useToast();
 
-  useEffect(() => {
+  const fetchCandidate = useCallback(() => {
     if (!id) return;
-    setLoading(true);
     authFetch(`${API_URL}/api/candidates/${id}`)
       .then(r => r.json())
       .then(json => {
@@ -247,6 +259,12 @@ export default function CandidateDetailPage() {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [id, authFetch]);
+
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    fetchCandidate();
+  }, [id, fetchCandidate]);
 
   // Fetch cached forge profile
   useEffect(() => {
@@ -522,6 +540,70 @@ export default function CandidateDetailPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* ── PRT Phase 3: Assignment Email ── */}
+            {candidate && (() => {
+              const attachmentsCount = candidate.attachments?.length ?? 0;
+              const hasRecruiter = Boolean(candidate.recruiterRaw || candidate.recruiter);
+              const hasTeamLead = Boolean(candidate.teamLead);
+              const canSendAssignment = hasRecruiter && hasTeamLead && attachmentsCount > 0;
+              const ackSent = candidate.ackEmail === 'Sent';
+              return (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Mail className="h-4 w-4" /> Assignment Email
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pb-5 pt-1 flex flex-col items-start gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => setAssignmentModalOpen(true)}
+                      disabled={!canSendAssignment}
+                    >
+                      <Mail className="h-4 w-4 mr-1.5" />
+                      {ackSent ? 'Email Sent — Resend' : 'Send Assignment Email'}
+                    </Button>
+                    {!canSendAssignment && (
+                      <p className="text-xs text-muted-foreground">
+                        Requires recruiter, team lead, and at least one attachment.
+                      </p>
+                    )}
+                    {ackSent && candidate.ackEmailAt && (
+                      <p className="text-xs text-emerald-700">
+                        Last sent {new Date(candidate.ackEmailAt).toLocaleString()}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
+            {/* ── PRT Phase 2: Attachments ── */}
+            {candidate && (
+              <AttachmentZone
+                candidateId={candidate.id}
+                attachments={candidate.attachments ?? []}
+                resumeLink={candidate.resumeLink}
+                onChange={fetchCandidate}
+              />
+            )}
+
+            {/* PRT Phase 3 — modal lives outside the cards so it floats above */}
+            {candidate && (
+              <AssignmentEmailModal
+                open={assignmentModalOpen}
+                onOpenChange={setAssignmentModalOpen}
+                candidateId={candidate.id}
+                candidateName={candidate.name}
+                technology={candidate.technology}
+                visaType={candidate.visaType}
+                recruiterEmail={candidate.recruiterRaw || null}
+                teamLeadEmail={candidate.teamLead || null}
+                attachments={candidate.attachments ?? []}
+                onSent={fetchCandidate}
+              />
+            )}
 
             {/* ── Vertical Timeline ── */}
             <Card>

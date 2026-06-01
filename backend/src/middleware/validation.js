@@ -491,7 +491,7 @@ export const validateDashboardQuery = (data) => {
 };
 
 export const validateCandidateQuery = (data = {}) => {
-  const { limit, search } = data;
+  const { limit, search, sort } = data;
   const errors = [];
 
   if (limit !== undefined) {
@@ -509,6 +509,14 @@ export const validateCandidateQuery = (data = {}) => {
 
   if (typeof search === 'string' && search.trim().length > 120) {
     errors.push('search must be 120 characters or fewer');
+  }
+
+  if (sort !== undefined) {
+    if (typeof sort !== 'string') {
+      errors.push('sort must be a string');
+    } else if (!['updated', 'name', 'expiringIn'].includes(sort.trim())) {
+      errors.push('sort must be one of: updated, name, expiringIn');
+    }
   }
 
   return {

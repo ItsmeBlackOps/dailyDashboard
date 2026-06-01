@@ -163,6 +163,169 @@ class CandidateController {
     }
   }
 
+  // ---------- PRT Phase 2: candidate attachment endpoints ----------
+  //
+  // Permission + scope checks live in candidateService — these handlers
+  // are intentionally thin: validate transport-level basics, call the
+  // service, translate thrown statusCodes back to HTTP.
+
+  async uploadAttachment(req, res) {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      const { id: candidateId } = req.params;
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ success: false, error: 'File is required' });
+      }
+      const attachment = await candidateService.addAttachment(user, candidateId, {
+        buffer: file.buffer,
+        mimetype: file.mimetype,
+        originalname: file.originalname
+      });
+      return res.status(201).json({ success: true, attachment });
+    } catch (error) {
+      const status = error.statusCode || 500;
+      logger.error('uploadAttachment failed', {
+        error: error.message,
+        candidateId: req.params?.id,
+        userEmail: req.user?.email
+      });
+      return res.status(status).json({
+        success: false,
+        error: status === 500 ? 'Unable to upload attachment' : error.message
+      });
+    }
+  }
+
+  async deleteAttachment(req, res) {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      const { id: candidateId, attachmentId } = req.params;
+      const result = await candidateService.removeAttachment(user, candidateId, attachmentId);
+      return res.json({ success: true, ...result });
+    } catch (error) {
+      const status = error.statusCode || 500;
+      logger.error('deleteAttachment failed', {
+        error: error.message,
+        candidateId: req.params?.id,
+        attachmentId: req.params?.attachmentId,
+        userEmail: req.user?.email
+      });
+      return res.status(status).json({
+        success: false,
+        error: status === 500 ? 'Unable to delete attachment' : error.message
+      });
+    }
+  }
+
+  async setAttachmentAsResume(req, res) {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      const { id: candidateId, attachmentId } = req.params;
+      const result = await candidateService.setAttachmentAsResume(user, candidateId, attachmentId);
+      return res.json({ success: true, ...result });
+    } catch (error) {
+      const status = error.statusCode || 500;
+      logger.error('setAttachmentAsResume failed', {
+        error: error.message,
+        candidateId: req.params?.id,
+        attachmentId: req.params?.attachmentId,
+        userEmail: req.user?.email
+      });
+      return res.status(status).json({
+        success: false,
+        error: status === 500 ? 'Unable to set attachment as resume' : error.message
+      });
+    }
+  }
+
+  async sendAssignmentEmail(req, res) {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      // Phase 3.5 — enqueue-mode. No MSAL Graph token from the request:
+      // the emailDeliveryWorker sends via app-only token (sendApplicationMail).
+      const { id: candidateId } = req.params;
+      const body = req.body || {};
+      const result = await candidateService.sendAssignmentEmail(
+        user,
+        /* graphAccessToken */ null,
+        candidateId,
+        {
+          appendBody: body.appendBody,
+          attachmentIds: body.attachmentIds,
+          subject: body.subject
+        }
+      );
+      // 202 Accepted: the dispatch is decoupled from this request.
+      return res.status(202).json({
+        success: true,
+        status: result.status,
+        outboxId: result.outboxId,
+        message: result.message
+      });
+    } catch (error) {
+      const status = error.statusCode || 500;
+      logger.error('sendAssignmentEmail enqueue failed', {
+        error: error.message,
+        candidateId: req.params?.id,
+        userEmail: req.user?.email
+      });
+      return res.status(status).json({
+        success: false,
+        error: status === 500 ? 'Unable to queue assignment email' : error.message
+      });
+    }
+  }
+
+  async downloadAttachment(req, res) {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      const { id: candidateId, attachmentId } = req.params;
+      const attachment = await candidateService.resolveAttachmentForDownload(user, candidateId, attachmentId);
+
+      const { stream, contentType, contentLength } = await storageService.streamObject(attachment.s3Key);
+      res.setHeader('Content-Type', contentType || attachment.mimeType || 'application/octet-stream');
+      if (contentLength) res.setHeader('Content-Length', String(contentLength));
+      // inline so the browser tries to display PDFs/images directly;
+      // the filename is still preserved for "Save as" / download attribute.
+      res.setHeader('Content-Disposition', `inline; filename="${(attachment.filename || 'attachment').replace(/"/g, '')}"`);
+      stream.on('error', (err) => {
+        logger.error('Attachment stream error', { candidateId, attachmentId, error: err.message });
+        if (!res.headersSent) res.status(502).end();
+      });
+      stream.pipe(res);
+    } catch (error) {
+      const status = error.statusCode || 500;
+      logger.error('downloadAttachment failed', {
+        error: error.message,
+        candidateId: req.params?.id,
+        attachmentId: req.params?.attachmentId,
+        userEmail: req.user?.email
+      });
+      if (!res.headersSent) {
+        return res.status(status).json({
+          success: false,
+          error: status === 500 ? 'Unable to download attachment' : error.message
+        });
+      }
+    }
+  }
+
   async getPOMissingDate(req, res) {
     try {
       const user = req.user;

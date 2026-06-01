@@ -132,6 +132,20 @@ const config = {
     mailSender: stripQuotes(process.env.AZURE_GRAPH_MAIL_SENDER || '')
   },
 
+  // PRT Phase 3 — Assignment Email config. permanentCc is re-injected
+  // server-side on every send (PRD §6.1 / §6.3) regardless of what the
+  // UI submitted, so a client cannot drop it.
+  assignmentEmail: {
+    permanentCc: stripQuotes(
+      process.env.PRT_PERMANENT_CC || 'Tushar.ahuja@silverspaceinc.com'
+    ),
+    // Transient-failure retry policy: 3 attempts, exponential backoff in ms.
+    // Final failure writes a 'failed' assignmentEmails[] audit row and
+    // notifies admins (notificationService) instead of breaking the user
+    // session.
+    retryDelaysMs: [1000, 4000, 16000]
+  },
+
   support: (() => {
     const supportTo = stripQuotes(process.env.SUPPORT_REQUEST_TO || 'tech.leaders@silverspaceinc.com');
     const supportCcFallback = commaSeparated(process.env.SUPPORT_REQUEST_CC || '');

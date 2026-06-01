@@ -63,6 +63,17 @@ interface CandidateRow {
   resumeUnderstandingStatus?: string;
   resumeUnderstanding?: boolean;
   resumeLink?: string;
+  // PRT Phase 4 — derived getters (server-side, marketing readers only).
+  expiringInDays?: number | null;
+  daysInMarketing?: number | null;
+}
+
+// PRT Phase 4 — row classnames keyed on expiringInDays bands per PRD §5.1.
+function expiringRowClass(d: number | null | undefined): string {
+  if (d === null || d === undefined) return '';
+  if (d < 30) return 'bg-destructive/10 hover:bg-destructive/15';
+  if (d <= 90) return 'bg-amber-100/60 hover:bg-amber-100 dark:bg-amber-900/30 dark:hover:bg-amber-900/40';
+  return '';
 }
 
 interface CandidateNotificationPayload {
@@ -258,6 +269,20 @@ const EST_TIMEZONE = "America/New_York";
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5 MB default limit mirrored with backend
 const TOUR_ROLES = ["recruiter", "mlead", "mam", "mm"] as const;
 const DEFAULT_ALLOWED_BRANCHES = ['GGR', 'LKN', 'AHM'] as const;
+
+// PRT enums (mirror backend/src/models/Candidate.js). Marketing-only fields.
+const PRT_TECHNOLOGY_VALUES = [
+  'Product Manager','Project Manager','Software Developer','Data Engineer','Data Analyst',
+  'Business Analyst','Network Engineer','Cyber Security Analyst','DevOps Engineer','Product Designer',
+  'Financial Analyst','Mechanical Engineer','QA Automation Engineer','SQL DBA','Cloud Engineer',
+  'Data Scientist','Salesforce Developer','BI Engineer','Non IT','AI ML Engineer'
+] as const;
+const PRT_VISA_TYPE_VALUES = [
+  'OPT','L2','Green Card','STEM OPT','USC','H4-EAD','PR','CPT','H1B','Day 1 CPT','Asylum'
+] as const;
+const PRT_EAD_REQUIRED_VISA_TYPES = new Set(['OPT','STEM OPT','CPT','Day 1 CPT','H4-EAD','L2']);
+const PRT_COMPANY_VALUES = ['SST','VCS','FED'] as const;
+const PRT_EXPERIENCE_YEARS_VALUES = Array.from({ length: 20 }, (_, i) => i + 1);
 const DEFAULT_CREATE_POLICY: CandidateCreatePolicy = {
   allowedBranches: [...DEFAULT_ALLOWED_BRANCHES],
   defaultBranch: null,
@@ -407,6 +432,13 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [loading, setLoading] = useState<boolean>(canView);
   const [error, setError] = useState<string>("");
   const [search, setSearch] = useState<string>("");
+  // PRT Phase 5 — UX toggles. `expiringSoonOnly` is a client-side filter
+  // chip; `sortBy` is forwarded to the backend so the server returns the
+  // list pre-sorted by Expiring In / Name / Last update. Default is
+  // 'updated' to preserve existing behaviour for users who don't change
+  // the dropdown.
+  const [expiringSoonOnly, setExpiringSoonOnly] = useState<boolean>(false);
+  const [sortBy, setSortBy] = useState<'updated' | 'name' | 'expiringIn'>('updated');
   const { refreshAccessToken, authFetch } = useAuth();
   const { toast } = useToast();
   const { notifications, markAsRead } = useNotifications();
@@ -442,7 +474,16 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     technology: '',
     recruiter: '',
     branch: '',
-    contact: ''
+    contact: '',
+    // PRT fields (marketing-only; see CandidateCreatePolicy).
+    teamLead: '',
+    experienceYears: '',
+    visaType: '',
+    eadStartDate: '',
+    eadEndDate: '',
+    company: '',
+    city: '',
+    state: ''
   });
   const [createResumeFile, setCreateResumeFile] = useState<File | null>(null);
   const [createResumeError, setCreateResumeError] = useState('');
@@ -2338,21 +2379,32 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   }, []);
 
   const filteredCandidates = useMemo(() => {
-    if (!search.trim()) return candidates;
+    let pool = candidates;
+    // PRT Phase 5 — Expiring-soon chip narrows the view to the
+    // <30-day band that already drives row colouring (Phase 4 spec).
+    if (expiringSoonOnly) {
+      pool = pool.filter((c) =>
+        typeof c.expiringInDays === 'number' && c.expiringInDays < 30
+      );
+    }
+    if (!search.trim()) return pool;
     const query = search.trim().toLowerCase();
-    return candidates.filter((candidate) => {
+    return pool.filter((candidate) => {
       const haystack = [
         candidate.name,
         candidate.technology,
         candidate.recruiter,
-        candidate.expert
+        candidate.expert,
+        // PRT Phase 5 — let the search box match an Email ID too.
+        // The backend search OR was extended to mirror this.
+        (candidate as { email?: string }).email
       ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [candidates, search]);
+  }, [candidates, search, expiringSoonOnly]);
 
 
   const handleSelectAll = useCallback((checked: boolean) => {
@@ -2628,7 +2680,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
     socket.emit(
       "getBranchCandidates",
-      {},
+      { sort: sortBy },
       (resp: BranchCandidatesResponse) => {
         if (!resp?.success) {
           setCandidates([]);
@@ -2685,7 +2737,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         setLoading(false);
       }
     );
-  }, [socket, normalizeOptionList, normalizeCreatePolicy]);
+  }, [socket, normalizeOptionList, normalizeCreatePolicy, sortBy]);
 
   useEffect(() => {
     if (!socket) {
@@ -2948,7 +3000,11 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
   const resetCreateState = () => {
     setIsCreateOpen(false);
-    setCreateForm({ name: '', email: '', technology: '', recruiter: '', branch: '', contact: '' });
+    setCreateForm({
+      name: '', email: '', technology: '', recruiter: '', branch: '', contact: '',
+      teamLead: '', experienceYears: '', visaType: '', eadStartDate: '',
+      eadEndDate: '', company: '', city: '', state: ''
+    });
     setCreateError('');
     setCreating(false);
     setCreateResumeFile(null);
@@ -3031,6 +3087,15 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     const trimmedBranch = createForm.branch.trim().toUpperCase();
     const trimmedRecruiter = createForm.recruiter.trim().toLowerCase();
     const trimmedContact = createForm.contact.trim();
+    // PRT field reads (marketing-only create surface).
+    const trimmedTeamLead = createForm.teamLead.trim().toLowerCase();
+    const trimmedExperienceYears = createForm.experienceYears.trim();
+    const trimmedVisaType = createForm.visaType.trim();
+    const trimmedEadStart = createForm.eadStartDate.trim();
+    const trimmedEadEnd = createForm.eadEndDate.trim();
+    const trimmedCompany = createForm.company.trim();
+    const trimmedCity = createForm.city.trim();
+    const trimmedState = createForm.state.trim();
     const effectiveAllowedBranches = (createPolicy.allowedBranches || [...DEFAULT_ALLOWED_BRANCHES])
       .map((branch) => String(branch || '').trim().toUpperCase())
       .filter(Boolean);
@@ -3092,6 +3157,41 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       return;
     }
 
+    // ---------- PRT required fields ----------
+    if (!trimmedVisaType) {
+      setCreateError('Visa Type is required');
+      setCreating(false);
+      return;
+    }
+    if (!trimmedExperienceYears) {
+      setCreateError('Experience (years) is required');
+      setCreating(false);
+      return;
+    }
+    if (!trimmedCompany) {
+      setCreateError('Company is required');
+      setCreating(false);
+      return;
+    }
+    if (PRT_EAD_REQUIRED_VISA_TYPES.has(trimmedVisaType)) {
+      if (!trimmedEadStart) {
+        setCreateError('EAD Start Date is required for this visa type');
+        setCreating(false);
+        return;
+      }
+      if (!trimmedEadEnd) {
+        setCreateError('EAD End Date is required for this visa type');
+        setCreating(false);
+        return;
+      }
+      if (new Date(trimmedEadEnd) <= new Date(trimmedEadStart)) {
+        setCreateError('EAD End Date must be after EAD Start Date');
+        setCreating(false);
+        return;
+      }
+    }
+    // ---------- /PRT required fields ----------
+
     if (!createResumeFile) {
       setCreateResumeError('Resume PDF is required');
       setCreating(false);
@@ -3123,18 +3223,25 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       return;
     }
 
-    const payload: Record<string, string> = {
+    const payload: Record<string, string | number> = {
       name: trimmedName,
       email: trimmedEmail,
       technology: trimmedTechnology,
       branch: effectiveBranch,
       recruiter: trimmedRecruiter,
-      resumeLink
+      resumeLink,
+      // PRT required
+      visaType: trimmedVisaType,
+      experienceYears: Number(trimmedExperienceYears),
+      company: trimmedCompany
     };
 
-    if (trimmedContact) {
-      payload.contact = trimmedContact;
-    }
+    if (trimmedContact) payload.contact = trimmedContact;
+    if (trimmedTeamLead) payload.teamLead = trimmedTeamLead;
+    if (trimmedEadStart) payload.eadStartDate = trimmedEadStart;
+    if (trimmedEadEnd) payload.eadEndDate = trimmedEadEnd;
+    if (trimmedCity) payload.city = trimmedCity;
+    if (trimmedState) payload.state = trimmedState;
 
     socket.emit('createCandidate', payload, (response: any) => {
       if (!response?.success) {
@@ -3542,12 +3649,46 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder='Search by candidate, technology, recruiter or expert'
-              className="sm:max-w-sm"
-            />
+            <div className="flex flex-1 flex-wrap items-center gap-2">
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder='Search by candidate, technology, recruiter, expert or email'
+                aria-label='Search candidates'
+                className="sm:max-w-sm"
+              />
+              {/* PRT Phase 5 — Expiring-soon chip. Pure client-side filter
+                  that hides any candidate whose EAD is not within 30 days.
+                  Mirrors the row-colour banding so the chip lights up the
+                  same rows visible in red on the full list. */}
+              <Button
+                type="button"
+                size="sm"
+                variant={expiringSoonOnly ? 'default' : 'outline'}
+                onClick={() => setExpiringSoonOnly((v) => !v)}
+                aria-pressed={expiringSoonOnly}
+                aria-label={expiringSoonOnly ? 'Disable expiring soon filter' : 'Filter to candidates expiring within 30 days'}
+                className="whitespace-nowrap"
+              >
+                Expiring soon
+              </Button>
+              {/* PRT Phase 5 — Sort dropdown forwards to the backend so
+                  the cursor returns the list pre-sorted. Default is the
+                  historical "last updated" order. */}
+              <Select
+                value={sortBy}
+                onValueChange={(v) => setSortBy(v as 'updated' | 'name' | 'expiringIn')}
+              >
+                <SelectTrigger className="w-[170px] h-9" aria-label='Sort candidates'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="updated">Recently updated</SelectItem>
+                  <SelectItem value="name">Name (A–Z)</SelectItem>
+                  <SelectItem value="expiringIn">Expiring soonest</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             {renderScopeBadge()}
           </div>
 
@@ -3668,7 +3809,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                     visibleCandidates.map((candidate) => (
                       <TableRow
                         key={candidate.id}
-                        className="cursor-pointer hover:bg-muted/50"
+                        className={`cursor-pointer hover:bg-muted/50 ${expiringRowClass(candidate.expiringInDays)}`}
                         onClick={() => openCandidateSheet(candidate)}
                       >
                         {canEdit && (
@@ -4169,13 +4310,20 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-technology">Technology</Label>
-                <Input
-                  id="create-technology"
-                  value={createForm.technology}
-                  onChange={(event) => handleCreateFieldChange('technology', event.target.value)}
-                  onBlur={() => handleCreateFieldBlur('technology')}
-                  placeholder="Primary technology"
-                />
+                <Select
+                  value={createForm.technology || 'none'}
+                  onValueChange={(value) => handleCreateFieldChange('technology', value === 'none' ? '' : value)}
+                >
+                  <SelectTrigger id="create-technology">
+                    <SelectValue placeholder="Select technology" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Select technology</SelectItem>
+                    {PRT_TECHNOLOGY_VALUES.map((tech) => (
+                      <SelectItem key={tech} value={tech}>{tech}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               {/* Branch is auto-derived (and locked) when the server policy
                   marks it read-only — e.g. assistantManager+marketing (MAM),
@@ -4226,6 +4374,112 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   placeholder="Contact number"
                 />
               </div>
+              {/* ---------- PRT fields (marketing-only create surface) ---------- */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="create-experience-years">Experience (years)</Label>
+                  <Select
+                    value={createForm.experienceYears || 'none'}
+                    onValueChange={(value) => handleCreateFieldChange('experienceYears', value === 'none' ? '' : value)}
+                  >
+                    <SelectTrigger id="create-experience-years">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select</SelectItem>
+                      {PRT_EXPERIENCE_YEARS_VALUES.map((y) => (
+                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="create-visa-type">Visa Type</Label>
+                  <Select
+                    value={createForm.visaType || 'none'}
+                    onValueChange={(value) => handleCreateFieldChange('visaType', value === 'none' ? '' : value)}
+                  >
+                    <SelectTrigger id="create-visa-type">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select</SelectItem>
+                      {PRT_VISA_TYPE_VALUES.map((v) => (
+                        <SelectItem key={v} value={v}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {PRT_EAD_REQUIRED_VISA_TYPES.has(createForm.visaType) && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="create-ead-start">EAD Start Date</Label>
+                    <Input
+                      id="create-ead-start"
+                      type="date"
+                      value={createForm.eadStartDate}
+                      onChange={(e) => handleCreateFieldChange('eadStartDate', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="create-ead-end">EAD End Date</Label>
+                    <Input
+                      id="create-ead-end"
+                      type="date"
+                      value={createForm.eadEndDate}
+                      onChange={(e) => handleCreateFieldChange('eadEndDate', e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="create-company">Company</Label>
+                  <Select
+                    value={createForm.company || 'none'}
+                    onValueChange={(value) => handleCreateFieldChange('company', value === 'none' ? '' : value)}
+                  >
+                    <SelectTrigger id="create-company">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select</SelectItem>
+                      {PRT_COMPANY_VALUES.map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="create-team-lead">Team Lead (optional)</Label>
+                  <Input
+                    id="create-team-lead"
+                    value={createForm.teamLead}
+                    onChange={(e) => handleCreateFieldChange('teamLead', e.target.value)}
+                    placeholder="Auto-derived from recruiter if blank"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="create-city">City (optional)</Label>
+                  <Input
+                    id="create-city"
+                    value={createForm.city}
+                    onChange={(e) => handleCreateFieldChange('city', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="create-state">State (optional)</Label>
+                  <Input
+                    id="create-state"
+                    value={createForm.state}
+                    onChange={(e) => handleCreateFieldChange('state', e.target.value)}
+                  />
+                </div>
+              </div>
+              {/* ---------- /PRT fields ---------- */}
               <div className="space-y-2">
                 <Label htmlFor="create-resume">Resume (PDF)</Label>
                 <Input
