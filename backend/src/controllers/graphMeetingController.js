@@ -201,10 +201,15 @@ export const graphMeetingController = {
     if (typeof recordAutomatically === 'boolean') {
       payload.recordAutomatically = recordAutomatically;
     }
-    const lobbyBypassSettings = parseLobbyBypassSettings(req.body);
-    if (lobbyBypassSettings) {
-      payload.lobbyBypassSettings = lobbyBypassSettings;
-    }
+    // Default the lobby bypass to "everyone" so the Fireflies recording
+    // bot — which joins via the meeting link as an external/anonymous
+    // participant — is auto-admitted instead of waiting in the lobby.
+    // Without this the tenant default keeps the bot in the lobby and the
+    // meeting is never transcribed. Callers can still override the scope
+    // via lobbyBypassScope / lobbyBypassSettings / allowEveryoneBypassLobby.
+    const lobbyBypassSettings = parseLobbyBypassSettings(req.body)
+      || { scope: 'everyone', isDialInBypassEnabled: true };
+    payload.lobbyBypassSettings = lobbyBypassSettings;
 
     try {
       const meeting = await graphMeetingService.createMeeting(token, payload);

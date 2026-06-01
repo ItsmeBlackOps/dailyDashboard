@@ -75,7 +75,7 @@ describe('graphMeetingController.createMeeting', () => {
     mockSaveMeetingLinks.mockResolvedValue({ success: true });
   });
 
-  it('preserves existing payload behavior when lobby bypass options are not provided', async () => {
+  it('defaults to everyone-bypass when lobby bypass options are not provided (auto-admits the Fireflies bot)', async () => {
     const req = {
       headers: {
         authorization: 'Bearer token-123'
@@ -103,7 +103,7 @@ describe('graphMeetingController.createMeeting', () => {
       })
     );
     const [, payload] = mockCreateMeeting.mock.calls[0];
-    expect(payload.lobbyBypassSettings).toBeUndefined();
+    expect(payload.lobbyBypassSettings).toEqual({ scope: 'everyone', isDialInBypassEnabled: true });
     expect(mockSaveMeetingLinks).toHaveBeenCalledWith(
       'task-1',
       expect.objectContaining({
@@ -165,7 +165,7 @@ describe('graphMeetingController.createMeeting', () => {
     expect(res.status).toHaveBeenCalledWith(201);
   });
 
-  it('ignores invalid lobbyBypassScope values to avoid breaking meeting creation', async () => {
+  it('falls back to the everyone-bypass default when an invalid lobbyBypassScope is supplied', async () => {
     const req = {
       headers: {
         authorization: 'Bearer token-xyz'
@@ -180,7 +180,9 @@ describe('graphMeetingController.createMeeting', () => {
     await graphMeetingController.createMeeting(req, res);
 
     const [, payload] = mockCreateMeeting.mock.calls[0];
-    expect(payload.lobbyBypassSettings).toBeUndefined();
+    // Invalid scope is ignored (doesn't break creation) and the safe
+    // everyone-bypass default is applied so the bot is still auto-admitted.
+    expect(payload.lobbyBypassSettings).toEqual({ scope: 'everyone', isDialInBypassEnabled: true });
     expect(res.status).toHaveBeenCalledWith(201);
   });
 });
