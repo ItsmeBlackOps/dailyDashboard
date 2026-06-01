@@ -1,4 +1,4 @@
-import { describe, it, expect, jest, afterEach } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import { candidateService } from '../src/services/candidateService.js';
 import { candidateModel } from '../src/models/Candidate.js';
 import { userModel } from '../src/models/User.js';
@@ -17,6 +17,7 @@ import {
 const SAMPLE_RESUME_LINK = 'https://egvjgtfjstxgszpzvvbx.supabase.co/storage/v1/object/public/resumes/sample.pdf';
 
 const originalCreateCandidate = candidateModel.createCandidate;
+const originalGetCandidateByEmail = candidateModel.getCandidateByEmail;
 const originalGetCandidateById = candidateModel.getCandidateById;
 const originalUpdateCandidateById = candidateModel.updateCandidateById;
 const originalGetUserByEmail = userModel.getUserByEmail;
@@ -25,6 +26,7 @@ const originalCollectManageableUsers = userService.collectManageableUsers;
 
 afterEach(() => {
   candidateModel.createCandidate = originalCreateCandidate;
+  candidateModel.getCandidateByEmail = originalGetCandidateByEmail;
   candidateModel.getCandidateById = originalGetCandidateById;
   candidateModel.updateCandidateById = originalUpdateCandidateById;
   userModel.getUserByEmail = originalGetUserByEmail;
@@ -250,6 +252,12 @@ describe('candidateService.sanitizeCandidatePayload — PRT extensions', () => {
 });
 
 describe('candidateService.createCandidateFromManager — PRT defaults + teamLead derivation', () => {
+  beforeEach(() => {
+    // Duplicate guard calls getCandidateByEmail; default to no existing
+    // candidate so these create-path tests proceed to insert.
+    candidateModel.getCandidateByEmail = jest.fn().mockResolvedValue(null);
+  });
+
   it('derives teamLead from the recruiter user record when not supplied', async () => {
     candidateModel.createCandidate = jest.fn().mockResolvedValue({
       _id: { toString: () => 'derived-tl' }
