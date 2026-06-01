@@ -2293,6 +2293,25 @@ class CandidateService {
       }
     }
 
+    // Duplicate guard: a candidate is a person, so a given email must map
+    // to a single record. Block re-creating an existing candidate — a
+    // reassignment should EDIT the existing record's recruiter, not insert a
+    // second row. (Root cause of the multi-record bug: this manual-create
+    // path had no existence check and candidateDetails has no unique index
+    // to back it up.) Case-insensitive exact match via getCandidateByEmail.
+    if (sanitized.email) {
+      const duplicate = await candidateModel.getCandidateByEmail(sanitized.email);
+      if (duplicate) {
+        const dupName = duplicate.name || duplicate['Candidate Name'] || sanitized.name || 'this candidate';
+        const error = new Error(
+          `A candidate with email ${sanitized.email} already exists (${dupName}). Edit the existing record instead of creating a duplicate.`
+        );
+        error.statusCode = 409;
+        error.existingCandidateId = (duplicate.id || duplicate._id || '').toString();
+        throw error;
+      }
+    }
+
     const document = await candidateModel.createCandidate({
       ...sanitized,
       expert: '',

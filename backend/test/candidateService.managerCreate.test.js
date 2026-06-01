@@ -1,4 +1,4 @@
-import { describe, it, expect, jest, afterEach } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import { candidateService } from '../src/services/candidateService.js';
 import { candidateModel, WORKFLOW_STATUS, RESUME_UNDERSTANDING_STATUS } from '../src/models/Candidate.js';
 import { userModel } from '../src/models/User.js';
@@ -10,6 +10,7 @@ const originalCreateCandidate = candidateModel.createCandidate;
 const originalCount = candidateModel.countResumeUnderstandingTasks;
 const originalGetByWorkflow = candidateModel.getCandidatesByWorkflowStatus;
 const originalGetCandidateById = candidateModel.getCandidateById;
+const originalGetCandidateByEmail = candidateModel.getCandidateByEmail;
 const originalUpdateResume = candidateModel.updateResumeUnderstandingStatus;
 const originalGetAllUsers = userModel.getAllUsers;
 const originalGetUserByEmail = userModel.getUserByEmail;
@@ -20,11 +21,19 @@ afterEach(() => {
   candidateModel.countResumeUnderstandingTasks = originalCount;
   candidateModel.getCandidatesByWorkflowStatus = originalGetByWorkflow;
   candidateModel.getCandidateById = originalGetCandidateById;
+  candidateModel.getCandidateByEmail = originalGetCandidateByEmail;
   candidateModel.updateResumeUnderstandingStatus = originalUpdateResume;
   userModel.getAllUsers = originalGetAllUsers;
   userModel.getUserByEmail = originalGetUserByEmail;
   userService.collectManageableUsers = originalCollectManageableUsers;
   jest.restoreAllMocks();
+});
+
+beforeEach(() => {
+  // Duplicate guard default: no existing candidate with the email, so the
+  // guard passes and create proceeds. Tests that exercise the 409 path
+  // override this with a returned candidate.
+  candidateModel.getCandidateByEmail = jest.fn().mockResolvedValue(null);
 });
 
 describe('candidateService manager create flow', () => {
@@ -92,6 +101,40 @@ describe('candidateService manager create flow', () => {
     expect(result.workflowStatus).toBe(WORKFLOW_STATUS.awaitingExpert);
     expect(result.expertRaw).toBe('');
     expect(result.createdBy).toBe('manager@example.com');
+  });
+
+  it('rejects creating a candidate whose email already exists (409, no insert)', async () => {
+    candidateModel.createCandidate = jest.fn();
+    userModel.getAllUsers = jest.fn().mockReturnValue([
+      { email: 'recruiter@example.com', role: 'recruiter' }
+    ]);
+    userService.collectManageableUsers = jest.fn().mockReturnValue([
+      { email: 'recruiter@example.com', role: 'recruiter', active: true }
+    ]);
+    // An active candidate with the same email already exists.
+    candidateModel.getCandidateByEmail = jest.fn().mockResolvedValue({
+      id: 'existing-1',
+      name: 'Vrishin Reddy Minkuri',
+      email: 'vrishin.min@gmail.com',
+      recruiter: 'recruiter@example.com'
+    });
+
+    await expect(candidateService.createCandidateFromManager(
+      { email: 'manager@example.com', role: 'manager' },
+      {
+        name: 'Vrishin Reddy Minkuri',
+        email: 'vrishin.min@gmail.com',
+        technology: 'software developer',
+        branch: 'ahm',
+        recruiter: 'recruiter@example.com',
+        teamLead: 'tlead@example.com',
+        resumeLink: SAMPLE_RESUME_LINK
+      }
+    )).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(candidateModel.getCandidateByEmail).toHaveBeenCalledWith('vrishin.min@gmail.com');
+    // The duplicate must never be inserted.
+    expect(candidateModel.createCandidate).not.toHaveBeenCalled();
   });
 
   it('allows MM to submit candidate with normalized contact', async () => {

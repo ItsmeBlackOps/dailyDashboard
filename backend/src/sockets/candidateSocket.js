@@ -222,7 +222,11 @@ class CandidateSocketHandler {
 
       return callback({
         success: false,
-        error: error.statusCode === 403 || error.statusCode === 400 ? error.message : 'Unable to create candidate'
+        // Surface the actionable message for client-correctable errors,
+        // including 409 (duplicate candidate) so the user is told the
+        // record already exists and to edit it instead.
+        error: [400, 403, 409].includes(error.statusCode) ? error.message : 'Unable to create candidate',
+        statusCode: error.statusCode || 500
       });
     }
   }
