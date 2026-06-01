@@ -25,7 +25,13 @@ jest.unstable_mockModule('../../config/database.js', () => ({
   },
 }));
 
+// Spread the REAL module so candidateService's named-constant imports
+// (STATUS_VALUES, ACK_EMAIL_VALUES, …) still resolve; override only the
+// model instance. Without the spread, ESM linking fails on the missing
+// constant exports.
+const ActualCandidate = await import('../../models/Candidate.js');
 jest.unstable_mockModule('../../models/Candidate.js', () => ({
+  ...ActualCandidate,
   candidateModel: {
     collection: { find: jest.fn(), aggregate: jest.fn() },
   },

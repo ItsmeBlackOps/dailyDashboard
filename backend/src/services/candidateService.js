@@ -47,6 +47,7 @@ const PRT_ATTACHMENT_ROLES = new Set([
 ]);
 import { userModel } from '../models/User.js';
 import { userService, roleLevel } from './userService.js';
+import { toLegacyRole } from '../utils/roleAliases.js';
 import { storageService } from './storageService.js';
 import { graphMailService } from './graphMailService.js';
 import { notificationService } from './notificationService.js';
@@ -2213,7 +2214,11 @@ class CandidateService {
       throw error;
     }
 
-    const normalizedRole = user.role.trim().toLowerCase();
+    // C20: accept both legacy (mm/mam) and post-rename (manager /
+    // assistantManager + team) role names. Normalise to the legacy token
+    // before gating so a renamed "manager" is recognised as a creator.
+    // Mirrors the normalisation already done in getCandidatesForUser.
+    const normalizedRole = toLegacyRole(user.role, user.team);
 
     // Recruitment creation flow: allow admin, manager, MM, and MAM.
     if (!['admin', 'mm', 'mam'].includes(normalizedRole)) {
