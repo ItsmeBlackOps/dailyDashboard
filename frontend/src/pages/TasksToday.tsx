@@ -78,6 +78,7 @@ interface Task {
   suggestions?: string[];
   joinUrl?: string | null;
   joinWebUrl?: string | null;
+  meetingLink?: string | null;
 
   attachments?: TaskAttachment[];
   jobDescriptionText?: string;
@@ -918,7 +919,11 @@ export default function TasksToday() {
   }, []);
 
   const extractJoinLink = useCallback((task: Task) => {
-    const candidate = task.joinUrl || task.joinWebUrl || '';
+    // meetingLink is the field the one-meeting flow persists (PATCH
+    // /meeting-link); joinUrl/joinWebUrl come from the legacy graph-meeting
+    // path. Read all three so the Join/Create button reflects a created
+    // meeting after a reload or list refresh, not just in the creating session.
+    const candidate = task.joinUrl || task.joinWebUrl || task.meetingLink || '';
     if (!candidate) return '';
     try {
       const url = new URL(candidate);
@@ -3013,7 +3018,7 @@ export default function TasksToday() {
 
         setTasks((prev) =>
           prev.map((item) =>
-            item._id === task._id ? { ...item, joinUrl, joinWebUrl } : item
+            item._id === task._id ? { ...item, joinUrl, joinWebUrl, meetingLink: joinUrl } : item
           )
         );
 
