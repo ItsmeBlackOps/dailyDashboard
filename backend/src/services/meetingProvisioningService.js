@@ -30,7 +30,10 @@ export function buildEventPayload(taskDoc) {
   }
 
   const candidate = taskDoc['Candidate Name'] || 'candidate';
-  const subject = taskDoc.subject || `Interview for ${candidate}`;
+  // Strip tags + cap at Graph's 255-char subject limit (parity with the old
+  // client's DOMPurify sanitize; avoids a Graph 400 on an over-long subject).
+  const rawSubject = taskDoc.subject || `Interview for ${candidate}`;
+  const subject = String(rawSubject).replace(/<[^>]*>/g, '').trim().slice(0, 255);
   const bodyHtml = [
     '<div>',
     `<p><strong>Candidate:</strong> ${escapeHtml(taskDoc['Candidate Name'] || '')}</p>`,

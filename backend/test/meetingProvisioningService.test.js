@@ -32,6 +32,13 @@ describe('buildEventPayload', () => {
     expect(noSubject.subject).toBe('Interview for Sravani Komma');
     expect(buildEventPayload({ ...TASK, 'Start Time Of Interview': 'garbage' })).toBeNull();
   });
+
+  it('strips tags from the subject and caps it at Graph’s 255-char limit', () => {
+    const tagged = buildEventPayload({ ...TASK, subject: '<b>Interview</b> for <script>x</script>Bob' });
+    expect(tagged.subject).toBe('Interview for xBob');
+    const long = buildEventPayload({ ...TASK, subject: 'A'.repeat(400) });
+    expect(long.subject).toHaveLength(255);
+  });
 });
 
 const VALID_ID = '507f1f77bcf86cd799439011';
