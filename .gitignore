@@ -54,3 +54,6 @@ nginx/conf.d/upstreams/backend.active.conf
 # Local scratch HTML reports
 /po-dry-run.html
 /user-mgmt-audit.html
+
+# Duplicate-meeting cleanup reports (contain PII; repo is public)
+backend/scripts/out/
