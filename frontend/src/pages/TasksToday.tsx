@@ -2781,9 +2781,8 @@ export default function TasksToday() {
   const createOutlookEvent = useCallback(
     async (
       task: Task,
-      accountOverride?: AccountInfo | null,
-      overrides?: Partial<Task>
-    ): Promise<boolean> => {
+      accountOverride?: AccountInfo | null
+    ): Promise<string | false> => {
       if (!canManageMeetings) {
         toast({
           title: 'Meetings unavailable',
@@ -2818,16 +2817,9 @@ export default function TasksToday() {
         return false;
       }
 
-      const workingTask: Task = overrides ? { ...task, ...overrides } : task;
-      const joinLink = extractJoinLink(workingTask);
-      if (!joinLink) {
-        toast({
-          title: 'Missing meeting link',
-          description: 'Create the Teams meeting first, then add the event.',
-          variant: 'destructive',
-        });
-        return false;
-      }
+      // The event itself creates the single Teams meeting (isOnlineMeeting),
+      // so no pre-existing link is required — we return the created join URL.
+      const workingTask: Task = task;
 
       const start = parseStart(workingTask);
       const end = parseEnd(workingTask);
@@ -2845,7 +2837,6 @@ export default function TasksToday() {
       const safeCandidate = DOMPurify.sanitize(workingTask['Candidate Name'] || '');
       const safeClient = DOMPurify.sanitize(workingTask['End Client'] || '');
       const safeRound = DOMPurify.sanitize(workingTask['Interview Round'] || '');
-      const safeJoinLink = DOMPurify.sanitize(joinLink);
 
       const detailsHtml = DOMPurify.sanitize(
         [
@@ -2853,7 +2844,7 @@ export default function TasksToday() {
           `<p><strong>Candidate:</strong> ${safeCandidate}</p>`,
           `<p><strong>Client:</strong> ${safeClient}</p>`,
           `<p><strong>Round:</strong> ${safeRound}</p>`,
-          `<p><strong>Join:</strong> <a href="${safeJoinLink}" target="_blank" rel="noopener noreferrer">Click to join</a></p>`,
+          '<p>Join via the Microsoft Teams meeting button on this event.</p>',
           '</div>',
         ].join(''),
         { ADD_ATTR: ['target', 'rel'] }
@@ -2917,13 +2908,23 @@ export default function TasksToday() {
           return false;
         }
 
-        await res.json();
+        const created = await res.json();
+        const createdJoinUrl =
+          (created?.onlineMeeting?.joinUrl as string | undefined) || '';
+        if (!createdJoinUrl) {
+          toast({
+            title: 'Meeting link missing',
+            description: 'The event was created but no Teams join link was returned.',
+            variant: 'destructive',
+          });
+          return false;
+        }
 
         toast({
           title: 'Event created',
           description: 'The interview has been added to your Outlook calendar.',
         });
-        return true;
+        return createdJoinUrl;
       } catch (error) {
         console.error('Outlook event creation failed', error);
         toast({
@@ -2995,87 +2996,52 @@ export default function TasksToday() {
           return;
         }
 
-        const subjectRaw = task.subject || `Interview for ${task["Candidate Name"] || 'candidate'}`;
-        const subject = DOMPurify.sanitize(subjectRaw);
-        const payload: Record<string, unknown> = {
-          subject,
-          taskId: task._id,
-          recordAutomatically: true,
-        };
-
         const start = parseStart(task);
-        const adjusted = new Date(start.toDate().getTime() - (35 * 60 * 1000));
-        // Format nicely in EDT
-        const edtTime = adjusted.toLocaleString("en-US", {
-          timeZone: "America/New_York",
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true
-        });
-        if (start) {
-          payload.startDateTime = start.toDate().toISOString();
-        }
-
         const end = parseEnd(task);
-        if (end) {
-          payload.endDateTime = end.toDate().toISOString();
-        }
+        void end;
 
-        const response = await fetch(`${API_BASE}/api/graph/meetings`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${userToken}`,
-          },
-          body: JSON.stringify(payload),
-        });
-
-        if (response.status === 403) {
-          toast({
-            title: 'Consent required',
-            description: 'Grant Microsoft consent and try again.',
-            variant: 'destructive',
-          });
-          await refreshConsent();
+        // One meeting per task: the calendar event creates the single
+        // native Teams meeting (and invites the Fireflies bot), returning
+        // that meeting's join URL. No separate /api/graph/meetings meeting.
+        const createdJoinUrl = await createOutlookEvent(task, activeAccount);
+        if (!createdJoinUrl) {
+          // createOutlookEvent already surfaced a toast on failure.
           return;
         }
-
-        if (response.status === 503) {
-          toast({
-            title: 'Microsoft integration unavailable',
-            description: 'The backend is not configured for Teams meetings.',
-            variant: 'destructive',
-          });
-          return;
-        }
-
-        if (!response.ok) {
-          const errorBody = await response.text();
-          toast({
-            title: 'Meeting creation failed',
-            description: DOMPurify.sanitize(errorBody.slice(0, 200)) || 'Unexpected error creating meeting.',
-            variant: 'destructive',
-          });
-          return;
-        }
-
-        const data = await response.json();
-        const joinUrl = typeof data?.joinUrl === 'string' ? data.joinUrl : '';
-        const joinWebUrl = typeof data?.joinWebUrl === 'string' ? data.joinWebUrl : '';
+        const joinUrl = createdJoinUrl;
+        const joinWebUrl = createdJoinUrl;
 
         setTasks((prev) =>
           prev.map((item) =>
-            item._id === task._id
-              ? {
-                ...item,
-                joinUrl,
-                joinWebUrl,
-              }
-              : item
+            item._id === task._id ? { ...item, joinUrl, joinWebUrl } : item
           )
         );
 
-        const resolvedLink = extractJoinLink({ ...task, joinUrl, joinWebUrl });
+        // Bypass that meeting's lobby (everyone) + enable auto-record so the
+        // Fireflies bot — invited to the event — is auto-admitted. The
+        // backend resolves + PATCHes the meeting via OBO. Best-effort.
+        try {
+          const bypassRes = await fetch(`${API_BASE}/api/graph/meetings/lobby-bypass`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${userToken}`,
+            },
+            body: JSON.stringify({ joinWebUrl: joinUrl }),
+          });
+          if (!bypassRes.ok) {
+            console.warn('Lobby bypass failed', await bypassRes.text());
+            toast({
+              title: 'Lobby bypass not applied',
+              description: 'The Fireflies bot may need a manual admit on this meeting.',
+              variant: 'destructive',
+            });
+          }
+        } catch (err) {
+          console.warn('Lobby bypass request failed', err);
+        }
+
+        const resolvedLink = joinUrl;
         if (resolvedLink) {
           // Persist on the task so the Fireflies scheduler picks it up
           // without having to scrape the email body.
@@ -3102,8 +3068,6 @@ export default function TasksToday() {
               description: `Join link: ${resolvedLink}`,
             });
           }
-
-          await createOutlookEvent(task, activeAccount, { joinUrl, joinWebUrl });
 
           // [Harsh] Analytics - Track Meeting Join
           posthog?.capture('task_meeting_joined', {

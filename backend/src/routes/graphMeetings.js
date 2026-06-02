@@ -6,6 +6,7 @@ const router = express.Router();
 
 router.get('/health/meetings', (req, res) => graphMeetingController.health(req, res));
 router.post('/meetings', (req, res) => graphMeetingController.createMeeting(req, res));
+router.post('/meetings/lobby-bypass', (req, res) => graphMeetingController.bypassLobby(req, res));
 router.post('/mail/send', (req, res) => graphMailController.sendMail(req, res));
 
 export default router;

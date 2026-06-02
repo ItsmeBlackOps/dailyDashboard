@@ -134,6 +134,74 @@ class GraphMeetingService {
   }
 
   /**
+   * Set a Teams online meeting's lobby to "everyone" (and enable
+   * auto-record) given its join URL. Used after the calendar event
+   * creates its native Teams meeting, so the Fireflies bot — invited to
+   * the event — is auto-admitted instead of waiting in the lobby.
+   *
+   * Resolves the meeting via $filter on JoinWebUrl, then PATCHes it.
+   *
+   * @param {string} userAssertion - Bearer token (OBO assertion).
+   * @param {string} joinWebUrl - the meeting's join URL (from the event).
+   * @returns {Promise<object>} the patched onlineMeeting.
+   */
+  async setMeetingLobbyBypass(userAssertion, joinWebUrl) {
+    if (!joinWebUrl || typeof joinWebUrl !== 'string') {
+      const err = new Error('joinWebUrl is required');
+      err.statusCode = 400;
+      throw err;
+    }
+    const accessToken = await this.acquireOnBehalfOfToken(userAssertion, this.scopes);
+
+    // Resolve the onlineMeeting by its join URL (OData single-quote escape).
+    const escaped = joinWebUrl.replace(/'/g, "''");
+    const lookupUrl = `${GRAPH_ENDPOINT}?$filter=JoinWebUrl eq '${escaped}'`;
+    const lookupRes = await fetch(lookupUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const lookupText = await lookupRes.text();
+    let lookup;
+    try {
+      lookup = lookupText ? JSON.parse(lookupText) : {};
+    } catch {
+      lookup = lookupText;
+    }
+    if (!lookupRes.ok) {
+      throw new GraphRequestError('Failed to resolve online meeting', lookupRes.status, lookup);
+    }
+
+    const meeting = Array.isArray(lookup?.value) ? lookup.value[0] : null;
+    if (!meeting?.id) {
+      throw new GraphRequestError('Online meeting not found for join URL', 404, lookup);
+    }
+
+    const patchRes = await fetch(`${GRAPH_ENDPOINT}/${encodeURIComponent(meeting.id)}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        lobbyBypassSettings: { scope: 'everyone', isDialInBypassEnabled: true },
+        recordAutomatically: true
+      })
+    });
+    const patchText = await patchRes.text();
+    let patched;
+    try {
+      patched = patchText ? JSON.parse(patchText) : {};
+    } catch {
+      patched = patchText;
+    }
+    if (!patchRes.ok) {
+      throw new GraphRequestError('Failed to update meeting lobby settings', patchRes.status, patched);
+    }
+
+    return patched;
+  }
+
+  /**
    * Search the signed-in user's mailbox for every message whose subject
    * matches `subject`. Returns up to `top` results from the last `days`
    * days, sorted oldest-first so consumers can replay them in order.
