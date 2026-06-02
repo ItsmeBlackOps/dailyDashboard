@@ -285,10 +285,13 @@ export class TaskController {
 
   ensureMeeting = asyncHandler(async (req, res) => {
     const { taskId } = req.params;
-    const authHeader = req.headers?.authorization || '';
-    const userAssertion = /^Bearer\s+(.+)/i.exec(authHeader)?.[1] || '';
+    // Authorization carries the app session JWT (validated by authenticateHTTP).
+    // The Microsoft Graph OBO assertion comes separately in x-graph-access-token
+    // (same pattern as sendAssignmentEmail) — the app JWT cannot be used for OBO.
+    const graphHeader = req.headers['x-graph-access-token'];
+    const userAssertion = typeof graphHeader === 'string' ? graphHeader.trim() : '';
     if (!userAssertion) {
-      return res.status(401).json({ success: false, error: 'Missing bearer token' });
+      return res.status(400).json({ success: false, error: 'Missing x-graph-access-token header' });
     }
 
     let result;

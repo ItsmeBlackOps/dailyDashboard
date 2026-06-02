@@ -21,7 +21,7 @@ function res() {
   r.json = jest.fn((p) => { r.body = p; return r; });
   return r;
 }
-const req = (over = {}) => ({ params: { taskId: '507f1f77bcf86cd799439011' }, headers: { authorization: 'Bearer abc' }, user: { email: 'a@b.com' }, ...over });
+const req = (over = {}) => ({ params: { taskId: '507f1f77bcf86cd799439011' }, headers: { 'x-graph-access-token': 'abc' }, user: { email: 'a@b.com' }, ...over });
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -51,10 +51,30 @@ describe('taskController.ensureMeeting', () => {
     expect(r.body).toMatchObject({ pending: true });
   });
 
-  it('401 when no bearer token', async () => {
+  it('400 when the x-graph-access-token header is missing', async () => {
     const r = res();
     await taskController.ensureMeeting(req({ headers: {} }), r);
-    expect(r.statusCode).toBe(401);
+    expect(r.statusCode).toBe(400);
     expect(mockEnsure).not.toHaveBeenCalled();
+  });
+
+  it('does NOT accept an app-JWT Authorization bearer as the OBO assertion (regression: #153 "Invalid token")', async () => {
+    // The OBO assertion must come from x-graph-access-token, never the
+    // Authorization bearer (which authenticateHTTP already validated as the
+    // app session JWT). A request with only Authorization is rejected.
+    const r = res();
+    await taskController.ensureMeeting(req({ headers: { authorization: 'Bearer app-jwt' } }), r);
+    expect(r.statusCode).toBe(400);
+    expect(mockEnsure).not.toHaveBeenCalled();
+  });
+
+  it('passes the x-graph-access-token value (not Authorization) to the service', async () => {
+    mockEnsure.mockResolvedValue({ status: 'created', meetingLink: 'https://teams/x' });
+    const r = res();
+    await taskController.ensureMeeting(
+      req({ headers: { authorization: 'Bearer app-jwt', 'x-graph-access-token': 'graph-obo-token' } }),
+      r
+    );
+    expect(mockEnsure).toHaveBeenCalledWith({ taskId: '507f1f77bcf86cd799439011', userAssertion: 'graph-obo-token', actorEmail: 'a@b.com' });
   });
 });
