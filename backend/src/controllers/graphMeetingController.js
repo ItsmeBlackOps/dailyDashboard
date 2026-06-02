@@ -249,5 +249,38 @@ export const graphMeetingController = {
       logger.error('Failed to create Teams meeting', { error: error.message });
       return res.status(500).json({ error: 'create_failed', detail: error?.message });
     }
+  },
+
+  // Set an existing Teams meeting's lobby to everyone-bypass (+ auto-record)
+  // by its join URL. Called after the calendar event creates its native
+  // meeting, so the Fireflies bot (invited to the event) is auto-admitted.
+  async bypassLobby(req, res) {
+    const token = bearerFrom(req);
+    if (!token) {
+      return res.status(401).json({ error: 'missing_bearer' });
+    }
+
+    const joinWebUrl = typeof req.body?.joinWebUrl === 'string' ? req.body.joinWebUrl.trim() : '';
+    if (!joinWebUrl) {
+      return res.status(400).json({ error: 'missing_join_url' });
+    }
+
+    try {
+      const meeting = await graphMeetingService.setMeetingLobbyBypass(token, joinWebUrl);
+      return res.status(200).json({ success: true, meeting });
+    } catch (error) {
+      if (error instanceof AzureMeetingsNotConfiguredError) {
+        return res.status(503).json({ error: 'not_configured' });
+      }
+      if (error instanceof MissingUserAssertionError) {
+        return res.status(401).json({ error: 'missing_bearer' });
+      }
+      if (error instanceof GraphRequestError) {
+        const detail = error.responseBody || { message: error.message };
+        return res.status(error.status || 502).json({ error: 'graph_error', detail });
+      }
+      logger.error('Failed to set meeting lobby bypass', { error: error.message });
+      return res.status(500).json({ error: 'bypass_failed', detail: error?.message });
+    }
   }
 };

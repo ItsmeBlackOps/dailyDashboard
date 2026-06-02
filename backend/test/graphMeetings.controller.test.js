@@ -5,6 +5,7 @@ const createMeetingMock = jest.fn();
 const getConsentUrlMock = jest.fn();
 const completeConsentMock = jest.fn();
 const saveMeetingLinksMock = jest.fn();
+const setMeetingLobbyBypassMock = jest.fn();
 
 class AzureMeetingsNotConfiguredError extends Error {}
 class MissingUserAssertionError extends Error {}
@@ -23,7 +24,8 @@ await jest.unstable_mockModule('../src/services/graphMeetingService.js', () => (
     health: healthMock,
     createMeeting: createMeetingMock,
     getConsentUrl: getConsentUrlMock,
-    completeConsent: completeConsentMock
+    completeConsent: completeConsentMock,
+    setMeetingLobbyBypass: setMeetingLobbyBypassMock
   },
   AzureMeetingsNotConfiguredError,
   MissingUserAssertionError,
@@ -220,6 +222,53 @@ describe('graphMeetingController', () => {
       error: 'persist_failed',
       detail: 'failed to update',
       meeting
+    });
+  });
+
+  describe('bypassLobby', () => {
+    it('401 when no bearer token is present', async () => {
+      const req = { headers: {}, body: { joinWebUrl: 'https://teams/x' } };
+      const res = createRes();
+      await graphMeetingController.bypassLobby(req, res);
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(setMeetingLobbyBypassMock).not.toHaveBeenCalled();
+    });
+
+    it('400 when joinWebUrl is missing', async () => {
+      const req = { headers: { authorization: 'Bearer t' }, body: {} };
+      const res = createRes();
+      await graphMeetingController.bypassLobby(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(setMeetingLobbyBypassMock).not.toHaveBeenCalled();
+    });
+
+    it('200 and calls the service with the token + joinWebUrl on success', async () => {
+      const req = {
+        headers: { authorization: 'Bearer user-token' },
+        body: { joinWebUrl: 'https://teams.microsoft.com/l/meetup-join/abc' }
+      };
+      const res = createRes();
+      setMeetingLobbyBypassMock.mockResolvedValueOnce({ id: 'm1', lobbyBypassSettings: { scope: 'everyone' } });
+
+      await graphMeetingController.bypassLobby(req, res);
+
+      expect(setMeetingLobbyBypassMock).toHaveBeenCalledWith('user-token', 'https://teams.microsoft.com/l/meetup-join/abc');
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('maps a GraphRequestError status through', async () => {
+      const req = {
+        headers: { authorization: 'Bearer user-token' },
+        body: { joinWebUrl: 'https://teams.microsoft.com/l/meetup-join/missing' }
+      };
+      const res = createRes();
+      setMeetingLobbyBypassMock.mockRejectedValueOnce(new GraphRequestError('not found', 404, { error: 'x' }));
+
+      await graphMeetingController.bypassLobby(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.body.error).toBe('graph_error');
     });
   });
 });
