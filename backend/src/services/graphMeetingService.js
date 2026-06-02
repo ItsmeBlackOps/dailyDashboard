@@ -3,6 +3,7 @@ import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
 const GRAPH_ENDPOINT = 'https://graph.microsoft.com/v1.0/me/onlineMeetings';
+const GRAPH_EVENTS_ENDPOINT = 'https://graph.microsoft.com/v1.0/me/events';
 
 class AzureMeetingsNotConfiguredError extends Error {
   constructor() {
@@ -128,6 +129,34 @@ class GraphMeetingService {
 
     if (!response.ok) {
       throw new GraphRequestError('Microsoft Graph request failed', response.status, parsed);
+    }
+
+    return parsed;
+  }
+
+  async createEventMeeting(userAssertion, eventPayload) {
+    const accessToken = await this.acquireOnBehalfOfToken(userAssertion, this.scopes);
+
+    const response = await fetch(GRAPH_EVENTS_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify(eventPayload)
+    });
+
+    const text = await response.text();
+    let parsed;
+    try {
+      parsed = text ? JSON.parse(text) : {};
+    } catch (error) {
+      logger.error('Failed to parse Graph event response', { error: error.message });
+      parsed = text;
+    }
+
+    if (!response.ok) {
+      throw new GraphRequestError('Microsoft Graph event request failed', response.status, parsed);
     }
 
     return parsed;
