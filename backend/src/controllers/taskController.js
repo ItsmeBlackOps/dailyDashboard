@@ -3,6 +3,7 @@ import { taskService } from '../services/taskService.js';
 import { thanksMailService } from '../services/thanksMailService.js';
 import { interviewerQuestionService } from '../services/interviewerQuestionService.js';
 import { interviewDebriefService } from '../services/interviewDebriefService.js';
+import { ensureMeetingForTask } from '../services/meetingProvisioningService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 import { database } from '../config/database.js';
@@ -280,6 +281,36 @@ export class TaskController {
     }
 
     return res.json({ success: true, task: result });
+  });
+
+  ensureMeeting = asyncHandler(async (req, res) => {
+    const { taskId } = req.params;
+    const authHeader = req.headers?.authorization || '';
+    const userAssertion = /^Bearer\s+(.+)/i.exec(authHeader)?.[1] || '';
+    if (!userAssertion) {
+      return res.status(401).json({ success: false, error: 'Missing bearer token' });
+    }
+
+    let result;
+    try {
+      result = await ensureMeetingForTask({
+        taskId,
+        userAssertion,
+        actorEmail: req.user?.email || null,
+      });
+    } catch (err) {
+      const status = err.statusCode || 500;
+      logger.error('ensureMeeting failed', { taskId, error: err.message });
+      return res.status(status).json({ success: false, error: err.message });
+    }
+
+    if (result.status === 'created') {
+      return res.status(201).json({ success: true, created: true, meetingLink: result.meetingLink, joinUrl: result.meetingLink, joinWebUrl: result.meetingLink });
+    }
+    if (result.status === 'exists') {
+      return res.status(200).json({ success: true, created: false, meetingLink: result.meetingLink, joinUrl: result.meetingLink, joinWebUrl: result.meetingLink });
+    }
+    return res.status(202).json({ success: true, pending: true });
   });
 
   healthCheck = asyncHandler(async (req, res) => {
