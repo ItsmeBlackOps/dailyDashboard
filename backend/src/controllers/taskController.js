@@ -253,6 +253,13 @@ export class TaskController {
 
     const update = {
       meetingLink: meetingLink || null,
+      // Keep the join-link fields in sync with meetingLink. The one-meeting
+      // flow persists the Teams join URL via this endpoint (not the legacy
+      // saveMeetingLinks path), and the TasksToday Join/Create-Meeting button
+      // reads joinUrl/joinWebUrl — without this they'd stay empty and the
+      // button would wrongly show "Create Meeting" after a reload.
+      joinUrl: meetingLink || null,
+      joinWebUrl: meetingLink || null,
       meetingPassword: meetingPassword || null,
       botStatus: 'pending',
       botInviteAttempts: 0,

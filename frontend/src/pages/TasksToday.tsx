@@ -78,6 +78,7 @@ interface Task {
   suggestions?: string[];
   joinUrl?: string | null;
   joinWebUrl?: string | null;
+  meetingLink?: string | null;
 
   attachments?: TaskAttachment[];
   jobDescriptionText?: string;
@@ -918,7 +919,11 @@ export default function TasksToday() {
   }, []);
 
   const extractJoinLink = useCallback((task: Task) => {
-    const candidate = task.joinUrl || task.joinWebUrl || '';
+    // meetingLink is the field the one-meeting flow persists (PATCH
+    // /meeting-link); joinUrl/joinWebUrl come from the legacy graph-meeting
+    // path. Read all three so the Join/Create button reflects a created
+    // meeting after a reload or list refresh, not just in the creating session.
+    const candidate = task.joinUrl || task.joinWebUrl || task.meetingLink || '';
     if (!candidate) return '';
     try {
       const url = new URL(candidate);
@@ -3013,9 +3018,30 @@ export default function TasksToday() {
 
         setTasks((prev) =>
           prev.map((item) =>
-            item._id === task._id ? { ...item, joinUrl, joinWebUrl } : item
+            item._id === task._id ? { ...item, joinUrl, joinWebUrl, meetingLink: joinUrl } : item
           )
         );
+
+        // Persist the join link to the task FIRST — before the best-effort
+        // lobby bypass — so the meeting is durably stored. Both the
+        // auto-create effect and the Join/Create-Meeting button gate on this
+        // persisted link, so writing it immediately is what stops a page
+        // reload from creating the same meeting again. (It also lets the
+        // Fireflies scheduler pick it up without scraping the email body.)
+        try {
+          await authFetch(`${API_URL}/api/tasks/${task._id}/meeting-link`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ meetingLink: joinUrl }),
+          });
+        } catch (err) {
+          console.warn('Failed to persist meeting link to task', err);
+          toast({
+            title: 'Meeting created but not saved',
+            description: 'A reload may recreate it — please retry so the link is stored.',
+            variant: 'destructive',
+          });
+        }
 
         // Bypass that meeting's lobby (everyone) + enable auto-record so the
         // Fireflies bot — invited to the event — is auto-admitted. The
@@ -3043,18 +3069,6 @@ export default function TasksToday() {
 
         const resolvedLink = joinUrl;
         if (resolvedLink) {
-          // Persist on the task so the Fireflies scheduler picks it up
-          // without having to scrape the email body.
-          try {
-            await authFetch(`${API_URL}/api/tasks/${task._id}/meeting-link`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ meetingLink: resolvedLink }),
-            });
-          } catch (err) {
-            console.warn('Failed to persist meeting link to task', err);
-          }
-
           try {
             await navigator.clipboard.writeText(resolvedLink);
             toast({
