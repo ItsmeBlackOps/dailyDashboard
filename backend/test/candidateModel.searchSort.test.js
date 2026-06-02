@@ -12,7 +12,8 @@ function makeStubbedModel(returnedDocs = []) {
     toArray: jest.fn().mockResolvedValue(returnedDocs)
   };
   const collection = {
-    find: jest.fn(() => cursor)
+    find: jest.fn(() => cursor),
+    countDocuments: jest.fn().mockResolvedValue(returnedDocs.length)
   };
   const model = new CandidateModel();
   model.collection = collection;
@@ -95,5 +96,48 @@ describe('CandidateModel.getAllCandidates', () => {
     const [filter] = collection.find.mock.calls[0];
     const fields = filter.$or.map((c) => Object.keys(c)[0]);
     expect(fields).toEqual(expect.arrayContaining(['Candidate Name', 'Email ID', 'Recruiter']));
+  });
+});
+
+describe('CandidateModel.countCandidatesByRecruiters', () => {
+  it('counts with the exact recruiter-scope filter the fetch uses', async () => {
+    const { model, collection } = makeStubbedModel();
+    const emails = ['rec@co.com'];
+    const opts = { resumeUnderstandingStatus: 'pending' };
+
+    // Fetch builds the filter via the shared _buildRecruiterScopeQuery...
+    await model.getCandidatesByRecruiters(emails, opts);
+    const fetchFilter = collection.find.mock.calls[0][0];
+
+    // ...and the count must build the byte-identical filter so the badge
+    // total can never diverge from the queue it is counting.
+    await model.countCandidatesByRecruiters(emails, opts);
+    const countFilter = collection.countDocuments.mock.calls[0][0];
+
+    expect(countFilter).toEqual(fetchFilter);
+  });
+
+  it('returns 0 without touching the DB when the scope is empty', async () => {
+    const { model, collection } = makeStubbedModel();
+    const n = await model.countCandidatesByRecruiters([], {});
+    expect(n).toBe(0);
+    expect(collection.countDocuments).not.toHaveBeenCalled();
+  });
+});
+
+describe('CandidateModel list projection (LIST_PROJECTION)', () => {
+  it('list fetches omit the heavy fields the table never renders', async () => {
+    const { model, collection } = makeStubbedModel();
+    await model.getCandidatesByBranch('GGR', {});
+    const { projection } = collection.find.mock.calls[0][1];
+    // dropped bulk
+    expect(projection.attachments).toBeUndefined();
+    expect(projection.source).toBeUndefined();
+    expect(projection.metadata).toBeUndefined();
+    expect(projection.statusHistory).toBeUndefined();
+    // still selects what the list renders + what derived getters need
+    expect(projection.Recruiter).toBe(1);
+    expect(projection.eadEndDate).toBe(1);
+    expect(projection.marketingStartDate).toBe(1);
   });
 });
