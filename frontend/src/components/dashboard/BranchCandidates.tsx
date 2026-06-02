@@ -3328,17 +3328,29 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           } catch { /* non-blocking */ }
         }
 
-        // 3) Auto-queue the §6.2 Assignment Email (carries the resume).
+        // 3) Send the §6.2 Assignment Email from the creator's own mailbox
+        //    (delegated, like Interview Support) by passing the Graph token.
+        //    The server falls back to the async outbox if that send fails,
+        //    so the email is never silently lost.
         try {
+          let graphToken = '';
+          try {
+            graphToken = await acquireGraphAccessToken();
+          } catch {
+            /* no delegated token → server enqueues via the outbox */
+          }
           const r = await authFetch(`${API_URL}/api/candidates/${candidateId}/send-assignment-email`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              ...(graphToken ? { 'x-graph-access-token': graphToken } : {})
+            },
             body: JSON.stringify(resumeAttachmentId ? { attachmentIds: [resumeAttachmentId] } : {})
           });
           if (!r.ok) {
             const j = await r.json().catch(() => ({}));
             toast({
-              title: 'Assignment email not queued',
+              title: 'Assignment email not sent',
               description: j?.error || 'You can send it from the candidate page.',
               variant: 'destructive'
             });
@@ -3361,7 +3373,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
 
       toast({
         title: 'Candidate created',
-        description: 'Assignment email queued. Candidate sent to admin alerts for expert assignment.'
+        description: 'Assignment email sent to the Team Lead. Candidate sent to admin alerts for expert assignment.'
       });
 
       resetCreateState();

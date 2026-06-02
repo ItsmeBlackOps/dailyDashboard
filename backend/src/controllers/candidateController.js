@@ -254,13 +254,19 @@ class CandidateController {
       if (!user) {
         return res.status(401).json({ success: false, error: 'Authentication required' });
       }
-      // Phase 3.5 — enqueue-mode. No MSAL Graph token from the request:
-      // the emailDeliveryWorker sends via app-only token (sendApplicationMail).
+      // Prefer a synchronous delegated send from the requester's mailbox
+      // (same as Interview Support) when the frontend supplies a delegated
+      // Graph token; the service falls back to the async outbox if that
+      // send fails. Without a token it stays enqueue-only (app-only worker).
+      const graphTokenHeader = req.headers['x-graph-access-token'];
+      const graphToken = typeof graphTokenHeader === 'string' && graphTokenHeader.trim()
+        ? graphTokenHeader.trim()
+        : null;
       const { id: candidateId } = req.params;
       const body = req.body || {};
       const result = await candidateService.sendAssignmentEmail(
         user,
-        /* graphAccessToken */ null,
+        graphToken,
         candidateId,
         {
           appendBody: body.appendBody,
@@ -268,8 +274,9 @@ class CandidateController {
           subject: body.subject
         }
       );
-      // 202 Accepted: the dispatch is decoupled from this request.
-      return res.status(202).json({
+      // 200 when sent synchronously (delegated); 202 when queued for the
+      // async dispatcher.
+      return res.status(result.status === 'sent' ? 200 : 202).json({
         success: true,
         status: result.status,
         outboxId: result.outboxId,
