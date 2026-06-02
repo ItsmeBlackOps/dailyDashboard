@@ -3022,6 +3022,27 @@ export default function TasksToday() {
           )
         );
 
+        // Persist the join link to the task FIRST — before the best-effort
+        // lobby bypass — so the meeting is durably stored. Both the
+        // auto-create effect and the Join/Create-Meeting button gate on this
+        // persisted link, so writing it immediately is what stops a page
+        // reload from creating the same meeting again. (It also lets the
+        // Fireflies scheduler pick it up without scraping the email body.)
+        try {
+          await authFetch(`${API_URL}/api/tasks/${task._id}/meeting-link`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ meetingLink: joinUrl }),
+          });
+        } catch (err) {
+          console.warn('Failed to persist meeting link to task', err);
+          toast({
+            title: 'Meeting created but not saved',
+            description: 'A reload may recreate it — please retry so the link is stored.',
+            variant: 'destructive',
+          });
+        }
+
         // Bypass that meeting's lobby (everyone) + enable auto-record so the
         // Fireflies bot — invited to the event — is auto-admitted. The
         // backend resolves + PATCHes the meeting via OBO. Best-effort.
@@ -3048,18 +3069,6 @@ export default function TasksToday() {
 
         const resolvedLink = joinUrl;
         if (resolvedLink) {
-          // Persist on the task so the Fireflies scheduler picks it up
-          // without having to scrape the email body.
-          try {
-            await authFetch(`${API_URL}/api/tasks/${task._id}/meeting-link`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ meetingLink: resolvedLink }),
-            });
-          } catch (err) {
-            console.warn('Failed to persist meeting link to task', err);
-          }
-
           try {
             await navigator.clipboard.writeText(resolvedLink);
             toast({
