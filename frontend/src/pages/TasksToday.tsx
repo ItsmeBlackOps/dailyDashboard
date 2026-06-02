@@ -2839,12 +2839,16 @@ export default function TasksToday() {
 
         // One meeting per task, created + persisted + lobby-bypassed
         // server-side, gated by an atomic claim — reloads / concurrent tabs
-        // cannot duplicate it.
-        const res = await fetch(`${API_URL}/api/tasks/${task._id}/ensure-meeting`, {
+        // cannot duplicate it. authFetch attaches the app session JWT
+        // (Authorization) which authenticateHTTP validates; the Microsoft
+        // Graph OBO token goes in x-graph-access-token (same pattern as the
+        // assignment-email send). Putting the Azure token in Authorization
+        // makes authenticateHTTP reject it as an invalid app JWT.
+        const res = await authFetch(`${API_URL}/api/tasks/${task._id}/ensure-meeting`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${userToken}`,
+            'x-graph-access-token': userToken,
           },
         });
         const data = await res.json().catch(() => ({}));
