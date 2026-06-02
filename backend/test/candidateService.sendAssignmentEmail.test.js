@@ -5,6 +5,7 @@ import { userModel } from '../src/models/User.js';
 import { userService } from '../src/services/userService.js';
 import { storageService } from '../src/services/storageService.js';
 import { emailOutboxRepository } from '../src/services/emailOutboxRepository.js';
+import { graphMailService } from '../src/services/graphMailService.js';
 
 // Phase 3.5 — the service no longer sends mail itself; it builds the
 // Graph payload, validates the gates, and enqueues a row in the
@@ -19,6 +20,7 @@ const originalGetAllUsers = userModel.getAllUsers;
 const originalCollectManageableUsers = userService.collectManageableUsers;
 const originalFetchObjectAsBase64 = storageService.fetchObjectAsBase64;
 const originalEnqueue = emailOutboxRepository.enqueue;
+const originalSendDelegatedMail = graphMailService.sendDelegatedMail;
 
 afterEach(() => {
   candidateModel.getCandidateById = originalGetCandidateById;
@@ -28,6 +30,7 @@ afterEach(() => {
   userService.collectManageableUsers = originalCollectManageableUsers;
   storageService.fetchObjectAsBase64 = originalFetchObjectAsBase64;
   emailOutboxRepository.enqueue = originalEnqueue;
+  graphMailService.sendDelegatedMail = originalSendDelegatedMail;
   jest.restoreAllMocks();
 });
 
@@ -240,5 +243,69 @@ describe('candidateService.sendAssignmentEmail — gates (unchanged)', () => {
       'cand1',
       {}
     )).rejects.toMatchObject({ statusCode: 403 });
+  });
+});
+
+describe('candidateService.sendAssignmentEmail — delegated send (Interview-Support-style)', () => {
+  it('sends synchronously via sendDelegatedMail, records audit + flips ackEmail, and does NOT enqueue', async () => {
+    setupHappyPath();
+    graphMailService.sendDelegatedMail = jest.fn().mockResolvedValue({ id: 'graph-msg-1' });
+    candidateModel.updateCandidateById = jest.fn().mockResolvedValue({});
+
+    const result = await candidateService.sendAssignmentEmail(
+      { email: 'mm.user@company.com', role: 'mm', name: 'MM User' },
+      'delegated-graph-token',
+      'cand1',
+      {}
+    );
+
+    expect(graphMailService.sendDelegatedMail).toHaveBeenCalledTimes(1);
+    const [token, payload] = graphMailService.sendDelegatedMail.mock.calls[0];
+    expect(token).toBe('delegated-graph-token');
+    expect(payload.message.subject).toContain('Assignment: Jane Doe');
+    expect(result.status).toBe('sent');
+    expect(candidateModel.updateCandidateById).toHaveBeenCalledWith(
+      'cand1',
+      expect.objectContaining({
+        _pushAssignmentEmail: expect.objectContaining({ status: 'sent', via: 'delegated' }),
+        ackEmail: 'Sent',
+        ackEmailAt: expect.any(Date)
+      })
+    );
+    expect(emailOutboxRepository.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the async outbox when the delegated send fails', async () => {
+    setupHappyPath();
+    graphMailService.sendDelegatedMail = jest.fn().mockRejectedValue(new Error('Graph 401'));
+    candidateModel.updateCandidateById = jest.fn().mockResolvedValue({});
+
+    const result = await candidateService.sendAssignmentEmail(
+      { email: 'mm.user@company.com', role: 'mm', name: 'MM User' },
+      'delegated-graph-token',
+      'cand1',
+      {}
+    );
+
+    expect(graphMailService.sendDelegatedMail).toHaveBeenCalledTimes(1);
+    expect(emailOutboxRepository.enqueue).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe('queued');
+    expect(result.outboxId).toBe('outbox-1');
+  });
+
+  it('stays enqueue-only (no delegated send) when no Graph token is supplied', async () => {
+    setupHappyPath();
+    graphMailService.sendDelegatedMail = jest.fn();
+
+    const result = await candidateService.sendAssignmentEmail(
+      { email: 'mm.user@company.com', role: 'mm', name: 'MM User' },
+      null,
+      'cand1',
+      {}
+    );
+
+    expect(graphMailService.sendDelegatedMail).not.toHaveBeenCalled();
+    expect(emailOutboxRepository.enqueue).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe('queued');
   });
 });

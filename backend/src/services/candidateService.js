@@ -2100,7 +2100,7 @@ class CandidateService {
   // "From" address therefore becomes the configured app sender, NOT the
   // clicker — deliberate trade-off chosen for durable retry over a 24h
   // window. No MSAL token is needed from the request.
-  async sendAssignmentEmail(user, _unused, candidateId, options = {}) {
+  async sendAssignmentEmail(user, graphAccessToken, candidateId, options = {}) {
     if (!user?.email || !user?.role) {
       const err = new Error('Authentication required');
       err.statusCode = 401;
@@ -2217,6 +2217,66 @@ class CandidateService {
     if (options.subject && typeof options.subject === 'string' && options.subject.trim()) {
       built.message.subject = options.subject.trim();
       built._audit.subject = options.subject.trim();
+    }
+
+    // Prefer a SYNCHRONOUS delegated send from the requester's own mailbox
+    // (same mechanism as Interview Support) when a delegated Graph token is
+    // supplied. This is reliable + immediate, unlike the app-only outbox.
+    // On ANY failure we fall back to the async EmailOutbox below so the
+    // email is never silently lost.
+    if (graphAccessToken) {
+      try {
+        const sendResp = await graphMailService.sendDelegatedMail(graphAccessToken, {
+          message: built.message,
+          saveToSentItems: built.saveToSentItems
+        });
+        const auditEntry = {
+          ts: new Date(),
+          sender: user.email.toLowerCase(),
+          to: built._audit.to,
+          cc: built._audit.cc,
+          bcc: built._audit.bcc,
+          subject: built._audit.subject,
+          attachmentIds: built._audit.attachmentIds,
+          attempts: 0,
+          status: 'sent',
+          via: 'delegated',
+          graphMessageId: sendResp?.id || null
+        };
+        await candidateModel.updateCandidateById(String(candidateId), {
+          _pushAssignmentEmail: auditEntry,
+          ackEmail: 'Sent',
+          ackEmailAt: new Date()
+        });
+        try {
+          domainEventBus.publish(DomainEvents.CandidateAssignmentEmailSent, {
+            eventId: crypto.randomUUID(),
+            candidateId: String(candidateId),
+            audit: auditEntry,
+            occurredAt: new Date().toISOString(),
+            actor: { email: user.email, role: user.role }
+          });
+        } catch (evtErr) {
+          logger.warn('CandidateAssignmentEmailSent publish failed (non-fatal)', { error: evtErr.message });
+        }
+        logger.info('Assignment email sent (delegated, from sender mailbox)', {
+          candidateId,
+          to: built._audit.to,
+          cc: built._audit.cc,
+          sender: user.email
+        });
+        return {
+          success: true,
+          status: 'sent',
+          message: 'Assignment email sent from your mailbox.'
+        };
+      } catch (delegatedErr) {
+        logger.warn('Delegated assignment-email send failed — falling back to the outbox', {
+          candidateId,
+          error: delegatedErr.message
+        });
+        // fall through to the async enqueue below
+      }
     }
 
     // Phase 3.5 — enqueue into the EmailOutbox. The emailDeliveryWorker
