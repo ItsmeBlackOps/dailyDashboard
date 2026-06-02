@@ -1145,6 +1145,38 @@ class CandidateService {
     ]);
   }
 
+  // Resolve the recruiter scope (emails + visibility) used by the
+  // resume-understanding queue for mam / mlead / recruiter. Shared by the
+  // queue (which fetches the rows) and the count (which counts them) so the
+  // sidebar badge total always equals the number of rows the page renders.
+  // Returns null for roles that don't use the recruiter-scope path.
+  async _resolveResumeRecruiterScope(user, normalizedRole) {
+    const normalizedEmail = normalizeEmail(user.email);
+
+    if (normalizedRole === ROLE_MAM || normalizedRole === ROLE_MLEAD) {
+      const hierarchy = await this.collectHierarchyEmails(user);
+      const recruiterEmails = normalizedRole === ROLE_MAM
+        ? new Set([
+            ...hierarchy.recruiterEmails,
+            ...hierarchy.allSubordinateEmails,
+            normalizedEmail
+          ])
+        : new Set([
+            ...hierarchy.recruiterEmails,
+            normalizedEmail
+          ]);
+      const emails = Array.from(recruiterEmails);
+      return { recruiterEmails: emails, visibility: this.buildRecruiterVisibility(emails, user) };
+    }
+
+    if (normalizedRole === 'recruiter') {
+      const emails = [normalizedEmail];
+      return { recruiterEmails: emails, visibility: this.buildRecruiterVisibility(emails, user) };
+    }
+
+    return null;
+  }
+
   async getResumeUnderstandingQueue(user, status = RESUME_UNDERSTANDING_STATUS.pending, options = {}) {
     if (!user?.email || !user?.role) {
       const error = new Error('Authentication required');
@@ -1191,48 +1223,19 @@ class CandidateService {
         return candidates;
       }
 
-      if (normalizedRole === ROLE_MAM || normalizedRole === ROLE_MLEAD) {
-        const hierarchy = await this.collectHierarchyEmails(user);
-        const normalizedEmail = normalizeEmail(user.email);
-        let recruiterEmails = new Set();
-
-        if (normalizedRole === ROLE_MAM) {
-          recruiterEmails = new Set([
-            ...hierarchy.recruiterEmails,
-            ...hierarchy.allSubordinateEmails,
-            normalizedEmail
-          ]);
-        } else {
-          // MLEAD
-          recruiterEmails = new Set([
-            ...hierarchy.recruiterEmails,
-            normalizedEmail
-          ]);
-        }
-
-        const candidates = await candidateModel.getCandidatesByRecruiters(
-          Array.from(recruiterEmails),
-          {
-            limit: options?.limit,
-            resumeUnderstandingStatus: normalizedStatus,
-            // DO NOT PASS workflowStatus here to unblock visibility
-            visibility: this.buildRecruiterVisibility(Array.from(recruiterEmails), user)
-          }
-        );
-        return candidates;
-      }
-
-      if (normalizedRole === 'recruiter') {
-        const recruiterEmail = normalizeEmail(user.email);
-        const candidates = await candidateModel.getCandidatesByRecruiters(
-          [recruiterEmail],
-          {
-            limit: options?.limit,
-            resumeUnderstandingStatus: normalizedStatus,
-            visibility: this.buildRecruiterVisibility([recruiterEmail], user)
-          }
-        );
-        return candidates;
+      // MAM / MLEAD / recruiter all read through the recruiter-scope path.
+      // Scope resolution (emails + visibility) is shared with
+      // getResumeUnderstandingCount via _resolveResumeRecruiterScope so the
+      // sidebar badge total always equals the number of rows shown here.
+      if ([ROLE_MAM, ROLE_MLEAD, 'recruiter'].includes(normalizedRole)) {
+        const scope = await this._resolveResumeRecruiterScope(user, normalizedRole);
+        if (!scope) return [];
+        return candidateModel.getCandidatesByRecruiters(scope.recruiterEmails, {
+          limit: options?.limit,
+          // DO NOT PASS workflowStatus here to unblock visibility
+          resumeUnderstandingStatus: normalizedStatus,
+          visibility: scope.visibility
+        });
       }
     }
 
@@ -1285,35 +1288,28 @@ class CandidateService {
       ? RESUME_UNDERSTANDING_STATUS.done
       : RESUME_UNDERSTANDING_STATUS.pending;
 
+    // admin / mm see every candidate at the relevant workflow stage. Count
+    // via countDocuments rather than fetching + mapping the whole list (this
+    // is the largest queue, so the materialisation we avoid here is the
+    // biggest single win). Mirrors getPendingExpertAssignmentCount.
     if (normalizedRole === 'admin' || normalizedRole === 'mm') {
       const workflowStatus = normalizedStatus === RESUME_UNDERSTANDING_STATUS.done
         ? WORKFLOW_STATUS.completed
         : WORKFLOW_STATUS.needsResumeUnderstanding;
-      const candidates = await candidateModel.getCandidatesByWorkflowStatus([workflowStatus]);
-      return candidates.length;
+      return candidateModel.countCandidatesByWorkflowStatuses([workflowStatus]);
     }
 
-    // Marketing / Branch Roles (Visibility Logic)
-    if (['mm', 'mam', 'mlead', 'recruiter'].includes(normalizedRole)) {
-      // Since we don't have direct count methods for these permutations in CandidateModel yet without duplicating code,
-      // and counts are typically fast enough with efficient queries, we can reuse the fetch methods or add specific Count methods.
-      // For now, let's fetch IDs only? No, let's just use the Queue logic but we need count.
-      // Better: Fetch and return length. It's not optimal but functional for this Refactor. 
-      // Optimization: Add specific count methods later if needed, or rely on the query speed.
-
-      // Actually, user requested "view", count is part of header.
-      // Let's call getResumeUnderstandingQueue without limit and return length.
-      try {
-        const queue = await this.getResumeUnderstandingQueue(user, status, { limit: 0 }); // limit 0 might mean no limit? Models usually handle it. 
-        // My implementation of getResumeUnderstandingQueue handles logic routing.
-        // Check getResumeUnderstandingQueue implementation above.
-        // It calls model methods which might not support 0 as unlimited if not coded. 
-        // Model code: if (Number.isFinite(limit) && limit > 0) ...
-        // So passing 0 or undefined -> unlimited.
-        return queue.length;
-      } catch (e) {
-        return 0;
-      }
+    // MAM / MLEAD / recruiter — count through the SAME recruiter-scope query
+    // the queue fetches (shared _resolveResumeRecruiterScope +
+    // countCandidatesByRecruiters), so the badge total equals the number of
+    // rows the page shows without materialising and formatting every row.
+    if ([ROLE_MAM, ROLE_MLEAD, 'recruiter'].includes(normalizedRole)) {
+      const scope = await this._resolveResumeRecruiterScope(user, normalizedRole);
+      if (!scope) return 0;
+      return candidateModel.countCandidatesByRecruiters(scope.recruiterEmails, {
+        resumeUnderstandingStatus: normalizedStatus,
+        visibility: scope.visibility
+      });
     }
 
     // Expert Roles

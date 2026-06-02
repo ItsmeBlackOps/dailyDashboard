@@ -44,6 +44,25 @@ const DEFAULT_PROJECTION = {
   daysInMarketing: 1
 };
 
+// Lean projection for LIST views (getCandidatesByBranch / getAllCandidates /
+// getCandidatesByRecruiters / getCandidatesByExperts). Drops the heavy fields
+// the candidate table never renders: the raw email `source` blob, profile
+// `metadata`, the full `statusHistory` array, and the `attachments` array.
+// formatCandidateRecord defaults `attachments` to [] and surfaces nothing
+// derived from the other three, so list rows are unchanged on the wire apart
+// from the omitted bulk. Single-record reads (getCandidateById /
+// getCandidateByEmail) keep DEFAULT_PROJECTION so the detail page still gets
+// the full document. Derived only from DEFAULT_PROJECTION so it tracks any
+// future field additions automatically.
+const LIST_PROJECTION = (() => {
+  const projection = { ...DEFAULT_PROJECTION };
+  delete projection.source;
+  delete projection.metadata;
+  delete projection.statusHistory;
+  delete projection.attachments;
+  return projection;
+})();
+
 // Sort modes accepted by getCandidatesByBranch / getAllCandidates /
 // getCandidatesByRecruiters. Default keeps the historical "most recently
 // touched first" behaviour. `expiringIn` sorts ascending so the soonest
@@ -224,7 +243,7 @@ export class CandidateModel {
     }
 
     let cursor = this.collection
-      .find(query, { projection: DEFAULT_PROJECTION })
+      .find(query, { projection: LIST_PROJECTION })
       .sort(resolveSort(sort));
 
     if (Number.isFinite(limit) && limit > 0) {
@@ -248,7 +267,7 @@ export class CandidateModel {
     }
 
     let cursor = this.collection
-      .find(query, { projection: DEFAULT_PROJECTION })
+      .find(query, { projection: LIST_PROJECTION })
       .sort(resolveSort(sort));
 
     if (Number.isFinite(limit) && limit > 0) {
@@ -260,13 +279,14 @@ export class CandidateModel {
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getCandidatesByRecruiters(recruiterEmails, { limit, search, sort, visibility, workflowStatus, resumeUnderstandingStatus } = {}) {
-    if (!this.collection) {
-      throw new Error('Candidate collection not initialized');
-    }
-
+  // Shared recruiter-scope Mongo filter builder. Returns the query object, or
+  // null when the scope resolves to nothing (no emails / no matchers) so
+  // callers can short-circuit to []/0. Both getCandidatesByRecruiters (fetch)
+  // and countCandidatesByRecruiters (count) build their filter here, so a
+  // count can never drift from the list it is counting.
+  _buildRecruiterScopeQuery(recruiterEmails, { search, visibility, workflowStatus, resumeUnderstandingStatus } = {}) {
     if (!Array.isArray(recruiterEmails) || recruiterEmails.length === 0) {
-      return [];
+      return null;
     }
 
     const recruiterMatchers = new Set(
@@ -314,7 +334,7 @@ export class CandidateModel {
     }
 
     if (orConditions.length === 0) {
-      return [];
+      return null;
     }
 
     const query = {
@@ -339,8 +359,26 @@ export class CandidateModel {
       delete query.$or;
     }
 
+    return query;
+  }
+
+  async getCandidatesByRecruiters(recruiterEmails, { limit, search, sort, visibility, workflowStatus, resumeUnderstandingStatus } = {}) {
+    if (!this.collection) {
+      throw new Error('Candidate collection not initialized');
+    }
+
+    const query = this._buildRecruiterScopeQuery(recruiterEmails, {
+      search,
+      visibility,
+      workflowStatus,
+      resumeUnderstandingStatus
+    });
+    if (!query) {
+      return [];
+    }
+
     let cursor = this.collection
-      .find(query, { projection: DEFAULT_PROJECTION })
+      .find(query, { projection: LIST_PROJECTION })
       .sort(resolveSort(sort));
 
     if (Number.isFinite(limit) && limit > 0) {
@@ -706,7 +744,7 @@ export class CandidateModel {
     }
 
     let cursor = this.collection
-      .find(query, { projection: DEFAULT_PROJECTION })
+      .find(query, { projection: LIST_PROJECTION })
       .sort({ _last_write: -1 });
 
     if (Number.isFinite(limit) && limit > 0) {
@@ -837,6 +875,28 @@ export class CandidateModel {
       workflowStatus: { $in: normalizedStatuses },
       docType: { $in: [null, 'candidate'] }
     };
+
+    return this.collection.countDocuments(query);
+  }
+
+  // Count candidates in a recruiter scope without materialising the list.
+  // Shares _buildRecruiterScopeQuery with getCandidatesByRecruiters so the
+  // count is exactly the length the queue would have returned for the same
+  // (emails, visibility, status) — used by the resume-understanding sidebar
+  // badge instead of fetching + mapping the whole queue just to read .length.
+  async countCandidatesByRecruiters(recruiterEmails, { visibility, workflowStatus, resumeUnderstandingStatus } = {}) {
+    if (!this.collection) {
+      throw new Error('Candidate collection not initialized');
+    }
+
+    const query = this._buildRecruiterScopeQuery(recruiterEmails, {
+      visibility,
+      workflowStatus,
+      resumeUnderstandingStatus
+    });
+    if (!query) {
+      return 0;
+    }
 
     return this.collection.countDocuments(query);
   }

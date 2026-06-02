@@ -56,6 +56,7 @@ import { startPerCandidateScrapeScheduler } from './jobs/perCandidateScrapeSched
 import { startDelegationSweepScheduler } from './jobs/delegationSweepScheduler.js';
 import { jobsPoolService } from './services/jobsPoolService.js';
 import { ensurePerformanceIndexes } from './jobs/ensurePerfIndexes.js';
+import { recordPerfMetric, startPerfMetricsFlusher, stopPerfMetricsFlusher } from './jobs/perfMetricsBuffer.js';
 
 // Import routes and socket manager
 import apiRoutes from './routes/index.js';
@@ -129,18 +130,17 @@ class Application {
       res.on('finish', () => {
         const ms = Date.now() - start;
         if (req.path.startsWith('/api')) {
-          try {
-            const db = database.getDb();
-            db.collection('perfMetrics').insertOne({
-              method: req.method,
-              path: req.path,
-              status: res.statusCode,
-              durationMs: ms,
-              userEmail: req.user?.email || null,
-              userRole: req.user?.role || null,
-              createdAt: new Date(),
-            }).catch(() => {});
-          } catch {}
+          // Buffered in memory + flushed in bulk (see perfMetricsBuffer.js)
+          // so we don't do one DB write per request on the hot path.
+          recordPerfMetric({
+            method: req.method,
+            path: req.path,
+            status: res.statusCode,
+            durationMs: ms,
+            userEmail: req.user?.email || null,
+            userRole: req.user?.role || null,
+            createdAt: new Date(),
+          });
         }
       });
       next();
@@ -276,6 +276,9 @@ class Application {
         // Shutdown notification center
         this.notificationCenter?.shutdown();
 
+        // Drain any buffered perf metrics before the DB closes.
+        await stopPerfMetricsFlusher();
+
         // Close database connection
         await database.disconnect();
 
@@ -313,6 +316,7 @@ class Application {
 
         startFirefliesBotScheduler();
         startCandidateAlertScheduler();
+        startPerfMetricsFlusher();
 
         // PRT Phase 3.5: durable email outbox for assignment emails.
         // The repository must be initialised against the live DB before

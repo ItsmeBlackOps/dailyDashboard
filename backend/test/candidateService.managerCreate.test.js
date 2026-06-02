@@ -9,6 +9,7 @@ const SAMPLE_RESUME_LINK = 'https://egvjgtfjstxgszpzvvbx.supabase.co/storage/v1/
 const originalCreateCandidate = candidateModel.createCandidate;
 const originalCount = candidateModel.countResumeUnderstandingTasks;
 const originalGetByWorkflow = candidateModel.getCandidatesByWorkflowStatus;
+const originalCountByWorkflow = candidateModel.countCandidatesByWorkflowStatuses;
 const originalGetCandidateById = candidateModel.getCandidateById;
 const originalGetCandidateByEmail = candidateModel.getCandidateByEmail;
 const originalUpdateResume = candidateModel.updateResumeUnderstandingStatus;
@@ -20,6 +21,7 @@ afterEach(() => {
   candidateModel.createCandidate = originalCreateCandidate;
   candidateModel.countResumeUnderstandingTasks = originalCount;
   candidateModel.getCandidatesByWorkflowStatus = originalGetByWorkflow;
+  candidateModel.countCandidatesByWorkflowStatuses = originalCountByWorkflow;
   candidateModel.getCandidateById = originalGetCandidateById;
   candidateModel.getCandidateByEmail = originalGetCandidateByEmail;
   candidateModel.updateResumeUnderstandingStatus = originalUpdateResume;
@@ -454,15 +456,17 @@ describe('candidateService resume understanding helpers', () => {
     expect(count).toBe(5);
   });
 
-  it('counts completed queue for admins using workflow status', async () => {
-    candidateModel.getCandidatesByWorkflowStatus = jest.fn().mockResolvedValue([{}, {}, {}]);
+  it('counts completed queue for admins via countDocuments on workflow status', async () => {
+    // Counts through the dedicated count primitive (countDocuments) rather
+    // than fetching + mapping the whole queue just to read .length.
+    candidateModel.countCandidatesByWorkflowStatuses = jest.fn().mockResolvedValue(3);
 
     const count = await candidateService.getResumeUnderstandingCount(
       { email: 'admin@example.com', role: 'admin' },
       RESUME_UNDERSTANDING_STATUS.done
     );
 
-    expect(candidateModel.getCandidatesByWorkflowStatus).toHaveBeenCalledWith(
+    expect(candidateModel.countCandidatesByWorkflowStatuses).toHaveBeenCalledWith(
       [WORKFLOW_STATUS.completed]
     );
     expect(count).toBe(3);

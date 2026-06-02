@@ -8,6 +8,8 @@ const originalGetCandidatesByExperts = candidateModel.getCandidatesByExperts;
 const originalCountTasks = candidateModel.countResumeUnderstandingTasks;
 const originalCountTasksForExperts = candidateModel.countResumeUnderstandingTasksForExperts;
 const originalCountByWorkflowStatuses = candidateModel.countCandidatesByWorkflowStatuses;
+const originalGetCandidatesByRecruiters = candidateModel.getCandidatesByRecruiters;
+const originalCountCandidatesByRecruiters = candidateModel.countCandidatesByRecruiters;
 const originalGetTeamEmails = userModel.getTeamEmails;
 const originalGetUserByEmail = userModel.getUserByEmail;
 const originalGetAllUsers = userModel.getAllUsers;
@@ -18,6 +20,8 @@ afterEach(() => {
   candidateModel.countResumeUnderstandingTasks = originalCountTasks;
   candidateModel.countResumeUnderstandingTasksForExperts = originalCountTasksForExperts;
   candidateModel.countCandidatesByWorkflowStatuses = originalCountByWorkflowStatuses;
+  candidateModel.getCandidatesByRecruiters = originalGetCandidatesByRecruiters;
+  candidateModel.countCandidatesByRecruiters = originalCountCandidatesByRecruiters;
   userModel.getTeamEmails = originalGetTeamEmails;
   userModel.getUserByEmail = originalGetUserByEmail;
   userModel.getAllUsers = originalGetAllUsers;
@@ -121,5 +125,41 @@ describe('candidateService resume understanding visibility', () => {
     ]);
 
     expect(count).toBe(7);
+  });
+
+  it('counts recruiter queue via countCandidatesByRecruiters without materialising the list', async () => {
+    candidateModel.countCandidatesByRecruiters = jest.fn().mockResolvedValue(4);
+    // Must NOT fetch + map the whole queue just to read .length.
+    candidateModel.getCandidatesByRecruiters = jest.fn().mockResolvedValue([]);
+
+    const count = await candidateService.getResumeUnderstandingCount(
+      { email: 'Recruiter.One@Example.com', role: 'recruiter' },
+      RESUME_UNDERSTANDING_STATUS.pending
+    );
+
+    expect(candidateModel.getCandidatesByRecruiters).not.toHaveBeenCalled();
+    expect(candidateModel.countCandidatesByRecruiters).toHaveBeenCalledTimes(1);
+    const [emailsArg, optsArg] = candidateModel.countCandidatesByRecruiters.mock.calls[0];
+    expect(emailsArg).toEqual(['recruiter.one@example.com']);
+    expect(optsArg).toMatchObject({ resumeUnderstandingStatus: RESUME_UNDERSTANDING_STATUS.pending });
+    expect(optsArg.visibility).toBeDefined();
+    expect(count).toBe(4);
+  });
+
+  it('counts with the SAME recruiter scope the queue fetches (badge == page)', async () => {
+    candidateModel.getCandidatesByRecruiters = jest.fn().mockResolvedValue([]);
+    candidateModel.countCandidatesByRecruiters = jest.fn().mockResolvedValue(0);
+    const user = { email: 'Recruiter.One@Example.com', role: 'recruiter' };
+
+    await candidateService.getResumeUnderstandingQueue(user, RESUME_UNDERSTANDING_STATUS.pending);
+    await candidateService.getResumeUnderstandingCount(user, RESUME_UNDERSTANDING_STATUS.pending);
+
+    const queueEmails = candidateModel.getCandidatesByRecruiters.mock.calls[0][0];
+    const countEmails = candidateModel.countCandidatesByRecruiters.mock.calls[0][0];
+    expect(countEmails).toEqual(queueEmails);
+
+    const queueVisibility = candidateModel.getCandidatesByRecruiters.mock.calls[0][1].visibility;
+    const countVisibility = candidateModel.countCandidatesByRecruiters.mock.calls[0][1].visibility;
+    expect(countVisibility).toEqual(queueVisibility);
   });
 });
