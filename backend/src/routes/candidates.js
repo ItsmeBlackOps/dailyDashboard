@@ -126,6 +126,12 @@ router.post(
   (req, res) => candidateController.sendAssignmentEmail(req, res)
 );
 
+// PRT Phase 3: byte-less assignment-email preview (same gate as send, no send).
+router.post(
+  '/:id/assignment-email/preview',
+  (req, res) => candidateController.previewAssignmentEmail(req, res)
+);
+
 // SP1: scoped marketing-info write (recruiter + team lead + mam/mm/admin).
 // Placed BEFORE the generic /:id route, same as the attachment endpoints.
 router.patch(
