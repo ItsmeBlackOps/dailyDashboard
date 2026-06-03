@@ -666,7 +666,7 @@ class CandidateService {
       sort
     });
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user, { lean: true }));
 
     logger.info('Branch candidates retrieved', {
       userEmail: user.email,
@@ -710,7 +710,7 @@ class CandidateService {
       visibility
     });
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user, { lean: true }));
 
     logger.info('Hierarchy candidates retrieved', {
       userEmail: user.email,
@@ -741,7 +741,7 @@ class CandidateService {
       sort
     });
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user, { lean: true }));
 
     logger.info('Admin candidates retrieved', {
       userEmail: user.email,
@@ -805,7 +805,7 @@ class CandidateService {
       search: searchPattern
     });
 
-    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user));
+    const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user, { lean: true }));
 
     logger.info('Expert candidates retrieved', {
       userEmail: user.email,
@@ -851,7 +851,16 @@ class CandidateService {
   // and non-marketing, the formatted record is post-processed to remove
   // PRT-only fields. External callers (e.g. supportRequestService) can
   // continue to call this with one arg for full-fidelity data.
-  formatCandidateRecord(candidate, user = null) {
+  //
+  // `{ lean: true }` is the LIST fast-path. The only per-row directory hit in
+  // this method is the team-lead resolution below (resolveTeamLeadEmail →
+  // _findEmailByName → userModel.getAllUsers, an in-memory cache rebuilt +
+  // scanned per call). For a ~1,400-row Branch Candidates load that dominates
+  // the cost. The list/edit UI never reads teamLead from list records, so in
+  // lean mode we skip the resolution entirely and emit teamLead: null. Every
+  // other field — including the PRT visibility strip — is identical to the
+  // full path. Single-record reads (detail/update/broadcast) stay non-lean.
+  formatCandidateRecord(candidate, user = null, { lean = false } = {}) {
     if (!candidate) {
       const emptyFormatted = {
         id: '',
@@ -923,7 +932,9 @@ class CandidateService {
       // the recruiter's user record when not explicitly stored, so historical
       // candidates (created before teamLead was derived on create) still show
       // a team lead and can send the assignment email — no backfill needed.
-      teamLead: this.resolveTeamLeadEmail(candidate.teamLead, recruiterEmail) || null,
+      // Lean LIST mode skips the directory lookup (kills the per-row
+      // getAllUsers N+1); the list/edit UI does not read teamLead from rows.
+      teamLead: lean ? null : (this.resolveTeamLeadEmail(candidate.teamLead, recruiterEmail) || null),
       experienceYears: candidate.experienceYears ?? null,
       visaType: candidate.visaType ?? null,
       eadStartDate: toDateOrNull(candidate.eadStartDate),

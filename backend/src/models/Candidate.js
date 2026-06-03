@@ -54,12 +54,20 @@ const DEFAULT_PROJECTION = {
 // getCandidateByEmail) keep DEFAULT_PROJECTION so the detail page still gets
 // the full document. Derived only from DEFAULT_PROJECTION so it tracks any
 // future field additions automatically.
+//
+// `editHistory` / `assignmentEmails` are the other two unbounded audit logs the
+// list never reads. DEFAULT_PROJECTION is a pure inclusion projection and never
+// lists them, so they are already absent from list rows — the deletes below are
+// defensive: they keep these heavy arrays out of the list payload even if a
+// future edit adds them to DEFAULT_PROJECTION (the detail projection).
 const LIST_PROJECTION = (() => {
   const projection = { ...DEFAULT_PROJECTION };
   delete projection.source;
   delete projection.metadata;
   delete projection.statusHistory;
   delete projection.attachments;
+  delete projection.editHistory;
+  delete projection.assignmentEmails;
   return projection;
 })();
 
