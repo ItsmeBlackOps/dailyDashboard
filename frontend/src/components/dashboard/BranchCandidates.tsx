@@ -3,7 +3,7 @@ import { trackError } from '@/utils/trackError';
 import DOMPurify from "dompurify";
 import moment from "moment-timezone";
 import { io, Socket } from "socket.io-client";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { driver, type DriveStep } from "driver.js";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -505,6 +505,18 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [updateError, setUpdateError] = useState('');
   const [updating, setUpdating] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const newParamHandled = useRef(false);
+  useEffect(() => {
+    if (newParamHandled.current) return;
+    if (searchParams.get('new') === '1') {
+      newParamHandled.current = true;
+      setIsCreateOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('new');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   const [createForm, setCreateForm] = useState({
     name: '',
     email: '',

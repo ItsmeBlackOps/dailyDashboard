@@ -437,7 +437,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 <NavItem
                   icon={Megaphone}
                   label="Move to Marketing"
-                  href="/branch-candidates"
+                  href="/branch-candidates?new=1"
                   isOpen={isOpen}
                 />
               )}
