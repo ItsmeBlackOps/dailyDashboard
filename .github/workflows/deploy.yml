@@ -28,7 +28,15 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          # Best-effort host-key pre-seed. The deploy ssh below uses
+          # StrictHostKeyChecking=accept-new, so it records the key on first
+          # connect regardless. A transient ssh-keyscan failure must NOT abort
+          # the job (it was killing deploys ~14s in, under `bash -e`). Retry a
+          # few times, then continue no matter the outcome.
+          for i in 1 2 3; do
+            if ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts 2>/dev/null; then break; fi
+            sleep 3
+          done || true
 
       - name: Run deploy script on VM
         env:
