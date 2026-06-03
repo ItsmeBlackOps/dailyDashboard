@@ -2474,6 +2474,27 @@ class CandidateService {
       }
     }
 
+    // SP1 — marketing info is hard-required at creation. The sanitizer
+    // already validates these enums and enforces the conditional-EAD rule;
+    // here we enforce that they are PRESENT. (EAD start/end become required
+    // automatically once visaType is set to an EAD-card type — the sanitizer
+    // throws for that case.)
+    if (!sanitized.visaType) {
+      const error = new Error('Visa Type is required'); error.statusCode = 400; throw error;
+    }
+    if (!sanitized.company) {
+      const error = new Error('Company is required'); error.statusCode = 400; throw error;
+    }
+    if (sanitized.experienceYears === undefined || sanitized.experienceYears === null) {
+      const error = new Error('Experience (years) is required'); error.statusCode = 400; throw error;
+    }
+    if (!sanitized.city) {
+      const error = new Error('City is required'); error.statusCode = 400; throw error;
+    }
+    if (!sanitized.state) {
+      const error = new Error('State is required'); error.statusCode = 400; throw error;
+    }
+
     // Duplicate guard: a candidate is a person, so a given email must map
     // to a single record. Block re-creating an existing candidate — a
     // reassignment should EDIT the existing record's recruiter, not insert a

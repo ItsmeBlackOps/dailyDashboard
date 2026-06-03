@@ -299,7 +299,13 @@ describe('candidateService.createCandidateFromManager — PRT defaults + teamLea
         technology: 'Software Developer',
         branch: 'LKN', // MAM path will override to whatever Tushar's branch is
         recruiter: 'recruiter@example.com',
-        resumeLink: SAMPLE_RESUME_LINK
+        resumeLink: SAMPLE_RESUME_LINK,
+        // SP1: marketing info is now hard-required at creation.
+        visaType: 'H1B',
+        company: 'SST',
+        experienceYears: 5,
+        city: 'Ahmedabad',
+        state: 'Gujarat'
         // teamLead deliberately omitted — must be derived
       }
     );
@@ -374,7 +380,13 @@ describe('candidateService.createCandidateFromManager — PRT defaults + teamLea
         branch: 'LKN',
         recruiter: 'recruiter@example.com',
         teamLead: 'tlead@example.com',
-        resumeLink: SAMPLE_RESUME_LINK
+        resumeLink: SAMPLE_RESUME_LINK,
+        // SP1: marketing info is now hard-required at creation.
+        visaType: 'H1B',
+        company: 'SST',
+        experienceYears: 5,
+        city: 'Ahmedabad',
+        state: 'Gujarat'
       }
     );
     const after = Date.now();
@@ -391,6 +403,111 @@ describe('candidateService.createCandidateFromManager — PRT defaults + teamLea
     expect(args.marketingStartDate).toBeInstanceOf(Date);
     expect(args.marketingStartDate.getTime()).toBeGreaterThanOrEqual(before);
     expect(args.marketingStartDate.getTime()).toBeLessThanOrEqual(after);
+  });
+});
+
+describe('candidateService.createCandidateFromManager — SP1 marketing-info hard-required at creation', () => {
+  // A complete, valid manager-create payload. visaType is a NON-EAD type so
+  // EAD start/end are not pulled in (the sanitizer's conditional-EAD rule is
+  // covered separately); these cases isolate the presence guards.
+  const validPayload = () => ({
+    name: 'Jane Doe',
+    email: 'jane.doe@example.com',
+    technology: 'Software Developer',
+    branch: 'LKN',
+    recruiter: 'recruiter@example.com',
+    teamLead: 'tlead@example.com',
+    resumeLink: SAMPLE_RESUME_LINK,
+    visaType: 'H1B',
+    company: 'SST',
+    experienceYears: 5,
+    city: 'Ahmedabad',
+    state: 'Gujarat'
+  });
+
+  beforeEach(() => {
+    // Happy-path harness: no existing duplicate, recruiter is in scope, and
+    // the MAM branch resolves via Tushar — so a complete payload reaches the
+    // createCandidate model call.
+    candidateModel.getCandidateByEmail = jest.fn().mockResolvedValue(null);
+    candidateModel.createCandidate = jest.fn().mockResolvedValue({
+      _id: { toString: () => 'sp1-created' }
+    });
+    userModel.getUserByEmail = jest.fn((email) => {
+      const e = String(email || '').toLowerCase();
+      if (e === 'mam.user@company.com') {
+        return { email: e, role: 'mam', manager: 'tushar.ahuja@silverspaceinc.com', active: true };
+      }
+      if (e === 'tushar.ahuja@silverspaceinc.com') {
+        return { email: e, role: 'manager', team: 'marketing', active: true };
+      }
+      return null;
+    });
+    userModel.getAllUsers = jest.fn().mockReturnValue([]);
+    userService.collectManageableUsers = jest.fn().mockReturnValue([
+      { email: 'recruiter@example.com', role: 'recruiter', active: true }
+    ]);
+  });
+
+  const callCreate = (payload) =>
+    candidateService.createCandidateFromManager(
+      { email: 'mam.user@company.com', role: 'MAM' },
+      payload
+    );
+
+  it('succeeds with a complete payload (additional attachments omitted is fine)', async () => {
+    await callCreate(validPayload());
+    expect(candidateModel.createCandidate).toHaveBeenCalledTimes(1);
+    expect(candidateModel.createCandidate).toHaveBeenCalledWith(expect.objectContaining({
+      visaType: 'H1B',
+      company: 'SST',
+      experienceYears: 5,
+      city: 'Ahmedabad',
+      state: 'Gujarat'
+    }));
+  });
+
+  it('rejects when visaType is missing and does NOT call createCandidate', async () => {
+    const payload = validPayload();
+    delete payload.visaType;
+    await expect(callCreate(payload)).rejects.toThrow(/Visa Type is required/);
+    expect(candidateModel.createCandidate).not.toHaveBeenCalled();
+  });
+
+  it('rejects when company is missing and does NOT call createCandidate', async () => {
+    const payload = validPayload();
+    delete payload.company;
+    await expect(callCreate(payload)).rejects.toThrow(/Company is required/);
+    expect(candidateModel.createCandidate).not.toHaveBeenCalled();
+  });
+
+  it('rejects when experienceYears is missing and does NOT call createCandidate', async () => {
+    const payload = validPayload();
+    delete payload.experienceYears;
+    await expect(callCreate(payload)).rejects.toThrow(/Experience \(years\) is required/);
+    expect(candidateModel.createCandidate).not.toHaveBeenCalled();
+  });
+
+  it('rejects when city is missing and does NOT call createCandidate', async () => {
+    const payload = validPayload();
+    delete payload.city;
+    await expect(callCreate(payload)).rejects.toThrow(/City is required/);
+    expect(candidateModel.createCandidate).not.toHaveBeenCalled();
+  });
+
+  it('rejects when state is missing and does NOT call createCandidate', async () => {
+    const payload = validPayload();
+    delete payload.state;
+    await expect(callCreate(payload)).rejects.toThrow(/State is required/);
+    expect(candidateModel.createCandidate).not.toHaveBeenCalled();
+  });
+
+  it('attaches statusCode 400 to each required-field rejection', async () => {
+    for (const field of ['visaType', 'company', 'experienceYears', 'city', 'state']) {
+      const payload = validPayload();
+      delete payload[field];
+      await expect(callCreate(payload)).rejects.toMatchObject({ statusCode: 400 });
+    }
   });
 });
 
