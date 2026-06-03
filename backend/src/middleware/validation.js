@@ -6,6 +6,7 @@
  */
 
 import { logger } from '../utils/logger.js';
+import { VISA_TYPE_VALUES, COMPANY_VALUES, EAD_REQUIRED_VISA_TYPES } from '../models/Candidate.js';
 
 /**
  * Validation schema definitions
@@ -695,7 +696,9 @@ export const validateCandidateCreate = (data = {}) => {
     payload.branch = branch.trim().toUpperCase();
   }
 
-  if (contact !== undefined) {
+  if (!contact || typeof contact !== 'string' || contact.trim().length === 0) {
+    errors.push('contact is required');
+  } else {
     payload.contact = contact.toString().trim();
   }
 
@@ -705,6 +708,54 @@ export const validateCandidateCreate = (data = {}) => {
     errors.push('resumeLink must be a valid HTTPS URL');
   } else {
     payload.resumeLink = resumeLink.trim();
+  }
+
+  // ---- PRT marketing fields (Branch Candidates create is marketing-only) ----
+  const { visaType, company, experienceYears, city, state, eadStartDate, eadEndDate } = data;
+
+  if (!visaType || typeof visaType !== 'string' || !VISA_TYPE_VALUES.includes(visaType.trim())) {
+    errors.push('visaType is required and must be a valid visa type');
+  } else {
+    payload.visaType = visaType.trim();
+  }
+
+  if (!company || typeof company !== 'string' || !COMPANY_VALUES.includes(company.trim().toUpperCase())) {
+    errors.push(`company is required and must be one of ${COMPANY_VALUES.join(', ')}`);
+  } else {
+    payload.company = company.trim().toUpperCase();
+  }
+
+  const expNum = Number(experienceYears);
+  if (experienceYears === undefined || experienceYears === null || experienceYears === ''
+      || !Number.isInteger(expNum) || expNum < 1 || expNum > 20) {
+    errors.push('experienceYears is required and must be an integer from 1 to 20');
+  } else {
+    payload.experienceYears = expNum;
+  }
+
+  if (!city || typeof city !== 'string' || city.trim().length === 0) {
+    errors.push('city is required');
+  } else { payload.city = city.trim(); }
+
+  if (!state || typeof state !== 'string' || state.trim().length === 0) {
+    errors.push('state is required');
+  } else { payload.state = state.trim(); }
+
+  const visaNeedsEad = payload.visaType && EAD_REQUIRED_VISA_TYPES.has(payload.visaType);
+  if (visaNeedsEad) {
+    if (!eadStartDate || typeof eadStartDate !== 'string' || !eadStartDate.trim()) {
+      errors.push('eadStartDate is required for this visa type');
+    } else { payload.eadStartDate = eadStartDate.trim(); }
+    if (!eadEndDate || typeof eadEndDate !== 'string' || !eadEndDate.trim()) {
+      errors.push('eadEndDate is required for this visa type');
+    } else { payload.eadEndDate = eadEndDate.trim(); }
+    if (payload.eadStartDate && payload.eadEndDate
+        && new Date(payload.eadEndDate) <= new Date(payload.eadStartDate)) {
+      errors.push('eadEndDate must be after eadStartDate');
+    }
+  } else {
+    if (typeof eadStartDate === 'string' && eadStartDate.trim()) payload.eadStartDate = eadStartDate.trim();
+    if (typeof eadEndDate === 'string' && eadEndDate.trim()) payload.eadEndDate = eadEndDate.trim();
   }
 
   return {
