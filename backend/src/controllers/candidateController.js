@@ -397,7 +397,12 @@ class CandidateController {
           _id: 1, 'Candidate Name': 1, Recruiter: 1,
           visaType: 1, company: 1, eadStartDate: 1, eadEndDate: 1, updated_at: 1,
         },
-      }).sort({ updated_at: -1 }).limit(500).toArray();
+      })
+        // Cap the row payload at 500 for UI responsiveness. `count` above is the
+        // true scoped total (drives the badge); beyond 500 rows needs pagination.
+        .sort({ updated_at: -1 })
+        .limit(500)
+        .toArray();
 
       return res.json({
         success: true,

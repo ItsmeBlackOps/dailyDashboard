@@ -74,4 +74,12 @@ describe('candidateController.getMarketingInfoWorklist', () => {
     expect(r.body).toEqual({ success: true, count: 2 });
     expect(mockFind).not.toHaveBeenCalled();
   });
+
+  it('500 on a database error', async () => {
+    mockCount.mockRejectedValueOnce(new Error('DB timeout'));
+    const r = res();
+    await candidateController.getMarketingInfoWorklist({ user: { email: 'rec@x.com', role: 'recruiter' }, query: {} }, r);
+    expect(r.statusCode).toBe(500);
+    expect(r.body).toEqual({ success: false, error: 'Internal server error' });
+  });
 });
