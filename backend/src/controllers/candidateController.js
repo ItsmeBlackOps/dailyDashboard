@@ -310,7 +310,8 @@ class CandidateController {
     } catch (error) {
       const status = error.statusCode || 500;
       if (status >= 500) logger.error('updateMarketingInfo failed', { error: error.message });
-      return res.status(status).json({ success: false, error: error.message || 'Internal server error' });
+      // Mask internal 500 details (public repo); surface client-actionable 4xx messages.
+      return res.status(status).json({ success: false, error: status >= 500 ? 'Unable to update marketing info' : error.message });
     }
   }
 

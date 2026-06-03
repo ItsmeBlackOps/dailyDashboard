@@ -99,4 +99,18 @@ describe('candidateController.updateMarketingInfo', () => {
     expect(r.statusCode).toBe(400);
     expect(r.body).toMatchObject({ success: false, error: /EAD Start Date is required/ });
   });
+
+  it('500 masks the internal error message (no leak)', async () => {
+    // Service throws a raw error with NO statusCode → treated as 500. The
+    // internal message must NOT be returned to the client (public repo).
+    mockUpdateMarketingInfo.mockRejectedValue(new Error('raw mongo connection detail leak'));
+    const r = res();
+    await candidateController.updateMarketingInfo(
+      { user: { email: 'mm@x.com', role: 'mm' }, params: { id: 'c1' }, body: { visaType: 'H1B' } },
+      r
+    );
+    expect(r.statusCode).toBe(500);
+    expect(r.body).toEqual({ success: false, error: 'Unable to update marketing info' });
+    expect(JSON.stringify(r.body)).not.toMatch(/mongo/i);
+  });
 });
