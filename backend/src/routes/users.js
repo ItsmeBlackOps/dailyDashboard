@@ -15,6 +15,8 @@ router.get('/health', userController.healthCheck);
 // authenticateHTTP middleware in app bootstrap.
 router.get('/me/preferences', userController.getMyPreferences);
 router.patch('/me/preferences', userController.updateMyPreferences);
+router.get('/me/technical-acknowledgment', userController.getMyTechnicalAck);
+router.patch('/me/technical-acknowledgment', userController.updateMyTechnicalAck);
 router.get('/active', userController.getActiveUsers);
 router.get('/team', userController.getTeamMembers);
 router.get('/manageable', requireHTTPRole(['admin', 'mm', 'mam', 'mlead', 'lead', 'am']), userController.getManageableUsers);

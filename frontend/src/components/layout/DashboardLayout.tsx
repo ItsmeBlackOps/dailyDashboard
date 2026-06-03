@@ -4,6 +4,7 @@ import { ThemeProvider } from '@/hooks/useTheme';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { UserProfileProvider } from '@/contexts/UserProfileContext';
 import { MicrosoftConsentDialog } from '@/components/MicrosoftConsentDialog';
+import { TechnicalAckModal } from '@/components/TechnicalAckModal';
 import { useToast } from '@/hooks/use-toast';
 import { NotificationDetailModal } from '@/components/ui/notification-modal';
 import { RoleDetailRequiredDialog } from './RoleDetailRequiredDialog';
@@ -82,6 +83,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <ContactNumberRequiredDialog />
           <NotificationDetailModal />
           <MicrosoftConsentDialog />
+          <TechnicalAckModal />
           <RecruiterCallAlertDialog />
         </div>
       </UserProfileProvider>

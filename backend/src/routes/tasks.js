@@ -19,6 +19,7 @@ router.get('/:taskId/transcript-request', transcriptRequestController.getMyTrans
 router.get('/:taskId/transcript', transcriptRequestController.getTaskTranscript);
 router.patch('/:taskId/meeting-link', taskController.updateMeetingLink);
 router.post('/:taskId/ensure-meeting', taskController.ensureMeeting);
+router.patch('/:taskId/meeting-started', taskController.markMeetingStarted);
 router.get('/:taskId', taskController.getTaskById);
 
 router.post('/search', taskController.searchTasks);

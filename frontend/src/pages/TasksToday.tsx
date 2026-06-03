@@ -58,6 +58,7 @@ import { OnlineMeetingConsentBanner } from "@/components/OnlineMeetingConsentBan
 import { Copy, Filter } from "lucide-react";
 import MultiSelectDropdown from '@/components/shared/MultiSelectDropdown';
 import { deriveDisplayNameFromEmail, formatNameInput } from "@/utils/userNames";
+import { parseJsonOrThrow } from "@/lib/fetchJson";
 import { useNavigate } from "react-router-dom";
 import { GRAPH_MAIL_SCOPES } from "@/constants";
 
@@ -79,6 +80,9 @@ interface Task {
   joinUrl?: string | null;
   joinWebUrl?: string | null;
   meetingLink?: string | null;
+  meetingStarted?: boolean;
+  meetingStartedAt?: string | null;
+  meetingStartedBy?: string | null;
 
   attachments?: TaskAttachment[];
   jobDescriptionText?: string;
@@ -470,6 +474,10 @@ export default function TasksToday() {
   const canGenerateThanksMail = useMemo(() => {
     return ['recruiter', 'mlead', 'mam', 'mm'].includes(normalizedRole);
   }, [normalizedRole]);
+  const canMarkStarted = useMemo(
+    () => ['admin', 'user', 'am', 'lead'].includes(normalizedRole),
+    [normalizedRole]
+  );
   const canGenerateInterviewDebrief = true;
   const showActionsColumn = useMemo(() => {
     return canGenerateInterviewDebrief || canCloneSupport || canRequestMock || canGenerateThanksMail || user === 'admin';
@@ -2783,6 +2791,20 @@ export default function TasksToday() {
     };
   }, [debriefDialogTask?._id, debriefLoading, getInterviewDebriefStatus, toast]);
 
+  const handleMarkStarted = useCallback(async (task: Task) => {
+    try {
+      const res = await authFetch(`${API_URL}/api/tasks/${task._id}/meeting-started`, { method: 'PATCH' });
+      const data = await parseJsonOrThrow<{ success: boolean; meetingStarted: boolean; meetingStartedAt: string | null; meetingStartedBy: string | null }>(res);
+      setTasks((prev) => prev.map((item) =>
+        item._id === task._id
+          ? { ...item, meetingStarted: data.meetingStarted, meetingStartedAt: data.meetingStartedAt, meetingStartedBy: data.meetingStartedBy }
+          : item
+      ));
+    } catch (e) {
+      toast({ title: 'Could not mark started', description: e instanceof Error ? e.message : 'Try again', variant: 'destructive' });
+    }
+  }, [authFetch, toast]);
+
   const handleCreateMeeting = useCallback(
     async (task: Task) => {
       if (!canManageMeetings) {
@@ -4267,6 +4289,26 @@ export default function TasksToday() {
                             {isMeetingBusy ? 'Creating…' : 'Create meeting'}
                           </Button>
                         ) : null}
+                        <div className="mt-1">
+                          {task.meetingStarted ? (
+                            <Badge
+                              variant="secondary"
+                              title={task.meetingStartedBy ? `Started by ${task.meetingStartedBy}${task.meetingStartedAt ? ` at ${task.meetingStartedAt}` : ''}` : 'Started'}
+                            >
+                              Started ✓
+                            </Badge>
+                          ) : canMarkStarted ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => { void handleMarkStarted(task); }}
+                            >
+                              Mark started
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Not started</span>
+                          )}
+                        </div>
                       </TableCell>
                     )}
                     <TableCell>
