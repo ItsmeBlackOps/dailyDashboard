@@ -91,6 +91,7 @@ router.post('/end-clients', (req, res) => candidateController.addEndClient(req, 
 router.post('/:id/derive-profile', (req, res) => candidateController.deriveProfile(req, res));
 router.get('/:id/forge-profile',  (req, res) => candidateController.getForgeProfile(req, res));
 router.get('/:id/status-history', (req, res) => candidateController.getStatusHistory(req, res));
+router.get('/:id/timeline',       (req, res) => candidateController.getCandidateTimeline(req, res));
 router.post('/:id/status',        (req, res) => candidateController.updateStatus(req, res));
 
 // PRT Phase 2: attachment endpoints. Placed BEFORE the generic /:id route
