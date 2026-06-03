@@ -45,18 +45,46 @@ jobs:
           GIT_REF: ${{ github.ref_name }}
           ACTOR: ${{ github.actor }}
         run: |
-          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes \
-            -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
-            "cd ${{ secrets.VM_PATH }} && \
-             git fetch origin && \
-             git reset --hard origin/main && \
-             chmod +x scripts/*.sh && \
-             export GIT_SHA='${GIT_SHA}' && \
-             export GIT_REF='${GIT_REF}' && \
-             export ACTOR='${ACTOR}' && \
-             export TARGET_COLOR='${TARGET_COLOR}' && \
-             bash scripts/cicd-deploy.sh"
+          # Retry ONLY on ssh connection failures (exit 255). The VM's port 22
+          # intermittently times out for ~1-2 min and was failing deploys
+          # (e.g. runs 26910059867, 26912713258). A non-255 exit is the deploy
+          # script's OWN failure -> fail immediately, do NOT re-run it.
+          # cicd-deploy.sh is re-entrant (detects active colour, builds the
+          # inactive one), so re-attempting after a failed CONNECT is safe.
+          set +e
+          attempt=0
+          max=3
+          while :; do
+            attempt=$((attempt + 1))
+            ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes \
+              -o ConnectTimeout=30 \
+              -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+              ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+              "cd ${{ secrets.VM_PATH }} && \
+               git fetch origin && \
+               git reset --hard origin/main && \
+               chmod +x scripts/*.sh && \
+               export GIT_SHA='${GIT_SHA}' && \
+               export GIT_REF='${GIT_REF}' && \
+               export ACTOR='${ACTOR}' && \
+               export TARGET_COLOR='${TARGET_COLOR}' && \
+               bash scripts/cicd-deploy.sh"
+            code=$?
+            if [ "$code" -eq 0 ]; then
+              echo "deploy ssh succeeded (attempt ${attempt})"
+              exit 0
+            fi
+            if [ "$code" -ne 255 ]; then
+              echo "deploy script failed (exit ${code}) — not a connection error, not retrying"
+              exit "$code"
+            fi
+            if [ "$attempt" -ge "$max" ]; then
+              echo "ssh connection error (exit 255) after ${attempt} attempts — giving up"
+              exit 255
+            fi
+            echo "ssh connection error (exit 255) on attempt ${attempt}; retrying in 30s…"
+            sleep 30
+          done
 
       - name: Cleanup
         if: always()
