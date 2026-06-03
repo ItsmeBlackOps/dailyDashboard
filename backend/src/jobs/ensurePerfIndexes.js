@@ -11,6 +11,10 @@ export async function ensurePerformanceIndexes() {
     await db.collection('taskBody').createIndex({ assignedTo: 1, receivedDateTime: -1 });
     await db.collection('taskBody').createIndex({ subject: 1 });
     await db.collection('taskBody').createIndex({ 'Candidate Name': 1 });
+    // SP3: native indexed Date range/sort on the canonical interview times
+    // (interviewStartAt/interviewEndsAt are proper BSON Dates in UTC).
+    await db.collection('taskBody').createIndex({ interviewStartAt: 1 });
+    await db.collection('taskBody').createIndex({ interviewEndsAt: 1 });
 
     // ── candidateDetails indexes ──
     await db.collection('candidateDetails').createIndex({ status: 1 });

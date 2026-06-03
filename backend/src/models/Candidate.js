@@ -1,4 +1,5 @@
 import { ObjectId } from 'mongodb';
+import moment from 'moment-timezone';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
@@ -239,6 +240,64 @@ export const CANDIDATE_AUDITED = [
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ── SP3 date normalization helpers ──────────────────────────────────────
+// Candidate date fields are stored inconsistently (ISO / MM/DD/YYYY / Date /
+// null). These coerce to a canonical form on read; they NEVER throw —
+// unparseable input returns null (sorts last / excluded from range filters).
+
+// Date-only canonical form: `YYYY-MM-DD`. Used for eadStartDate/eadEndDate.
+// A Date or full ISO string yields its UTC calendar date; an MM/DD/YYYY
+// string is strict-parsed (no TZ shift). Anything else → null.
+export function toIsoDate(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
+  }
+  if (typeof value === 'string') {
+    const s = value.trim();
+    if (!s) return null;
+    // ISO (with or without time): take the leading YYYY-MM-DD.
+    const isoMatch = s.match(/^(\d{4}-\d{2}-\d{2})(?:[T ].*)?$/);
+    if (isoMatch) {
+      const d = new Date(isoMatch[1]);
+      return Number.isNaN(d.getTime()) ? null : isoMatch[1];
+    }
+    // Locale MM/DD/YYYY → strict parse, format as date-only (no TZ shift).
+    const m = moment(s, ['MM/DD/YYYY', 'M/D/YYYY'], true);
+    if (m.isValid()) return m.format('YYYY-MM-DD');
+    return null;
+  }
+  if (typeof value === 'number') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
+// Full datetime canonical form: ISO 8601 string. Used for
+// marketingStartDate/ackEmailAt. A bare YYYY-MM-DD is promoted to midnight
+// UTC. Anything unparseable → null.
+export function toIso(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  if (typeof value === 'string') {
+    const s = value.trim();
+    if (!s) return null;
+    // Locale MM/DD/YYYY → strict parse, emit ISO midnight UTC.
+    const m = moment.utc(s, ['MM/DD/YYYY', 'M/D/YYYY'], true);
+    if (m.isValid()) return m.toDate().toISOString();
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  if (typeof value === 'number') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return null;
 }
 
 export class CandidateModel {
@@ -1041,15 +1100,17 @@ export class CandidateModel {
       teamLead: doc.teamLead ?? null,
       experienceYears: doc.experienceYears ?? null,
       visaType: doc.visaType ?? null,
-      eadStartDate: doc.eadStartDate ?? null,
-      eadEndDate: doc.eadEndDate ?? null,
+      // SP3: normalize on read. EAD dates → date-only YYYY-MM-DD;
+      // marketingStartDate/ackEmailAt → full ISO. Unparseable → null.
+      eadStartDate: toIsoDate(doc.eadStartDate),
+      eadEndDate: toIsoDate(doc.eadEndDate),
       company: doc.company ?? null,
       city: doc.city ?? null,
       state: doc.state ?? null,
       ackEmail: doc.ackEmail ?? null,
-      ackEmailAt: doc.ackEmailAt ?? null,
+      ackEmailAt: toIso(doc.ackEmailAt),
       team: doc.team ?? null,
-      marketingStartDate: doc.marketingStartDate ?? null,
+      marketingStartDate: toIso(doc.marketingStartDate),
       attachments: Array.isArray(doc.attachments) ? doc.attachments : [],
       editHistory: Array.isArray(doc.editHistory) ? doc.editHistory : [],
       assignmentEmails: Array.isArray(doc.assignmentEmails) ? doc.assignmentEmails : []

@@ -35,6 +35,15 @@ jest.unstable_mockModule('../src/models/Candidate.js', () => ({
   COMPANY_VALUES: [],
   ACK_EMAIL_VALUES: [],
   CANDIDATE_AUDITED: ['expert', 'teamLead', 'recruiter', 'branch', 'status'],
+  // SP3: the service imports toIsoDate (used by sanitizeCandidatePayload).
+  // The timeline aggregator does not exercise it; a faithful stub keeps the
+  // module link intact.
+  toIsoDate: (v) => {
+    if (v == null || v === '') return null;
+    if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.toISOString().slice(0, 10);
+    const m = String(v).match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : null;
+  },
 }));
 jest.unstable_mockModule('../src/utils/logger.js', () => ({ logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } }));
 jest.unstable_mockModule('../src/config/database.js', () => ({ database: { getCollection: mockGetCollection } }));

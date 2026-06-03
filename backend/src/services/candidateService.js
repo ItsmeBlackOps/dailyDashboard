@@ -10,7 +10,8 @@ import {
   EAD_REQUIRED_VISA_TYPES,
   COMPANY_VALUES,
   ACK_EMAIL_VALUES,
-  CANDIDATE_AUDITED
+  CANDIDATE_AUDITED,
+  toIsoDate
 } from '../models/Candidate.js';
 
 // PRT scope: only marketing manager / AM / admin may WRITE PRT fields.
@@ -1594,6 +1595,9 @@ class CandidateService {
           error.statusCode = 400;
           throw error;
         }
+        // Store as a Date object — uniform with existing data so the
+        // expiringIn sort + Phase C date-range filters query one BSON type.
+        // The read path (mapDocumentToCandidate) normalizes to YYYY-MM-DD.
         sanitized.eadStartDate = start;
       }
     }
@@ -1613,11 +1617,12 @@ class CandidateService {
           error.statusCode = 400;
           throw error;
         }
-        if (sanitized.eadStartDate && end.getTime() <= sanitized.eadStartDate.getTime()) {
+        if (sanitized.eadStartDate && end.getTime() <= new Date(sanitized.eadStartDate).getTime()) {
           const error = new Error('EAD End Date must be after EAD Start Date');
           error.statusCode = 400;
           throw error;
         }
+        // Store as a Date object (see eadStartDate above).
         sanitized.eadEndDate = end;
       }
     }

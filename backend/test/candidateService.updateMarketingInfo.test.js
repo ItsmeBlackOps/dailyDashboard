@@ -100,6 +100,8 @@ describe('candidateService.updateMarketingInfo', () => {
     );
     const updates = candidateModel.updateCandidateById.mock.calls[0][1];
     expect(updates.visaType).toBe('OPT');
+    // EAD dates are stored as Date objects (uniform type for sort/filter);
+    // the read mapper normalizes to YYYY-MM-DD for display.
     expect(updates.eadStartDate).toBeInstanceOf(Date);
     expect(updates.eadEndDate).toBeInstanceOf(Date);
   });
