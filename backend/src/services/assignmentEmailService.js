@@ -76,58 +76,17 @@ function err(message, statusCode = 400) {
   return e;
 }
 
-/**
- * Build the Microsoft Graph sendMail payload for the Assignment Email.
- *
- * @param {object} args
- * @param {string} args.candidateName       — for subject token
- * @param {string} [args.technology]        — for subject token
- * @param {string} [args.visaType]          — for subject token
- * @param {string} args.recruiterEmail      — primary To recipient
- * @param {string} args.recruiterDisplayName — body token [Recruiter Name]
- * @param {string} args.teamLeadEmail       — CC recipient
- * @param {string} args.teamLeadDisplayName — body token [Team Lead Name]
- * @param {string} [args.managerEmail]      — CC recipient (recruiter's manager)
- * @param {string} args.permanentCcEmail    — server-injected, never optional
- * @param {string} args.senderEmail         — only used for logging / audit
- * @param {string} args.senderDisplayName   — body token [Sender Name]
- * @param {Array<{ filename: string, mimeType: string, contentBytesBase64: string }>} args.attachments
- * @param {string} [args.appendBody]        — optional user prepend (read-only template below)
- */
-export function buildAssignmentEmail(args = {}) {
-  const {
-    candidateName,
-    technology,
-    visaType,
-    recruiterEmail,
-    recruiterDisplayName,
-    teamLeadEmail,
-    teamLeadDisplayName,
-    managerEmail,
-    permanentCcEmail,
-    senderEmail,
-    senderDisplayName,
-    attachments,
-    appendBody
-  } = args;
+// ---------------------------------------------------------------------------
+// Internal builders (module scope, NOT exported). Extracted so the byte-less
+// preview path can reuse the exact subject / body / recipient logic the send
+// path uses, without duplicating the §6.2 template.
+// ---------------------------------------------------------------------------
 
-  if (!candidateName) throw err('Candidate Name is required');
-  if (!recruiterEmail) throw err('Recruiter email is required');
-  if (!recruiterDisplayName) throw err('Recruiter name is required');
-  if (!teamLeadDisplayName) throw err('Team Lead is required');
-  if (!senderDisplayName) throw err('Sender display name is required');
-  if (!permanentCcEmail) throw err('Permanent CC is not configured');
-  if (!Array.isArray(attachments) || attachments.length === 0) {
-    throw err('At least one attachment is required');
-  }
-  for (const a of attachments) {
-    if (!a || !a.filename || !a.mimeType || !a.contentBytesBase64) {
-      throw err('Invalid attachment payload');
-    }
-  }
+function assignmentSubject({ candidateName, technology, visaType }) {
+  return `Assignment: ${candidateName} – ${technology || SAFE_TEXT_FALLBACK} – ${visaType || SAFE_TEXT_FALLBACK}`;
+}
 
-  const subject = `Assignment: ${candidateName} – ${technology || SAFE_TEXT_FALLBACK} – ${visaType || SAFE_TEXT_FALLBACK}`;
-
+function assignmentBodyHtml({ teamLeadDisplayName, senderDisplayName, recruiterDisplayName, appendBody }) {
   const sectionsHtml = TEMPLATE_LINES.map((token) => {
     switch (token) {
       case '__GREETING__':
@@ -147,13 +106,60 @@ export function buildAssignmentEmail(args = {}) {
     ? `${paragraphHtml(String(appendBody).trim())}<hr/>`
     : '';
 
-  const bodyHtml = `${prepend}${sectionsHtml}`;
+  return `${prepend}${sectionsHtml}`;
+}
 
-  // Recipients — server-injected permanentCc ALWAYS present in CC, even
-  // if the UI tried to remove it. Per PRD §6.3 the locked chip is
-  // decorative; the server is source of truth.
-  const ccEmails = dedupeLower([managerEmail, teamLeadEmail, permanentCcEmail]);
-  const toEmails = dedupeLower([recruiterEmail]);
+function assignmentRecipients({ recruiterEmail, managerEmail, teamLeadEmail, permanentCcEmail }) {
+  // Server-injected permanentCc ALWAYS present in CC, even if the UI tried to
+  // remove it. Per PRD §6.3 the locked chip is decorative; the server is the
+  // source of truth.
+  return {
+    toEmails: dedupeLower([recruiterEmail]),
+    ccEmails: dedupeLower([managerEmail, teamLeadEmail, permanentCcEmail])
+  };
+}
+
+function assertCommonArgs(a) {
+  if (!a.candidateName) throw err('Candidate Name is required');
+  if (!a.recruiterEmail) throw err('Recruiter email is required');
+  if (!a.recruiterDisplayName) throw err('Recruiter name is required');
+  if (!a.teamLeadDisplayName) throw err('Team Lead is required');
+  if (!a.senderDisplayName) throw err('Sender display name is required');
+  if (!a.permanentCcEmail) throw err('Permanent CC is not configured');
+  if (!Array.isArray(a.attachments) || a.attachments.length === 0) {
+    throw err('At least one attachment is required');
+  }
+}
+
+/**
+ * Build the Microsoft Graph sendMail payload for the Assignment Email.
+ *
+ * @param {object} args
+ * @param {string} args.candidateName       — for subject token
+ * @param {string} [args.technology]        — for subject token
+ * @param {string} [args.visaType]          — for subject token
+ * @param {string} args.recruiterEmail      — primary To recipient
+ * @param {string} args.recruiterDisplayName — body token [Recruiter Name]
+ * @param {string} args.teamLeadEmail       — CC recipient
+ * @param {string} args.teamLeadDisplayName — body token [Team Lead Name]
+ * @param {string} [args.managerEmail]      — CC recipient (recruiter's manager)
+ * @param {string} args.permanentCcEmail    — server-injected, never optional
+ * @param {string} args.senderEmail         — only used for logging / audit
+ * @param {string} args.senderDisplayName   — body token [Sender Name]
+ * @param {Array<{ filename: string, mimeType: string, contentBytesBase64: string }>} args.attachments
+ * @param {string} [args.appendBody]        — optional user prepend (read-only template below)
+ */
+export function buildAssignmentEmail(args = {}) {
+  assertCommonArgs(args);
+  for (const a of args.attachments) {
+    if (!a || !a.filename || !a.mimeType || !a.contentBytesBase64) {
+      throw err('Invalid attachment payload');
+    }
+  }
+
+  const subject = assignmentSubject(args);
+  const bodyHtml = assignmentBodyHtml(args);
+  const { toEmails, ccEmails } = assignmentRecipients(args);
 
   return {
     message: {
@@ -162,7 +168,7 @@ export function buildAssignmentEmail(args = {}) {
       toRecipients: toEmails.map((address) => ({ emailAddress: { address } })),
       ccRecipients: ccEmails.map((address) => ({ emailAddress: { address } })),
       bccRecipients: [],
-      attachments: attachments.map((a) => ({
+      attachments: args.attachments.map((a) => ({
         '@odata.type': '#microsoft.graph.fileAttachment',
         name: a.filename,
         contentType: a.mimeType,
@@ -174,11 +180,40 @@ export function buildAssignmentEmail(args = {}) {
     // these into the assignmentEmails[] entry.
     _audit: {
       subject,
-      senderEmail: (senderEmail || '').toLowerCase(),
+      senderEmail: (args.senderEmail || '').toLowerCase(),
       to: toEmails,
       cc: ccEmails,
       bcc: [],
-      attachmentIds: attachments.map((a) => a.id).filter(Boolean)
+      attachmentIds: args.attachments.map((a) => a.id).filter(Boolean)
     }
+  };
+}
+
+/**
+ * Build a non-sending PREVIEW of the Assignment Email. Same recipients /
+ * subject / body as buildAssignmentEmail, but attachments carry FILENAMES
+ * only — no byte payload is required or read. Used by the preview endpoint so
+ * the UI can show server-accurate To/CC/attachments/body without S3 reads.
+ *
+ * @param {object} args — same shape as buildAssignmentEmail, except each
+ *   attachment only needs `{ id, filename }` (no mimeType / contentBytesBase64).
+ * @returns {{ to: string[], cc: string[], bcc: string[], subject: string,
+ *   bodyHtml: string, attachments: Array<{ id: string, filename: string }> }}
+ */
+export function buildAssignmentEmailPreview(args = {}) {
+  assertCommonArgs(args);
+  for (const a of args.attachments) {
+    if (!a || !a.filename) throw err('Invalid attachment payload');
+  }
+
+  const { toEmails, ccEmails } = assignmentRecipients(args);
+
+  return {
+    to: toEmails,
+    cc: ccEmails,
+    bcc: [],
+    subject: assignmentSubject(args),
+    bodyHtml: assignmentBodyHtml(args),
+    attachments: args.attachments.map((a) => ({ id: a.id, filename: a.filename }))
   };
 }
