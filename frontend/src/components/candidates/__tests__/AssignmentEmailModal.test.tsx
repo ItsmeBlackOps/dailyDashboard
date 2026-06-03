@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import AssignmentEmailModal from '../AssignmentEmailModal';
 import type { CandidateAttachment } from '@/components/candidates/AttachmentZone';
@@ -11,6 +11,14 @@ const authFetchMock = vi.fn();
 vi.mock('@/hooks/useAuth', () => ({
   API_URL: 'http://localhost:3004',
   useAuth: () => ({ authFetch: authFetchMock }),
+}));
+
+// The modal sends delegated (like Interview Support): it acquires a Graph
+// token and passes it as x-graph-access-token. Mock the hook so no MSAL
+// provider is needed and the token is deterministic.
+const acquireGraphMock = vi.fn().mockResolvedValue('graph-token-abc');
+vi.mock('@/hooks/useGraphMailToken', () => ({
+  useGraphMailToken: () => ({ acquireGraphAccessToken: acquireGraphMock }),
 }));
 
 // useToast is pulled in for the Send flow.
@@ -70,6 +78,8 @@ function renderModal() {
 describe('AssignmentEmailModal — server-accurate preview', () => {
   beforeEach(() => {
     authFetchMock.mockReset();
+    acquireGraphMock.mockClear();
+    acquireGraphMock.mockResolvedValue('graph-token-abc');
   });
 
   // No global afterEach is configured in vitest.config (globals: false), so
@@ -136,5 +146,43 @@ describe('AssignmentEmailModal — server-accurate preview', () => {
 
     const sendButton = screen.getByRole('button', { name: /Queue & Send|Send|Queueing/i });
     expect(sendButton).toBeDisabled();
+  });
+
+  it('acquires a Graph token and posts it as x-graph-access-token on send (delegated)', async () => {
+    authFetchMock.mockImplementation((url: string) => {
+      if (String(url).includes('/assignment-email/preview')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            preview: {
+              to: ['rec@x.com'],
+              cc: ['tl@x.com'],
+              bcc: [],
+              subject: 'Assignment: Asha',
+              bodyHtml: '<p>Hi</p>',
+              attachments: [{ id: 'a1', filename: 'r.pdf' }],
+            },
+          }),
+        });
+      }
+      // /send-assignment-email
+      return Promise.resolve({ ok: true, json: async () => ({ success: true, status: 'sent' }) });
+    });
+
+    renderModal();
+
+    const sendButton = await screen.findByRole('button', { name: /^Send$/i });
+    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    fireEvent.click(sendButton);
+
+    await waitFor(() => {
+      const sendCall = authFetchMock.mock.calls.find((c) =>
+        String(c[0]).includes('/send-assignment-email'),
+      );
+      expect(sendCall).toBeTruthy();
+      expect(sendCall![1].headers['x-graph-access-token']).toBe('graph-token-abc');
+    });
+    expect(acquireGraphMock).toHaveBeenCalled();
   });
 });

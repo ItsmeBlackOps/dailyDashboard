@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { useAuth, API_URL } from '@/hooks/useAuth';
+import { useGraphMailToken } from '@/hooks/useGraphMailToken';
 import {
   Dialog,
   DialogContent,
@@ -62,6 +63,7 @@ export default function AssignmentEmailModal({
   onSent,
 }: AssignmentEmailModalProps) {
   const { authFetch } = useAuth();
+  const { acquireGraphAccessToken } = useGraphMailToken();
   const { toast } = useToast();
 
   const defaultSubject = useMemo(
@@ -184,14 +186,29 @@ export default function AssignmentEmailModal({
     [preview?.bodyHtml],
   );
 
-  // Phase 3.5 — enqueue-mode. The server queues the send into the
-  // EmailOutbox and the worker dispatches via app-only Graph. No MSAL
-  // token is acquired from the browser; "From" becomes the configured
-  // app sender (deliberate trade-off for durable retry over 24h).
+  // Send from the requester's own mailbox via Microsoft Graph — the SAME
+  // delegated path Interview/Assessment Support use. We acquire a Graph token
+  // in the browser and pass it as `x-graph-access-token`; the backend calls
+  // graphMailService.sendDelegatedMail (→ /me/sendMail). This needs NO app
+  // "from" mailbox. If delegated delivery fails server-side it still falls
+  // back to the durable outbox, but the normal path is an immediate send.
   const handleSend = async () => {
     if (!canSend) return;
     setSending(true);
     try {
+      let graphToken = '';
+      try {
+        graphToken = await acquireGraphAccessToken();
+      } catch {
+        toast({
+          title: 'Mailbox permission needed',
+          description: 'Could not get permission to send from your mailbox. Please try again and approve the Microsoft sign-in prompt.',
+          variant: 'destructive',
+        });
+        setSending(false);
+        return;
+      }
+
       const body = {
         subject: subject.trim(),
         appendBody: appendBody.trim() || undefined,
@@ -201,24 +218,28 @@ export default function AssignmentEmailModal({
         `${API_URL}/api/candidates/${candidateId}/send-assignment-email`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-graph-access-token': graphToken },
           body: JSON.stringify(body),
         },
       );
       const json = await resp.json().catch(() => ({}));
-      // 202 Accepted is the happy path now.
       if (!resp.ok || !json.success) {
-        throw new Error(json.error || 'Queue failed');
+        throw new Error(json.error || 'Send failed');
       }
-      toast({
-        title: 'Assignment email queued',
-        description: 'The dispatcher will send it shortly. Refresh the page in a few minutes to see the confirmation.',
-      });
+      // 200 = sent immediately from the user's mailbox; 202 = queued fallback.
+      if (json.status === 'sent') {
+        toast({ title: 'Assignment email sent', description: 'Sent from your mailbox.' });
+      } else {
+        toast({
+          title: 'Assignment email queued',
+          description: 'The dispatcher will deliver it shortly.',
+        });
+      }
       onSent?.();
       onOpenChange(false);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to queue';
-      toast({ title: 'Queue failed', description: message, variant: 'destructive' });
+      const message = err instanceof Error ? err.message : 'Unable to send';
+      toast({ title: 'Send failed', description: message, variant: 'destructive' });
     } finally {
       setSending(false);
     }
@@ -414,7 +435,7 @@ export default function AssignmentEmailModal({
             Cancel
           </Button>
           <Button type="button" onClick={handleSend} disabled={!canSend}>
-            {sending ? 'Queueing…' : 'Queue & Send'}
+            {sending ? 'Sending…' : 'Send'}
           </Button>
         </DialogFooter>
       </DialogContent>
