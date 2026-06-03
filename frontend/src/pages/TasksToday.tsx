@@ -47,6 +47,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Switch } from "@/components/ui/switch";
 import { DashboardFilters, type DashboardFilterState } from "@/components/dashboard/DashboardFilters";
 import { buildDashboardPayload } from "@/components/dashboard/dashboardUtils";
+import { MeetingStartedChip } from "@/components/dashboard/MeetingStartedChip";
+import { MarketingMeetingAckModal } from "@/components/dashboard/MarketingMeetingAckModal";
 import { computeDayRange, DEFAULT_TIMEZONE } from "@/utils/dateRanges";
 import { useMsal } from "@azure/msal-react";
 import type { AccountInfo, AuthenticationResult } from "@azure/msal-browser";
@@ -2982,6 +2984,13 @@ export default function TasksToday() {
 
   const formatDate = (m: Moment | null) => (m ? m.tz(TZ).format(DATE_FMT) : "");
   const formatTime = (m: Moment | null) => (m ? m.tz(TZ).format(TIME_FMT) : "");
+  // Eastern join-time for the meeting-started chip hover, e.g. "9:02 AM EST".
+  // Reuses the same moment(.tz(TZ)) Eastern convention as the meeting subject.
+  const formatStartedEastern = (iso?: string | null) => {
+    if (!iso) return null;
+    const m = moment(iso);
+    return m.isValid() ? m.tz(TZ).format("h:mm A [EST]") : null;
+  };
 
   // === Reminder key helpers ===
   const reminderKeyFor = (t: Task, start: Moment) => `${t._id}|${start.toISOString()}`;
@@ -4019,6 +4028,7 @@ export default function TasksToday() {
     <DashboardLayout>
 
       <div className="p-4 space-y-4">
+        <MarketingMeetingAckModal />
         {error && <p className="text-destructive">{error}</p>}
 
 
@@ -4256,58 +4266,48 @@ export default function TasksToday() {
                     </TableCell>
                     {meetingsEnabled && (
                       <TableCell>
-                        {joinLink ? (
-                          <div className="flex flex-nowrap items-center gap-2">
+                        <div className="flex flex-nowrap items-center gap-2">
+                          {joinLink ? (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenMeeting(joinLink)}
+                              >
+                                Join
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  void handleCopyMeeting(joinLink);
+                                }}
+                                aria-label="Copy link"
+                              >
+                                <Copy className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">Copy link</span>
+                              </Button>
+                            </>
+                          ) : canManageMeetings ? (
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleOpenMeeting(joinLink)}
-                            >
-                              Join
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              size="sm"
+                              disabled={isMeetingBusy || consentChecking}
                               onClick={() => {
-                                void handleCopyMeeting(joinLink);
+                                void handleCreateMeeting(task);
                               }}
-                              aria-label="Copy link"
                             >
-                              <Copy className="h-4 w-4" aria-hidden="true" />
-                              <span className="sr-only">Copy link</span>
+                              {isMeetingBusy ? 'Creating…' : 'Create meeting'}
                             </Button>
-                          </div>
-                        ) : canManageMeetings ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={isMeetingBusy || consentChecking}
-                            onClick={() => {
-                              void handleCreateMeeting(task);
-                            }}
-                          >
-                            {isMeetingBusy ? 'Creating…' : 'Create meeting'}
-                          </Button>
-                        ) : null}
-                        <div className="mt-1">
-                          {task.meetingStarted ? (
-                            <Badge
-                              variant="secondary"
-                              title={task.meetingStartedBy ? `Started by ${task.meetingStartedBy}${task.meetingStartedAt ? ` at ${task.meetingStartedAt}` : ''}` : 'Started'}
-                            >
-                              Started ✓
-                            </Badge>
-                          ) : canMarkStarted ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => { void handleMarkStarted(task); }}
-                            >
-                              Mark started
-                            </Button>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Not started</span>
-                          )}
+                          ) : null}
+                          <MeetingStartedChip
+                            started={!!task.meetingStarted}
+                            startedBy={task.meetingStartedBy}
+                            startedAt={formatStartedEastern(task.meetingStartedAt)}
+                            status={task.status}
+                            canMark={canMarkStarted}
+                            onMark={() => { void handleMarkStarted(task); }}
+                          />
                         </div>
                       </TableCell>
                     )}

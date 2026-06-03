@@ -4,6 +4,7 @@ import { asyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 import { database } from '../config/database.js';
 import { TECHNICAL_ACK, TECHNICAL_ACK_ROLES } from '../config/technicalAck.js';
+import { MARKETING_MEETING_ACK, MARKETING_MEETING_ACK_ROLES } from '../config/marketingMeetingAck.js';
 
 // Use the service-level helper as the single source of truth (was a
 // duplicate impl that split on `[._]` only — service version handles
@@ -344,6 +345,47 @@ export class UserController {
       return res.json({ success: true, required: false, currentVersion, agreedVersion: currentVersion });
     } catch (error) {
       logger.error('updateMyTechnicalAck failed', { error: error.message, email: user.email });
+      return res.status(500).json({ success: false, error: 'Unable to record acknowledgment' });
+    }
+  });
+
+  // Marketing-team one-time, versioned acknowledgment of the meeting status mark.
+  getMyMarketingMeetingAck = asyncHandler(async (req, res) => {
+    const user = req.user;
+    if (!user?.email) return res.status(401).json({ success: false, error: 'Authentication required' });
+    const role = (user.role || '').trim().toLowerCase();
+    const currentVersion = MARKETING_MEETING_ACK.version;
+    if (!MARKETING_MEETING_ACK_ROLES.includes(role)) {
+      return res.json({ success: true, required: false, currentVersion, agreedVersion: 0 });
+    }
+    try {
+      const record = userModel.getUserByEmail(user.email) || {};
+      const agreedVersion = Number(record.marketingMeetingAck?.version) || 0;
+      return res.json({ success: true, required: agreedVersion !== currentVersion, currentVersion, agreedVersion });
+    } catch (error) {
+      logger.error('getMyMarketingMeetingAck failed', { error: error.message, email: user.email });
+      return res.status(500).json({ success: false, error: 'Unable to read acknowledgment status' });
+    }
+  });
+
+  updateMyMarketingMeetingAck = asyncHandler(async (req, res) => {
+    const user = req.user;
+    if (!user?.email) return res.status(401).json({ success: false, error: 'Authentication required' });
+    const currentVersion = MARKETING_MEETING_ACK.version;
+    const version = Number(req.body?.version);
+    if (!version || version !== currentVersion) {
+      return res.status(400).json({ success: false, error: `version must equal the current version (${currentVersion})` });
+    }
+    try {
+      await userModel.updateUser(user.email, {
+        'marketingMeetingAck.version': currentVersion,
+        'marketingMeetingAck.agreedAt': new Date().toISOString(),
+        _changedBy: user.email,
+        _source: 'self-marketing-meeting-ack',
+      });
+      return res.json({ success: true, required: false, currentVersion, agreedVersion: currentVersion });
+    } catch (error) {
+      logger.error('updateMyMarketingMeetingAck failed', { error: error.message, email: user.email });
       return res.status(500).json({ success: false, error: 'Unable to record acknowledgment' });
     }
   });
