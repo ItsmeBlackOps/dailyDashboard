@@ -36,6 +36,8 @@ import { Loader2, BookOpen, MessageSquare, UserCircle, Briefcase } from "lucide-
 import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import { useNotifications } from "@/context/NotificationContext";
 import { ResumeDiscussionDrawer } from "@/components/resume/ResumeDiscussionDrawer";
+import { MarketingInfoModal } from "./MarketingInfoModal";
+import { parseJsonOrThrow } from "@/lib/fetchJson";
 import { handleSupportInterviewSubmitError } from "@/components/dashboard/supportInterviewSubmitError";
 import { invalidateClientsCache } from '@/components/shared/CompanyCombobox';
 import { CompanyComboboxSafe as CompanyCombobox } from '@/components/shared/CompanyComboboxSafe';
@@ -66,6 +68,18 @@ interface CandidateRow {
   // PRT Phase 4 — derived getters (server-side, marketing readers only).
   expiringInDays?: number | null;
   daysInMarketing?: number | null;
+}
+
+// SP1 T7 — shape of a row returned by GET /api/candidates/marketing-info-worklist.
+interface WorklistCandidate {
+  id: string;
+  name: string;
+  recruiter: string;
+  visaType: string;
+  company: string;
+  eadStartDate: string | null;
+  eadEndDate: string | null;
+  updatedAt?: string | null;
 }
 
 // PRT Phase 4 — row classnames keyed on expiringInDays bands per PRD §5.1.
@@ -446,6 +460,22 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   // the dropdown.
   const [expiringSoonOnly, setExpiringSoonOnly] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<'updated' | 'name' | 'expiringIn'>('updated');
+  // SP1 T7 — "needs marketing info" worklist. The backend endpoint is the
+  // authoritative, scope-enforced source: a recruiter sees their own, a
+  // team lead/AM/manager their hierarchy, admin all; a non-marketing user
+  // gets an empty list. We keep the accurate scoped `count`, the capped
+  // `candidates` slice (≤500), how many were `returned`, and a Set of ids
+  // for the per-row badge on the normal list.
+  const [worklistCount, setWorklistCount] = useState<number>(0);
+  const [worklistReturned, setWorklistReturned] = useState<number>(0);
+  const [worklistCandidates, setWorklistCandidates] = useState<WorklistCandidate[]>([]);
+  const [worklistIds, setWorklistIds] = useState<Set<string>>(new Set());
+  const [worklistOnly, setWorklistOnly] = useState<boolean>(false);
+  const [worklistLoading, setWorklistLoading] = useState<boolean>(false);
+  // SP1 T7 — candidate whose marketing-info modal is open. Rendered
+  // conditionally so the modal mounts fresh each time and seeds its
+  // fields from `initial` on mount.
+  const [marketingInfoFor, setMarketingInfoFor] = useState<null | { id: string; visaType: string; company: string; eadStartDate: string | null; eadEndDate: string | null }>(null);
   const { refreshAccessToken, authFetch } = useAuth();
   const { toast } = useToast();
   const { notifications, markAsRead } = useNotifications();
@@ -2419,6 +2449,15 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     });
   }, [candidates, search, expiringSoonOnly]);
 
+  // SP1 T7 — id → worklist row, so the per-row "Needs info" badge on the
+  // normal list can open the modal pre-seeded with the candidate's current
+  // visaType/company/EAD without a second fetch.
+  const worklistById = useMemo(() => {
+    const map = new Map<string, WorklistCandidate>();
+    for (const c of worklistCandidates) map.set(c.id, c);
+    return map;
+  }, [worklistCandidates]);
+
 
   const handleSelectAll = useCallback((checked: boolean) => {
     if (checked) {
@@ -2754,6 +2793,45 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     );
   }, [socket, normalizeOptionList, normalizeCreatePolicy, sortBy]);
 
+  // SP1 T7 — load the authoritative "needs marketing info" worklist.
+  // `countOnly` is the cheap path used for the header indicator; the full
+  // path also hydrates the filter view rows and the per-row badge id Set.
+  // Scope is enforced server-side, so we render whatever comes back (an
+  // empty list for non-marketing users) without any client-side role check.
+  const fetchWorklist = useCallback(async (countOnly = false) => {
+    if (!countOnly) setWorklistLoading(true);
+    try {
+      const url = countOnly
+        ? `${API_URL}/api/candidates/marketing-info-worklist?countOnly=1`
+        : `${API_URL}/api/candidates/marketing-info-worklist`;
+      const res = await authFetch(url);
+      const data = await parseJsonOrThrow<{
+        success?: boolean;
+        count?: number;
+        returned?: number;
+        candidates?: WorklistCandidate[];
+      }>(res);
+      setWorklistCount(typeof data.count === 'number' ? data.count : 0);
+      if (!countOnly) {
+        const rows = Array.isArray(data.candidates) ? data.candidates : [];
+        setWorklistCandidates(rows);
+        setWorklistReturned(typeof data.returned === 'number' ? data.returned : rows.length);
+        setWorklistIds(new Set(rows.map((c) => c.id)));
+      }
+    } catch (err) {
+      // Non-fatal: the worklist is an enhancement over the main list. Log
+      // for diagnosis but don't surface a blocking error to the user.
+      trackError('Failed to load marketing-info worklist', err, { countOnly });
+      if (!countOnly) {
+        setWorklistCandidates([]);
+        setWorklistReturned(0);
+        setWorklistIds(new Set());
+      }
+    } finally {
+      if (!countOnly) setWorklistLoading(false);
+    }
+  }, [authFetch]);
+
   const handleMoveToMarketing = useCallback(() => {
     if (!socket || selectedIds.size === 0) return;
     setMovingToMarketing(true);
@@ -2806,6 +2884,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       socket.disconnect();
     };
   }, [socket, fetchCandidates, refreshAccessToken]);
+
+  // SP1 T7 — load the full worklist (count + rows + id Set) once on mount.
+  // The endpoint is scope-enforced, so this is safe for every role.
+  useEffect(() => {
+    fetchWorklist(false);
+  }, [fetchWorklist]);
 
   useEffect(() => {
     if (!socket) {
@@ -3778,6 +3862,24 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
             </ul>
           </div>
 
+          {/* SP1 T7 — "needs marketing info" count indicator. Driven by the
+              scope-enforced worklist endpoint, so it only shows a non-zero
+              count to users who actually own pending candidates. Clicking it
+              flips on the worklist-only view. */}
+          {worklistCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setWorklistOnly(true)}
+              className="flex w-full items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-left text-sm text-amber-900 transition hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+              aria-label={`Show the ${worklistCount} candidate${worklistCount === 1 ? '' : 's'} that need marketing info`}
+            >
+              <span className="font-medium">
+                {worklistCount} candidate{worklistCount === 1 ? '' : 's'} need marketing info
+              </span>
+              <span className="text-xs underline">View list</span>
+            </button>
+          )}
+
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex flex-1 flex-wrap items-center gap-2">
               <Input
@@ -3802,6 +3904,23 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               >
                 Expiring soon
               </Button>
+              {/* SP1 T7 — "Needs marketing info" filter chip. When ON we render
+                  the authoritative worklist rows (server-scoped) instead of the
+                  socket-loaded list. Only offered when there is at least one
+                  pending candidate for this user. */}
+              {(worklistCount > 0 || worklistOnly) && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={worklistOnly ? 'default' : 'outline'}
+                  onClick={() => setWorklistOnly((v) => !v)}
+                  aria-pressed={worklistOnly}
+                  aria-label={worklistOnly ? 'Show all candidates' : 'Filter to candidates that need marketing info'}
+                  className="whitespace-nowrap"
+                >
+                  Needs marketing info{worklistCount > 0 ? ` (${worklistCount})` : ''}
+                </Button>
+              )}
               {/* PRT Phase 5 — Sort dropdown forwards to the backend so
                   the cursor returns the list pre-sorted. Default is the
                   historical "last updated" order. */}
@@ -3903,7 +4022,66 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           )
           }
 
-          {loading ? (
+          {worklistOnly ? (
+            /* SP1 T7 — authoritative "needs marketing info" view. Rows come
+               straight from the scope-enforced endpoint (not the socket list),
+               so this is the complete set of the user's pending candidates,
+               capped at the backend's 500 limit. */
+            <div className="space-y-2" data-testid="marketing-info-worklist">
+              {worklistLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <Skeleton key={index} className="h-12 w-full" />
+                  ))}
+                </div>
+              ) : worklistCandidates.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No candidates need marketing info right now.
+                </p>
+              ) : (
+                <>
+                  {worklistReturned < worklistCount && (
+                    <p className="text-xs text-muted-foreground">
+                      Showing first {worklistReturned} of {worklistCount}. Fill these in to reveal the rest.
+                    </p>
+                  )}
+                  <ul className="divide-y rounded-md border">
+                    {worklistCandidates.map((c) => (
+                      <li
+                        key={c.id}
+                        className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{DOMPurify.sanitize(c.name || '')}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            Recruiter: {DOMPurify.sanitize(c.recruiter || '—')}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="self-start whitespace-nowrap sm:self-auto"
+                          onClick={() =>
+                            setMarketingInfoFor({
+                              id: c.id,
+                              visaType: c.visaType || '',
+                              company: c.company || '',
+                              eadStartDate: c.eadStartDate ?? null,
+                              eadEndDate: c.eadEndDate ?? null,
+                            })
+                          }
+                          aria-label={`Add or edit marketing info for ${c.name || 'candidate'}`}
+                        >
+                          {c.visaType || c.company ? 'Edit info' : 'Add info'}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          ) : loading ? (
             <div className="space-y-2">
               {Array.from({ length: 5 }).map((_, index) => (
                 <Skeleton key={index} className="h-10 w-full" />
@@ -3962,6 +4140,32 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                         )}
                         <TableCell className="font-medium">
                           <div>{DOMPurify.sanitize(candidate.name || '')}</div>
+                          {/* SP1 T7 — per-row "Needs info" badge. Shown when this
+                              candidate is in the scope-enforced worklist id Set.
+                              Clicking it opens the modal seeded from the worklist
+                              row (visaType/company/EAD already loaded). */}
+                          {worklistIds.has(candidate.id) && (
+                            <button
+                              type="button"
+                              className="mt-1 inline-flex"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const w = worklistById.get(candidate.id);
+                                setMarketingInfoFor({
+                                  id: candidate.id,
+                                  visaType: w?.visaType || '',
+                                  company: w?.company || '',
+                                  eadStartDate: w?.eadStartDate ?? null,
+                                  eadEndDate: w?.eadEndDate ?? null,
+                                });
+                              }}
+                              aria-label={`Add marketing info for ${candidate.name || 'candidate'}`}
+                            >
+                              <Badge variant="outline" className="cursor-pointer border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+                                Needs info
+                              </Badge>
+                            </button>
+                          )}
                         </TableCell>
                         <TableCell>{DOMPurify.sanitize(candidate.technology || '')}</TableCell>
                         <TableCell>{DOMPurify.sanitize(candidate.expert || '-')}</TableCell>
@@ -5501,6 +5705,28 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           onClose={() => { setDiscussionOpen(false); setDiscussionCandidate(null); }}
           candidateId={discussionCandidate.id}
           candidateName={discussionCandidate.name}
+        />
+      )}
+
+      {/* SP1 T7 — marketing-info fill modal. Rendered conditionally per
+          candidate so it mounts fresh each time and seeds its fields from
+          `initial` on mount. On save we refresh the worklist (count + rows +
+          id Set) and reload the main candidate list so derived fields update. */}
+      {marketingInfoFor && (
+        <MarketingInfoModal
+          open={!!marketingInfoFor}
+          candidateId={marketingInfoFor.id}
+          initial={{
+            visaType: marketingInfoFor.visaType,
+            company: marketingInfoFor.company,
+            eadStartDate: marketingInfoFor.eadStartDate,
+            eadEndDate: marketingInfoFor.eadEndDate,
+          }}
+          onOpenChange={(o) => { if (!o) setMarketingInfoFor(null); }}
+          onSaved={() => {
+            fetchWorklist(false);
+            fetchCandidates();
+          }}
         />
       )}
     </>
