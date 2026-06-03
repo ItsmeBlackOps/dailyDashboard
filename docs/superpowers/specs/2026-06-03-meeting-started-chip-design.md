@@ -44,7 +44,22 @@ New component `MeetingStartedLegendModal.tsx`, mounted in `TasksToday` (the only
   - legend: renders when localStorage key unset; after "Got it" the key is set and it closes; does not render when the key is already set.
 - `tsc --noEmit` clean; manual smoke that the row is a single line (no second row) and cancelled/completed rows show no chip.
 
-## 5. Out of scope
-- Server-side per-account "seen legend" tracking (localStorage is sufficient).
-- Any change to the SP2 toggle endpoint / gate (reused as-is).
+## 5. Revision — marketing acknowledgment replaces the localStorage legend
+
+The simple localStorage "Got it" legend (§3b) is **replaced** by a server-recorded **marketing-team acknowledgment**, mirroring the SP2 technical-team ack. (Two one-time acks now exist: technical = "you must toggle Meeting Started"; marketing = "here's what the chip means.")
+
+- **Audience:** marketing roles only — legacy tokens `admin`, `mm`, `mam`, `mlead`, `recruiter` (the PRT_READ_ROLES set). Technical roles never see it.
+- **Behavior:** one-time per user, versioned, server-recorded (auditable). An **"I acknowledge"** checkbox enables **Submit**; shown once until the version is bumped. Mirrors SP2's `technicalAck` pattern exactly (a `marketingMeetingAck { version, agreedAt }` subdoc + `GET`/`PATCH /api/users/me/marketing-meeting-acknowledgment`, parallel to the technical endpoints; reuse the `userController`/`routes/users.js`/`User` patterns).
+- **Content:** shows the **actual chip elements** —
+  - 🟢 green `CheckCircle2` = **Meeting started** — the **Expert joined the meeting** (hover the green mark in a row to see the exact join time, in Eastern).
+  - ⚪ grey `Circle` = **not started yet**.
+  - one line: "Hover the green mark to see when the expert joined (EST)."
+- **Replaces:** `MeetingStartedLegendModal` (localStorage) is removed; the new `MarketingMeetingAckModal` (server-driven, marketing-gated) is mounted in its place in TasksToday. Because it's gated to marketing roles, the existing TasksToday page tests (user role `user`/`expert`) won't trigger it — the localStorage suppression added for the legend can be dropped (the GET simply returns `required:false` for non-marketing).
+
+### Chip tooltip — EST join time (§3a refinement)
+The green (started) chip's hover tooltip reads **"Expert joined at h:mm AM/PM EST"**, formatting `meetingStartedAt` in Eastern time. Reuse TasksToday's existing Eastern-time formatter (the same one used for the meeting subject, e.g. `easternDateTime` + "EST"). The grey chip tooltip stays "Meeting not started yet".
+
+## 6. Out of scope
+- A generic multi-ack framework (we add the marketing ack parallel to the technical one; generalize only if a 3rd ack appears).
+- Any change to the SP2 Meeting-Started toggle endpoint / gate (reused as-is).
 - SP3 (ISO-date filtering + sorting) — separate spec.
