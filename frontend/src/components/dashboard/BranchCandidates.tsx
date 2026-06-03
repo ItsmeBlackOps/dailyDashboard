@@ -3219,6 +3219,16 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       setCreating(false);
       return;
     }
+    if (!trimmedCity) {
+      setCreateError('City is required');
+      setCreating(false);
+      return;
+    }
+    if (!trimmedState) {
+      setCreateError('State is required');
+      setCreating(false);
+      return;
+    }
     if (PRT_EAD_REQUIRED_VISA_TYPES.has(trimmedVisaType)) {
       if (!trimmedEadStart) {
         setCreateError('EAD Start Date is required for this visa type');
@@ -4541,7 +4551,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               {/* ---------- PRT fields (marketing-only create surface) ---------- */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="create-experience-years">Experience (years)</Label>
+                  <Label htmlFor="create-experience-years">Experience (years) — required</Label>
                   <Select
                     value={createForm.experienceYears || 'none'}
                     onValueChange={(value) => handleCreateFieldChange('experienceYears', value === 'none' ? '' : value)}
@@ -4558,7 +4568,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="create-visa-type">Visa Type</Label>
+                  <Label htmlFor="create-visa-type">Visa Type — required</Label>
                   <Select
                     value={createForm.visaType || 'none'}
                     onValueChange={(value) => handleCreateFieldChange('visaType', value === 'none' ? '' : value)}
@@ -4599,7 +4609,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="create-company">Company</Label>
+                  <Label htmlFor="create-company">Company — required</Label>
                   <Select
                     value={createForm.company || 'none'}
                     onValueChange={(value) => handleCreateFieldChange('company', value === 'none' ? '' : value)}
@@ -4629,7 +4639,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="create-city">City (optional)</Label>
+                  <Label htmlFor="create-city">City — required</Label>
                   <Input
                     id="create-city"
                     value={createForm.city}
@@ -4637,7 +4647,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="create-state">State (optional)</Label>
+                  <Label htmlFor="create-state">State — required</Label>
                   <Input
                     id="create-state"
                     value={createForm.state}
