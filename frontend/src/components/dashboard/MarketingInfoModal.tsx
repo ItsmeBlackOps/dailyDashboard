@@ -23,8 +23,10 @@ export function MarketingInfoModal({ open, candidateId, initial, onOpenChange, o
   const { authFetch } = useAuth();
   const [visaType, setVisaType] = useState(initial.visaType || '');
   const [company, setCompany] = useState(initial.company || '');
-  const [eadStartDate, setEadStartDate] = useState(initial.eadStartDate || '');
-  const [eadEndDate, setEadEndDate] = useState(initial.eadEndDate || '');
+  // <input type="date"> needs YYYY-MM-DD; the worklist sends raw ISO datetimes,
+  // so slice to the date part (harmless for already-YYYY-MM-DD or empty values).
+  const [eadStartDate, setEadStartDate] = useState((initial.eadStartDate || '').slice(0, 10));
+  const [eadEndDate, setEadEndDate] = useState((initial.eadEndDate || '').slice(0, 10));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const needsEad = EAD_TYPES.includes(visaType);
