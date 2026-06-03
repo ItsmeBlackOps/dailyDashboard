@@ -413,7 +413,7 @@ export default function AssignmentEmailModal({
               </div>
             ) : preview ? (
               <div
-                className="prose prose-sm max-w-none rounded border p-3 max-h-64 overflow-y-auto bg-background text-xs"
+                className="max-w-none rounded border border-slate-200 bg-white text-slate-900 p-3 max-h-64 overflow-y-auto text-xs leading-relaxed [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-0.5 [&_a]:text-blue-700 [&_a]:underline [&_hr]:my-2 [&_hr]:border-slate-200"
                 aria-label="Assignment email body preview"
                 dangerouslySetInnerHTML={{ __html: sanitizedBodyHtml }}
               />
