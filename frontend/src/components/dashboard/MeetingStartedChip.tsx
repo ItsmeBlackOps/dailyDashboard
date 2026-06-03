@@ -15,7 +15,7 @@ export function MeetingStartedChip({ started, startedBy, startedAt, status, canM
   if (CLOSED_STATUSES.includes((status || '').toLowerCase())) return null;
 
   if (started) {
-    const label = `Meeting started${startedBy ? ` by ${startedBy}` : ''}${startedAt ? ` at ${startedAt}` : ''}`;
+    const label = startedAt ? `Expert joined at ${startedAt}` : 'Meeting started';
     return (
       <span title={label} role="img" aria-label={label} className="inline-flex items-center">
         <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" aria-hidden="true" />

@@ -48,7 +48,7 @@ import { Switch } from "@/components/ui/switch";
 import { DashboardFilters, type DashboardFilterState } from "@/components/dashboard/DashboardFilters";
 import { buildDashboardPayload } from "@/components/dashboard/dashboardUtils";
 import { MeetingStartedChip } from "@/components/dashboard/MeetingStartedChip";
-import { MeetingStartedLegendModal } from "@/components/dashboard/MeetingStartedLegendModal";
+import { MarketingMeetingAckModal } from "@/components/dashboard/MarketingMeetingAckModal";
 import { computeDayRange, DEFAULT_TIMEZONE } from "@/utils/dateRanges";
 import { useMsal } from "@azure/msal-react";
 import type { AccountInfo, AuthenticationResult } from "@azure/msal-browser";
@@ -2984,6 +2984,13 @@ export default function TasksToday() {
 
   const formatDate = (m: Moment | null) => (m ? m.tz(TZ).format(DATE_FMT) : "");
   const formatTime = (m: Moment | null) => (m ? m.tz(TZ).format(TIME_FMT) : "");
+  // Eastern join-time for the meeting-started chip hover, e.g. "9:02 AM EST".
+  // Reuses the same moment(.tz(TZ)) Eastern convention as the meeting subject.
+  const formatStartedEastern = (iso?: string | null) => {
+    if (!iso) return null;
+    const m = moment(iso);
+    return m.isValid() ? m.tz(TZ).format("h:mm A [EST]") : null;
+  };
 
   // === Reminder key helpers ===
   const reminderKeyFor = (t: Task, start: Moment) => `${t._id}|${start.toISOString()}`;
@@ -4021,7 +4028,7 @@ export default function TasksToday() {
     <DashboardLayout>
 
       <div className="p-4 space-y-4">
-        <MeetingStartedLegendModal />
+        <MarketingMeetingAckModal />
         {error && <p className="text-destructive">{error}</p>}
 
 
@@ -4296,7 +4303,7 @@ export default function TasksToday() {
                           <MeetingStartedChip
                             started={!!task.meetingStarted}
                             startedBy={task.meetingStartedBy}
-                            startedAt={task.meetingStartedAt}
+                            startedAt={formatStartedEastern(task.meetingStartedAt)}
                             status={task.status}
                             canMark={canMarkStarted}
                             onMark={() => { void handleMarkStarted(task); }}

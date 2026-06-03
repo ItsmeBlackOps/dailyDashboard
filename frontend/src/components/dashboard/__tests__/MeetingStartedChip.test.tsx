@@ -14,8 +14,8 @@ describe('MeetingStartedChip', () => {
     expect(container).toBeEmptyDOMElement();
   });
   it('started → green read-only indicator, no button', () => {
-    render(<MeetingStartedChip started startedBy="exp@x.com" startedAt="9:02" canMark={false} status="" onMark={() => {}} />);
-    expect(screen.getByLabelText(/Meeting started by exp@x.com at 9:02/i)).toBeInTheDocument();
+    render(<MeetingStartedChip started startedBy="exp@x.com" startedAt="9:02 AM EST" canMark={false} status="" onMark={() => {}} />);
+    expect(screen.getByLabelText(/Expert joined at 9:02 AM EST/i)).toBeInTheDocument();
     expect(screen.queryByRole('button')).toBeNull();
   });
   it('not started + canMark → clickable, calls onMark', () => {

@@ -162,11 +162,6 @@ describe('TasksToday', () => {
     getActiveAccountMock.mockClear();
     setActiveAccountMock.mockClear();
 
-    // Suppress the one-time Meeting Started legend modal: when it auto-opens
-    // (its localStorage flag unset) the Radix Dialog marks the rest of the page
-    // aria-hidden, which hides the row buttons / Subject toggle from queries.
-    localStorage.setItem('prt.seenMeetingStartedLegend', '1');
-
     // Mock fetch for /api/users/active and any other REST calls the component makes
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (typeof url === 'string' && url.includes('/api/users/active')) {
