@@ -2823,6 +2823,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       // for diagnosis but don't surface a blocking error to the user.
       trackError('Failed to load marketing-info worklist', err, { countOnly });
       if (!countOnly) {
+        setWorklistCount(0);
         setWorklistCandidates([]);
         setWorklistReturned(0);
         setWorklistIds(new Set());
