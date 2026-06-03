@@ -184,6 +184,31 @@ export const EAD_REQUIRED_VISA_TYPES = new Set([
 
 export const COMPANY_VALUES = ['SST', 'VCS', 'FED'];
 
+// SP1 — a candidate "needs marketing info" when Visa Type or Company is
+// blank, or when its visa carries an EAD card (EAD_REQUIRED_VISA_TYPES) but
+// the EAD start/end dates are blank. This is the single source of truth for
+// the DB-side worklist query; the in-memory equivalent lives in
+// candidateService.missingMarketingFields (kept in lock-step).
+export function marketingInfoMissingFilter() {
+  const eadTypes = Array.from(EAD_REQUIRED_VISA_TYPES);
+  const blank = (field) => ([
+    { [field]: { $in: [null, ''] } },
+    { [field]: { $exists: false } },
+  ]);
+  return {
+    $or: [
+      ...blank('visaType'),
+      ...blank('company'),
+      {
+        $and: [
+          { visaType: { $in: eadTypes } },
+          { $or: [...blank('eadStartDate'), ...blank('eadEndDate')] },
+        ],
+      },
+    ],
+  };
+}
+
 export const ACK_EMAIL_VALUES = ['Sent', 'Confirmed', 'Pending'];
 
 // Fields whose value changes are recorded in `editHistory[]` on every

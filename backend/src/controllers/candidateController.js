@@ -2,7 +2,7 @@ import { storageService } from '../services/storageService.js';
 import { resumeProfileService } from '../services/resumeProfileService.js';
 import { candidateService } from '../services/candidateService.js';
 import { candidateStatusService } from '../services/candidateStatusService.js';
-import { candidateModel } from '../models/Candidate.js';
+import { candidateModel, marketingInfoMissingFilter } from '../models/Candidate.js';
 import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
 import { database } from '../config/database.js';
@@ -296,6 +296,25 @@ class CandidateController {
     }
   }
 
+  // SP1 — scoped marketing-info write. Delegates to the service's
+  // updateMarketingInfo, which reuses the attachment role+scope gate and
+  // writes ONLY visaType/company/eadStartDate/eadEndDate.
+  async updateMarketingInfo(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const { id } = req.params;
+      const { visaType, company, eadStartDate, eadEndDate } = req.body || {};
+      const candidate = await candidateService.updateMarketingInfo(user, id, { visaType, company, eadStartDate, eadEndDate });
+      return res.json({ success: true, candidate });
+    } catch (error) {
+      const status = error.statusCode || 500;
+      if (status >= 500) logger.error('updateMarketingInfo failed', { error: error.message });
+      // Mask internal 500 details (public repo); surface client-actionable 4xx messages.
+      return res.status(status).json({ success: false, error: status >= 500 ? 'Unable to update marketing info' : error.message });
+    }
+  }
+
   async downloadAttachment(req, res) {
     try {
       const user = req.user;
@@ -364,6 +383,63 @@ class CandidateController {
       });
     } catch (error) {
       logger.error('getPOMissingDate failed', { error: error.message });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  // SP1 — marketing-info worklist. Mirrors getPOMissingDate: role-gated to the
+  // marketing roles, scoped via _scopeFilter (which already includes self +
+  // hierarchy for every role), filtered by marketingInfoMissingFilter().
+  async getMarketingInfoWorklist(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+
+      const normalizedRole = (user.role || '').trim().toLowerCase();
+      if (!['admin', 'mam', 'mm', 'mlead', 'recruiter'].includes(normalizedRole)) {
+        return res.status(403).json({ success: false, error: 'Access denied' });
+      }
+
+      const col = candidateModel.collection;
+      if (!col) return res.status(503).json({ success: false, error: 'Database not ready' });
+
+      const scope = await this._scopeFilter(user);
+      const query = { $and: [scope, marketingInfoMissingFilter(), { docType: { $in: [null, 'candidate'] } }] };
+
+      const count = await col.countDocuments(query);
+      if (req.query.countOnly === '1' || req.query.countOnly === 'true') {
+        return res.json({ success: true, count });
+      }
+
+      const docs = await col.find(query, {
+        projection: {
+          _id: 1, 'Candidate Name': 1, Recruiter: 1,
+          visaType: 1, company: 1, eadStartDate: 1, eadEndDate: 1, updated_at: 1,
+        },
+      })
+        // Cap the row payload at 500 for UI responsiveness. `count` above is the
+        // true scoped total (drives the badge); beyond 500 rows needs pagination.
+        .sort({ updated_at: -1 })
+        .limit(500)
+        .toArray();
+
+      return res.json({
+        success: true,
+        count,
+        returned: docs.length,
+        candidates: docs.map((d) => ({
+          id: d._id.toString(),
+          name: d['Candidate Name'] || '',
+          recruiter: d.Recruiter || '',
+          visaType: d.visaType || '',
+          company: d.company || '',
+          eadStartDate: d.eadStartDate || null,
+          eadEndDate: d.eadEndDate || null,
+          updatedAt: d.updated_at,
+        })),
+      });
+    } catch (error) {
+      logger.error('getMarketingInfoWorklist failed', { error: error.message });
       return res.status(500).json({ success: false, error: 'Internal server error' });
     }
   }

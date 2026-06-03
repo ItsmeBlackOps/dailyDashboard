@@ -77,7 +77,13 @@ describe('candidateService manager create flow', () => {
         // supplied explicitly). Supplied here so the create proceeds.
         teamLead: 'tlead@example.com',
         expert: 'should@not.persist',
-        resumeLink: SAMPLE_RESUME_LINK
+        resumeLink: SAMPLE_RESUME_LINK,
+        // SP1: marketing info is now hard-required at creation.
+        visaType: 'H1B',
+        company: 'SST',
+        experienceYears: 5,
+        city: 'Ahmedabad',
+        state: 'Gujarat'
       }
     );
 
@@ -130,7 +136,13 @@ describe('candidateService manager create flow', () => {
         branch: 'ahm',
         recruiter: 'recruiter@example.com',
         teamLead: 'tlead@example.com',
-        resumeLink: SAMPLE_RESUME_LINK
+        resumeLink: SAMPLE_RESUME_LINK,
+        // SP1: marketing info is now hard-required at creation.
+        visaType: 'H1B',
+        company: 'SST',
+        experienceYears: 5,
+        city: 'Ahmedabad',
+        state: 'Gujarat'
       }
     )).rejects.toMatchObject({ statusCode: 409 });
 
@@ -175,7 +187,13 @@ describe('candidateService manager create flow', () => {
         recruiter: 'recruiter@example.com',
         teamLead: 'tlead@example.com',
         contact: '(123) 456-7890',
-        resumeLink: SAMPLE_RESUME_LINK
+        resumeLink: SAMPLE_RESUME_LINK,
+        // SP1: marketing info is now hard-required at creation.
+        visaType: 'H1B',
+        company: 'SST',
+        experienceYears: 5,
+        city: 'Ahmedabad',
+        state: 'Gujarat'
       }
     );
 
@@ -267,7 +285,13 @@ describe('candidateService manager create flow', () => {
         branch: 'LKN',
         recruiter: 'recruiter@example.com',
         teamLead: 'tlead@example.com',
-        resumeLink: SAMPLE_RESUME_LINK
+        resumeLink: SAMPLE_RESUME_LINK,
+        // SP1: marketing info is now hard-required at creation.
+        visaType: 'H1B',
+        company: 'SST',
+        experienceYears: 5,
+        city: 'Ahmedabad',
+        state: 'Gujarat'
       }
     );
 
@@ -335,7 +359,13 @@ describe('candidateService manager create flow', () => {
         branch: 'LKN',
         recruiter: 'recruiter@example.com',
         teamLead: 'tlead@example.com',
-        resumeLink: SAMPLE_RESUME_LINK
+        resumeLink: SAMPLE_RESUME_LINK,
+        // SP1: marketing info is now hard-required at creation.
+        visaType: 'H1B',
+        company: 'SST',
+        experienceYears: 5,
+        city: 'Ahmedabad',
+        state: 'Gujarat'
       }
     );
 

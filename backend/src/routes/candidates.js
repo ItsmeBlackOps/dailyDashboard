@@ -70,6 +70,10 @@ router.get('/po-missing-date', (req, res) =>
   candidateController.getPOMissingDate(req, res)
 );
 
+router.get('/marketing-info-worklist', (req, res) =>
+  candidateController.getMarketingInfoWorklist(req, res)
+);
+
 router.get('/active-names',     (req, res) => candidateController.getActiveCandidateNames(req, res));
 router.get('/hub-stats',      (req, res) => candidateController.getHubStats(req, res));
 router.get('/hub-profiles',   (req, res) => candidateController.getHubProfiles(req, res));
@@ -120,6 +124,13 @@ router.post(
 router.post(
   '/:id/send-assignment-email',
   (req, res) => candidateController.sendAssignmentEmail(req, res)
+);
+
+// SP1: scoped marketing-info write (recruiter + team lead + mam/mm/admin).
+// Placed BEFORE the generic /:id route, same as the attachment endpoints.
+router.patch(
+  '/:id/marketing-info',
+  (req, res) => candidateController.updateMarketingInfo(req, res)
 );
 
 router.get('/:id',            (req, res) => candidateController.getCandidateById(req, res));
