@@ -779,6 +779,15 @@ class CandidateController {
       const doc = await col.findOne({ _id: oid });
       if (!doc) return res.status(404).json({ success: false, error: 'Candidate not found' });
 
+      // Canonical formatting — the same mapper every other read path uses.
+      // It reads the stored field names correctly (e.g. `Contact No`), derives
+      // teamLead from the recruiter when not stored, surfaces attachments + the
+      // PRT fields, and strips PRT fields for non-marketing viewers (via
+      // _applyPrtVisibility). We keep the existing lean fields below (recruiter
+      // stays the raw email — the detail page runs formatEmail() on it) and
+      // only source the PRT extras + the corrected contact value from here.
+      const formatted = candidateService.formatCandidateRecord(doc, user) || {};
+
       // Fetch interview tasks from taskBody collection
       const taskCol = database.getCollection('taskBody');
       const tasks = taskCol ? await taskCol.find(
@@ -798,7 +807,7 @@ class CandidateController {
           id:         doc._id.toString(),
           name:       doc['Candidate Name'] || '',
           email:      doc['Email ID'] || '',
-          contact:    doc.Contact || doc.contact || '',
+          contact:    doc['Contact No'] ?? doc.Contact ?? doc.contact ?? '',
           technology: doc.Technology || '',
           branch:     doc.Branch || 'Unassigned',
           recruiter:  doc.Recruiter || '',
@@ -810,6 +819,26 @@ class CandidateController {
           resumeLink: doc.resumeLink || null,
           statusHistory: Array.isArray(doc.statusHistory) ? doc.statusHistory : [],
           workflowStatus: doc.workflowStatus || '',
+          // PRT fields for the detail panel + the Send Assignment Email gate
+          // (recruiter + teamLead + >=1 attachment). Sourced from the canonical
+          // formatter so teamLead is derived and non-marketing viewers are
+          // stripped. recruiterRaw is the email (the modal + gate read it).
+          recruiterRaw:           formatted.recruiterRaw ?? null,
+          teamLead:               formatted.teamLead ?? null,
+          attachments:            Array.isArray(formatted.attachments) ? formatted.attachments : [],
+          visaType:               formatted.visaType ?? null,
+          company:                formatted.company ?? null,
+          eadStartDate:           formatted.eadStartDate ?? null,
+          eadEndDate:             formatted.eadEndDate ?? null,
+          experienceYears:        formatted.experienceYears ?? null,
+          city:                   formatted.city ?? null,
+          state:                  formatted.state ?? null,
+          ackEmail:               formatted.ackEmail ?? null,
+          marketingStartDate:     formatted.marketingStartDate ?? null,
+          expiringInDays:         formatted.expiringInDays ?? null,
+          daysInMarketing:        formatted.daysInMarketing ?? null,
+          needsMarketingInfo:     formatted.needsMarketingInfo ?? false,
+          missingMarketingFields: Array.isArray(formatted.missingMarketingFields) ? formatted.missingMarketingFields : [],
         },
         interviews: tasks.map(t => ({
           taskId:     t._id.toString(),
