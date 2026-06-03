@@ -558,6 +558,27 @@ class CandidateService {
     return found ? found.email : null;
   }
 
+  // Resolve a candidate's team-lead EMAIL. Prefer an explicitly-stored value
+  // (resolving a name -> email if needed); otherwise derive it live from the
+  // recruiter's user record — recruiter.teamLead is a display name, mapped to
+  // an email via _findEmailByName. Returns '' when unresolvable (no recruiter,
+  // or the recruiter has no team lead). No DB writes: candidates whose teamLead
+  // was never stored still resolve on read + at send time.
+  resolveTeamLeadEmail(storedTeamLead, recruiterEmail) {
+    const stored = (storedTeamLead == null ? '' : storedTeamLead).toString().trim();
+    if (stored) {
+      const r = this._findEmailByName(stored);
+      return r ? formatEmail(r) : '';
+    }
+    const rec = formatEmail(recruiterEmail || '');
+    if (!rec) return '';
+    const recruiterUser = userModel.getUserByEmail(rec);
+    const tlName = (recruiterUser && recruiterUser.teamLead) ? recruiterUser.teamLead.toString().trim() : '';
+    if (!tlName) return '';
+    const resolved = this._findEmailByName(tlName);
+    return resolved ? formatEmail(resolved) : '';
+  }
+
   buildSearchPattern(search) {
     if (typeof search !== 'string') {
       return undefined;
@@ -877,8 +898,11 @@ class CandidateService {
       createdBy: candidate.createdBy || null,
       Recruiter: recruiterEmail, // Compatibility
       resumeLink,
-      // PRT projections (normalised) + derived
-      teamLead: candidate.teamLead ?? null,
+      // PRT projections (normalised) + derived. teamLead is resolved live from
+      // the recruiter's user record when not explicitly stored, so historical
+      // candidates (created before teamLead was derived on create) still show
+      // a team lead and can send the assignment email — no backfill needed.
+      teamLead: this.resolveTeamLeadEmail(candidate.teamLead, recruiterEmail) || null,
       experienceYears: candidate.experienceYears ?? null,
       visaType: candidate.visaType ?? null,
       eadStartDate: toDateOrNull(candidate.eadStartDate),
@@ -2131,7 +2155,10 @@ class CandidateService {
       err.statusCode = 400;
       throw err;
     }
-    const teamLeadEmailStored = (candidate.teamLead || '').toString().trim().toLowerCase();
+    // Derive the team lead from the recruiter when not explicitly stored, so
+    // historical candidates (created before teamLead was derived on create)
+    // can still send without a backfill. Only errors when truly unresolvable.
+    const teamLeadEmailStored = this.resolveTeamLeadEmail(candidate.teamLead, recruiterEmail);
     if (!teamLeadEmailStored) {
       const err = new Error('Candidate has no Team Lead — set teamLead before sending the assignment email');
       err.statusCode = 400;
