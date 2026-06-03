@@ -10,7 +10,8 @@ import {
   EAD_REQUIRED_VISA_TYPES,
   COMPANY_VALUES,
   ACK_EMAIL_VALUES,
-  CANDIDATE_AUDITED
+  CANDIDATE_AUDITED,
+  toIsoDate
 } from '../models/Candidate.js';
 
 // PRT scope: only marketing manager / AM / admin may WRITE PRT fields.
@@ -1594,7 +1595,8 @@ class CandidateService {
           error.statusCode = 400;
           throw error;
         }
-        sanitized.eadStartDate = start;
+        // SP3: store canonical date-only YYYY-MM-DD (read path also normalizes).
+        sanitized.eadStartDate = toIsoDate(startRaw) ?? start.toISOString().slice(0, 10);
       }
     }
 
@@ -1613,12 +1615,14 @@ class CandidateService {
           error.statusCode = 400;
           throw error;
         }
-        if (sanitized.eadStartDate && end.getTime() <= sanitized.eadStartDate.getTime()) {
+        // sanitized.eadStartDate is now a YYYY-MM-DD string; compare via Date.
+        if (sanitized.eadStartDate && end.getTime() <= new Date(sanitized.eadStartDate).getTime()) {
           const error = new Error('EAD End Date must be after EAD Start Date');
           error.statusCode = 400;
           throw error;
         }
-        sanitized.eadEndDate = end;
+        // SP3: store canonical date-only YYYY-MM-DD.
+        sanitized.eadEndDate = toIsoDate(endRaw) ?? end.toISOString().slice(0, 10);
       }
     }
 

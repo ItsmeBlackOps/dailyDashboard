@@ -180,15 +180,18 @@ describe('candidateService.sanitizeCandidatePayload — PRT extensions', () => {
   });
 
   describe('EAD dates (conditional on visaType)', () => {
-    it('accepts eadStartDate / eadEndDate as Date when visaType requires them', () => {
+    it('stores eadStartDate / eadEndDate as canonical YYYY-MM-DD when visaType requires them', () => {
+      // SP3: the sanitizer now stores EAD dates as canonical date-only
+      // YYYY-MM-DD strings (the read mapper normalizes the same way),
+      // rather than Date objects.
       const s = candidateService.sanitizeCandidatePayload({
         visaType: 'OPT',
         eadStartDate: '2025-01-15',
         eadEndDate: '2027-01-15'
       });
-      expect(s.eadStartDate).toBeInstanceOf(Date);
-      expect(s.eadEndDate).toBeInstanceOf(Date);
-      expect(s.eadEndDate.getTime()).toBeGreaterThan(s.eadStartDate.getTime());
+      expect(s.eadStartDate).toBe('2025-01-15');
+      expect(s.eadEndDate).toBe('2027-01-15');
+      expect(new Date(s.eadEndDate).getTime()).toBeGreaterThan(new Date(s.eadStartDate).getTime());
     });
 
     it('requires eadStartDate when visaType ∈ EAD_REQUIRED_VISA_TYPES', () => {

@@ -100,8 +100,9 @@ describe('candidateService.updateMarketingInfo', () => {
     );
     const updates = candidateModel.updateCandidateById.mock.calls[0][1];
     expect(updates.visaType).toBe('OPT');
-    expect(updates.eadStartDate).toBeInstanceOf(Date);
-    expect(updates.eadEndDate).toBeInstanceOf(Date);
+    // SP3: EAD dates are stored as canonical date-only YYYY-MM-DD strings.
+    expect(updates.eadStartDate).toBe('2025-01-15');
+    expect(updates.eadEndDate).toBe('2027-01-15');
   });
 
   it('rejects an out-of-scope recruiter with 403 and does NOT write', async () => {
