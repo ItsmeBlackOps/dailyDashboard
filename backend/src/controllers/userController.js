@@ -1,7 +1,9 @@
 import { userService } from '../services/userService.js';
+import { userModel } from '../models/User.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 import { database } from '../config/database.js';
+import { TECHNICAL_ACK, TECHNICAL_ACK_ROLES } from '../config/technicalAck.js';
 
 // Use the service-level helper as the single source of truth (was a
 // duplicate impl that split on `[._]` only — service version handles
@@ -287,6 +289,62 @@ export class UserController {
     } catch (error) {
       logger.error('updateMyPreferences failed', { error: error.message, email: user.email });
       return res.status(500).json({ success: false, error: 'Unable to update preferences' });
+    }
+  });
+
+  // SP2 — one-time, versioned technical-team acknowledgment status.
+  getMyTechnicalAck = asyncHandler(async (req, res) => {
+    const user = req.user;
+    if (!user?.email) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+    const role = (user.role || '').trim().toLowerCase();
+    const currentVersion = TECHNICAL_ACK.version;
+    if (!TECHNICAL_ACK_ROLES.includes(role)) {
+      return res.json({ success: true, required: false, currentVersion, agreedVersion: 0, content: null });
+    }
+    try {
+      const record = userModel.getUserByEmail(user.email) || {};
+      const agreedVersion = Number(record.technicalAck?.version) || 0;
+      const required = agreedVersion !== currentVersion;
+      return res.json({
+        success: true,
+        required,
+        currentVersion,
+        agreedVersion,
+        content: required
+          ? { version: currentVersion, title: TECHNICAL_ACK.title, sections: TECHNICAL_ACK.sections }
+          : null,
+      });
+    } catch (error) {
+      logger.error('getMyTechnicalAck failed', { error: error.message, email: user.email });
+      return res.status(500).json({ success: false, error: 'Unable to read acknowledgment status' });
+    }
+  });
+
+  // SP2 — record agreement to the current version.
+  updateMyTechnicalAck = asyncHandler(async (req, res) => {
+    const user = req.user;
+    if (!user?.email) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+    const currentVersion = TECHNICAL_ACK.version;
+    const version = Number(req.body?.version);
+    if (!version || version !== currentVersion) {
+      return res.status(400).json({ success: false, error: `version must equal the current version (${currentVersion})` });
+    }
+    try {
+      const agreedAt = new Date().toISOString();
+      await userModel.updateUser(user.email, {
+        'technicalAck.version': currentVersion,
+        'technicalAck.agreedAt': agreedAt,
+        _changedBy: user.email,
+        _source: 'self-technical-ack',
+      });
+      return res.json({ success: true, required: false, currentVersion, agreedVersion: currentVersion });
+    } catch (error) {
+      logger.error('updateMyTechnicalAck failed', { error: error.message, email: user.email });
+      return res.status(500).json({ success: false, error: 'Unable to record acknowledgment' });
     }
   });
 
