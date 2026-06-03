@@ -3089,6 +3089,241 @@ class CandidateService {
     return null;
   }
 
+  // ── Read-time unified activity timeline ───────────────────────────────────
+  // Merges everything already persisted about a candidate into ONE newest-first
+  // feed. Writes nothing — it derives entirely from existing stores, so both
+  // historical and brand-new candidates show a complete history with no
+  // migration. Sources merged:
+  //   • createdAt / createdBy              → one `created` event
+  //   • editHistory[]                      → one `field_changed` event each
+  //                                          (status entries skipped — they are
+  //                                          covered canonically by statusHistory)
+  //   • statusHistory[]                    → `status_changed` events
+  //   • assignmentEmails[]                 → `assignment_email` events
+  //   • candidateactivities                → pass-through (call/doc/mock/task…)
+  //   • taskBody interviews (by Email ID)  → `interview` events
+  // Each event is normalised to { id, ts:Date, type, label, actor, detail, source }.
+  // Auth + read gate mirrors getActivities / getCandidateById.
+  async getCandidateTimeline(user, candidateId) {
+    if (!user?.email || !user?.role) {
+      const error = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+    if (!candidateId) {
+      const error = new Error('Candidate id is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Validate the id up front so an invalid string is a clean 400 (mirrors
+    // candidateModel.getCandidateById's ObjectId guard).
+    let objectId;
+    try {
+      objectId = new ObjectId(candidateId);
+    } catch {
+      const error = new Error('Invalid candidate id');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Read the FULL candidate document. We deliberately do NOT use
+    // candidateModel.getCandidateById here: its DEFAULT_PROJECTION is a
+    // pure-inclusion projection that omits editHistory / assignmentEmails /
+    // createdAt, which the timeline needs. Reading the raw doc (same as
+    // candidateController.getCandidateById) keeps all the audit arrays. Fall
+    // back to the mapped getter only if the raw collection isn't available.
+    // A present raw collection is authoritative: a null result means the
+    // candidate genuinely does not exist (do NOT fall through to the mapped
+    // getter, which would re-query and could mask a 404). Only when the raw
+    // collection is unavailable do we fall back to the projected getter.
+    let candidate;
+    if (candidateModel.collection?.findOne) {
+      candidate = await candidateModel.collection.findOne({ _id: objectId });
+    } else {
+      candidate = await candidateModel.getCandidateById(candidateId);
+    }
+    if (!candidate) {
+      const error = new Error('Candidate not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const toDate = (v) => {
+      if (!v) return null;
+      const d = v instanceof Date ? v : new Date(v);
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+    // Pull a human "who did it" out of the various actor shapes we store
+    // (plain email string, or a { email, name } object).
+    const actorOf = (v) => {
+      if (!v) return null;
+      if (typeof v === 'string') return v;
+      return v.email || v.name || null;
+    };
+
+    const timeline = [];
+
+    // 1) created
+    const createdTs = toDate(candidate.createdAt) || toDate(candidate.created_at) || toDate(candidate.received_at);
+    if (createdTs) {
+      timeline.push({
+        id: 'created:0',
+        ts: createdTs,
+        type: 'created',
+        label: 'Candidate created',
+        actor: actorOf(candidate.createdBy),
+        detail: null,
+        source: 'created',
+      });
+    }
+
+    // 2) editHistory[] → field_changed (skip status — covered by statusHistory)
+    const editHistory = Array.isArray(candidate.editHistory) ? candidate.editHistory : [];
+    editHistory.forEach((entry, index) => {
+      if (!entry || entry.field === 'status') return;
+      const ts = toDate(entry.ts) || toDate(entry.changedAt) || toDate(entry.at);
+      if (!ts) return;
+      const field = entry.field;
+      let label;
+      if (field === 'expert') {
+        label = `Expert ${entry.oldValue ? 'changed' : 'assigned'}`;
+      } else if (field === 'teamLead') {
+        label = 'Team Lead set';
+      } else if (field === 'recruiter') {
+        label = 'Recruiter changed';
+      } else if (field === 'branch') {
+        label = 'Branch changed';
+      } else {
+        label = `${field} updated`;
+      }
+      timeline.push({
+        id: `editHistory:${index}`,
+        ts,
+        type: 'field_changed',
+        label,
+        actor: actorOf(entry.actor),
+        detail: { field, oldValue: entry.oldValue ?? null, newValue: entry.newValue ?? null },
+        source: 'editHistory',
+      });
+    });
+
+    // 3) statusHistory[] → status_changed (canonical source for status)
+    const statusHistory = Array.isArray(candidate.statusHistory) ? candidate.statusHistory : [];
+    statusHistory.forEach((entry, index) => {
+      if (!entry) return;
+      const ts = toDate(entry.changedAt) || toDate(entry.ts) || toDate(entry.at);
+      if (!ts) return;
+      timeline.push({
+        id: `statusHistory:${index}`,
+        ts,
+        type: 'status_changed',
+        label: `Status: ${entry.from || '—'} → ${entry.to}`,
+        actor: actorOf(entry.changedBy),
+        detail: { from: entry.from ?? null, to: entry.to ?? null },
+        source: 'statusHistory',
+      });
+    });
+
+    // 4) assignmentEmails[] → assignment_email
+    const assignmentEmails = Array.isArray(candidate.assignmentEmails) ? candidate.assignmentEmails : [];
+    assignmentEmails.forEach((entry, index) => {
+      if (!entry) return;
+      const ts = toDate(entry.ts) || toDate(entry.sentAt) || toDate(entry.at);
+      if (!ts) return;
+      const to = Array.isArray(entry.to) ? entry.to : [];
+      const cc = Array.isArray(entry.cc) ? entry.cc : [];
+      timeline.push({
+        id: `assignmentEmails:${index}`,
+        ts,
+        type: 'assignment_email',
+        label: `Assignment email sent to ${to.join(', ')}`,
+        actor: actorOf(entry.sender),
+        detail: { to, cc, subject: entry.subject ?? null, status: entry.status ?? null },
+        source: 'assignmentEmails',
+      });
+    });
+
+    // 5) candidateactivities → pass-through (mirror getActivities query)
+    let activities = [];
+    try {
+      const activitiesCol = database.getCollection('candidateactivities');
+      if (activitiesCol) {
+        activities = await activitiesCol
+          .find({ candidateId: objectId })
+          .sort({ createdAt: 1 })
+          .toArray();
+      }
+    } catch (err) {
+      logger.warn('getCandidateTimeline: activities read failed', { error: err.message, candidateId });
+    }
+    (Array.isArray(activities) ? activities : []).forEach((a) => {
+      if (!a) return;
+      const ts = toDate(a.createdAt);
+      if (!ts) return;
+      const label = a.type === 'call_attempt' && a.outcome
+        ? `Call attempt — ${a.outcome}`
+        : (a.notes || a.type);
+      timeline.push({
+        id: a._id ? String(a._id) : `activity:${ts.getTime()}`,
+        ts,
+        type: a.type,
+        label,
+        actor: actorOf(a.createdBy),
+        detail: { outcome: a.outcome ?? null, notes: a.notes ?? null },
+        source: 'activity',
+      });
+    });
+
+    // 6) taskBody interviews (by Email ID — mirror candidateController.getCandidateById)
+    const emailId = candidate['Email ID'];
+    if (emailId) {
+      let interviews = [];
+      try {
+        const taskCol = database.getCollection('taskBody');
+        if (taskCol) {
+          interviews = await taskCol.find(
+            { 'Email ID': emailId },
+            { projection: {
+              _id: 1,
+              'Date of Interview': 1, 'Start Time Of Interview': 1, 'End Time Of Interview': 1,
+              'Job Title': 1, 'End Client': 1, 'Interview Round': 1, 'Actual Round': 1,
+              status: 1, Vendor: 1, sender: 1, assignedTo: 1, assignedExpert: 1, assignedAt: 1,
+              suggestions: 1, receivedDateTime: 1
+            } }
+          ).sort({ 'Date of Interview': -1 }).limit(100).toArray();
+        }
+      } catch (err) {
+        logger.warn('getCandidateTimeline: interviews read failed', { error: err.message, candidateId });
+      }
+      (Array.isArray(interviews) ? interviews : []).forEach((t, index) => {
+        if (!t) return;
+        const ts = toDate(t['Date of Interview']) || toDate(t.receivedDateTime);
+        if (!ts) return;
+        const round = t['Interview Round'] || t['Actual Round'] || t.actualRound || '';
+        const client = t['End Client'] || '';
+        const parts = [round && `${round}`, client && `with ${client}`].filter(Boolean);
+        const label = parts.length ? `Interview ${parts.join(' ')}`.trim() : 'Interview';
+        timeline.push({
+          id: t._id ? String(t._id) : `interview:${index}`,
+          ts,
+          type: 'interview',
+          label,
+          actor: t.sender || t.assignedTo || t.assignedExpert || null,
+          detail: {
+            round, client,
+            role: t['Job Title'] || '',
+            status: t.status || '',
+            vendor: t.Vendor || '',
+          },
+          source: 'interview',
+        });
+      });
+    }
+
+    return timeline.sort((a, b) => new Date(b.ts) - new Date(a.ts));
+  }
+
   async getActivities(user, candidateId) {
     if (!user?.email) {
       const error = new Error('Authentication required');
