@@ -1595,8 +1595,10 @@ class CandidateService {
           error.statusCode = 400;
           throw error;
         }
-        // SP3: store canonical date-only YYYY-MM-DD (read path also normalizes).
-        sanitized.eadStartDate = toIsoDate(startRaw) ?? start.toISOString().slice(0, 10);
+        // Store as a Date object — uniform with existing data so the
+        // expiringIn sort + Phase C date-range filters query one BSON type.
+        // The read path (mapDocumentToCandidate) normalizes to YYYY-MM-DD.
+        sanitized.eadStartDate = start;
       }
     }
 
@@ -1615,14 +1617,13 @@ class CandidateService {
           error.statusCode = 400;
           throw error;
         }
-        // sanitized.eadStartDate is now a YYYY-MM-DD string; compare via Date.
         if (sanitized.eadStartDate && end.getTime() <= new Date(sanitized.eadStartDate).getTime()) {
           const error = new Error('EAD End Date must be after EAD Start Date');
           error.statusCode = 400;
           throw error;
         }
-        // SP3: store canonical date-only YYYY-MM-DD.
-        sanitized.eadEndDate = toIsoDate(endRaw) ?? end.toISOString().slice(0, 10);
+        // Store as a Date object (see eadStartDate above).
+        sanitized.eadEndDate = end;
       }
     }
 
