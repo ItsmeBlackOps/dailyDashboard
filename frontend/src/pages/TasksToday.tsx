@@ -2803,7 +2803,7 @@ export default function TasksToday() {
     } catch (e) {
       toast({ title: 'Could not mark started', description: e instanceof Error ? e.message : 'Try again', variant: 'destructive' });
     }
-  }, [authFetch]);
+  }, [authFetch, toast]);
 
   const handleCreateMeeting = useCallback(
     async (task: Task) => {
