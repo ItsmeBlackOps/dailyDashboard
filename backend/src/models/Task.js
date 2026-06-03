@@ -164,6 +164,18 @@ export class TaskModel {
         assignedAt,
         startTime: startMoment,
         endTime: endMoment,
+        // SP3: canonical interview Date fields (UTC BSON Dates) surfaced as
+        // ISO strings + Eastern display. Override the raw `...doc` values so
+        // consumers always get the normalized form. Legacy "Date of Interview"
+        // / time-string fields above are left untouched for back-compat.
+        interviewStartAt: doc.interviewStartAt ? new Date(doc.interviewStartAt).toISOString() : null,
+        interviewEndsAt: doc.interviewEndsAt ? new Date(doc.interviewEndsAt).toISOString() : null,
+        interviewStartEst: doc.interviewStartAt
+          ? moment(doc.interviewStartAt).tz('America/New_York').format('MM/DD/YYYY h:mm A')
+          : null,
+        interviewEndEst: doc.interviewEndsAt
+          ? moment(doc.interviewEndsAt).tz('America/New_York').format('h:mm A')
+          : null,
         candidateExpertDisplay,
         suggestions,
         recruiterName: recruiterName || null
