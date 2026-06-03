@@ -316,6 +316,50 @@ export class TaskController {
     return res.status(202).json({ success: true, pending: true });
   });
 
+  // SP2 — one-way, record-only "Meeting Started" toggle. Gate: the assigned
+  // expert (assignedTo) may mark their own; am/lead/admin may mark any.
+  // Idempotent: once started it stays set (admin corrects out-of-band).
+  markMeetingStarted = asyncHandler(async (req, res) => {
+    const { taskId } = req.params;
+    if (!ObjectId.isValid(taskId)) {
+      return res.status(400).json({ success: false, error: 'Invalid taskId' });
+    }
+
+    const collection = database.getCollection('taskBody');
+    const task = await collection.findOne({ _id: new ObjectId(taskId) });
+    if (!task) {
+      return res.status(404).json({ success: false, error: 'Task not found' });
+    }
+
+    const actorEmail = (req.user?.email || '').trim().toLowerCase();
+    const actorRole = (req.user?.role || '').trim().toLowerCase();
+    const assignedRaw = task.assignedTo || task.AssignedExpert || task.assignedExpert || '';
+    const assignedEmail = String(assignedRaw).includes('@') ? String(assignedRaw).trim().toLowerCase() : '';
+    const allowed = actorRole === 'admin'
+      || actorRole === 'am'
+      || actorRole === 'lead'
+      || (actorRole === 'user' && assignedEmail && actorEmail === assignedEmail);
+    if (!allowed) {
+      return res.status(403).json({ success: false, error: 'Not allowed to mark this meeting started' });
+    }
+
+    if (task.meetingStarted === true) {
+      return res.json({
+        success: true,
+        meetingStarted: true,
+        meetingStartedAt: task.meetingStartedAt || null,
+        meetingStartedBy: task.meetingStartedBy || null,
+      });
+    }
+
+    const meetingStartedAt = new Date().toISOString();
+    await collection.updateOne(
+      { _id: new ObjectId(taskId) },
+      { $set: { meetingStarted: true, meetingStartedAt, meetingStartedBy: actorEmail } }
+    );
+    return res.json({ success: true, meetingStarted: true, meetingStartedAt, meetingStartedBy: actorEmail });
+  });
+
   healthCheck = asyncHandler(async (req, res) => {
     res.status(200).json({
       success: true,
