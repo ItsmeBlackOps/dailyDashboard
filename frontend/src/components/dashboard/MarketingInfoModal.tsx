@@ -41,7 +41,7 @@ export function MarketingInfoModal({ open, candidateId, initial, onOpenChange, o
       const body: Record<string, unknown> = { visaType, company };
       if (needsEad) { body.eadStartDate = eadStartDate; body.eadEndDate = eadEndDate; }
       const res = await authFetch(`${API_URL}/api/candidates/${candidateId}/marketing-info`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       await parseJsonOrThrow(res);
       onSaved();

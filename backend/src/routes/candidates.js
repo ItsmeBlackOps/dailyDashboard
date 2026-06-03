@@ -128,7 +128,7 @@ router.post(
 
 // SP1: scoped marketing-info write (recruiter + team lead + mam/mm/admin).
 // Placed BEFORE the generic /:id route, same as the attachment endpoints.
-router.post(
+router.patch(
   '/:id/marketing-info',
   (req, res) => candidateController.updateMarketingInfo(req, res)
 );

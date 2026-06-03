@@ -544,7 +544,7 @@ git commit -m "feat(prt): require visa/EAD/company/experience/city/state in the 
 
 > Added during execution: the Task-6 implementer found there is **no existing frontend transport** that writes visa/company/EAD on an *existing* candidate (the PRT write path `updateCandidate` is gated to mm/mam/admin and only ever fed `status`/`expert`; the general edit socket drops these fields). **User decision:** the candidate's own **recruiter + team lead** (plus mam/mm/admin) may fill the marketing fields, scoped to their own candidates. So this is a *narrowly-scoped* new write path — NOT a widening of the general PRT write gate.
 
-**Files:** `candidateService.js` (new `updateMarketingInfo`), `candidateController.js` (thin handler), `routes/candidates.js` (`POST /:id/marketing-info` before `/:id`), test `backend/test/candidateService.updateMarketingInfo.test.js`.
+**Files:** `candidateService.js` (new `updateMarketingInfo`), `candidateController.js` (thin handler), `routes/candidates.js` (`PATCH /:id/marketing-info` before `/:id` — PATCH since it's a partial update), test `backend/test/candidateService.updateMarketingInfo.test.js`.
 
 **Design (grounded):** reuse the EXISTING `_assertAttachmentPermission(user, candidate)` gate — its role set is exactly `PRT_ATTACHMENT_ROLES = {admin, mm, mam, mlead, recruiter}` and it scope-checks via `assertRecruiterInScope(user, candidate.recruiter)` (self-or-active-hierarchy; admin bypass; no-recruiter fallback to admin/mm/mam/mlead). `updateMarketingInfo` must accept and write **only** `visaType`/`company`/`eadStartDate`/`eadEndDate` (sanitize via `sanitizeCandidatePayload` to get enum + conditional-EAD validation, then pick only those 4 keys — so this endpoint can never write teamLead/recruiter/status/etc.), build editHistory entries (mirror `updateCandidate`'s `isAuditValueEqual` diff over the 4 fields → `_pushEditHistory`), set `_changedBy`/`_source: 'marketing-info'`, write via `candidateModel.updateCandidateById`, return `formatCandidateRecord(updated, user)`.
 
@@ -635,7 +635,7 @@ export function MarketingInfoModal({ open, candidateId, initial, onOpenChange, o
       const body: Record<string, unknown> = { visaType, company };
       if (needsEad) { body.eadStartDate = eadStartDate; body.eadEndDate = eadEndDate; }
       const res = await authFetch(`/api/candidates/${candidateId}/marketing-info`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       await parseJsonOrThrow(res);
       onSaved();
@@ -690,7 +690,7 @@ export function MarketingInfoModal({ open, candidateId, initial, onOpenChange, o
 }
 ```
 
-> Save goes to the **Task 6a** endpoint: `POST /api/candidates/:id/marketing-info` with `{ visaType, company, eadStartDate?, eadEndDate? }`, response `{ success, candidate }`. Use `authFetch` (adds the bearer) + `parseJsonOrThrow` (surfaces the server's 400/403 message into the modal's `error` state). Do NOT invent any other endpoint — 6a is the only write path for these fields.
+> Save goes to the **Task 6a** endpoint: `PATCH /api/candidates/:id/marketing-info` with `{ visaType, company, eadStartDate?, eadEndDate? }`, response `{ success, candidate }`. Use `authFetch` (adds the bearer) + `parseJsonOrThrow` (surfaces the server's 400/403 message into the modal's `error` state). Do NOT invent any other endpoint — 6a is the only write path for these fields.
 
 - [ ] **Step 4: Run test to verify it passes**
 
