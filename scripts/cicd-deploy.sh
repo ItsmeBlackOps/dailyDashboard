@@ -79,7 +79,7 @@ fi
 # ---------- 3. Build + start inactive color ----------
 log "Cleaning any orphaned ${TARGET} containers"
 # Remove any stopped/orphaned containers matching the target color names (handles weird hash-prefixed leftovers)
-docker ps -a --format '{{.Names}}' | grep -E "(^|_)dailydb-(frontend|backend)-${TARGET}$" \
+docker ps -a --format '{{.Names}}' | { grep -E "(^|_)dailydb-(frontend|backend)-${TARGET}$" || true; } \
   | while read -r name; do
       log "  → removing orphan container ${name}"
       docker rm -f "${name}" >/dev/null 2>&1 || true
@@ -191,7 +191,7 @@ log "Pruning old SHA-tagged images, keeping last 5"
 for repo in dailydashboard-frontend dailydashboard-backend; do
   # list all tags newest→oldest, skip top 5, delete the rest
   docker images "${repo}" --format '{{.Tag}} {{.CreatedAt}}' \
-    | grep -vE '^(latest|<none>) ' \
+    | { grep -vE '^(latest|<none>) ' || true; } \
     | sort -k2 -r \
     | awk 'NR>5 {print $1}' \
     | while read -r old_tag; do
