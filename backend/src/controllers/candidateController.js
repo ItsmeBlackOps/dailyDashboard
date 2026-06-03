@@ -296,6 +296,39 @@ class CandidateController {
     }
   }
 
+  // PRT Phase 3: byte-less assignment-email preview. Reuses the exact same
+  // service gate as sendAssignmentEmail (PRT roles + attachment scope +
+  // recruiter/teamLead/attachment requirements) but never reads S3 bytes and
+  // never sends — it just returns the resolved To/CC/subject/body/attachments
+  // so the modal can render a server-accurate preview.
+  async previewAssignmentEmail(req, res) {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      const { id: candidateId } = req.params;
+      const body = req.body || {};
+      const preview = await candidateService.buildAssignmentEmailPreview(user, candidateId, {
+        appendBody: body.appendBody,
+        attachmentIds: body.attachmentIds,
+        subject: body.subject
+      });
+      return res.status(200).json({ success: true, preview });
+    } catch (error) {
+      const status = error.statusCode || 500;
+      logger.error('previewAssignmentEmail failed', {
+        error: error.message,
+        candidateId: req.params?.id,
+        userEmail: req.user?.email
+      });
+      return res.status(status).json({
+        success: false,
+        error: status === 500 ? 'Unable to build preview' : error.message
+      });
+    }
+  }
+
   // SP1 — scoped marketing-info write. Delegates to the service's
   // updateMarketingInfo, which reuses the attachment role+scope gate and
   // writes ONLY visaType/company/eadStartDate/eadEndDate.

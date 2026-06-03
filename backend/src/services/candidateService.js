@@ -53,7 +53,7 @@ import { toLegacyRole } from '../utils/roleAliases.js';
 import { storageService } from './storageService.js';
 import { graphMailService } from './graphMailService.js';
 import { notificationService } from './notificationService.js';
-import { buildAssignmentEmail } from './assignmentEmailService.js';
+import { buildAssignmentEmail, buildAssignmentEmailPreview } from './assignmentEmailService.js';
 import { emailOutboxRepository } from './emailOutboxRepository.js';
 import { logger } from '../utils/logger.js';
 import { domainEventBus } from '../events/eventBus.js';
@@ -2413,6 +2413,119 @@ class CandidateService {
       outboxId: String(outboxRow._id),
       message: 'Assignment email queued — the dispatcher will send it shortly.'
     };
+  }
+
+  // Byte-less preview of the assignment email. MIRRORS sendAssignmentEmail's
+  // auth + role gate + candidate fetch + attachment-permission + recruiter/
+  // teamLead/attachment gate + display-name/manager/permanentCc resolution +
+  // attachment selection EXACTLY (so it can never leak PRT data to a non-
+  // marketing role), but: never reads S3 bytes, builds attachment METADATA
+  // only, and does NOT send / write the candidate / publish a domain event.
+  // It just returns { to, cc, bcc, subject, bodyHtml, attachments:[{id,filename}] }.
+  async buildAssignmentEmailPreview(user, candidateId, options = {}) {
+    if (!user?.email || !user?.role) {
+      const err = new Error('Authentication required');
+      err.statusCode = 401;
+      throw err;
+    }
+    const role = (user.role || '').toString().toLowerCase().trim();
+    if (!PRT_ATTACHMENT_ROLES.has(role)) {
+      const err = new Error('You do not have permission to send the assignment email');
+      err.statusCode = 403;
+      throw err;
+    }
+    if (!candidateId) {
+      const err = new Error('Candidate id is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const candidate = await candidateModel.getCandidateById(candidateId);
+    if (!candidate) {
+      const err = new Error('Candidate not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Reuse the attachment-permission gate (role + assertRecruiterInScope).
+    await this._assertAttachmentPermission(user, candidate);
+
+    // Gate per PRD §5.2.3: Recruiter + Team Lead + ≥1 attachment.
+    const recruiterEmail = formatEmail(candidate.recruiter || candidate.Recruiter || '');
+    if (!recruiterEmail) {
+      const err = new Error('Candidate has no recruiter — assign one before sending the assignment email');
+      err.statusCode = 400;
+      throw err;
+    }
+    // Derive the team lead from the recruiter when not explicitly stored, so
+    // historical candidates (created before teamLead was derived on create)
+    // can still send without a backfill. Only errors when truly unresolvable.
+    const teamLeadEmailStored = this.resolveTeamLeadEmail(candidate.teamLead, recruiterEmail);
+    if (!teamLeadEmailStored) {
+      const err = new Error('Candidate has no Team Lead — set teamLead before sending the assignment email');
+      err.statusCode = 400;
+      throw err;
+    }
+    const allAttachments = Array.isArray(candidate.attachments) ? candidate.attachments : [];
+    if (allAttachments.length === 0) {
+      const err = new Error('At least one attachment is required to send the assignment email');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Default to ALL attachments when the client did not pass a selection.
+    const requestedIds = Array.isArray(options.attachmentIds) && options.attachmentIds.length > 0
+      ? new Set(options.attachmentIds.map(String))
+      : null;
+    const selected = requestedIds
+      ? allAttachments.filter((a) => a && requestedIds.has(String(a.id)))
+      : allAttachments;
+    if (selected.length === 0) {
+      const err = new Error('No matching attachments selected');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Resolve display names + recruiter's manager email.
+    const senderDisplayName =
+      user.name || user.displayName || formatDisplayName(user.email);
+    const recruiterRecord = userModel.getUserByEmail(recruiterEmail) || {};
+    const recruiterDisplayName =
+      recruiterRecord.displayName || recruiterRecord.name || formatDisplayName(recruiterEmail);
+    const tlRecord = userModel.getUserByEmail(teamLeadEmailStored) || {};
+    const teamLeadDisplayName =
+      tlRecord.displayName || tlRecord.name || formatDisplayName(teamLeadEmailStored);
+    const managerNameRef = (recruiterRecord.manager || '').toString().trim();
+    const managerEmail = managerNameRef
+      ? formatEmail(this._findEmailByName(managerNameRef) || managerNameRef)
+      : '';
+
+    const permanentCcEmail = (config?.assignmentEmail?.permanentCc || '').toLowerCase();
+
+    // Preview path: metadata only — NO S3 reads, NO bytes.
+    const preview = buildAssignmentEmailPreview({
+      candidateName: candidate.name || candidate['Candidate Name'] || '',
+      technology: candidate.technology || candidate.Technology || '',
+      visaType: candidate.visaType || '',
+      recruiterEmail,
+      recruiterDisplayName,
+      teamLeadEmail: teamLeadEmailStored,
+      teamLeadDisplayName,
+      managerEmail,
+      permanentCcEmail,
+      senderEmail: user.email,
+      senderDisplayName,
+      attachments: selected.map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType })),
+      appendBody: options.appendBody || ''
+    });
+
+    // Optional subject override per PRD §6.3 ("User may edit the Subject").
+    if (options.subject && typeof options.subject === 'string' && options.subject.trim()) {
+      preview.subject = options.subject.trim();
+    }
+
+    // Preview only: do NOT send, do NOT write the candidate, do NOT publish.
+    return preview;
   }
 
   // Used by the controller's streaming download proxy. Validates
