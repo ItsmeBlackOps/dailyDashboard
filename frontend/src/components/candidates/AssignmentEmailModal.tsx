@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { useAuth, API_URL } from '@/hooks/useAuth';
 import {
   Dialog,
@@ -14,8 +15,18 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { Lock, Mail } from 'lucide-react';
+import { Loader2, Lock, Mail } from 'lucide-react';
 import type { CandidateAttachment } from '@/components/candidates/AttachmentZone';
+
+/** Server-built preview of the assignment email (Task 4 endpoint). */
+interface AssignmentEmailPreview {
+  to: string[];
+  cc: string[];
+  bcc: string[];
+  subject: string;
+  bodyHtml: string;
+  attachments: { id: string; filename: string }[];
+}
 
 // PRT Phase 3 — Assignment Email composer.
 //
@@ -65,6 +76,15 @@ export default function AssignmentEmailModal({
   );
   const [sending, setSending] = useState(false);
 
+  // Server-accurate preview (recipients + body + attachment filenames).
+  const [preview, setPreview] = useState<AssignmentEmailPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  // Monotonic request id: out-of-order responses (a slow earlier fetch
+  // resolving after a faster later one) must not clobber the latest state.
+  const previewRequestId = useRef(0);
+
   // Reset transient state every time the modal re-opens so it
   // doesn't carry over an aborted draft.
   useEffect(() => {
@@ -72,8 +92,69 @@ export default function AssignmentEmailModal({
       setSubject(defaultSubject);
       setAppendBody('');
       setSelectedAttachmentIds(new Set(attachments.map((a) => a.id)));
+      setPreview(null);
+      setPreviewError(null);
     }
   }, [open, defaultSubject, attachments]);
+
+  const fetchPreview = useCallback(
+    async (
+      draft: { subject: string; appendBody: string; attachmentIds: string[] },
+      signal: AbortSignal,
+    ) => {
+      const requestId = ++previewRequestId.current;
+      setPreviewLoading(true);
+      try {
+        const resp = await authFetch(
+          `${API_URL}/api/candidates/${candidateId}/assignment-email/preview`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              subject: draft.subject.trim() || undefined,
+              appendBody: draft.appendBody.trim() || undefined,
+              attachmentIds: draft.attachmentIds,
+            }),
+            signal,
+          },
+        );
+        const json = await resp.json().catch(() => ({}));
+        // Ignore stale responses — only the latest request may update state.
+        if (requestId !== previewRequestId.current) return;
+        if (!resp.ok || !json.success || !json.preview) {
+          setPreview(null);
+          setPreviewError(json.error || 'Unable to build the email preview.');
+          return;
+        }
+        setPreview(json.preview as AssignmentEmailPreview);
+        setPreviewError(null);
+      } catch (err) {
+        if (signal.aborted || requestId !== previewRequestId.current) return;
+        setPreview(null);
+        setPreviewError(
+          err instanceof Error ? err.message : 'Unable to build the email preview.',
+        );
+      } finally {
+        if (requestId === previewRequestId.current) setPreviewLoading(false);
+      }
+    },
+    [authFetch, candidateId],
+  );
+
+  // Refetch the preview on open and whenever the draft changes, debounced
+  // ~300ms so keystrokes in subject/notes don't spam the endpoint.
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    const attachmentIds = Array.from(selectedAttachmentIds);
+    const handle = setTimeout(() => {
+      void fetchPreview({ subject, appendBody, attachmentIds }, controller.signal);
+    }, 300);
+    return () => {
+      clearTimeout(handle);
+      controller.abort();
+    };
+  }, [open, subject, appendBody, selectedAttachmentIds, fetchPreview]);
 
   const toggleAttachment = (id: string) => {
     setSelectedAttachmentIds((prev) => {
@@ -86,10 +167,22 @@ export default function AssignmentEmailModal({
 
   const canSend =
     !sending &&
+    !previewError &&
     Boolean(recruiterEmail) &&
     Boolean(teamLeadEmail) &&
     selectedAttachmentIds.size > 0 &&
     subject.trim().length > 0;
+
+  // Sanitize the server-built HTML before injecting — matches the repo's
+  // existing email-body rendering (TasksToday/emailSignature use the same
+  // DOMPurify html profile).
+  const sanitizedBodyHtml = useMemo(
+    () =>
+      preview?.bodyHtml
+        ? DOMPurify.sanitize(preview.bodyHtml, { USE_PROFILES: { html: true } })
+        : '',
+    [preview?.bodyHtml],
+  );
 
   // Phase 3.5 — enqueue-mode. The server queues the send into the
   // EmailOutbox and the worker dispatches via app-only Graph. No MSAL
@@ -139,34 +232,81 @@ export default function AssignmentEmailModal({
             <Mail className="h-4 w-4" /> Send Assignment Email
           </DialogTitle>
           <DialogDescription>
-            The body uses the standard PRD §6.2 template (tokens replaced server-side).
-            On submit, the email is queued in the outbox and dispatched in the background.
-            "From" address is the configured shared sender, not your mailbox.
+            This is exactly what will be sent — recipients, attachments and body are
+            built server-side. On submit, the email is queued in the outbox and dispatched
+            in the background. "From" address is the configured shared sender, not your mailbox.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2 text-sm">
-          {/* Recipients summary (server is source of truth) */}
-          <div className="space-y-2 rounded border p-3 bg-muted/30 text-xs">
-            <div>
-              <span className="text-muted-foreground">To: </span>
-              <span className="font-medium">{recruiterEmail || '(no recruiter)'}</span>
+          {/* Server-built preview: recipients, attachments and body. */}
+          {previewError ? (
+            <div
+              className="rounded border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive"
+              role="alert"
+            >
+              {DOMPurify.sanitize(previewError)}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-muted-foreground">CC: </span>
-              {teamLeadEmail && (
-                <span className="rounded bg-secondary px-2 py-0.5">{teamLeadEmail}</span>
+          ) : !preview && previewLoading ? (
+            <div className="flex items-center gap-2 rounded border p-3 bg-muted/30 text-xs text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Building preview…
+            </div>
+          ) : preview ? (
+            <div className="space-y-2 rounded border p-3 bg-muted/30 text-xs">
+              <div>
+                <span className="text-muted-foreground">To: </span>
+                <span className="font-medium">
+                  {preview.to.length ? preview.to.join(', ') : '(none)'}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-muted-foreground">CC: </span>
+                {preview.cc.length === 0 ? (
+                  <span className="text-muted-foreground">(none)</span>
+                ) : (
+                  preview.cc.map((addr) => {
+                    const isPermanent =
+                      addr.toLowerCase() === PERMANENT_CC_LABEL.toLowerCase();
+                    return isPermanent ? (
+                      <span
+                        key={addr}
+                        className="rounded bg-amber-100 text-amber-900 px-2 py-0.5 inline-flex items-center gap-1"
+                        title="Permanent CC — re-injected by the server on every send."
+                        aria-label={`Locked permanent CC: ${addr}`}
+                      >
+                        <Lock className="h-3 w-3" aria-hidden="true" /> {addr}
+                      </span>
+                    ) : (
+                      <span key={addr} className="rounded bg-secondary px-2 py-0.5">
+                        {addr}
+                      </span>
+                    );
+                  })
+                )}
+              </div>
+              {preview.bcc.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-muted-foreground">BCC: </span>
+                  {preview.bcc.map((addr) => (
+                    <span key={addr} className="rounded bg-secondary px-2 py-0.5">
+                      {addr}
+                    </span>
+                  ))}
+                </div>
               )}
-              <span className="rounded bg-secondary px-2 py-0.5">{'(recruiter\'s manager — resolved server-side)'}</span>
-              <span
-                className="rounded bg-amber-100 text-amber-900 px-2 py-0.5 inline-flex items-center gap-1"
-                title="Permanent CC — re-injected by the server on every send."
-                aria-label={`Locked permanent CC: ${PERMANENT_CC_LABEL}`}
-              >
-                <Lock className="h-3 w-3" aria-hidden="true" /> {PERMANENT_CC_LABEL}
-              </span>
+              <div>
+                <span className="text-muted-foreground">Attachments: </span>
+                {preview.attachments.length === 0 ? (
+                  <span className="text-muted-foreground">(none)</span>
+                ) : (
+                  <span className="font-medium">
+                    {preview.attachments.map((a) => a.filename).join(', ')}
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
+          ) : null}
 
           {/* Subject */}
           <div className="space-y-1">
@@ -183,7 +323,7 @@ export default function AssignmentEmailModal({
           {/* Append body */}
           <div className="space-y-1">
             <Label htmlFor="ae-append">
-              Preamble (optional, appears above the standard template)
+              Preamble (optional, appears above the template body)
             </Label>
             <Textarea
               id="ae-append"
@@ -232,6 +372,34 @@ export default function AssignmentEmailModal({
                   );
                 })}
               </ul>
+            )}
+          </div>
+
+          {/* Body preview (read-only, server-rendered HTML). */}
+          <div className="space-y-1">
+            <Label>Email body preview</Label>
+            {previewError ? (
+              <div
+                className="rounded border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive"
+                role="alert"
+              >
+                {DOMPurify.sanitize(previewError)}
+              </div>
+            ) : !preview && previewLoading ? (
+              <div className="flex items-center gap-2 rounded border p-3 text-xs text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Building preview…
+              </div>
+            ) : preview ? (
+              <div
+                className="prose prose-sm max-w-none rounded border p-3 max-h-64 overflow-y-auto bg-background text-xs"
+                aria-label="Assignment email body preview"
+                dangerouslySetInnerHTML={{ __html: sanitizedBodyHtml }}
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground italic">
+                Preview unavailable.
+              </p>
             )}
           </div>
         </div>
