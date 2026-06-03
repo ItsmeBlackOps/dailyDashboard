@@ -37,7 +37,8 @@ jobs:
           GIT_REF: ${{ github.ref_name }}
           ACTOR: ${{ github.actor }}
         run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes \
+            -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
             "cd ${{ secrets.VM_PATH }} && \
              git fetch origin && \
