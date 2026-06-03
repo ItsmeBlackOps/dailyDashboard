@@ -21,3 +21,24 @@ describe('marketingInfoMissingFilter', () => {
     expect(JSON.stringify(marketingInfoMissingFilter())).toBe(JSON.stringify(marketingInfoMissingFilter()));
   });
 });
+
+import { candidateService } from '../src/services/candidateService.js';
+
+describe('candidateService.missingMarketingFields', () => {
+  it('flags blank visaType and company', () => {
+    const m = candidateService.missingMarketingFields({ visaType: '', company: null });
+    expect(m).toEqual(expect.arrayContaining(['visaType', 'company']));
+  });
+
+  it('requires EAD dates only for EAD-card visa types', () => {
+    expect(candidateService.missingMarketingFields({ visaType: 'OPT', company: 'SST' }))
+      .toEqual(expect.arrayContaining(['eadStartDate', 'eadEndDate']));
+    expect(candidateService.missingMarketingFields({ visaType: 'H1B', company: 'SST' }))
+      .toEqual([]);
+  });
+
+  it('candidateNeedsMarketingInfo is true iff something is missing', () => {
+    expect(candidateService.candidateNeedsMarketingInfo({ visaType: 'H1B', company: 'VCS' })).toBe(false);
+    expect(candidateService.candidateNeedsMarketingInfo({ visaType: '', company: 'VCS' })).toBe(true);
+  });
+});

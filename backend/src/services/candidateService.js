@@ -34,7 +34,8 @@ const PRT_VISIBLE_FIELDS = [
   'team',
   'marketingStartDate',
   'attachments', 'editHistory', 'assignmentEmails',
-  'expiringInDays', 'daysInMarketing'
+  'expiringInDays', 'daysInMarketing',
+  'needsMarketingInfo', 'missingMarketingFields'
 ];
 const PRT_READ_ROLES = new Set(['admin', 'mm', 'mam', 'mlead', 'recruiter']);
 
@@ -826,6 +827,26 @@ class CandidateService {
     };
   }
 
+  // SP1 — in-memory mirror of marketingInfoMissingFilter (DB side). Keep the
+  // two in lock-step. "Marketing info" = visaType + company + conditional EAD.
+  missingMarketingFields(candidate) {
+    const isBlank = (v) => v === null || v === undefined
+      || (typeof v === 'string' && v.trim() === '');
+    const missing = [];
+    if (isBlank(candidate?.visaType)) missing.push('visaType');
+    if (isBlank(candidate?.company)) missing.push('company');
+    const visa = (candidate?.visaType || '').toString().trim();
+    if (EAD_REQUIRED_VISA_TYPES.has(visa)) {
+      if (isBlank(candidate?.eadStartDate)) missing.push('eadStartDate');
+      if (isBlank(candidate?.eadEndDate)) missing.push('eadEndDate');
+    }
+    return missing;
+  }
+
+  candidateNeedsMarketingInfo(candidate) {
+    return this.missingMarketingFields(candidate).length > 0;
+  }
+
   // Optional `user` arg drives the PRT visibility strip: when provided
   // and non-marketing, the formatted record is post-processed to remove
   // PRT-only fields. External callers (e.g. supportRequestService) can
@@ -920,6 +941,8 @@ class CandidateService {
       expiringInDays,
       daysInMarketing
     };
+    formatted.missingMarketingFields = this.missingMarketingFields(formatted);
+    formatted.needsMarketingInfo = formatted.missingMarketingFields.length > 0;
     return this._applyPrtVisibility(formatted, user);
   }
 
