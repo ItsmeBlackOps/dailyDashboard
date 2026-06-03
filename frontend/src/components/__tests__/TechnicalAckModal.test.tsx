@@ -32,7 +32,7 @@ describe('TechnicalAckModal', () => {
     await waitFor(() =>
       expect(authFetch).toHaveBeenCalledWith(
         expect.stringContaining('/api/users/me/technical-acknowledgment'),
-        expect.objectContaining({ method: 'PATCH' })
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ version: 1 }) })
       )
     );
   });

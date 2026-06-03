@@ -14,6 +14,7 @@ export function TechnicalAckModal() {
   const [open, setOpen] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -34,6 +35,7 @@ export function TechnicalAckModal() {
 
   const submit = async () => {
     if (!content || !agreed) return;
+    setError('');
     setSubmitting(true);
     try {
       const res = await authFetch(`${API_URL}/api/users/me/technical-acknowledgment`, {
@@ -43,6 +45,8 @@ export function TechnicalAckModal() {
       });
       await parseJsonOrThrow(res);
       setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not record your acknowledgment');
     } finally {
       setSubmitting(false);
     }
@@ -63,6 +67,7 @@ export function TechnicalAckModal() {
           <Checkbox checked={agreed} onCheckedChange={(v) => setAgreed(Boolean(v))} />
           I have read and agree
         </label>
+        {error && <p className="text-sm text-destructive">{error}</p>}
         <DialogFooter>
           <Button onClick={() => void submit()} disabled={!agreed || submitting}>
             {submitting ? 'Submitting…' : 'I agree & Submit'}
