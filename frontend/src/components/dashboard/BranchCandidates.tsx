@@ -3288,6 +3288,12 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       return;
     }
 
+    if (!trimmedContact) {
+      setCreateError('Contact is required');
+      setCreating(false);
+      return;
+    }
+
     // ---------- PRT required fields ----------
     if (!trimmedVisaType) {
       setCreateError('Visa Type is required');
@@ -3377,7 +3383,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       company: trimmedCompany
     };
 
-    if (trimmedContact) payload.contact = trimmedContact;
+    payload.contact = trimmedContact;
     // teamLead intentionally NOT sent — the server derives it from the
     // recruiter's record (display-name → email). The form only displays it.
     if (trimmedEadStart) payload.eadStartDate = trimmedEadStart;
@@ -4744,7 +4750,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="create-contact">Contact (optional)</Label>
+                <Label htmlFor="create-contact">Contact — required</Label>
                 <Input
                   id="create-contact"
                   value={createForm.contact}
