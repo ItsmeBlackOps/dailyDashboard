@@ -1023,7 +1023,28 @@ export class CandidateModel {
         source:    e.source    ?? null,
         reason:    e.reason    ?? null,
         sourceRef: e.sourceRef ?? null,
-      })) : []
+      })) : [],
+      // PRT fields — fetched by DEFAULT_PROJECTION but previously dropped here.
+      // Dropping them made formatCandidateRecord emit attachments:[] and null
+      // PRT values, so "Send Assignment Email" stayed disabled even when the
+      // candidate had a stored team lead AND an uploaded attachment. LIST_PROJECTION
+      // omits attachments (list reads default to []); detail reads
+      // (DEFAULT_PROJECTION) surface the real array + the rest of the PRT fields.
+      teamLead: doc.teamLead ?? null,
+      experienceYears: doc.experienceYears ?? null,
+      visaType: doc.visaType ?? null,
+      eadStartDate: doc.eadStartDate ?? null,
+      eadEndDate: doc.eadEndDate ?? null,
+      company: doc.company ?? null,
+      city: doc.city ?? null,
+      state: doc.state ?? null,
+      ackEmail: doc.ackEmail ?? null,
+      ackEmailAt: doc.ackEmailAt ?? null,
+      team: doc.team ?? null,
+      marketingStartDate: doc.marketingStartDate ?? null,
+      attachments: Array.isArray(doc.attachments) ? doc.attachments : [],
+      editHistory: Array.isArray(doc.editHistory) ? doc.editHistory : [],
+      assignmentEmails: Array.isArray(doc.assignmentEmails) ? doc.assignmentEmails : []
     };
   }
 }
