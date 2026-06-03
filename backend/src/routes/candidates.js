@@ -126,6 +126,13 @@ router.post(
   (req, res) => candidateController.sendAssignmentEmail(req, res)
 );
 
+// SP1: scoped marketing-info write (recruiter + team lead + mam/mm/admin).
+// Placed BEFORE the generic /:id route, same as the attachment endpoints.
+router.post(
+  '/:id/marketing-info',
+  (req, res) => candidateController.updateMarketingInfo(req, res)
+);
+
 router.get('/:id',            (req, res) => candidateController.getCandidateById(req, res));
 
 export default router;

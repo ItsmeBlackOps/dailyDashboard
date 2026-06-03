@@ -296,6 +296,24 @@ class CandidateController {
     }
   }
 
+  // SP1 — scoped marketing-info write. Delegates to the service's
+  // updateMarketingInfo, which reuses the attachment role+scope gate and
+  // writes ONLY visaType/company/eadStartDate/eadEndDate.
+  async updateMarketingInfo(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const { id } = req.params;
+      const { visaType, company, eadStartDate, eadEndDate } = req.body || {};
+      const candidate = await candidateService.updateMarketingInfo(user, id, { visaType, company, eadStartDate, eadEndDate });
+      return res.json({ success: true, candidate });
+    } catch (error) {
+      const status = error.statusCode || 500;
+      if (status >= 500) logger.error('updateMarketingInfo failed', { error: error.message });
+      return res.status(status).json({ success: false, error: error.message || 'Internal server error' });
+    }
+  }
+
   async downloadAttachment(req, res) {
     try {
       const user = req.user;

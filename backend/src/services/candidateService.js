@@ -1871,6 +1871,59 @@ class CandidateService {
     return this._applyPrtVisibility(formatted, user);
   }
 
+  // SP1 — narrowly-scoped marketing-info write. Unlike updateCandidate (which
+  // gates ALL PRT fields to mm/mam/admin), this lets the candidate's own
+  // recruiter + team lead (and mam/mm/admin) fill the marketing fields, using
+  // the SAME role+scope gate as attachments (_assertAttachmentPermission). It
+  // writes ONLY visaType/company/eadStartDate/eadEndDate — never any other PRT
+  // field — so it cannot be used to escalate writes to teamLead/recruiter/status.
+  async updateMarketingInfo(user, candidateId, payload = {}) {
+    if (!candidateId) {
+      const error = new Error('Candidate id is required'); error.statusCode = 400; throw error;
+    }
+    const candidate = await candidateModel.getCandidateById(candidateId);
+    if (!candidate) {
+      const error = new Error('Candidate not found'); error.statusCode = 404; throw error;
+    }
+
+    // Role (admin/mm/mam/mlead/recruiter) + scope (candidate's recruiter must
+    // be self-or-in-hierarchy). Reuses the attachment permission model.
+    await this._assertAttachmentPermission(user, candidate);
+
+    // Validate (enums + conditional EAD) then accept ONLY the 4 marketing
+    // fields. Picking from the sanitized output prevents this endpoint from
+    // writing any other PRT field even if the caller sends extras.
+    const sanitized = this.sanitizeCandidatePayload(payload);
+    const ALLOWED = ['visaType', 'company', 'eadStartDate', 'eadEndDate'];
+    const updates = {};
+    for (const f of ALLOWED) {
+      if (sanitized[f] !== undefined) updates[f] = sanitized[f];
+    }
+    if (Object.keys(updates).length === 0) {
+      const error = new Error('No marketing fields to update'); error.statusCode = 400; throw error;
+    }
+
+    // editHistory for changed fields (mirror updateCandidate).
+    const isAuditValueEqual = (a, b) => {
+      if (a === b) return true;
+      if (a == null && b == null) return true;
+      if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+      if (a instanceof Date && typeof b === 'string') return a.toISOString().slice(0, b.length) === b;
+      if (b instanceof Date && typeof a === 'string') return b.toISOString().slice(0, a.length) === a;
+      return false;
+    };
+    const editHistoryEntries = ALLOWED
+      .filter((f) => updates[f] !== undefined && !isAuditValueEqual(candidate[f], updates[f]))
+      .map((f) => ({ field: f, oldValue: candidate[f] ?? null, newValue: updates[f], actor: user.email, ts: new Date() }));
+    if (editHistoryEntries.length > 0) updates._pushEditHistory = editHistoryEntries;
+
+    updates._changedBy = user.email;
+    updates._source = 'marketing-info';
+
+    const updated = await candidateModel.updateCandidateById(candidateId, updates);
+    return this.formatCandidateRecord(updated, user);
+  }
+
   // ---------- PRT Phase 2: attachment operations ----------
   //
   // Permission model:
