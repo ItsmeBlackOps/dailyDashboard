@@ -28,7 +28,19 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          # ssh-keyscan is best-effort: the deploy step uses StrictHostKeyChecking=accept-new,
+          # so pre-seeding known_hosts is not required. A transient packet drop here (the SYN
+          # never reaching the VM) must NOT fail the whole deploy, so retry a few times and
+          # never let this step exit non-zero.
+          for i in 1 2 3 4 5; do
+            if ssh-keyscan -T 10 -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts 2>/dev/null; then
+              echo "ssh-keyscan succeeded on attempt $i"
+              break
+            fi
+            echo "ssh-keyscan attempt $i failed (VM unreachable?); retrying in 10s"
+            sleep 10
+          done
+          true
 
       - name: Run deploy script on VM
         env:
@@ -37,6 +49,20 @@ jobs:
           GIT_REF: ${{ github.ref_name }}
           ACTOR: ${{ github.actor }}
         run: |
+          # Pre-flight: wait for the VM's SSH to be reachable before the heavy deploy, so a
+          # brief network blip self-heals instead of failing the build (and we don't risk a
+          # half-finished build from retrying the deploy command itself).
+          for i in 1 2 3 4 5 6; do
+            if ssh -o ConnectTimeout=10 -o BatchMode=yes \
+                 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+                 ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} true 2>/dev/null; then
+              echo "VM SSH reachable on attempt $i"
+              break
+            fi
+            if [ "$i" = "6" ]; then echo "VM SSH unreachable after 6 attempts" >&2; exit 1; fi
+            echo "VM SSH not reachable (attempt $i); retrying in 15s"
+            sleep 15
+          done
           ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes \
             -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
