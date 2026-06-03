@@ -897,6 +897,23 @@ class CandidateController {
     }
   }
 
+  // GET /api/candidates/:id/timeline — unified read-time activity feed.
+  // Thin: delegates to candidateService.getCandidateTimeline (the read gate +
+  // the merge live there) and maps the service's statusCode (400/404) to HTTP.
+  async getCandidateTimeline(req, res) {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+      const timeline = await candidateService.getCandidateTimeline(user, req.params.id);
+      return res.status(200).json({ success: true, timeline });
+    } catch (error) {
+      const status = error.statusCode || 500;
+      if (status >= 500) logger.error('getCandidateTimeline failed', { error: error.message, candidateId: req.params?.id });
+      // Mask internal 500 details (public repo); surface client-actionable 4xx messages.
+      return res.status(status).json({ success: false, error: status >= 500 ? 'Unable to load timeline' : error.message });
+    }
+  }
+
   async getHubConfig(req, res) {
     try {
       const user = req.user;

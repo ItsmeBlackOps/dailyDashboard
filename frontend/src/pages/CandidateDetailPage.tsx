@@ -2,8 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, User, MapPin, Briefcase, Mail, Phone, Calendar, ExternalLink,
-  Clock, CheckCircle2, AlertCircle, Pause, TrendingDown, Star, HelpCircle,
-  ChevronDown, ChevronUp, Building2, Layers, Users, Sparkles, RefreshCw,
+  Clock, Sparkles, RefreshCw,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { canCreatePO } from '@/lib/roleAliases';
@@ -21,6 +20,7 @@ import type { TaskSheetPrefill } from '@/components/shared/TaskSheet';
 import FindJobsDialog from '@/components/jobs/FindJobsDialog';
 import AttachmentZone, { type CandidateAttachment } from '@/components/candidates/AttachmentZone';
 import AssignmentEmailModal from '@/components/candidates/AssignmentEmailModal';
+import { CandidateTimeline } from '@/components/candidates/CandidateTimeline';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Candidate {
@@ -59,12 +59,6 @@ interface Interview {
   recruiter: string; suggestions: string[]; receivedAt: string | null;
 }
 
-// ── Timeline event types ──────────────────────────────────────────────────────
-type TimelineEvent =
-  | { kind: 'created';  at: Date; label: string }
-  | { kind: 'status';   at: Date; status: string; changedBy: string }
-  | { kind: 'interview'; at: Date; task: Interview };
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatEmail(email: string) {
   if (!email) return '';
@@ -84,147 +78,6 @@ function formatDate(d: string | Date | null, short = false) {
 function daysAgo(d: string | null) {
   if (!d) return null;
   return Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
-}
-
-function parseDate(s: string | null): Date | null {
-  if (!s) return null;
-  // Handle MM/DD/YYYY format
-  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
-    const [m, d, y] = s.split('/').map(Number);
-    return new Date(y, m - 1, d);
-  }
-  const dt = new Date(s);
-  return isNaN(dt.getTime()) ? null : dt;
-}
-
-// ── Status config ─────────────────────────────────────────────────────────────
-const STATUS_ICONS: Record<string, React.ElementType> = {
-  'Active':           CheckCircle2,
-  'Placement Offer':  Star,
-  'Hold':             Pause,
-  'Backout':          AlertCircle,
-  'Low Priority':     TrendingDown,
-  'Unassigned':       HelpCircle,
-};
-
-const STATUS_DOT: Record<string, string> = {
-  'Active':           'bg-emerald-500',
-  'Placement Offer':  'bg-violet-500',
-  'Hold':             'bg-amber-500',
-  'Backout':          'bg-red-500',
-  'Low Priority':     'bg-sky-400',
-  'Unassigned':       'bg-muted-foreground/40',
-};
-
-const TASK_STATUS_CLASS: Record<string, string> = {
-  completed:   'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300',
-  done:        'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300',
-  selected:    'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300',
-  cancelled:   'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300',
-  rescheduled: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300',
-};
-
-function taskStatusClass(status: string) {
-  return TASK_STATUS_CLASS[(status || '').toLowerCase()] ?? 'bg-muted/50 text-foreground border-border';
-}
-
-// ── Expanded task card ────────────────────────────────────────────────────────
-function TaskCard({ task }: { task: Interview }) {
-  const [open, setOpen] = useState(false);
-  const expertDisplay = task.assignedTo
-    ? (task.assignedTo.includes('@') ? formatEmail(task.assignedTo) : task.assignedTo)
-    : null;
-  const recruiterDisplay = task.recruiter
-    ? (task.recruiter.includes('@') ? formatEmail(task.recruiter) : task.recruiter)
-    : null;
-
-  return (
-    <div className="rounded-lg border bg-card text-card-foreground shadow-sm overflow-hidden">
-      {/* Header row — always visible */}
-      <button
-        className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left hover:bg-muted/40 transition-colors"
-        onClick={() => setOpen(o => !o)}
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold truncate">{task.client || 'Client N/A'}</span>
-            {task.round && (
-              <Badge variant="outline" className="text-[10px] px-1.5 shrink-0">{task.round}</Badge>
-            )}
-            {task.status && (
-              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${taskStatusClass(task.status)}`}>
-                {task.status}
-              </span>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2 mt-0.5">
-            {task.startTime && (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                <Clock className="h-3 w-3" />
-                {task.startTime}{task.endTime ? ` – ${task.endTime}` : ''}
-              </span>
-            )}
-            {expertDisplay && (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                <User className="h-3 w-3" />
-                {expertDisplay}
-              </span>
-            )}
-          </div>
-        </div>
-        {open ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-               : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
-      </button>
-
-      {/* Expanded details */}
-      {open && (
-        <div className="px-3.5 pb-3 pt-0 border-t bg-muted/20">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-2.5">
-            {task.role && (
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Briefcase className="h-3 w-3" /> Job Title</div>
-                <div className="text-xs font-medium">{task.role}</div>
-              </div>
-            )}
-            {task.actualRound && (
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Layers className="h-3 w-3" /> Actual Round</div>
-                <div className="text-xs font-medium">{task.actualRound}</div>
-              </div>
-            )}
-            {task.vendor && (
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Building2 className="h-3 w-3" /> Vendor</div>
-                <div className="text-xs font-medium">{task.vendor}</div>
-              </div>
-            )}
-            {recruiterDisplay && (
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Mail className="h-3 w-3" /> Recruiter</div>
-                <div className="text-xs font-medium">{recruiterDisplay}</div>
-              </div>
-            )}
-            {task.assignedAt && (
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" /> Assigned At</div>
-                <div className="text-xs font-medium">{formatDate(task.assignedAt)}</div>
-              </div>
-            )}
-          </div>
-          {task.suggestions && task.suggestions.length > 0 && (
-            <div className="mt-2">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-1"><Users className="h-3 w-3" /> Expert Suggestions</div>
-              <div className="flex flex-wrap gap-1">
-                {task.suggestions.map((s, i) => (
-                  <Badge key={i} variant="secondary" className="text-[10px] px-1.5">{s}</Badge>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -293,43 +146,6 @@ export default function CandidateDetailPage() {
     } finally {
       setDeriving(false);
     }
-  }
-
-  // Build merged chronological timeline
-  const timeline: TimelineEvent[] = [];
-
-  if (candidate) {
-    // Created event
-    const createdAt = parseDate(candidate.receivedDate);
-    if (createdAt) {
-      timeline.push({ kind: 'created', at: createdAt, label: 'Candidate profile created' });
-    }
-
-    // Status history events
-    for (const entry of candidate.statusHistory) {
-      const at = parseDate(entry.changedAt);
-      if (at) timeline.push({ kind: 'status', at, status: entry.status, changedBy: entry.changedBy });
-    }
-
-    // Interview task events
-    for (const task of interviews) {
-      const at = parseDate(task.receivedAt) ?? parseDate(task.date);
-      if (at) timeline.push({ kind: 'interview', at, task });
-    }
-
-    // Synthetic PO event from poDate if no statusHistory entry covers it
-    if (candidate.poDate) {
-      const hasPoEntry = candidate.statusHistory.some(
-        (e) => (e.status || '').toLowerCase().includes('placement offer')
-      );
-      if (!hasPoEntry) {
-        const poAt = parseDate(candidate.poDate);
-        if (poAt) timeline.push({ kind: 'status', at: poAt, status: 'Placement Offer', changedBy: 'system' });
-      }
-    }
-
-    // Sort newest first
-    timeline.sort((a, b) => b.at.getTime() - a.at.getTime());
   }
 
   return (
@@ -605,97 +421,16 @@ export default function CandidateDetailPage() {
               />
             )}
 
-            {/* ── Vertical Timeline ── */}
+            {/* ── Unified Activity Timeline ── */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <Clock className="h-4 w-4" />
                   Full Activity Timeline
-                  <span className="text-xs font-normal text-muted-foreground ml-auto">{timeline.length} events</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="pb-5 pt-1">
-                {timeline.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-4">No timeline events found.</p>
-                ) : (
-                  <div className="relative">
-                    {/* Vertical guide line */}
-                    <div className="absolute left-[7px] top-2 bottom-2 w-px bg-border" />
-
-                    <div className="space-y-0">
-                      {timeline.map((event, i) => {
-                        const isLast = i === timeline.length - 1;
-
-                        if (event.kind === 'created') {
-                          return (
-                            <div key={i} className="flex gap-4 pb-5 relative">
-                              <div className="shrink-0 w-4 flex flex-col items-center">
-                                <div className="w-3.5 h-3.5 rounded-full bg-primary ring-2 ring-background z-10 mt-0.5" />
-                              </div>
-                              <div className="flex-1 min-w-0 pt-0">
-                                <div className="text-[10px] text-muted-foreground font-mono">{formatDate(event.at)}</div>
-                                <div className="text-xs font-semibold text-primary mt-0.5">
-                                  {event.label}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        if (event.kind === 'status') {
-                          const StatusIcon = STATUS_ICONS[event.status] ?? HelpCircle;
-                          return (
-                            <div key={i} className={`flex gap-4 ${isLast ? '' : 'pb-5'} relative`}>
-                              <div className="shrink-0 w-4 flex flex-col items-center">
-                                <div className={`w-3.5 h-3.5 rounded-full ring-2 ring-background z-10 mt-0.5 ${STATUS_DOT[event.status] ?? 'bg-muted-foreground/40'}`} />
-                              </div>
-                              <div className="flex-1 min-w-0 pt-0">
-                                <div className="text-[10px] text-muted-foreground font-mono">{formatDate(event.at)}</div>
-                                <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                                  <StatusIcon className="h-3 w-3 text-muted-foreground shrink-0" />
-                                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${statusColors[(event.status as CandidateStatus)] || ''}`}>
-                                    {event.status}
-                                  </span>
-                                  <span className="text-[10px] text-muted-foreground">
-                                    by {event.changedBy === 'system-backfill' ? 'System' : formatEmail(event.changedBy)}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        if (event.kind === 'interview') {
-                          return (
-                            <div key={i} className={`flex gap-4 ${isLast ? '' : 'pb-5'} relative`}>
-                              <div className="shrink-0 w-4 flex flex-col items-center">
-                                <div className="w-3.5 h-3.5 rounded-full bg-indigo-500 ring-2 ring-background z-10 mt-0.5 flex items-center justify-center">
-                                  <Calendar className="h-2 w-2 text-white" />
-                                </div>
-                              </div>
-                              <div className="flex-1 min-w-0 pt-0">
-                                <div className="text-[10px] text-muted-foreground font-mono mb-1">
-                                  {formatDate(event.at)}
-                                  {event.task.startTime && (
-                                    <span className="ml-2">{event.task.startTime}</span>
-                                  )}
-                                </div>
-                                <div
-                                  className={event.task.taskId ? 'cursor-pointer' : ''}
-                                  onClick={() => event.task.taskId && setSelectedTaskId(event.task.taskId)}
-                                >
-                                  <TaskCard task={event.task} />
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        return null;
-                      })}
-                    </div>
-                  </div>
-                )}
+                {id && <CandidateTimeline candidateId={id} />}
               </CardContent>
             </Card>
 
