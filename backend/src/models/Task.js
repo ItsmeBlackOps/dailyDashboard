@@ -1045,33 +1045,24 @@ export class TaskModel {
       return Object.keys(range).length > 0 ? { receivedDateTime: range } : {};
     }
 
-    const comparisons = [];
-    const dateExpression = {
-      $dateFromString: {
-        dateString: '$Date of Interview',
-        format: '%m/%d/%Y',
-        timezone: 'America/New_York',
-        onError: null,
-        onNull: null
-      }
-    };
-
+    // Interview-date tab: filter on the indexed `interviewStartAt` (a real
+    // BSON Date, UTC = Eastern wall-clock, ~99.6% populated) instead of a
+    // $dateFromString parse of the "Date of Interview" MM/DD/YYYY string.
+    // The old string approach could NOT use an index (computed field in
+    // $expr → full collection scan → slow + heavy loads) and silently
+    // dropped/mis-bucketed rows whose string failed to parse. The bounds
+    // here are Eastern-aware UTC instants (see taskService.resolveDateRange),
+    // so this range is timezone-identical to the prior match; the ~0.4% of
+    // tasks lacking interviewStartAt are exactly the unparseable ones the
+    // old match already excluded.
+    const range = {};
     if (startDate) {
-      comparisons.push({ $gte: [dateExpression, new Date(startDate)] });
+      range.$gte = new Date(startDate);
     }
     if (endDate) {
-      comparisons.push({ $lt: [dateExpression, new Date(endDate)] });
+      range.$lt = new Date(endDate);
     }
-
-    if (comparisons.length === 0) {
-      return {};
-    }
-
-    if (comparisons.length === 1) {
-      return { $expr: comparisons[0] };
-    }
-
-    return { $expr: { $and: comparisons } };
+    return Object.keys(range).length > 0 ? { interviewStartAt: range } : {};
   }
 
   buildDashboardRoleMatch(userEmail, userRole, manager, teamEmails) {
