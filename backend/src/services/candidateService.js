@@ -55,7 +55,6 @@ import { storageService } from './storageService.js';
 import { graphMailService } from './graphMailService.js';
 import { notificationService } from './notificationService.js';
 import { buildAssignmentEmail, buildAssignmentEmailPreview } from './assignmentEmailService.js';
-import { emailOutboxRepository } from './emailOutboxRepository.js';
 import { logger } from '../utils/logger.js';
 import { domainEventBus } from '../events/eventBus.js';
 import { DomainEvents } from '../events/eventTypes.js';
@@ -2371,7 +2370,21 @@ class CandidateService {
     // supplied. This is reliable + immediate, unlike the app-only outbox.
     // On ANY failure we fall back to the async EmailOutbox below so the
     // email is never silently lost.
-    if (graphAccessToken) {
+    // Delegated-only send from the requester's mailbox — the SAME mechanism as
+    // Interview/Assessment Support (graphMailService.sendDelegatedMail →
+    // /me/sendMail). No app "from" mailbox is involved, so
+    // AZURE_GRAPH_MAIL_SENDER is irrelevant. We deliberately do NOT fall back to
+    // the app-only outbox worker: that path needs a configured app sender
+    // (intentionally absent) and was silently masking the real Graph failure as
+    // "Azure mail sender is not configured". A failed send now surfaces the
+    // actual Graph reason to the caller.
+    if (!graphAccessToken) {
+      const err = new Error('Mailbox permission needed — approve the Microsoft sign-in prompt so the assignment email can be sent from your mailbox.');
+      err.statusCode = 400;
+      err.code = 'GRAPH_TOKEN_REQUIRED';
+      throw err;
+    }
+    {
       try {
         const sendResp = await graphMailService.sendDelegatedMail(graphAccessToken, {
           message: built.message,
@@ -2418,49 +2431,29 @@ class CandidateService {
           message: 'Assignment email sent from your mailbox.'
         };
       } catch (delegatedErr) {
-        logger.warn('Delegated assignment-email send failed — falling back to the outbox', {
+        // Surface the REAL Graph failure (status + body) instead of masking it
+        // behind the app-only "sender not configured" fallback.
+        const graphStatus = delegatedErr.status || delegatedErr.statusCode || null;
+        const body = delegatedErr.responseBody;
+        const graphReason =
+          (body && body.error && (body.error.message || body.error.code)) ||
+          (typeof body === 'string' && body) ||
+          delegatedErr.message ||
+          'unknown error';
+        logger.error('Assignment email delegated send failed', {
           candidateId,
-          error: delegatedErr.message
+          sender: user.email,
+          graphStatus,
+          graphReason,
+          responseBody: typeof body === 'string' ? body.slice(0, 800) : body
         });
-        // fall through to the async enqueue below
+        const err = new Error(`Could not send the assignment email from your mailbox: ${graphReason}`);
+        err.statusCode = (graphStatus && graphStatus >= 400 && graphStatus < 500) ? graphStatus : 502;
+        err.code = 'GRAPH_SEND_FAILED';
+        err.graphStatus = graphStatus;
+        throw err;
       }
     }
-
-    // Phase 3.5 — enqueue into the EmailOutbox. The emailDeliveryWorker
-    // dispatches via app-only Graph (sendApplicationMail) with
-    // exponential backoff up to a 24h budget; on terminal sent/failed
-    // it writes the assignmentEmails[] audit row + flips ackEmail.
-    const outboxRow = await emailOutboxRepository.enqueue({
-      candidateId: String(candidateId),
-      payload: {
-        message: built.message,
-        saveToSentItems: built.saveToSentItems
-      },
-      audit: {
-        sender: user.email.toLowerCase(),
-        to: built._audit.to,
-        cc: built._audit.cc,
-        bcc: built._audit.bcc,
-        subject: built._audit.subject,
-        attachmentIds: built._audit.attachmentIds
-      },
-      enqueuedBy: user.email
-    });
-
-    logger.info('Assignment email enqueued', {
-      candidateId,
-      outboxId: String(outboxRow._id),
-      to: built._audit.to,
-      cc: built._audit.cc,
-      sender: user.email
-    });
-
-    return {
-      success: true,
-      status: 'queued',
-      outboxId: String(outboxRow._id),
-      message: 'Assignment email queued — the dispatcher will send it shortly.'
-    };
   }
 
   // Byte-less preview of the assignment email. MIRRORS sendAssignmentEmail's

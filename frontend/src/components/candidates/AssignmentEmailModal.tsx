@@ -190,8 +190,8 @@ export default function AssignmentEmailModal({
   // delegated path Interview/Assessment Support use. We acquire a Graph token
   // in the browser and pass it as `x-graph-access-token`; the backend calls
   // graphMailService.sendDelegatedMail (→ /me/sendMail). This needs NO app
-  // "from" mailbox. If delegated delivery fails server-side it still falls
-  // back to the durable outbox, but the normal path is an immediate send.
+  // "from" mailbox. If the delegated send fails, the backend returns the real
+  // Graph error (there is no app-only fallback) and we surface it below.
   const handleSend = async () => {
     if (!canSend) return;
     setSending(true);
@@ -226,15 +226,9 @@ export default function AssignmentEmailModal({
       if (!resp.ok || !json.success) {
         throw new Error(json.error || 'Send failed');
       }
-      // 200 = sent immediately from the user's mailbox; 202 = queued fallback.
-      if (json.status === 'sent') {
-        toast({ title: 'Assignment email sent', description: 'Sent from your mailbox.' });
-      } else {
-        toast({
-          title: 'Assignment email queued',
-          description: 'The dispatcher will deliver it shortly.',
-        });
-      }
+      // Sent synchronously from the user's mailbox (delegated). On failure the
+      // backend returns the real Graph error, which the catch below surfaces.
+      toast({ title: 'Assignment email sent', description: 'Sent from your mailbox.' });
       onSent?.();
       onOpenChange(false);
     } catch (err) {
