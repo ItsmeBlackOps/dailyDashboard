@@ -846,6 +846,10 @@ export class DashboardController {
                 },
                 // Lookup Interviews (TaskBody)
                 {
+                    // Pipeline-form lookup (not localField/foreignField) so we can
+                    // $project away the heavy replies/body fields. Join is equivalent
+                    // here — candidates are email-scoped upstream, so null/missing
+                    // Email ID rows don't participate.
                     $lookup: {
                         from: 'taskBody',
                         let: { emailId: '$Email ID' },

@@ -1,6 +1,6 @@
 import moment from 'moment-timezone';
 import { ObjectId } from 'mongodb';
-import { taskModel } from '../models/Task.js';
+import { taskModel, TASK_EXCLUDE_HEAVY } from '../models/Task.js';
 import { userModel } from '../models/User.js';
 import { userService } from './userService.js';
 import { logger, createTimer } from '../utils/logger.js';
@@ -357,7 +357,7 @@ export class TaskService {
       }
 
       const task = await this.taskModel.collection.findOne(filter, {
-        projection: { replies: 0, body: 0 }
+        projection: TASK_EXCLUDE_HEAVY
       });
 
       if (!task) {
