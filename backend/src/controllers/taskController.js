@@ -292,7 +292,7 @@ export class TaskController {
     const result = await collection.findOneAndUpdate(
       { _id: new ObjectId(taskId) },
       { $set: update },
-      { returnDocument: 'after' }
+      { returnDocument: 'after', projection: TASK_EXCLUDE_HEAVY }
     );
 
     if (!result) {
