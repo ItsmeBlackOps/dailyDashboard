@@ -114,4 +114,31 @@ describe('taskController.markMeetingStarted', () => {
     expect(r.body).toMatchObject({ success: true, meetingStarted: true, meetingStartedAt: 'T0' });
     expect(mockUpdateOne).not.toHaveBeenCalled();
   });
+
+  // Legacy-time fallback: when interviewStartAt is absent, derive the schedule
+  // from the legacy Eastern strings (Date of Interview + Start Time Of Interview).
+  it('rejects a legacy-time mark far in the future when interviewStartAt is absent', async () => {
+    mockFindOne.mockResolvedValue({ _id: VALID_ID, assignedTo: 'exp@x.com', 'Date of Interview': '12/31/2099', 'Start Time Of Interview': '11:00 PM' });
+    const r = res();
+    await taskController.markMeetingStarted(req({ user: { email: 'exp@x.com', role: 'user' } }), r);
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toMatchObject({ success: false, code: 'TOO_EARLY' });
+    expect(mockUpdateOne).not.toHaveBeenCalled();
+  });
+
+  it('allows a legacy-time mark in the past (meeting already occurred)', async () => {
+    mockFindOne.mockResolvedValue({ _id: VALID_ID, assignedTo: 'exp@x.com', 'Date of Interview': '01/01/2020', 'Start Time Of Interview': '09:00 AM' });
+    const r = res();
+    await taskController.markMeetingStarted(req({ user: { email: 'exp@x.com', role: 'user' } }), r);
+    expect(r.body.success).toBe(true);
+    expect(mockUpdateOne).toHaveBeenCalled();
+  });
+
+  it('allows the mark when there is no schedule at all (no interviewStartAt, no legacy fields)', async () => {
+    mockFindOne.mockResolvedValue({ _id: VALID_ID, assignedTo: 'exp@x.com' });
+    const r = res();
+    await taskController.markMeetingStarted(req({ user: { email: 'exp@x.com', role: 'user' } }), r);
+    expect(r.body.success).toBe(true);
+    expect(mockUpdateOne).toHaveBeenCalled();
+  });
 });

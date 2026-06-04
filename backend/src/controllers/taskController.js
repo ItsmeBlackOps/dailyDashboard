@@ -7,6 +7,24 @@ import { ensureMeetingForTask } from '../services/meetingProvisioningService.js'
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 import { database } from '../config/database.js';
+import moment from 'moment-timezone';
+
+// Resolve a task's scheduled start instant. Prefer the indexed `interviewStartAt`
+// (a true UTC instant); fall back to the legacy Eastern strings
+// ("Date of Interview" MM/DD/YYYY + "Start Time Of Interview" h:mm A), parsed in
+// America/New_York (handles EDT/EST). Returns a Date, or null when neither is
+// usable.
+function resolveScheduledInstant(task) {
+  if (task && task.interviewStartAt) {
+    const d = new Date(task.interviewStartAt);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const dStr = (task && task['Date of Interview'] ? String(task['Date of Interview']) : '').trim();
+  const tStr = (task && task['Start Time Of Interview'] ? String(task['Start Time Of Interview']) : '').trim();
+  if (!dStr || !tStr) return null;
+  const m = moment.tz(`${dStr} ${tStr}`, 'MM/DD/YYYY h:mm A', 'America/New_York');
+  return m.isValid() ? m.toDate() : null;
+}
 
 export class TaskController {
   constructor() {
@@ -355,10 +373,13 @@ export class TaskController {
     // Time-window guard (premature-meeting-start remediation): a meeting may
     // only be marked started within 60 minutes of its scheduled start. Marking
     // earlier misfeeds the "started" status and is treated as an SOP breach.
-    // Tasks without a scheduled interviewStartAt are unaffected.
+    // The schedule comes from interviewStartAt (UTC instant) or, when that is
+    // absent, the legacy Eastern strings. Tasks with no determinable schedule
+    // are unaffected (can't judge).
     const MARK_WINDOW_MS = 60 * 60 * 1000;
-    if (task.interviewStartAt) {
-      const msUntilStart = new Date(task.interviewStartAt).getTime() - Date.now();
+    const scheduledStart = resolveScheduledInstant(task);
+    if (scheduledStart) {
+      const msUntilStart = scheduledStart.getTime() - Date.now();
       if (Number.isFinite(msUntilStart) && msUntilStart > MARK_WINDOW_MS) {
         const minutes = Math.ceil(msUntilStart / 60000);
         return res.status(400).json({
