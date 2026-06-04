@@ -80,10 +80,20 @@ class CandidateSocketHandler {
 
       const search = typeof sanitizedData.search === 'string' ? sanitizedData.search : undefined;
       const sort = typeof sanitizedData.sort === 'string' ? sanitizedData.sort : undefined;
+      // SP3 Phase C — date-range filter. Read the triple off the payload and
+      // pass it through opaquely; the service normalises type and the model's
+      // buildDateRangeFilter applies the whitelist + bound parsing. An unknown
+      // dateField or missing bounds simply yields no filter (return all).
+      const dateField = typeof sanitizedData.dateField === 'string' ? sanitizedData.dateField : undefined;
+      const dateFrom = typeof sanitizedData.dateFrom === 'string' ? sanitizedData.dateFrom : undefined;
+      const dateTo = typeof sanitizedData.dateTo === 'string' ? sanitizedData.dateTo : undefined;
 
       const result = await candidateService.getCandidatesForUser(user, {
         search,
-        sort
+        sort,
+        dateField,
+        dateFrom,
+        dateTo
       });
 
       const response = {

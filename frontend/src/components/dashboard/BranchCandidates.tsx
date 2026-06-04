@@ -37,6 +37,11 @@ import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import { useNotifications } from "@/context/NotificationContext";
 import { ResumeDiscussionDrawer } from "@/components/resume/ResumeDiscussionDrawer";
 import { MarketingInfoModal } from "./MarketingInfoModal";
+import {
+  DateRangeFilter,
+  resolveDateRange,
+  type DateRangeValue,
+} from "@/components/common/DateRangeFilter";
 import { parseJsonOrThrow } from "@/lib/fetchJson";
 import { handleSupportInterviewSubmitError } from "@/components/dashboard/supportInterviewSubmitError";
 import { invalidateClientsCache } from '@/components/shared/CompanyCombobox';
@@ -462,6 +467,22 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [sortBy, setSortBy] = useState<
     'updated' | 'name' | 'expiringIn' | 'marketingStart' | 'poDate'
   >('updated');
+  // SP3 Phase C — server-side date-range filter. `dateField` is the column the
+  // range applies to and MUST be one of the backend-whitelisted fields (empty
+  // string = no date filter, the back-compat default). `dateRange` is the
+  // preset/custom selection owned by the shared <DateRangeFilter>; we resolve
+  // it to UTC ISO boundaries of an Eastern range at emit time. Both are
+  // forwarded to the backend so the cursor returns the list pre-filtered.
+  const [dateField, setDateField] = useState<
+    '' | 'marketingStartDate' | 'poDate' | 'eadEndDate'
+  >('');
+  const [dateRange, setDateRange] = useState<DateRangeValue>({ preset: 'all' });
+  // Resolve the active range once per change; reused for the emit payload and
+  // the effect dependency key below.
+  const resolvedRange = useMemo(
+    () => resolveDateRange(dateRange.preset, 'America/New_York', { from: dateRange.from, to: dateRange.to }),
+    [dateRange.preset, dateRange.from, dateRange.to]
+  );
   // SP1 T7 — "needs marketing info" worklist. The backend endpoint is the
   // authoritative, scope-enforced source: a recruiter sees their own, a
   // team lead/AM/manager their hierarchy, admin all; a non-marketing user
@@ -2746,9 +2767,28 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setLoading(true);
     setError("");
 
+    // SP3 Phase C — only attach date-filter args when a whitelisted field is
+    // chosen AND the preset resolves to at least one boundary. When dateField
+    // is "" (None) or the range is empty we send neither key, preserving the
+    // pre-filter request shape exactly (back-compat).
+    const hasDateFilter =
+      Boolean(dateField) &&
+      (resolvedRange.dateFrom !== undefined || resolvedRange.dateTo !== undefined);
+    const emitArgs: {
+      sort: typeof sortBy;
+      dateField?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    } = { sort: sortBy };
+    if (hasDateFilter) {
+      emitArgs.dateField = dateField;
+      if (resolvedRange.dateFrom !== undefined) emitArgs.dateFrom = resolvedRange.dateFrom;
+      if (resolvedRange.dateTo !== undefined) emitArgs.dateTo = resolvedRange.dateTo;
+    }
+
     socket.emit(
       "getBranchCandidates",
-      { sort: sortBy },
+      emitArgs,
       (resp: BranchCandidatesResponse) => {
         if (!resp?.success) {
           setCandidates([]);
@@ -2805,7 +2845,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         setLoading(false);
       }
     );
-  }, [socket, normalizeOptionList, normalizeCreatePolicy, sortBy]);
+  }, [socket, normalizeOptionList, normalizeCreatePolicy, sortBy, dateField, resolvedRange.dateFrom, resolvedRange.dateTo]);
 
   // SP1 T7 — load the authoritative "needs marketing info" worklist.
   // `countOnly` is the cheap path used for the header indicator; the full
@@ -3941,6 +3981,39 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 >
                   Needs marketing info{worklistCount > 0 ? ` (${worklistCount})` : ''}
                 </Button>
+              )}
+              {/* SP3 Phase C — date-range filter. The field <Select> picks
+                  which whitelisted date column the range applies to (None =
+                  off). The shared <DateRangeFilter> owns the preset/custom
+                  selection; the emit only carries date args when a field is
+                  chosen AND the range resolves. dateField is constrained to the
+                  fixed options below — never free text. */}
+              <Select
+                value={dateField || 'none'}
+                onValueChange={(v) =>
+                  setDateField(
+                    v === 'none'
+                      ? ''
+                      : (v as 'marketingStartDate' | 'poDate' | 'eadEndDate')
+                  )
+                }
+              >
+                <SelectTrigger className="w-[170px] h-9" aria-label="Filter by date field">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Date filter: None</SelectItem>
+                  <SelectItem value="marketingStartDate">Marketing start</SelectItem>
+                  <SelectItem value="poDate">PO date</SelectItem>
+                  <SelectItem value="eadEndDate">EAD end</SelectItem>
+                </SelectContent>
+              </Select>
+              {dateField && (
+                <DateRangeFilter
+                  value={dateRange}
+                  onChange={setDateRange}
+                  ariaLabel="Filter candidates by date range"
+                />
               )}
               {/* PRT Phase 5 — Sort dropdown forwards to the backend so
                   the cursor returns the list pre-sorted. Default is the
