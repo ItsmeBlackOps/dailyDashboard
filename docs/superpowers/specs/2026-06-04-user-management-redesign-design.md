@@ -27,6 +27,7 @@ and the role logic lives in one place.
 2. **No backend role rename.** Roles stay as the legacy tokens on the wire. Friendly names are a **display-only label map** (CLAUDE.md: the deep rename is a separate deferred phase).
 3. **Backend stays authoritative on permissions.** The frontend `rolePolicy` mirrors the gate/auto-fill rules for UX (show only what you can change), but the server still validates every create/update. The redesign must not loosen any gate.
 4. **Preserve all current behavior**: the actor→target role rules, teamLead/manager auto-fill, `canCreate`/`canManage` gates, `acceptsTasks` decoupled from role.
+5. **Match the existing UI theme.** Reuse the app's shadcn/ui primitives + Tailwind **semantic tokens** (`bg-card`, `bg-popover`, `text-foreground`, `text-muted-foreground`, `border`, the dark "aurora" theme) — introduce **no new palette, fonts, or bespoke CSS**. Role-badge tones map to existing theme colors; tables, drawers (Sheet), and toolbars should look consistent with `BranchCandidates`/`TasksToday`. The redesign changes structure/IA, not the visual language.
 
 ## Chosen design (validated via visual brainstorm)
 
