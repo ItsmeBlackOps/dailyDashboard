@@ -44,29 +44,11 @@ import { logger } from '../utils/logger.js';
 const TICK_INTERVAL_MS = 60_000;
 const TIMEZONE = 'America/New_York';
 
-// Match common video-conference URLs found in interview emails.
-// Order matters — more specific patterns first.
-const MEETING_LINK_PATTERNS = [
-  /https?:\/\/[a-z0-9.-]*zoom\.us\/[^\s<>"')]+/i,
-  /https?:\/\/meet\.google\.com\/[a-z0-9-]+/i,
-  /https?:\/\/teams\.microsoft\.com\/[^\s<>"')]+/i,
-  /https?:\/\/teams\.live\.com\/[^\s<>"')]+/i,
-  /https?:\/\/[a-z0-9.-]*webex\.com\/[^\s<>"')]+/i,
-  /https?:\/\/[a-z0-9.-]*whereby\.com\/[^\s<>"')]+/i,
-  /https?:\/\/[a-z0-9.-]*bluejeans\.com\/[^\s<>"')]+/i,
-  /https?:\/\/[a-z0-9.-]*gotomeeting\.com\/[^\s<>"')]+/i,
-];
-
-export function extractMeetingLink(body) {
-  if (!body || typeof body !== 'string') return null;
-  // Strip HTML entities that often wrap URLs in email bodies
-  const cleaned = body.replace(/&amp;/g, '&').replace(/&#x?\d+;/g, '');
-  for (const re of MEETING_LINK_PATTERNS) {
-    const m = cleaned.match(re);
-    if (m) return m[0].replace(/[.,);]+$/, '');
-  }
-  return null;
-}
+// NOTE: meeting links now come exclusively from the "Create meeting" flow
+// (joinUrl / joinWebUrl → meetingLink). Interview emails no longer carry the
+// link, so the old body-scrape fallback (extractMeetingLink +
+// MEETING_LINK_PATTERNS) was removed — it had fired only twice ever and never
+// in the recent window.
 
 // interviewDateTime is stored as 'YYYY-MM-DDTHH:mm' in EST (America/New_York).
 // Falls back to computing from legacy fields when the field is absent so that
@@ -113,26 +95,11 @@ async function processTask(collection, task) {
     });
   }
 
-  // Fallback only: scan the original email body for a meeting URL.
-  // The primary path is the "Create meeting" flow which persists the
-  // link directly to taskBody.meetingLink. Replies are NOT scanned —
-  // links never land there.
-  if (!meetingLink && typeof task.body === 'string') {
-    const extracted = extractMeetingLink(task.body);
-    if (extracted) {
-      meetingLink = extracted;
-      await collection.updateOne(
-        { _id },
-        { $set: { meetingLink: extracted, meetingLinkAutoExtractedAt: now } }
-      );
-      logger.info('Fireflies scheduler: auto-extracted meeting link from body', {
-        taskId: _id,
-        link: extracted,
-      });
-    }
-  }
-
-  if (!meetingLink) return; // nothing to do without a link
+  // No usable join link (and none adopted from joinUrl/joinWebUrl above) →
+  // nothing the bot can do. The find() query only selects link-bearing tasks,
+  // so this is a defensive guard; tick() emits a per-tick warn for in-window
+  // tasks that have no link at all.
+  if (!meetingLink) return;
 
   // Stage A — Precheck invite (T-20 to T-5)
   if (botStatus === 'pending' && minutesUntil <= 20 && minutesUntil > 5) {
@@ -368,13 +335,13 @@ async function tick() {
     const candidates = await collection
       .find({
         $and: [
-          // Either an already-saved meetingLink, OR a body we can scan for one
+          // Must already have a usable join link (from the Create-meeting flow).
+          // Link-less tasks are not botable — surfaced by the warn below.
           {
             $or: [
               { meetingLink: { $exists: true, $ne: null, $ne: '' } },
               { joinUrl:     { $exists: true, $ne: null, $ne: '' } },
               { joinWebUrl:  { $exists: true, $ne: null, $ne: '' } },
-              { body:        { $exists: true, $ne: '' } },
             ],
           },
           // Primary: indexed interviewDateTime range. Fallback: no interviewDateTime
@@ -392,6 +359,31 @@ async function tick() {
       .sort({ interviewDateTime: 1 })
       .limit(100)
       .toArray();
+
+    // Observability: with the email body-scrape removed, a join link must come
+    // from the Create-meeting flow. Surface in-window tasks that have NO link
+    // at all (bot skipped) so a workflow regression is visible. Scoped to tasks
+    // WITH interviewDateTime in the window (precise + cheap); non-fatal.
+    try {
+      const linklessInWindow = await collection.countDocuments({
+        interviewDateTime: { $gte: cutoffStart, $lte: cutoffEnd },
+        botStatus: { $nin: ['main_joined', 'main_failed', 'completed'] },
+        $nor: [
+          { meetingLink: { $exists: true, $ne: null, $ne: '' } },
+          { joinUrl:     { $exists: true, $ne: null, $ne: '' } },
+          { joinWebUrl:  { $exists: true, $ne: null, $ne: '' } },
+        ],
+      });
+      if (linklessInWindow > 0) {
+        logger.warn('Fireflies scheduler: in-window task(s) have no meeting link — bot skipped', {
+          count: linklessInWindow,
+          windowStart: cutoffStart,
+          windowEnd: cutoffEnd,
+        });
+      }
+    } catch (probeErr) {
+      logger.debug('Fireflies scheduler: linkless-count probe failed (non-fatal)', { error: probeErr.message });
+    }
 
     // Pace per-task processing to avoid bursting Fireflies. After the
     // 878d6c7 fix that finally let the scheduler reach real tasks, the
