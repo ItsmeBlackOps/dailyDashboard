@@ -117,6 +117,49 @@ function buildSearchFilter(search) {
   };
 }
 
+// SP3 Phase C — whitelisted server-side date-range filter for the Branch
+// Candidates list. The ONLY date fields a client may filter on are the three
+// stored as native Date below; `dateField` is checked against this exact
+// whitelist before it is ever used as a query key, so a client can never
+// smuggle in an arbitrary field name (or a Mongo operator) as the filter
+// target.
+//
+// `dateFrom` / `dateTo` are ISO strings (UTC instants of the Eastern range
+// boundaries, computed client-side). Bounds are inclusive-lower /
+// exclusive-upper ($gte / $lt). Each bound is parsed independently and an
+// unparseable one is dropped (so only-from / only-to / one-good-one-garbage
+// all work). Returns {} (no filter — list returns all, as today) when the
+// field is not whitelisted or no usable bound is present.
+export const DATE_RANGE_FILTER_FIELDS = ['marketingStartDate', 'poDate', 'eadEndDate'];
+
+export function buildDateRangeFilter(dateField, dateFrom, dateTo) {
+  if (typeof dateField !== 'string' || !DATE_RANGE_FILTER_FIELDS.includes(dateField)) {
+    return {};
+  }
+
+  const range = {};
+
+  if (dateFrom !== undefined && dateFrom !== null && dateFrom !== '') {
+    const from = new Date(dateFrom);
+    if (!Number.isNaN(from.getTime())) {
+      range.$gte = from;
+    }
+  }
+
+  if (dateTo !== undefined && dateTo !== null && dateTo !== '') {
+    const to = new Date(dateTo);
+    if (!Number.isNaN(to.getTime())) {
+      range.$lt = to;
+    }
+  }
+
+  if (Object.keys(range).length === 0) {
+    return {};
+  }
+
+  return { [dateField]: range };
+}
+
 export const WORKFLOW_STATUS = {
   awaitingExpert: 'awaiting_expert',
   needsResumeUnderstanding: 'needs_resume_understanding',
@@ -331,7 +374,7 @@ export class CandidateModel {
     }
   }
 
-  async getCandidatesByBranch(branch, { limit, search, sort } = {}) {
+  async getCandidatesByBranch(branch, { limit, search, sort, dateField, dateFrom, dateTo } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
@@ -341,6 +384,10 @@ export class CandidateModel {
     if (searchFilter) {
       Object.assign(query, searchFilter);
     }
+    // SP3 Phase C — whitelisted date-range filter. The filter key (one of
+    // marketingStartDate/poDate/eadEndDate) is a distinct top-level field, so
+    // it merges cleanly alongside the Branch scope and the search $or.
+    Object.assign(query, buildDateRangeFilter(dateField, dateFrom, dateTo));
 
     let cursor = this.collection
       .find(query, { projection: LIST_PROJECTION })
@@ -355,7 +402,7 @@ export class CandidateModel {
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getAllCandidates({ limit, search, sort } = {}) {
+  async getAllCandidates({ limit, search, sort, dateField, dateFrom, dateTo } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
@@ -365,6 +412,8 @@ export class CandidateModel {
     if (searchFilter) {
       Object.assign(query, searchFilter);
     }
+    // SP3 Phase C — whitelisted date-range filter (see getCandidatesByBranch).
+    Object.assign(query, buildDateRangeFilter(dateField, dateFrom, dateTo));
 
     let cursor = this.collection
       .find(query, { projection: LIST_PROJECTION })
@@ -384,7 +433,7 @@ export class CandidateModel {
   // callers can short-circuit to []/0. Both getCandidatesByRecruiters (fetch)
   // and countCandidatesByRecruiters (count) build their filter here, so a
   // count can never drift from the list it is counting.
-  _buildRecruiterScopeQuery(recruiterEmails, { search, visibility, workflowStatus, resumeUnderstandingStatus } = {}) {
+  _buildRecruiterScopeQuery(recruiterEmails, { search, visibility, workflowStatus, resumeUnderstandingStatus, dateField, dateFrom, dateTo } = {}) {
     if (!Array.isArray(recruiterEmails) || recruiterEmails.length === 0) {
       return null;
     }
@@ -459,10 +508,16 @@ export class CandidateModel {
       delete query.$or;
     }
 
+    // SP3 Phase C — whitelisted date-range filter. The filter key (one of
+    // marketingStartDate/poDate/eadEndDate) is a distinct top-level field, so
+    // it merges cleanly alongside the recruiter-scope $or/$and without
+    // disturbing visibility or search.
+    Object.assign(query, buildDateRangeFilter(dateField, dateFrom, dateTo));
+
     return query;
   }
 
-  async getCandidatesByRecruiters(recruiterEmails, { limit, search, sort, visibility, workflowStatus, resumeUnderstandingStatus } = {}) {
+  async getCandidatesByRecruiters(recruiterEmails, { limit, search, sort, visibility, workflowStatus, resumeUnderstandingStatus, dateField, dateFrom, dateTo } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
@@ -471,7 +526,10 @@ export class CandidateModel {
       search,
       visibility,
       workflowStatus,
-      resumeUnderstandingStatus
+      resumeUnderstandingStatus,
+      dateField,
+      dateFrom,
+      dateTo
     });
     if (!query) {
       return [];
@@ -820,7 +878,7 @@ export class CandidateModel {
     return documents.map((doc) => this.mapDocumentToCandidate(doc));
   }
 
-  async getCandidatesByExperts(expertEmails, { limit, search, status } = {}) {
+  async getCandidatesByExperts(expertEmails, { limit, search, status, dateField, dateFrom, dateTo } = {}) {
     if (!this.collection) {
       throw new Error('Candidate collection not initialized');
     }
@@ -842,6 +900,9 @@ export class CandidateModel {
     if (search) {
       query['Candidate Name'] = { $regex: search, $options: 'i' };
     }
+
+    // SP3 Phase C — whitelisted date-range filter (see getCandidatesByBranch).
+    Object.assign(query, buildDateRangeFilter(dateField, dateFrom, dateTo));
 
     let cursor = this.collection
       .find(query, { projection: LIST_PROJECTION })

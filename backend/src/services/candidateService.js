@@ -603,6 +603,22 @@ class CandidateService {
     return ALLOWED.has(key) ? key : undefined;
   }
 
+  // SP3 Phase C — normalise the date-range filter options coming off the
+  // socket/HTTP boundary into a `{ dateField, dateFrom, dateTo }` triple the
+  // model methods understand. Only the shape/type is normalised here (strings
+  // or undefined); the authoritative whitelist + parse/guard lives in the
+  // model's buildDateRangeFilter, so an unknown field or garbage bound simply
+  // produces no filter downstream (return all, as today).
+  resolveDateRange(options = {}) {
+    const asString = (value) =>
+      typeof value === 'string' && value.trim() ? value.trim() : undefined;
+    return {
+      dateField: asString(options.dateField),
+      dateFrom: asString(options.dateFrom),
+      dateTo: asString(options.dateTo)
+    };
+  }
+
   buildRecruiterVisibility(recruiterEmails, userForSelfPatterns = null) {
     const recruiterMatchers = new Set();
     const senderPatterns = new Set();
@@ -661,10 +677,14 @@ class CandidateService {
   async fetchCandidatesByBranch(user, branch, options) {
     const searchPattern = this.buildSearchPattern(options.search);
     const sort = this.resolveSortKey(options.sort);
+    const { dateField, dateFrom, dateTo } = this.resolveDateRange(options);
 
     const candidates = await candidateModel.getCandidatesByBranch(branch, {
       search: searchPattern,
-      sort
+      sort,
+      dateField,
+      dateFrom,
+      dateTo
     });
 
     const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user, { lean: true }));
@@ -699,6 +719,7 @@ class CandidateService {
     const { includeSelfPatterns = false, search, sort } = options;
     const searchPattern = this.buildSearchPattern(search);
     const resolvedSort = this.resolveSortKey(sort);
+    const { dateField, dateFrom, dateTo } = this.resolveDateRange(options);
 
     const visibility = this.buildRecruiterVisibility(
       recruiterEmails,
@@ -708,7 +729,10 @@ class CandidateService {
     const candidates = await candidateModel.getCandidatesByRecruiters(recruiterEmails, {
       search: searchPattern,
       sort: resolvedSort,
-      visibility
+      visibility,
+      dateField,
+      dateFrom,
+      dateTo
     });
 
     const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user, { lean: true }));
@@ -736,10 +760,14 @@ class CandidateService {
   async fetchAllCandidates(user, options) {
     const searchPattern = this.buildSearchPattern(options.search);
     const sort = this.resolveSortKey(options.sort);
+    const { dateField, dateFrom, dateTo } = this.resolveDateRange(options);
 
     const candidates = await candidateModel.getAllCandidates({
       search: searchPattern,
-      sort
+      sort,
+      dateField,
+      dateFrom,
+      dateTo
     });
 
     const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user, { lean: true }));
@@ -782,6 +810,7 @@ class CandidateService {
 
   async fetchCandidatesByExperts(user, expertEmails, options) {
     const searchPattern = this.buildSearchPattern(options?.search);
+    const { dateField, dateFrom, dateTo } = this.resolveDateRange(options || {});
 
     if (!Array.isArray(expertEmails) || expertEmails.length === 0) {
       logger.info('Expert candidate fetch skipped due to empty expert list', {
@@ -803,7 +832,10 @@ class CandidateService {
     }
 
     const candidates = await candidateModel.getCandidatesByExperts(expertEmails, {
-      search: searchPattern
+      search: searchPattern,
+      dateField,
+      dateFrom,
+      dateTo
     });
 
     const formattedCandidates = candidates.map((candidate) => this.formatCandidateRecord(candidate, user, { lean: true }));
