@@ -1426,6 +1426,14 @@ export class UserService {
           }
         }
 
+        // Parallel to `active`: persist the task-routing opt-in/out. The
+        // field is model-validated (User.js) and audited (User.js AUDITED),
+        // so the partial update flows through updateUser unchanged. Only
+        // honor an explicit boolean — undefined leaves the field untouched.
+        if (typeof entry.acceptsTasks === 'boolean') {
+          updatePayload.acceptsTasks = entry.acceptsTasks;
+        }
+
         if (entry.password !== undefined) {
           if (typeof entry.password !== 'string' || entry.password.length < 6) {
             throw new Error('Password must be at least 6 characters long');
