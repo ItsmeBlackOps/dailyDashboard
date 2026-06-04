@@ -171,7 +171,9 @@ export function EditUserDrawer({
         // policy's resolved value. Without this, e.g. a mam editing a
         // recruiter would silently reassign the recruiter's manager to the
         // mam's own manager on every save.
-        const existing = initial[field as keyof FormState];
+        // `field in initial` guards the cast — FieldKey includes 'password',
+        // which is not a FormState key (and is filtered out of `fields`).
+        const existing = field in initial ? initial[field as keyof FormState] : undefined;
         const hasExisting =
           existing !== undefined && existing !== null && existing !== '';
         if (!hasExisting && policy.value !== undefined) entry[field] = policy.value;

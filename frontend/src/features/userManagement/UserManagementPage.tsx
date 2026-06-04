@@ -171,9 +171,11 @@ export function UserManagementPage() {
               .filter(Boolean)
               .join(', ')}`,
           });
-        } else if (successMsg) {
-          toast({ title: successMsg });
+          // Return false so handleBulkApply keeps the selection — the user
+          // can see which rows failed and retry them.
+          return false;
         }
+        if (successMsg) toast({ title: successMsg });
         return true;
       } catch (err: any) {
         toast({
@@ -337,9 +339,11 @@ export function UserManagementPage() {
         actorContext={actorContext}
         allUsers={users}
         onClose={() => setAddOpen(false)}
-        onCreated={() => {
+        onCreated={(hasFailures) => {
           void refetch();
-          setAddOpen(false);
+          // On a partial success keep the drawer open (it now shows only the
+          // failed rows for correction); close only when everything created.
+          if (!hasFailures) setAddOpen(false);
         }}
       />
     </PageShell>

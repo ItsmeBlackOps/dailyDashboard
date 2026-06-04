@@ -64,13 +64,18 @@ const hintFor = (reason?: string): string => (reason ? REASON_HINTS[reason] ?? '
 // optional roster field routes through this sentinel, mapped back to ''.
 const NONE_VALUE = '__none__';
 
+// Module-level so it is compiled once, not per submit.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export interface AddUsersDrawerProps {
   open: boolean;
   actorRole: string;
   actorContext: ActorContext;
   allUsers: ManageableUser[];
   onClose: () => void;
-  onCreated: () => void;
+  /** Called after a create attempt. `hasFailures` is true on a partial
+   *  success so the page can refetch but keep the drawer open. */
+  onCreated: (hasFailures: boolean) => void;
 }
 
 // The role an actor creates by default + whether it is fixed (mlead).
@@ -159,7 +164,6 @@ export function AddUsersDrawer({
   const handleSubmit = async () => {
     // Client-side validation — catch obvious problems before the round-trip
     // so the user gets instant feedback (mirrors the legacy page).
-    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const problems: string[] = [];
     rows.forEach((r, i) => {
       if (!EMAIL_RE.test((r.email || '').trim())) problems.push(`Row ${i + 1}: enter a valid email`);
@@ -203,7 +207,16 @@ export function AddUsersDrawer({
           ? `${failed.length} failed: ${failed.map((f: any) => f.email).filter(Boolean).join(', ')}`
           : undefined,
       });
-      onCreated();
+      if (failed.length > 0) {
+        // Keep only the failed rows so the user can correct + retry without
+        // re-typing the ones that already succeeded. The page refetches but
+        // leaves the drawer open (keyed off the hasFailures flag).
+        const failedEmails = new Set(failed.map((f: any) => f.email).filter(Boolean));
+        setRows((prev) => prev.filter((r) => failedEmails.has(r.email)));
+        onCreated(true);
+      } else {
+        onCreated(false);
+      }
     } catch (err: any) {
       toast({
         variant: 'destructive',
