@@ -11,12 +11,9 @@ await jest.unstable_mockModule('../src/config/database.js', () => ({
   }
 }));
 
-await jest.unstable_mockModule('../src/utils/logger.js', () => ({
-  logger: {
-    info: jest.fn(),
-    error: jest.fn()
-  }
-}));
+const mockLogger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+mockLogger.child = jest.fn(() => mockLogger);
+await jest.unstable_mockModule('../src/utils/logger.js', () => ({ logger: mockLogger }));
 
 const { dashboardController } = await import('../src/controllers/dashboardController.js');
 
