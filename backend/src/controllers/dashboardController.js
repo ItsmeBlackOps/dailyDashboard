@@ -1,6 +1,7 @@
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import { userModel } from '../models/User.js';
+import { TASK_EXCLUDE_HEAVY } from '../models/Task.js';
 import moment from 'moment-timezone';
 
 const EST_TIMEZONE = 'America/New_York';
@@ -845,10 +846,17 @@ export class DashboardController {
                 },
                 // Lookup Interviews (TaskBody)
                 {
+                    // Pipeline-form lookup (not localField/foreignField) so we can
+                    // $project away the heavy replies/body fields. Join is equivalent
+                    // here — candidates are email-scoped upstream, so null/missing
+                    // Email ID rows don't participate.
                     $lookup: {
                         from: 'taskBody',
-                        localField: 'Email ID',
-                        foreignField: 'Email ID',
+                        let: { emailId: '$Email ID' },
+                        pipeline: [
+                            { $match: { $expr: { $eq: ['$Email ID', '$$emailId'] } } },
+                            { $project: TASK_EXCLUDE_HEAVY },
+                        ],
                         as: 'interviews'
                     }
                 },

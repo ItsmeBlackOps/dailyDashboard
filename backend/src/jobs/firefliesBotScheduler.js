@@ -1,6 +1,7 @@
 import moment from 'moment-timezone';
 import { firefliesService, FirefliesRateLimitError } from '../services/firefliesService.js';
 import { database } from '../config/database.js';
+import { TASK_EXCLUDE_HEAVY } from '../models/Task.js';
 
 // Bug 3 followup — write per-stage audit rows so the admin Processing
 // Logs / Failed Auto-Assigns tabs surface Fireflies activity. Same
@@ -355,7 +356,7 @@ async function tick() {
           },
         ],
         botStatus: { $nin: ['main_joined', 'main_failed', 'completed'] },
-      })
+      }, { projection: TASK_EXCLUDE_HEAVY })
       .sort({ interviewDateTime: 1 })
       .limit(100)
       .toArray();

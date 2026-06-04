@@ -6,7 +6,9 @@ jest.unstable_mockModule('../src/services/meetingProvisioningService.js', () => 
   buildEventPayload: jest.fn(),
 }));
 jest.unstable_mockModule('../src/middleware/errorHandler.js', () => ({ asyncHandler: (fn) => fn }));
-jest.unstable_mockModule('../src/utils/logger.js', () => ({ logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } }));
+const mockLogger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+mockLogger.child = jest.fn(() => mockLogger);
+jest.unstable_mockModule('../src/utils/logger.js', () => ({ logger: mockLogger }));
 jest.unstable_mockModule('../src/config/database.js', () => ({ database: { getCollection: jest.fn() } }));
 jest.unstable_mockModule('../src/services/taskService.js', () => ({ taskService: {} }));
 jest.unstable_mockModule('../src/services/thanksMailService.js', () => ({ thanksMailService: {} }));

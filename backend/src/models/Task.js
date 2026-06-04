@@ -7,6 +7,11 @@ import { Client, Databases, Query } from 'node-appwrite';
 import { config } from '../config/index.js';
 import { posthogLogger } from '../utils/posthogLogger.js';
 
+// Heavy fields on taskBody (the email thread + HTML body, ~the bulk of a
+// ~10 KB doc). Exclude from any read that does not render them. The ONLY
+// consumer that needs them is interviewSupportAdminService.getTaskDetail.
+export const TASK_EXCLUDE_HEAVY = { replies: 0, body: 0 };
+
 function escapeRegex(value = '') {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import moment from 'moment-timezone';
 import { config } from '../config/index.js';
-import { taskModel } from '../models/Task.js';
+import { taskModel, TASK_EXCLUDE_HEAVY } from '../models/Task.js';
 import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
 
@@ -453,10 +453,7 @@ class ReportAgentService {
 
     const mongoFilter = filters.length > 1 ? { $and: filters } : (filters[0] || {});
 
-    const projection = {
-      body: 0,
-      replies: 0
-    };
+    const projection = TASK_EXCLUDE_HEAVY;
 
     const sort = { [plan.sort.field]: plan.sort.direction };
 

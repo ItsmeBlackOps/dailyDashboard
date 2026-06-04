@@ -13,8 +13,10 @@ jest.unstable_mockModule('../src/config/database.js', () => ({
 jest.unstable_mockModule('../src/middleware/errorHandler.js', () => ({
   asyncHandler: (fn) => fn
 }));
+const mockLogger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+mockLogger.child = jest.fn(() => mockLogger);
 jest.unstable_mockModule('../src/utils/logger.js', () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: mockLogger
 }));
 // Heavy service deps imported by taskController but unused by updateMeetingLink.
 jest.unstable_mockModule('../src/services/taskService.js', () => ({ taskService: {} }));
@@ -51,6 +53,9 @@ describe('taskController.updateMeetingLink', () => {
     expect(updateDoc.$set.meetingLink).toBe(link);
     expect(updateDoc.$set.joinUrl).toBe(link);
     expect(updateDoc.$set.joinWebUrl).toBe(link);
+    expect(mockFindOneAndUpdate.mock.calls[0][2]).toEqual(
+      expect.objectContaining({ projection: { replies: 0, body: 0 } })
+    );
     expect(res.body).toMatchObject({ success: true });
   });
 
