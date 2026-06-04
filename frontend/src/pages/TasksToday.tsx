@@ -2799,6 +2799,12 @@ export default function TasksToday() {
   }, [debriefDialogTask?._id, debriefLoading, getInterviewDebriefStatus, toast]);
 
   const handleMarkStarted = useCallback(async (task: Task) => {
+    // Guard a malformed task: without an id the request would hit
+    // /api/tasks/undefined/meeting-started and 400. Surface a toast instead.
+    if (!task?._id) {
+      toast({ title: 'Cannot mark started — task id missing', variant: 'destructive' });
+      return;
+    }
     try {
       const res = await authFetch(`${API_URL}/api/tasks/${task._id}/meeting-started`, { method: 'PATCH' });
       const data = await parseJsonOrThrow<{ success: boolean; meetingStarted: boolean; meetingStartedAt: string | null; meetingStartedBy: string | null }>(res);

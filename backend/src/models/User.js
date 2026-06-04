@@ -46,6 +46,13 @@ export class UserModel {
         ? Boolean(userDoc.acceptsTasks)
         : ['expert', 'user', 'recruiter'].includes((userDoc.role || '').toLowerCase()),
       profile: userDoc.profile || null,
+      // One-time acknowledgment subdocs MUST be cached: the
+      // GET /api/users/me/{technical,marketing-meeting}-acknowledgment status
+      // reads getUserByEmail (the cache). Without these here the cached record
+      // never carried an ack, so `required` stayed true and the pop-up
+      // re-showed forever even after the PATCH persisted the ack to Mongo.
+      technicalAck: userDoc.technicalAck || null,
+      marketingMeetingAck: userDoc.marketingMeetingAck || null,
       _id: userDoc._id
     };
   }

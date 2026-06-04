@@ -1,4 +1,5 @@
-import { Suspense, lazy } from 'react';
+import { Suspense } from 'react';
+import { lazyWithRetry } from '@/lib/lazyWithRetry';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@radix-ui/react-tooltip';
@@ -59,29 +60,29 @@ import AuthorizedRoute from './routes/AuthorizedRoute';
 // hardware that's seconds of JS parse before first paint. Now each
 // route's chunk loads only when navigated to. The Suspense boundary
 // below renders a fast skeleton while the chunk streams in.
-const TasksToday = lazy(() => import('./pages/TasksToday'));
-const NotificationSettings = lazy(() => import('./pages/NotificationSettings'));
-const Index = lazy(() => import('./pages/Index'));
-const DashboardV2 = lazy(() => import('./pages/DashboardV2'));
-const AdminAlertsPage = lazy(() => import('./pages/AdminAlerts'));
-const UserManagementPage = lazy(() => import('./pages/UserManagement'));
-const DelegationsPage = lazy(() => import('./pages/Delegations'));
-const PermissionsManagement = lazy(() => import('./pages/PermissionsManagement'));
+const TasksToday = lazyWithRetry(() => import('./pages/TasksToday'));
+const NotificationSettings = lazyWithRetry(() => import('./pages/NotificationSettings'));
+const Index = lazyWithRetry(() => import('./pages/Index'));
+const DashboardV2 = lazyWithRetry(() => import('./pages/DashboardV2'));
+const AdminAlertsPage = lazyWithRetry(() => import('./pages/AdminAlerts'));
+const UserManagementPage = lazyWithRetry(() => import('./pages/UserManagement'));
+const DelegationsPage = lazyWithRetry(() => import('./pages/Delegations'));
+const PermissionsManagement = lazyWithRetry(() => import('./pages/PermissionsManagement'));
 
 // Lazy imports — heavy/secondary pages, split into their own chunks
-const Reports = lazy(() => import('./pages/Reports'));
-const ReportAssistant = lazy(() => import('./pages/ReportAssistant'));
-const BranchCandidatesPage = lazy(() => import('./pages/BranchCandidates'));
-const ResumeUnderstanding = lazy(() => import('./pages/ResumeUnderstanding'));
-const ProfileHubPage = lazy(() => import('./pages/ProfileHubPage'));
-const CandidateDetailPage = lazy(() => import('./pages/CandidateDetailPage'));
-const TaskDetailPage = lazy(() => import('./pages/TaskDetailPage'));
-const AdminPerformance = lazy(() => import('./pages/AdminPerformance'));
-const AdminInterviewSupport = lazy(() => import('./pages/AdminInterviewSupport'));
-const JobsPage = lazy(() => import('./pages/JobsPage'));
-const CandidateJobsListPage = lazy(() => import('./pages/CandidateJobsListPage'));
-const JobsListPage = lazy(() => import('./pages/JobsListPage'));
-const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
+const Reports = lazyWithRetry(() => import('./pages/Reports'));
+const ReportAssistant = lazyWithRetry(() => import('./pages/ReportAssistant'));
+const BranchCandidatesPage = lazyWithRetry(() => import('./pages/BranchCandidates'));
+const ResumeUnderstanding = lazyWithRetry(() => import('./pages/ResumeUnderstanding'));
+const ProfileHubPage = lazyWithRetry(() => import('./pages/ProfileHubPage'));
+const CandidateDetailPage = lazyWithRetry(() => import('./pages/CandidateDetailPage'));
+const TaskDetailPage = lazyWithRetry(() => import('./pages/TaskDetailPage'));
+const AdminPerformance = lazyWithRetry(() => import('./pages/AdminPerformance'));
+const AdminInterviewSupport = lazyWithRetry(() => import('./pages/AdminInterviewSupport'));
+const JobsPage = lazyWithRetry(() => import('./pages/JobsPage'));
+const CandidateJobsListPage = lazyWithRetry(() => import('./pages/CandidateJobsListPage'));
+const JobsListPage = lazyWithRetry(() => import('./pages/JobsListPage'));
+const NotificationsPage = lazyWithRetry(() => import('./pages/NotificationsPage'));
 
 // Minimal loading splash shown while lazy chunks are fetched
 const LoadingSplash = () => (
