@@ -93,6 +93,9 @@ interface Task {
   startTime?: string; // "MM/DD/YYYY HH:mm" or ISO
   endTime?: string;
   receivedDateTime?: string;
+  // SP3 — canonical interview instants (ISO, UTC) surfaced by the backend.
+  interviewStartAt?: string | null;
+  interviewEndsAt?: string | null;
 
   // Legacy keys (fallbacks)
   "Candidate Name"?: string;
@@ -1406,7 +1409,9 @@ export default function TasksToday() {
   const primaryStart = useCallback((t: Task): Moment | null => {
     const tab = selectedTabRef.current;
     if (tab === "receivedDateTime") return parseReceived(t);
-    return parseStart(t);
+    // SP3 — Date of Interview tab: prefer the reliable interviewStartAt instant
+    // (ISO from the backend) over the fragile "hh:mm A" display-string parse.
+    return t.interviewStartAt ? moment(t.interviewStartAt) : parseStart(t);
   }, []);
 
   const isTodayForCurrentTab = useCallback((task: Task) => {

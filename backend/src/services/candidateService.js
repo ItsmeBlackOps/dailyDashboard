@@ -596,7 +596,7 @@ class CandidateService {
   // arbitrary Mongo sort objects. Keys here map to SORT_PRESETS in
   // Candidate.js. Unknown values fall back to the default.
   resolveSortKey(sort) {
-    const ALLOWED = new Set(['updated', 'name', 'expiringIn']);
+    const ALLOWED = new Set(['updated', 'name', 'expiringIn', 'marketingStart', 'poDate']);
     if (typeof sort !== 'string') return undefined;
     const key = sort.trim();
     if (!key) return undefined;
