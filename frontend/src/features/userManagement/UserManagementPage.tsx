@@ -11,11 +11,9 @@
 // then refetch(). (Simplest correct path — no optimistic UI.)
 //
 // acceptsTasks note: the bulk-update endpoint (backend
-// userService.bulkUpdateUsers) does NOT copy `acceptsTasks` into its
-// update payload — only role/teamLead/manager/active/team/password are
-// honored. So the inline "Accepts" toggle has no writable backend path
-// and is rendered disabled (canToggleAccepts is always false). Flagged
-// for a follow-up; we do not invent an endpoint here.
+// userService.bulkUpdateUsers) persists `acceptsTasks` alongside
+// role/teamLead/manager/active/team/password. The inline "Accepts"
+// toggle is therefore policy-gated (canToggleAccepts) just like Active.
 //
 // Theme: @/components/ui/* primitives + semantic tokens only.
 
@@ -114,9 +112,13 @@ export function UserManagementPage() {
       fieldPolicy(actorRole, u.role, 'active', actorContext).state === 'editable',
     [actorRole, actorContext],
   );
-  // acceptsTasks is not writable via the bulk endpoint (see file header),
-  // so the inline toggle is always disabled regardless of policy.
-  const canToggleAccepts = useCallback((_u: ManageableUser) => false, []);
+  // acceptsTasks is bulk-writable (backend userService.bulkUpdateUsers),
+  // so the inline toggle is policy-gated exactly like Active.
+  const canToggleAccepts = useCallback(
+    (u: ManageableUser) =>
+      fieldPolicy(actorRole, u.role, 'acceptsTasks', actorContext).state === 'editable',
+    [actorRole, actorContext],
+  );
 
   // --- writes ---------------------------------------------------------
   // PUT a batch of partial user updates, then refetch. A destructive
@@ -157,9 +159,8 @@ export function UserManagementPage() {
     [putUpdates],
   );
 
-  // Wired for completeness, but UserTable receives canToggleAccepts=false
-  // so this never fires from the UI. If acceptsTasks becomes bulk-writable
-  // later, flip canToggleAccepts and this already does the right thing.
+  // PUTs a single-field acceptsTasks update, mirroring handleToggleActive.
+  // Only fires for rows where canToggleAccepts(u) is true.
   const handleToggleAccepts = useCallback(
     (u: ManageableUser, value: boolean) => {
       void putUpdates([{ email: u.email, acceptsTasks: value }]);

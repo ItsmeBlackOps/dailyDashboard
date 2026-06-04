@@ -111,6 +111,26 @@ describe('UserManagementPage', () => {
     await waitFor(() => expect(refetch).toHaveBeenCalled());
   });
 
+  it('PUTs a single acceptsTasks toggle to the bulk endpoint, then refetches', async () => {
+    render(<UserManagementPage />);
+    // The first data row's Accepts switch (label "Accepts tasks"). It is
+    // enabled for a managing actor now that the bulk endpoint persists it.
+    const acceptsSwitches = screen.getAllByRole('switch', { name: 'Accepts tasks' });
+    expect(acceptsSwitches[0]).not.toBeDisabled();
+    fireEvent.click(acceptsSwitches[0]);
+
+    await waitFor(() => expect(authFetch).toHaveBeenCalledTimes(1));
+    const [url, opts] = authFetch.mock.calls[0];
+    expect(url).toBe('/api/users/bulk');
+    expect(opts.method).toBe('PUT');
+    const body = JSON.parse(opts.body);
+    expect(body.users).toHaveLength(1);
+    // make() defaults acceptsTasks:false → toggling sends true under the
+    // exact `acceptsTasks` key the backend reads.
+    expect(body.users[0]).toMatchObject({ email: 'aarav.patel@x.com', acceptsTasks: true });
+    await waitFor(() => expect(refetch).toHaveBeenCalled());
+  });
+
   it('renders the not-authorized state for a non-managing role', () => {
     hookState.actorRole = 'recruiter';
     render(<UserManagementPage />);
