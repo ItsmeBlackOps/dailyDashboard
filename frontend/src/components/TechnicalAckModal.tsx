@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth, API_URL } from '@/hooks/useAuth';
 import { parseJsonOrThrow } from '@/lib/fetchJson';
+import { MeetingStartedChip } from '@/components/dashboard/MeetingStartedChip';
 
 interface AckContent { version: number; title: string; sections: string[]; }
 interface AckStatus { required: boolean; currentVersion: number; agreedVersion: number; content: AckContent | null; }
@@ -63,6 +64,32 @@ export function TechnicalAckModal() {
         <ul className="list-disc pl-5 space-y-2 text-sm">
           {content.sections.map((s, i) => <li key={i}>{s}</li>)}
         </ul>
+
+        {/*
+          Visual guide: render the actual MeetingStartedChip the tech team has
+          to click on their task rows, so the instructions point at the real
+          control instead of describing it. These previews are non-interactive
+          (pointer-events-none) and hidden from a11y/the test queries
+          (aria-hidden) — the only interactive elements remain the checkbox +
+          Submit below.
+        */}
+        <div
+          aria-hidden="true"
+          className="mt-3 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground"
+        >
+          <p className="mb-2 font-medium text-foreground">The Meeting-Started control on your task rows</p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
+            <div className="flex items-center gap-2 pointer-events-none select-none">
+              <MeetingStartedChip started={false} canMark onMark={() => { /* preview only */ }} />
+              <span>Before the meeting — click this to mark it started</span>
+            </div>
+            <div className="flex items-center gap-2 pointer-events-none select-none">
+              <MeetingStartedChip started canMark={false} onMark={() => { /* preview only */ }} startedAt="10:00 AM" />
+              <span>After you click — everyone sees it&apos;s started</span>
+            </div>
+          </div>
+        </div>
+
         <label className="flex items-center gap-2 text-sm mt-2">
           <Checkbox checked={agreed} onCheckedChange={(v) => setAgreed(Boolean(v))} />
           I have read and agree
