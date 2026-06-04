@@ -2,6 +2,7 @@ import { ObjectId } from 'mongodb';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config/index.js';
+import { TASK_EXCLUDE_HEAVY } from '../models/Task.js';
 
 class InterviewSupportAdminService {
   constructor() {
@@ -33,7 +34,7 @@ class InterviewSupportAdminService {
     const skip     = (pageNum - 1) * limitNum;
 
     const [tasks, total] = await Promise.all([
-      col.find(query).sort({ _id: -1 }).skip(skip).limit(limitNum).toArray(),
+      col.find(query, { projection: TASK_EXCLUDE_HEAVY }).sort({ _id: -1 }).skip(skip).limit(limitNum).toArray(),
       col.countDocuments(query),
     ]);
 
@@ -74,7 +75,7 @@ class InterviewSupportAdminService {
     let oid;
     try { oid = new ObjectId(taskId); } catch { oid = taskId; }
 
-    const task = await taskCol.findOne({ _id: oid });
+    const task = await taskCol.findOne({ _id: oid }, { projection: TASK_EXCLUDE_HEAVY });
     if (!task) throw new Error('Task not found');
 
     const prevStatus = task['Status'];
@@ -112,7 +113,7 @@ class InterviewSupportAdminService {
     let oid;
     try { oid = new ObjectId(taskId); } catch { oid = taskId; }
 
-    const task = await taskCol.findOne({ _id: oid });
+    const task = await taskCol.findOne({ _id: oid }, { projection: TASK_EXCLUDE_HEAVY });
     if (!task) throw new Error('Task not found');
 
     const now = new Date();
@@ -168,7 +169,7 @@ class InterviewSupportAdminService {
     let oid;
     try { oid = new ObjectId(taskId); } catch { oid = taskId; }
 
-    const task = await taskCol.findOne({ _id: oid });
+    const task = await taskCol.findOne({ _id: oid }, { projection: TASK_EXCLUDE_HEAVY });
     if (!task) throw new Error('Task not found');
 
     const subject = task['Subject'] || task['subject'] || '';
@@ -489,7 +490,7 @@ class InterviewSupportAdminService {
     const subjects = [...new Set(failedAudits.map(a => a.subject).filter(Boolean))];
     let taskBySubject = {};
     if (subjects.length > 0) {
-      const tasks = await taskCol.find({ subject: { $in: subjects } })
+      const tasks = await taskCol.find({ subject: { $in: subjects } }, { projection: TASK_EXCLUDE_HEAVY })
         .sort({ receivedDateTime: -1 })
         .toArray();
       for (const t of tasks) {
