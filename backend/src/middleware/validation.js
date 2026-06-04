@@ -515,8 +515,25 @@ export const validateCandidateQuery = (data = {}) => {
   if (sort !== undefined) {
     if (typeof sort !== 'string') {
       errors.push('sort must be a string');
-    } else if (!['updated', 'name', 'expiringIn'].includes(sort.trim())) {
-      errors.push('sort must be one of: updated, name, expiringIn');
+    } else if (!['updated', 'name', 'expiringIn', 'marketingStart', 'poDate'].includes(sort.trim())) {
+      errors.push('sort must be one of: updated, name, expiringIn, marketingStart, poDate');
+    }
+  }
+
+  // SP3 Phase C — optional date-range filter. Field is whitelisted; bounds
+  // are ISO date strings. The model (buildDateRangeFilter) is the
+  // authoritative gate, but reject obviously-bad input early.
+  const { dateField, dateFrom, dateTo } = data;
+  if (dateField !== undefined && dateField !== null && dateField !== '') {
+    if (typeof dateField !== 'string' || !['marketingStartDate', 'poDate', 'eadEndDate'].includes(dateField.trim())) {
+      errors.push('dateField must be one of: marketingStartDate, poDate, eadEndDate');
+    }
+  }
+  for (const [key, val] of [['dateFrom', dateFrom], ['dateTo', dateTo]]) {
+    if (val !== undefined && val !== null && val !== '') {
+      if (typeof val !== 'string' || Number.isNaN(new Date(val).getTime())) {
+        errors.push(`${key} must be a valid date string`);
+      }
     }
   }
 
