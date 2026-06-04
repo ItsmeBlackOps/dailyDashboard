@@ -254,10 +254,10 @@ class CandidateController {
       if (!user) {
         return res.status(401).json({ success: false, error: 'Authentication required' });
       }
-      // Prefer a synchronous delegated send from the requester's mailbox
-      // (same as Interview Support) when the frontend supplies a delegated
-      // Graph token; the service falls back to the async outbox if that
-      // send fails. Without a token it stays enqueue-only (app-only worker).
+      // Delegated send from the requester's mailbox (same mechanism as
+      // Interview/Assessment Support): the frontend supplies the user's Graph
+      // token via x-graph-access-token. The service requires it and surfaces
+      // the real Graph error on failure — there is no app-only outbox fallback.
       const graphTokenHeader = req.headers['x-graph-access-token'];
       const graphToken = typeof graphTokenHeader === 'string' && graphTokenHeader.trim()
         ? graphTokenHeader.trim()
@@ -284,7 +284,7 @@ class CandidateController {
       });
     } catch (error) {
       const status = error.statusCode || 500;
-      logger.error('sendAssignmentEmail enqueue failed', {
+      logger.error('sendAssignmentEmail failed', {
         error: error.message,
         candidateId: req.params?.id,
         userEmail: req.user?.email
