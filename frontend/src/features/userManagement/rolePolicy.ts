@@ -147,9 +147,10 @@ function managerPolicy(actor: string, target: string, ctx: ActorContext): Policy
       // self, falling back to the mm's own manager if self is blank.
       return { state: 'auto', value: self || actorMgr, reason: 'manager-is-self' };
     case 'mam':
-      return target === 'mlead'
-        ? { state: 'auto', value: actorMgr, reason: 'manager-is-actor-manager' }
-        : { state: 'editable' };
+      // The page shows a static (non-editable) manager box for a mam on
+      // both its targets (mlead, recruiter). For recruiter the form layer
+      // preserves the target's existing manager, else the actor's manager.
+      return { state: 'auto', value: actorMgr, reason: 'manager-is-actor-manager' };
     case 'am':
       // Both lead and user roll up to the am's own manager.
       return { state: 'auto', value: actorMgr, reason: 'manager-is-actor-manager' };

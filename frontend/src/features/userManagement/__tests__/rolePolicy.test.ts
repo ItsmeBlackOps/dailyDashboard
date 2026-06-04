@@ -175,9 +175,11 @@ describe('rolePolicy', () => {
       expect(mgr.value).toBe('Actor Manager');
     });
 
-    it('target=recruiter → teamLead editable, manager editable', () => {
+    it('target=recruiter → teamLead editable, manager auto (non-editable, = actorManager)', () => {
       expect(fieldPolicy('mam', 'recruiter', 'teamLead', ctx).state).toBe('editable');
-      expect(fieldPolicy('mam', 'recruiter', 'manager', ctx).state).toBe('editable');
+      const mgr = fieldPolicy('mam', 'recruiter', 'manager', ctx);
+      expect(mgr.state).toBe('auto');
+      expect(mgr.value).toBe('Actor Manager');
     });
 
     it('hides team, keeps active/password editable', () => {
