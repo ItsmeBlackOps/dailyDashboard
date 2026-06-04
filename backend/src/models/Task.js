@@ -11,6 +11,26 @@ function escapeRegex(value = '') {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// SP3 Phase B — display-sort comparator for getTasksByRange. Prefers the
+// reliable interviewStartAt/EndsAt (ISO strings surfaced by formatTask in
+// Phase A), falling back to the legacy parsed startTime/endTime when absent.
+// Ascending (soonest first), matching prior behavior. Pure: no DB, unit-tested.
+export function compareByInterviewStart(a, b) {
+  const toMs = (iso, fallback) => {
+    if (iso) {
+      const t = new Date(iso).getTime();
+      if (!Number.isNaN(t)) return t;
+    }
+    return fallback ? new Date(fallback).getTime() : 0;
+  };
+  const aS = toMs(a.interviewStartAt, a.startTime);
+  const bS = toMs(b.interviewStartAt, b.startTime);
+  if (aS !== bS) return aS - bS;
+  const aE = toMs(a.interviewEndsAt, a.endTime);
+  const bE = toMs(b.interviewEndsAt, b.endTime);
+  return aE - bE;
+}
+
 export class TaskModel {
   constructor() {
     this.collection = null;
@@ -959,14 +979,7 @@ export class TaskModel {
       // Enrich with Appwrite transcript status
       tasks = await this.enrichWithTranscriptStatus(tasks);
 
-      tasks.sort((a, b) => {
-        const aS = (a.startTime ? new Date(a.startTime) : new Date(0)).getTime();
-        const bS = (b.startTime ? new Date(b.startTime) : new Date(0)).getTime();
-        if (aS !== bS) return aS - bS;
-        const aE = (a.endTime ? new Date(a.endTime) : new Date(0)).getTime();
-        const bE = (b.endTime ? new Date(b.endTime) : new Date(0)).getTime();
-        return aE - bE;
-      });
+      tasks.sort(compareByInterviewStart);
 
       return tasks;
     } catch (error) {
