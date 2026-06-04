@@ -7,6 +7,7 @@ import { ensureMeetingForTask } from '../services/meetingProvisioningService.js'
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 import { database } from '../config/database.js';
+import { TASK_EXCLUDE_HEAVY } from '../models/Task.js';
 import moment from 'moment-timezone';
 
 // Resolve a task's scheduled start instant. Prefer the indexed `interviewStartAt`
@@ -344,7 +345,7 @@ export class TaskController {
     }
 
     const collection = database.getCollection('taskBody');
-    const task = await collection.findOne({ _id: new ObjectId(taskId) });
+    const task = await collection.findOne({ _id: new ObjectId(taskId) }, { projection: TASK_EXCLUDE_HEAVY });
     if (!task) {
       return res.status(404).json({ success: false, error: 'Task not found' });
     }

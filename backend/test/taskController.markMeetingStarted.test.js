@@ -6,7 +6,9 @@ const mockGetCollection = jest.fn(() => ({ findOne: mockFindOne, updateOne: mock
 jest.unstable_mockModule('../src/config/database.js', () => ({ database: { getCollection: mockGetCollection } }));
 jest.unstable_mockModule('../src/services/meetingProvisioningService.js', () => ({ ensureMeetingForTask: jest.fn(), buildEventPayload: jest.fn() }));
 jest.unstable_mockModule('../src/middleware/errorHandler.js', () => ({ asyncHandler: (fn) => fn }));
-jest.unstable_mockModule('../src/utils/logger.js', () => ({ logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } }));
+const mockLogger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+mockLogger.child = jest.fn(() => mockLogger);
+jest.unstable_mockModule('../src/utils/logger.js', () => ({ logger: mockLogger }));
 jest.unstable_mockModule('../src/services/taskService.js', () => ({ taskService: {} }));
 jest.unstable_mockModule('../src/services/thanksMailService.js', () => ({ thanksMailService: {} }));
 jest.unstable_mockModule('../src/services/interviewerQuestionService.js', () => ({ interviewerQuestionService: {} }));
@@ -32,6 +34,13 @@ describe('taskController.markMeetingStarted', () => {
     const r = res();
     await taskController.markMeetingStarted(req(), r);
     expect(r.statusCode).toBe(404);
+  });
+
+  it('reads the task without the heavy replies/body fields', async () => {
+    mockFindOne.mockResolvedValue({ _id: VALID_ID, assignedTo: 'exp@x.com' });
+    const r = res();
+    await taskController.markMeetingStarted(req({ user: { email: 'exp@x.com', role: 'user' } }), r);
+    expect(mockFindOne.mock.calls[0][1]).toEqual({ projection: { replies: 0, body: 0 } });
   });
 
   it('assigned expert marks own task started', async () => {
