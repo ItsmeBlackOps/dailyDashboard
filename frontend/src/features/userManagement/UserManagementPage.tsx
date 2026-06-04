@@ -22,6 +22,7 @@ import { AlertCircle, Users } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { API_URL, useAuth } from '@/hooks/useAuth';
 
@@ -36,6 +37,7 @@ import {
   type SortKey,
   type SortDir,
 } from './grouping';
+import { deriveDisplayNameFromEmail } from '@/utils/userNames';
 import { DirectoryToolbar, type DirectoryFilters } from './DirectoryToolbar';
 import { BulkActionBar, type BulkPatch } from './BulkActionBar';
 import { UserTable } from './UserTable';
@@ -62,15 +64,20 @@ const distinctRoles = (users: ManageableUser[]): string[] =>
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">User Management</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage your team — roles, reporting lines, and access.
-          </p>
+      {/* Single TooltipProvider for the whole page — the per-row ToggleCell
+          tooltips render under this one provider instead of mounting one
+          provider per cell (which was 2×N providers for N rows). */}
+      <TooltipProvider>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">User Management</h1>
+            <p className="text-sm text-muted-foreground">
+              Manage your team — roles, reporting lines, and access.
+            </p>
+          </div>
+          {children}
         </div>
-        {children}
-      </div>
+      </TooltipProvider>
     </DashboardLayout>
   );
 }
@@ -105,6 +112,15 @@ export function UserManagementPage() {
     [users, selectedEmails],
   );
   const selectedRoles = useMemo(() => distinctRoles(selectedUsers), [selectedUsers]);
+  // Display-name suggestions for the bulk team-lead / manager inputs
+  // (autocomplete to reduce typos — restores the legacy <datalist>).
+  const nameOptions = useMemo(
+    () =>
+      Array.from(new Set(users.map((u) => deriveDisplayNameFromEmail(u.email)).filter(Boolean))).sort(
+        (a, b) => a.localeCompare(b),
+      ),
+    [users],
+  );
 
   // --- per-row policy predicates -------------------------------------
   const canToggleActive = useCallback(
@@ -133,12 +149,31 @@ export function UserManagementPage() {
           body: JSON.stringify({ users: entries }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data?.success) {
-          const failure = Array.isArray(data?.failures) ? data.failures[0] : null;
-          throw new Error(failure?.error || data?.error || 'Update failed');
+        const updated = Array.isArray(data?.updates) ? data.updates : [];
+        const failed = Array.isArray(data?.failures) ? data.failures : [];
+
+        // Hard failure only when the request was rejected or NOTHING was
+        // updated. On a partial success (backend returns success:false with
+        // some `updates`) we still refetch so the applied changes show, and
+        // report which entries failed — rather than throwing and hiding the
+        // successes / inviting a re-apply on already-updated rows.
+        if (!res.ok || (!data?.success && updated.length === 0)) {
+          throw new Error((failed[0] && failed[0].error) || data?.error || 'Update failed');
         }
+
         await refetch();
-        if (successMsg) toast({ title: successMsg });
+        if (failed.length) {
+          toast({
+            variant: 'destructive',
+            title: 'Some changes did not apply',
+            description: `${updated.length} updated · ${failed.length} failed: ${failed
+              .map((f: any) => f.email)
+              .filter(Boolean)
+              .join(', ')}`,
+          });
+        } else if (successMsg) {
+          toast({ title: successMsg });
+        }
         return true;
       } catch (err: any) {
         toast({
@@ -253,6 +288,7 @@ export function UserManagementPage() {
         count={selectedEmails.size}
         selectedRoles={selectedRoles}
         actorRole={actorRole}
+        nameOptions={nameOptions}
         onApply={(patch) => void handleBulkApply(patch)}
       />
 

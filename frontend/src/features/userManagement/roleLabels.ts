@@ -47,10 +47,12 @@ const ROLE_BADGE_VARIANTS: Record<LegacyRole, BadgeVariant> = {
 
 /** Display label for a legacy role token; falls back to the raw token. */
 export function roleLabel(role: string): string {
-  return ROLE_LABELS[role as LegacyRole] ?? role;
+  const normalized = (role || '').toLowerCase().trim() as LegacyRole;
+  return ROLE_LABELS[normalized] ?? role;
 }
 
 /** Badge variant for a legacy role token; falls back to 'secondary'. */
 export function roleBadgeVariant(role: string): BadgeVariant {
-  return ROLE_BADGE_VARIANTS[role as LegacyRole] ?? 'secondary';
+  const normalized = (role || '').toLowerCase().trim() as LegacyRole;
+  return ROLE_BADGE_VARIANTS[normalized] ?? 'secondary';
 }
