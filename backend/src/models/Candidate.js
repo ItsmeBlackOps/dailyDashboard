@@ -81,14 +81,22 @@ const LIST_PROJECTION = (() => {
 // `_last_write` tiebreaker, which puts nulls last when paired with
 // `nullsLast` semantics enforced in the service layer (see
 // candidateService.buildSortStage).
-const SORT_PRESETS = {
+// The `marketingStart` / `poDate` presets sort DESC (newest first). Unlike
+// the ASC `expiringIn` case above, DESC puts null/missing values LAST for
+// free — Mongo treats a missing field as the smallest value, so on a -1
+// sort those rows fall to the bottom. Most candidates have no `poDate` yet;
+// they simply sink to the end of a poDate sort, which is what we want (no
+// service-layer nullsLast handling needed for the DESC presets).
+export const SORT_PRESETS = {
   updated: { _last_write: -1 },
   name: { 'Candidate Name': 1, _last_write: -1 },
-  expiringIn: { eadEndDate: 1, _last_write: -1 }
+  expiringIn: { eadEndDate: 1, _last_write: -1 },
+  marketingStart: { marketingStartDate: -1, _last_write: -1 },
+  poDate: { poDate: -1, _last_write: -1 }
 };
 const DEFAULT_SORT_KEY = 'updated';
 
-function resolveSort(sortKey) {
+export function resolveSort(sortKey) {
   if (typeof sortKey === 'string' && Object.prototype.hasOwnProperty.call(SORT_PRESETS, sortKey)) {
     return SORT_PRESETS[sortKey];
   }

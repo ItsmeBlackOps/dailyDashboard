@@ -459,7 +459,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   // 'updated' to preserve existing behaviour for users who don't change
   // the dropdown.
   const [expiringSoonOnly, setExpiringSoonOnly] = useState<boolean>(false);
-  const [sortBy, setSortBy] = useState<'updated' | 'name' | 'expiringIn'>('updated');
+  const [sortBy, setSortBy] = useState<
+    'updated' | 'name' | 'expiringIn' | 'marketingStart' | 'poDate'
+  >('updated');
   // SP1 T7 — "needs marketing info" worklist. The backend endpoint is the
   // authoritative, scope-enforced source: a recruiter sees their own, a
   // team lead/AM/manager their hierarchy, admin all; a non-marketing user
@@ -3945,7 +3947,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   historical "last updated" order. */}
               <Select
                 value={sortBy}
-                onValueChange={(v) => setSortBy(v as 'updated' | 'name' | 'expiringIn')}
+                onValueChange={(v) =>
+                  setSortBy(v as 'updated' | 'name' | 'expiringIn' | 'marketingStart' | 'poDate')
+                }
               >
                 <SelectTrigger className="w-[170px] h-9" aria-label='Sort candidates'>
                   <SelectValue />
@@ -3954,6 +3958,8 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                   <SelectItem value="updated">Recently updated</SelectItem>
                   <SelectItem value="name">Name (A–Z)</SelectItem>
                   <SelectItem value="expiringIn">Expiring soonest</SelectItem>
+                  <SelectItem value="marketingStart">Marketing start (newest)</SelectItem>
+                  <SelectItem value="poDate">PO date (newest)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
