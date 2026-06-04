@@ -53,6 +53,7 @@ export class UserModel {
       // re-showed forever even after the PATCH persisted the ack to Mongo.
       technicalAck: userDoc.technicalAck || null,
       marketingMeetingAck: userDoc.marketingMeetingAck || null,
+      meetingStartWarning: userDoc.meetingStartWarning || null,
       _id: userDoc._id
     };
   }

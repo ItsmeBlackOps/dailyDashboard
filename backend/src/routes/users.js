@@ -19,6 +19,8 @@ router.get('/me/technical-acknowledgment', userController.getMyTechnicalAck);
 router.patch('/me/technical-acknowledgment', userController.updateMyTechnicalAck);
 router.get('/me/marketing-meeting-acknowledgment', userController.getMyMarketingMeetingAck);
 router.patch('/me/marketing-meeting-acknowledgment', userController.updateMyMarketingMeetingAck);
+router.get('/me/meeting-start-warning', userController.getMyMeetingStartWarning);
+router.patch('/me/meeting-start-warning', userController.acknowledgeMyMeetingStartWarning);
 router.get('/active', userController.getActiveUsers);
 router.get('/team', userController.getTeamMembers);
 router.get('/manageable', requireHTTPRole(['admin', 'mm', 'mam', 'mlead', 'lead', 'am']), userController.getManageableUsers);

@@ -76,4 +76,42 @@ describe('taskController.markMeetingStarted', () => {
     expect(r.body).toMatchObject({ meetingStarted: true, meetingStartedAt: 'T0', meetingStartedBy: 'exp@x.com' });
     expect(mockUpdateOne).not.toHaveBeenCalled();
   });
+
+  // 60-minute time-window guard (premature-meeting-start remediation).
+  it('rejects a mark >60 min before interviewStartAt (TOO_EARLY) and does not write', async () => {
+    const future = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    mockFindOne.mockResolvedValue({ _id: VALID_ID, assignedTo: 'exp@x.com', interviewStartAt: future });
+    const r = res();
+    await taskController.markMeetingStarted(req({ user: { email: 'exp@x.com', role: 'user' } }), r);
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toMatchObject({ success: false, code: 'TOO_EARLY' });
+    expect(mockUpdateOne).not.toHaveBeenCalled();
+  });
+
+  it('allows a mark within 60 min of interviewStartAt', async () => {
+    const soon = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    mockFindOne.mockResolvedValue({ _id: VALID_ID, assignedTo: 'exp@x.com', interviewStartAt: soon });
+    const r = res();
+    await taskController.markMeetingStarted(req({ user: { email: 'exp@x.com', role: 'user' } }), r);
+    expect(r.body.success).toBe(true);
+    expect(mockUpdateOne).toHaveBeenCalled();
+  });
+
+  it('allows a mark when interviewStartAt is in the past (meeting underway)', async () => {
+    const past = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    mockFindOne.mockResolvedValue({ _id: VALID_ID, assignedTo: 'exp@x.com', interviewStartAt: past });
+    const r = res();
+    await taskController.markMeetingStarted(req({ user: { email: 'exp@x.com', role: 'user' } }), r);
+    expect(r.body.success).toBe(true);
+    expect(mockUpdateOne).toHaveBeenCalled();
+  });
+
+  it('already-started + far-future stays idempotent (guard runs after the idempotency check)', async () => {
+    const future = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
+    mockFindOne.mockResolvedValue({ _id: VALID_ID, assignedTo: 'exp@x.com', interviewStartAt: future, meetingStarted: true, meetingStartedAt: 'T0', meetingStartedBy: 'exp@x.com' });
+    const r = res();
+    await taskController.markMeetingStarted(req({ user: { email: 'exp@x.com', role: 'user' } }), r);
+    expect(r.body).toMatchObject({ success: true, meetingStarted: true, meetingStartedAt: 'T0' });
+    expect(mockUpdateOne).not.toHaveBeenCalled();
+  });
 });

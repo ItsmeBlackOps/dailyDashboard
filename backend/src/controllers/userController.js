@@ -5,6 +5,7 @@ import { logger } from '../utils/logger.js';
 import { database } from '../config/database.js';
 import { TECHNICAL_ACK, TECHNICAL_ACK_ROLES } from '../config/technicalAck.js';
 import { MARKETING_MEETING_ACK, MARKETING_MEETING_ACK_ROLES } from '../config/marketingMeetingAck.js';
+import { MEETING_START_WARNING } from '../config/meetingStartWarning.js';
 
 // Use the service-level helper as the single source of truth (was a
 // duplicate impl that split on `[._]` only — service version handles
@@ -386,6 +387,56 @@ export class UserController {
       return res.json({ success: true, required: false, currentVersion, agreedVersion: currentVersion });
     } catch (error) {
       logger.error('updateMyMarketingMeetingAck failed', { error: error.message, email: user.email });
+      return res.status(500).json({ success: false, error: 'Unable to record acknowledgment' });
+    }
+  });
+
+  // One-shot premature-meeting-start warning. The presence of a seeded
+  // `meetingStartWarning` subdoc on the user arms it; it shows for
+  // MEETING_START_WARNING.maxShows dismissals, then disappears.
+  getMyMeetingStartWarning = asyncHandler(async (req, res) => {
+    const user = req.user;
+    if (!user?.email) return res.status(401).json({ success: false, error: 'Authentication required' });
+    try {
+      const record = userModel.getUserByEmail(user.email) || {};
+      const w = record.meetingStartWarning || null;
+      const shownCount = Number(w?.shownCount) || 0;
+      const required = Boolean(w && !w.dismissed && shownCount < MEETING_START_WARNING.maxShows);
+      return res.json({
+        success: true,
+        required,
+        shownCount,
+        maxShows: MEETING_START_WARNING.maxShows,
+        content: required
+          ? { title: MEETING_START_WARNING.title, body: MEETING_START_WARNING.body, meetings: Array.isArray(w.meetings) ? w.meetings : [] }
+          : null,
+      });
+    } catch (error) {
+      logger.error('getMyMeetingStartWarning failed', { error: error.message, email: user.email });
+      return res.status(500).json({ success: false, error: 'Unable to read warning status' });
+    }
+  });
+
+  // Record one dismissal; increments shownCount (cap maxShows) and sets
+  // `dismissed` once it reaches the cap.
+  acknowledgeMyMeetingStartWarning = asyncHandler(async (req, res) => {
+    const user = req.user;
+    if (!user?.email) return res.status(401).json({ success: false, error: 'Authentication required' });
+    try {
+      const record = userModel.getUserByEmail(user.email) || {};
+      const w = record.meetingStartWarning || {};
+      const next = Math.min((Number(w.shownCount) || 0) + 1, MEETING_START_WARNING.maxShows);
+      const dismissed = next >= MEETING_START_WARNING.maxShows;
+      await userModel.updateUser(user.email, {
+        'meetingStartWarning.shownCount': next,
+        'meetingStartWarning.dismissed': dismissed,
+        'meetingStartWarning.lastShownAt': new Date().toISOString(),
+        _changedBy: user.email,
+        _source: 'self-meeting-start-warning',
+      });
+      return res.json({ success: true, shownCount: next, required: !dismissed });
+    } catch (error) {
+      logger.error('acknowledgeMyMeetingStartWarning failed', { error: error.message, email: user.email });
       return res.status(500).json({ success: false, error: 'Unable to record acknowledgment' });
     }
   });
