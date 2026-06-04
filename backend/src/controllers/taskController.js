@@ -352,6 +352,23 @@ export class TaskController {
       });
     }
 
+    // Time-window guard (premature-meeting-start remediation): a meeting may
+    // only be marked started within 60 minutes of its scheduled start. Marking
+    // earlier misfeeds the "started" status and is treated as an SOP breach.
+    // Tasks without a scheduled interviewStartAt are unaffected.
+    const MARK_WINDOW_MS = 60 * 60 * 1000;
+    if (task.interviewStartAt) {
+      const msUntilStart = new Date(task.interviewStartAt).getTime() - Date.now();
+      if (Number.isFinite(msUntilStart) && msUntilStart > MARK_WINDOW_MS) {
+        const minutes = Math.ceil(msUntilStart / 60000);
+        return res.status(400).json({
+          success: false,
+          code: 'TOO_EARLY',
+          error: `This meeting is scheduled in ~${minutes} min. You can mark it started only within 60 minutes of the start time.`,
+        });
+      }
+    }
+
     const meetingStartedAt = new Date().toISOString();
     await collection.updateOne(
       { _id: new ObjectId(taskId) },
