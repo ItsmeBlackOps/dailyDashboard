@@ -104,20 +104,21 @@ export class TaskService {
       const initialMatch = {};
 
       // Date Logic for Pipeline
-      // effectiveDateField is usually 'Date of Interview' or 'receivedDateTime'
+      // effectiveDateField is usually 'Date of Interview' or 'receivedDateTime'.
+      //
+      // SP3/DASH-S1 — the interview-date path now filters on the indexed BSON
+      // Date `interviewStartAt` instead of a $dateFromString parse of the
+      // "Date of Interview" MM/DD/YYYY string. The old $expr approach forced a
+      // full collection scan (computed field can't use an index) AND silently
+      // dropped rows whose string failed to parse. `startIso`/`endIso` are
+      // already Eastern-anchored UTC instants (resolveDateRange uses
+      // moment.tz(America/New_York)), so this range is timezone-identical to
+      // the prior match; the ~0.4% of tasks without interviewStartAt are
+      // exactly the unparseable rows the old match already excluded.
       if (rangeUsed === 'upcoming') {
-        // Upcoming Logic (Date >= Today)
-        const dateExpr = {
-          $dateFromString: {
-            dateString: "$Date of Interview",
-            format: "%m/%d/%Y",
-            timezone: "America/New_York",
-            onError: null,
-            onNull: null
-          }
-        };
-        const todayDate = moment.tz(TIMEZONE).startOf('day').toDate();
-        initialMatch.$expr = { $gt: [dateExpr, todayDate] };
+        // Upcoming Logic (interview start >= start-of-tomorrow EST). `startIso`
+        // was set to EST start-of-tomorrow in the `upcoming` block above.
+        initialMatch.interviewStartAt = { $gte: new Date(startIso) };
       } else {
         // Range Logic
         if (effectiveDateField === 'receivedDateTime') {
@@ -125,29 +126,12 @@ export class TaskService {
           if (startIso) initialMatch.receivedDateTime.$gte = startIso;
           if (endIso) initialMatch.receivedDateTime.$lte = endIso;
         } else {
-          // String Date Logic for "Date of Interview"
-          // Standard string compare works IF formats are standard, but legacy MM/DD/YYYY is flawed for range.
-          // Best effort: convert to date via $dateFromString
-          const dateExpr = {
-            $dateFromString: {
-              dateString: "$Date of Interview",
-              format: "%m/%d/%Y",
-              timezone: "America/New_York",
-              onError: null,
-              onNull: null
-            }
-          };
-
-          // Convert ISO strings back to Date objects for comparison
-          const startDateObj = startIso ? new Date(startIso) : null;
-          const endDateObj = endIso ? new Date(endIso) : null;
-
-          const exprFilters = [];
-          if (startDateObj) exprFilters.push({ $gte: [dateExpr, startDateObj] });
-          if (endDateObj) exprFilters.push({ $lt: [dateExpr, endDateObj] });
-
-          if (exprFilters.length > 0) {
-            initialMatch.$expr = { $and: exprFilters };
+          // Interview-date range on the indexed `interviewStartAt` BSON Date.
+          const range = {};
+          if (startIso) range.$gte = new Date(startIso);
+          if (endIso) range.$lt = new Date(endIso);
+          if (Object.keys(range).length > 0) {
+            initialMatch.interviewStartAt = range;
           }
         }
       }
@@ -192,7 +176,11 @@ export class TaskService {
       }
 
       // 5. Pagination & Formatting
-      pipeline.push({ $sort: { _id: -1 } });
+      // Sort by the indexed `interviewStartAt` (soonest first) so the day's
+      // interviews list in chronological order; the `interviewStartAt: 1`
+      // index serves both this sort and the date-range filter above. `_id`
+      // is a stable secondary key for pagination when starts tie / are null.
+      pipeline.push({ $sort: { interviewStartAt: 1, _id: -1 } });
       if (offset) pipeline.push({ $skip: offset });
       if (limit) pipeline.push({ $limit: limit });
 
@@ -595,31 +583,14 @@ export class TaskService {
 
       // Date Filters
       if (upcoming) {
-        // "Upcoming" means Today onwards in NYC time
-        const todayStr = moment.tz(TIMEZONE).format('MM/DD/YYYY');
-        // We can't easily do string comparison on "MM/DD/YYYY" if we want ">= Today".
-        // However, the existing data relies on string dates.
-        // But since format is MM/DD/YYYY, standard string compare WON'T work correctly (01/01/2026 < 12/31/2025 is false, but 02 < 01 is false).
-        // Standard approach for this legacy string date format:
-        // We either need to parse dates in aggregation (slow) or rely on a regex or application-side filtering if volume is low.
-        // BUT, since we have limits, we can try to filter by converting field to date?
-        // Let's use $expr with $dateFromString if we are on MongoDB 3.6+.
-
-        // Helper to convert field
-        const dateExpr = {
-          $dateFromString: {
-            dateString: "$Date of Interview",
-            format: "%m/%d/%Y",
-            timezone: "America/New_York",
-            onError: null,
-            onNull: null
-          }
-        };
-        const todayDate = moment.tz(TIMEZONE).startOf('day').toDate();
-
-        initialMatch.$expr = {
-          $gte: [dateExpr, todayDate]
-        };
+        // "Upcoming" means today onwards in NYC time. SP3/DASH-S1 — filter on
+        // the indexed BSON Date `interviewStartAt` instead of a $dateFromString
+        // parse of the "Date of Interview" MM/DD/YYYY string. The old $expr on
+        // a computed field forced a full collection scan and dropped rows whose
+        // string failed to parse; this range is index-friendly and anchored to
+        // Eastern start-of-day regardless of server clock.
+        const todayStartEst = moment.tz(TIMEZONE).startOf('day').toDate();
+        initialMatch.interviewStartAt = { $gte: todayStartEst };
       } else if (dateFrom || dateTo) {
         if (!initialMatch.receivedDateTime) initialMatch.receivedDateTime = {};
         if (dateFrom) initialMatch.receivedDateTime.$gte = dateFrom;
@@ -667,7 +638,9 @@ export class TaskService {
       }
 
       // 5. Pagination & Formatting
-      pipeline.push({ $sort: { _id: -1 } });
+      // Sort by the indexed `interviewStartAt` (soonest first) to match the
+      // Tasks list ordering; `_id` is a stable secondary key for pagination.
+      pipeline.push({ $sort: { interviewStartAt: 1, _id: -1 } });
       if (offset) pipeline.push({ $skip: offset });
       if (limit) pipeline.push({ $limit: limit });
 
