@@ -51,6 +51,12 @@ jest.unstable_mockModule('../src/models/User.js', () => ({ userModel: { getAllUs
 jest.unstable_mockModule('../src/services/userService.js', () => ({
   userService: { collectManageableUsers: jest.fn(() => []) },
   roleLevel: (r) => r,
+  // C20 phase 2: candidateService now imports these at module load for the
+  // team-scoped hierarchy walk. The timeline aggregator never exercises them
+  // (it reads with an admin user); faithful no-op stubs keep the module link
+  // intact (same approach as the toIsoDate stub above).
+  teamScopeDecision: () => ({ allowed: true, straggler: false }),
+  emitTeamStragglerWarning: () => {},
 }));
 
 const { candidateService } = await import('../src/services/candidateService.js');
