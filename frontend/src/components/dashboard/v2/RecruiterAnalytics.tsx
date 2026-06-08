@@ -81,7 +81,7 @@ interface RecruiterDataResponse {
     byOwner: RecruiterStat[];
 }
 
-export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: string; dateBasis: string, startDate?: string }) {
+export function RecruiterAnalytics({ period, dateBasis, startDate, endDate }: { period: string; dateBasis: string, startDate?: string, endDate?: string }) {
     const navigate = useNavigate();
     const [fullData, setFullData] = useState<RecruiterDataResponse>({ bySender: [], byOwner: [] });
     const [viewMode, setViewMode] = useState<'sender' | 'owner'>('sender');
@@ -108,6 +108,7 @@ export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: s
             try {
                 let url = `${API_URL}/api/dashboard/stats/recruiter?period=${period}&dateBasis=${dateBasis}`;
                 if (startDate) url += `&startDate=${startDate}`;
+                if (endDate) url += `&endDate=${endDate}`;
                 const res = await authFetch(url);
                 const data = await res.json();
                 if (data.success) {
@@ -126,7 +127,7 @@ export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: s
         };
 
         fetchStats();
-    }, [period, dateBasis, startDate, authFetch]);
+    }, [period, dateBasis, startDate, endDate, authFetch]);
 
     useEffect(() => {
         if (selectedRecruiter) {
@@ -135,6 +136,7 @@ export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: s
                 try {
                     let url = `${API_URL}/api/dashboard/stats/recruiter/drilldown?period=${period}&recruiterEmail=${encodeURIComponent(selectedRecruiter)}&dateBasis=${dateBasis}&viewMode=${viewMode}`;
                     if (startDate) url += `&startDate=${startDate}`;
+                    if (endDate) url += `&endDate=${endDate}`;
                     if (statusFilter !== 'all') url += `&status=${encodeURIComponent(statusFilter.toLowerCase())}`;
                     if (interviewRoundFilter !== 'all') url += `&interviewRound=${encodeURIComponent(interviewRoundFilter)}`;
                     if (actualRoundFilter !== 'all') url += `&actualRound=${encodeURIComponent(actualRoundFilter)}`;
@@ -154,7 +156,7 @@ export function RecruiterAnalytics({ period, dateBasis, startDate }: { period: s
         } else {
             setDrilldownTasks([]);
         }
-    }, [selectedRecruiter, period, dateBasis, startDate, statusFilter, interviewRoundFilter, actualRoundFilter, viewMode, authFetch]);
+    }, [selectedRecruiter, period, dateBasis, startDate, endDate, statusFilter, interviewRoundFilter, actualRoundFilter, viewMode, authFetch]);
 
     const activeStats = viewMode === 'sender' ? fullData.bySender : fullData.byOwner;
 

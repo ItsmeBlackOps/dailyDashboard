@@ -3294,8 +3294,19 @@ export default function TasksToday() {
     const silent = options.silent === true;
     const shouldReplace = options.replace ?? isInitial;
     const BATCH_SIZE = isInitial ? 30 : 20;
+    const basePayload = buildDashboardPayload({ ...filters, dateField: selectedTabRef.current as any });
+    // DASH-S1 — for the "day" preset, do NOT ship browser-derived absolute
+    // start/end timestamps. Send only `range: 'day'` and let the backend
+    // anchor the boundaries to America/New_York (EST/EDT) so "today" is the
+    // Eastern calendar day regardless of the viewer's machine clock. The
+    // week/month/custom presets keep their explicit (already EST-anchored)
+    // bounds. UI/labels are unchanged — this only affects the wire payload.
+    if (basePayload.range === 'day') {
+      delete basePayload.start;
+      delete basePayload.end;
+    }
     const payload = {
-      ...buildDashboardPayload({ ...filters, dateField: selectedTabRef.current as any }),
+      ...basePayload,
       limit: BATCH_SIZE,
       offset
     };

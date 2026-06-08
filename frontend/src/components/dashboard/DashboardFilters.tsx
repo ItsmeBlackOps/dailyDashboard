@@ -136,6 +136,19 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
     }
   }, [filters.range, filters.start, filters.end]);
 
+  // Default the filter to "Today" on first mount: if the Daily range is
+  // selected but no concrete day/range has been resolved yet (fresh load, no
+  // shared URL state), seed it with today's range so the dashboard shows
+  // today's data by default. Never clobbers an already-resolved selection.
+  useEffect(() => {
+    if (filters.range === "day" && !filters.dayDate && !filters.start && !filters.end) {
+      const { startIso, endIso, dayIso } = computeDayRange(new Date(), DEFAULT_TIMEZONE);
+      onChange({ ...filters, range: "day", dayDate: dayIso, start: startIso, end: endIso });
+    }
+    // Mount-only: intentionally not re-running when filters change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const applyDayValue = (date: Date) => {
     const { startIso, endIso, dayIso } = computeDayRange(date, DEFAULT_TIMEZONE);
     trackFilterChange('range_specific', 'day', { day_date: dayIso });

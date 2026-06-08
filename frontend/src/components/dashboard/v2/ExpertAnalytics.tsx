@@ -60,7 +60,7 @@ interface DrilldownTask {
     'suggestions'?: string[];
 }
 
-export function ExpertAnalytics({ period, startDate, dateBasis }: { period: string; startDate?: string; dateBasis?: string }) {
+export function ExpertAnalytics({ period, startDate, endDate, dateBasis }: { period: string; startDate?: string; endDate?: string; dateBasis?: string }) {
     const navigate = useNavigate();
     const [stats, setStats] = useState<ExpertStat[]>([]);
     const [loading, setLoading] = useState(true);
@@ -84,6 +84,7 @@ export function ExpertAnalytics({ period, startDate, dateBasis }: { period: stri
             try {
                 let url = `${API_URL}/api/dashboard/stats/expert?period=${period}`;
                 if (startDate) url += `&startDate=${startDate}`;
+                if (endDate) url += `&endDate=${endDate}`;
                 if (dateBasis) url += `&dateBasis=${dateBasis}`;
                 const res = await authFetch(url);
                 const data = await res.json();
@@ -98,7 +99,7 @@ export function ExpertAnalytics({ period, startDate, dateBasis }: { period: stri
         };
 
         fetchStats();
-    }, [period, startDate, dateBasis, authFetch]);
+    }, [period, startDate, endDate, dateBasis, authFetch]);
 
     useEffect(() => {
         if (selectedExpert) {
@@ -107,6 +108,7 @@ export function ExpertAnalytics({ period, startDate, dateBasis }: { period: stri
                 try {
                     let url = `${API_URL}/api/dashboard/stats/expert/drilldown?period=${period}&expertEmail=${encodeURIComponent(selectedExpert)}`;
                     if (startDate) url += `&startDate=${startDate}`;
+                    if (endDate) url += `&endDate=${endDate}`;
                     if (dateBasis) url += `&dateBasis=${dateBasis}`;
                     if (statusFilter !== 'all') url += `&status=${encodeURIComponent(statusFilter.toLowerCase())}`;
                     if (interviewRoundFilter !== 'all') url += `&interviewRound=${encodeURIComponent(interviewRoundFilter)}`;
@@ -127,7 +129,7 @@ export function ExpertAnalytics({ period, startDate, dateBasis }: { period: stri
         } else {
             setDrilldownTasks([]);
         }
-    }, [selectedExpert, period, startDate, dateBasis, statusFilter, interviewRoundFilter, actualRoundFilter, authFetch]);
+    }, [selectedExpert, period, startDate, endDate, dateBasis, statusFilter, interviewRoundFilter, actualRoundFilter, authFetch]);
 
     const buildOptions = (values: Array<string | undefined>) => {
         const map = new Map<string, string>();

@@ -70,18 +70,22 @@ const DelegationsPage = lazyWithRetry(() => import('./pages/Delegations'));
 const PermissionsManagement = lazyWithRetry(() => import('./pages/PermissionsManagement'));
 
 // Lazy imports — heavy/secondary pages, split into their own chunks
-const Reports = lazyWithRetry(() => import('./pages/Reports'));
-const ReportAssistant = lazyWithRetry(() => import('./pages/ReportAssistant'));
+// NOTE: Reports, ReportAssistant, AdminPerformance, AdminInterviewSupport and
+// JobsListPage are temporarily hidden (nav + routes removed) — the team isn't
+// using these surfaces. Page files remain on disk so this is reversible; just
+// restore the import + matching <Route> below to bring a surface back.
+// const Reports = lazyWithRetry(() => import('./pages/Reports'));
+// const ReportAssistant = lazyWithRetry(() => import('./pages/ReportAssistant'));
 const BranchCandidatesPage = lazyWithRetry(() => import('./pages/BranchCandidates'));
 const ResumeUnderstanding = lazyWithRetry(() => import('./pages/ResumeUnderstanding'));
 const ProfileHubPage = lazyWithRetry(() => import('./pages/ProfileHubPage'));
 const CandidateDetailPage = lazyWithRetry(() => import('./pages/CandidateDetailPage'));
 const TaskDetailPage = lazyWithRetry(() => import('./pages/TaskDetailPage'));
-const AdminPerformance = lazyWithRetry(() => import('./pages/AdminPerformance'));
-const AdminInterviewSupport = lazyWithRetry(() => import('./pages/AdminInterviewSupport'));
+// const AdminPerformance = lazyWithRetry(() => import('./pages/AdminPerformance'));
+// const AdminInterviewSupport = lazyWithRetry(() => import('./pages/AdminInterviewSupport'));
 const JobsPage = lazyWithRetry(() => import('./pages/JobsPage'));
 const CandidateJobsListPage = lazyWithRetry(() => import('./pages/CandidateJobsListPage'));
-const JobsListPage = lazyWithRetry(() => import('./pages/JobsListPage'));
+// const JobsListPage = lazyWithRetry(() => import('./pages/JobsListPage'));
 const NotificationsPage = lazyWithRetry(() => import('./pages/NotificationsPage'));
 
 // Minimal loading splash shown while lazy chunks are fetched
@@ -119,8 +123,9 @@ const App = () => (
                 <Route path="/" element={<DashboardV2 />} />
                 <Route path="/legacy-dashboard" element={<Index />} />
                 <Route path="/tasks" element={<TasksToday />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/reports/assistant" element={<ReportAssistant />} />
+                {/* Hidden — Reports surface removed from nav + routing (page file kept on disk) */}
+                {/* <Route path="/reports" element={<Reports />} /> */}
+                {/* <Route path="/reports/assistant" element={<ReportAssistant />} /> */}
                 <Route path="/branch-candidates" element={<BranchCandidatesPage />} />
                 <Route path="/admin-alerts" element={<AdminAlertsPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
@@ -133,9 +138,13 @@ const App = () => (
                 <Route path="/profile-hub" element={<ProfileHubPage />} />
                 <Route path="/candidate/:id" element={<CandidateDetailPage />} />
                 <Route path="/task/:taskId" element={<TaskDetailPage />} />
-                <Route path="/admin/performance" element={<AdminPerformance />} />
-                <Route path="/admin/interview-support" element={<AdminInterviewSupport />} />
-                <Route path="/jobs" element={<JobsListPage />} />
+                {/* Hidden — frontend Performance Monitor page removed from nav + routing
+                    (page file kept on disk; backend perf monitoring is unaffected) */}
+                {/* <Route path="/admin/performance" element={<AdminPerformance />} /> */}
+                {/* Hidden — Interview Support surface removed from nav + routing (page file kept on disk) */}
+                {/* <Route path="/admin/interview-support" element={<AdminInterviewSupport />} /> */}
+                {/* Hidden — Jobs Pool listing removed from nav + routing (page file kept on disk) */}
+                {/* <Route path="/jobs" element={<JobsListPage />} /> */}
                 <Route path="/jobs/:sessionId" element={<JobsPage />} />
                 <Route path="/candidate/:candidateId/jobs" element={<CandidateJobsListPage />} />
                 {/* Add any other protected routes here */}

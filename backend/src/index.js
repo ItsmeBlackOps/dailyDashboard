@@ -50,11 +50,13 @@ import { emailOutboxRepository } from './services/emailOutboxRepository.js';
 import { emailDeliveryWorker } from './services/emailDeliveryWorker.js';
 import { startEmailOutboxJanitor } from './jobs/emailOutboxJanitor.js';
 import { startActiveJobScrapeScheduler } from './jobs/activeJobScrapeScheduler.js';
-import { startJobsPoolImportScheduler } from './jobs/jobsPoolImportScheduler.js';
+// Jobs Pool disabled (unused) — 2026-06-08. Import scheduler unmounted; module kept on disk for reversibility.
+// import { startJobsPoolImportScheduler } from './jobs/jobsPoolImportScheduler.js';
 import { startPoolRefresherScheduler } from './jobs/poolRefresherScheduler.js';
 import { startPerCandidateScrapeScheduler } from './jobs/perCandidateScrapeScheduler.js';
 import { startDelegationSweepScheduler } from './jobs/delegationSweepScheduler.js';
-import { jobsPoolService } from './services/jobsPoolService.js';
+// Jobs Pool disabled (unused) — 2026-06-08. Only consumed by the commented-out boot sweep below.
+// import { jobsPoolService } from './services/jobsPoolService.js';
 import { ensurePerformanceIndexes } from './jobs/ensurePerfIndexes.js';
 import { recordPerfMetric, startPerfMetricsFlusher, stopPerfMetricsFlusher } from './jobs/perfMetricsBuffer.js';
 
@@ -333,23 +335,25 @@ class Application {
             });
           });
         startActiveJobScrapeScheduler();
-        startJobsPoolImportScheduler();
+        // Jobs Pool disabled (unused) — 2026-06-08. Import scheduler + boot USonly sweep commented out.
+        // startJobsPoolImportScheduler();
         startPoolRefresherScheduler();
         startPerCandidateScrapeScheduler();
         startDelegationSweepScheduler();
 
+        // Jobs Pool disabled (unused) — 2026-06-08. One-shot US-only boot sweep commented out.
         // One-shot US-only sweep on boot. Stamps `inUS` on every doc
         // and deletes ones whose location is clearly outside the US.
         // Idempotent; cheap once the field is backfilled. Disable with
         // JOBS_POOL_USONLY_SWEEP=0.
-        if (process.env.JOBS_POOL_USONLY_SWEEP !== '0') {
-          setTimeout(() => {
-            jobsPoolService
-              .pruneNonUS({ dryRun: false, deleteNonUS: true })
-              .then((r) => logger.info('jobsPool USonly sweep complete', r))
-              .catch((e) => logger.error('jobsPool USonly sweep failed', { error: e.message }));
-          }, 90 * 1000);
-        }
+        // if (process.env.JOBS_POOL_USONLY_SWEEP !== '0') {
+        //   setTimeout(() => {
+        //     jobsPoolService
+        //       .pruneNonUS({ dryRun: false, deleteNonUS: true })
+        //       .then((r) => logger.info('jobsPool USonly sweep complete', r))
+        //       .catch((e) => logger.error('jobsPool USonly sweep failed', { error: e.message }));
+        //   }, 90 * 1000);
+        // }
       });
     } catch (error) {
       logger.error('❌ Failed to start server', { error: error.message });

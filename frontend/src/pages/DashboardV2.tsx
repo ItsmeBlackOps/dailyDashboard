@@ -32,7 +32,9 @@ export default function DashboardV2() {
         () => new URLSearchParams(window.location.search).get('dateBasis') || 'interview'
     );
     const [dateMode,     setDateMode]     = useState<'month' | 'week' | 'date'>(
-        () => (new URLSearchParams(window.location.search).get('period') as 'month' | 'week' | 'date') || 'month'
+        // Default to a single day (today) — the dashboard now shows today's
+        // data by default (faster, smaller scan). A shared URL still wins.
+        () => (new URLSearchParams(window.location.search).get('period') as 'month' | 'week' | 'date') || 'date'
     );
     const [selectedMonth, setSelectedMonth] = useState<string>(
         () => new URLSearchParams(window.location.search).get('month') || todayMonth()
@@ -70,6 +72,24 @@ export default function DashboardV2() {
                     : dateMode === 'week'  ? selectedWeek
                     : selectedDate;
 
+    // endDate (inclusive calendar date) must be sent too — otherwise the
+    // backend's calculateDateRange never sees a complete explicit range and
+    // silently falls back to its period default, so the chosen day/week/month
+    // never actually narrows the query (this was the "filter doesn't work" bug).
+    const endDate = (() => {
+        if (dateMode === 'month') {
+            const [y, m] = selectedMonth.split('-').map(Number);
+            // Day 0 of the next month = last day of the selected month.
+            return new Date(y, m, 0).toISOString().slice(0, 10);
+        }
+        if (dateMode === 'week') {
+            const d = new Date(selectedWeek);
+            d.setDate(d.getDate() + 6);
+            return d.toISOString().slice(0, 10);
+        }
+        return selectedDate; // single day → same calendar date
+    })();
+
     // Mirror filters into the URL so the page survives refresh + share.
     useEffect(() => {
         setSearchParams((prev) => {
@@ -89,7 +109,7 @@ export default function DashboardV2() {
         const fetch = async () => {
             setLoadingOverview(true);
             try {
-                const q = `?dateBasis=${dateBasis}&period=${dateMode}&startDate=${startDate}`;
+                const q = `?dateBasis=${dateBasis}&period=${dateMode}&startDate=${startDate}&endDate=${endDate}`;
                 const res = await authFetch(`${API_URL}/api/dashboard/stats/overview${q}`);
                 const data = await res.json();
                 if (data.success) setOverviewStats(data.data);
@@ -97,7 +117,9 @@ export default function DashboardV2() {
             finally { setLoadingOverview(false); }
         };
         fetch();
-    }, [dateMode, selectedMonth, selectedWeek, selectedDate, dateBasis, authFetch]);
+        // startDate/endDate are derived from the date-mode state below; listing
+        // them ensures the overview re-queries whenever the chosen range changes.
+    }, [dateMode, startDate, endDate, dateBasis, authFetch]);
 
     // Helper: weeks in selected month
     const weeksInMonth = (() => {
@@ -286,11 +308,11 @@ export default function DashboardV2() {
                         </TabsContent>
 
                         <TabsContent value="recruiter" className="space-y-4 mt-0">
-                            <RecruiterAnalytics period={dateMode} dateBasis={dateBasis} startDate={startDate} />
+                            <RecruiterAnalytics period={dateMode} dateBasis={dateBasis} startDate={startDate} endDate={endDate} />
                         </TabsContent>
 
                         <TabsContent value="expert" className="space-y-4 mt-0">
-                            <ExpertAnalytics period={dateMode} dateBasis={dateBasis} startDate={startDate} />
+                            <ExpertAnalytics period={dateMode} dateBasis={dateBasis} startDate={startDate} endDate={endDate} />
                         </TabsContent>
 
                         <TabsContent value="management" className="mt-0">
