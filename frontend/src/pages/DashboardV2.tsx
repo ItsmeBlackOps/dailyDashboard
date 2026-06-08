@@ -308,11 +308,11 @@ export default function DashboardV2() {
                         </TabsContent>
 
                         <TabsContent value="recruiter" className="space-y-4 mt-0">
-                            <RecruiterAnalytics period={dateMode} dateBasis={dateBasis} startDate={startDate} />
+                            <RecruiterAnalytics period={dateMode} dateBasis={dateBasis} startDate={startDate} endDate={endDate} />
                         </TabsContent>
 
                         <TabsContent value="expert" className="space-y-4 mt-0">
-                            <ExpertAnalytics period={dateMode} dateBasis={dateBasis} startDate={startDate} />
+                            <ExpertAnalytics period={dateMode} dateBasis={dateBasis} startDate={startDate} endDate={endDate} />
                         </TabsContent>
 
                         <TabsContent value="management" className="mt-0">
