@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,7 +40,7 @@ interface InterviewTask {
     status: string;
 }
 
-export function ManagementReports() {
+export const ManagementReports = React.memo(function ManagementReports() {
     const navigate = useNavigate();
     const [report, setReport] = useState<AtRiskCandidate[]>([]);
     const [loading, setLoading] = useState(true);
@@ -214,4 +214,4 @@ export function ManagementReports() {
             </Dialog>
         </div>
     );
-}
+});
