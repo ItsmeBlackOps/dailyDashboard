@@ -49,7 +49,7 @@ const PRT_ATTACHMENT_ROLES = new Set([
   'admin', 'mm', 'mam', 'mlead', 'recruiter'
 ]);
 import { userModel } from '../models/User.js';
-import { userService, roleLevel } from './userService.js';
+import { userService, roleLevel, teamScopeDecision, emitTeamStragglerWarning } from './userService.js';
 import { toLegacyRole } from '../utils/roleAliases.js';
 import { storageService } from './storageService.js';
 import { graphMailService } from './graphMailService.js';
@@ -290,6 +290,11 @@ class CandidateService {
   async collectHierarchyEmails(user) {
     const allUsers = userModel.getAllUsers();
 
+    const selfRecord = allUsers.find(
+      (u) => normalizeEmail(u.email) === normalizeEmail(user.email),
+    );
+    const requesterTeam = selfRecord?.team ?? null;
+
     // Pre-build leadDisplayName → [reports] map; reused for the
     // requester's BFS and any subtree-scoped delegations.
     const leadToUsers = new Map();
@@ -308,7 +313,7 @@ class CandidateService {
     // BFS helper — walks teamLead chain rooted at a display name,
     // adding emails to the running sets. Visited set is local so each
     // root is independently traversed (admins-of-admins etc.).
-    const walkSubtree = (rootDisplayName) => {
+    const walkSubtree = (rootDisplayName, enforceTeam) => {
       if (!rootDisplayName) return;
       const visitedLeads = new Set();
       const queue = [rootDisplayName];
@@ -318,6 +323,11 @@ class CandidateService {
         visitedLeads.add(currentLead);
         const directReports = leadToUsers.get(currentLead) || [];
         for (const report of directReports) {
+          if (enforceTeam) {
+            const { allowed, straggler } = teamScopeDecision(requesterTeam, report.team);
+            if (straggler) emitTeamStragglerWarning(report.email, 'collectHierarchyEmails');
+            if (!allowed) continue; // cross-team: do not include and do not traverse through
+          }
           const reportEmail = normalizeEmail(report.email);
           if (reportEmail) allSubordinateEmails.add(reportEmail);
           const reportRole = (report.role || '').toLowerCase();
@@ -331,7 +341,7 @@ class CandidateService {
     };
 
     // 1. Requester's own subtree.
-    walkSubtree(normalizeName(deriveDisplayNameFromEmail(user.email)));
+    walkSubtree(normalizeName(deriveDisplayNameFromEmail(user.email)), /* enforceTeam */ true);
 
     // 2. Active delegations TO the requester. Lazy import for
     //    consistency with the userService BFS — avoids any chance of
@@ -359,7 +369,7 @@ class CandidateService {
           // everyone in the tree, including the root user).
           allSubordinateEmails.add(root);
           const rootDisplay = normalizeName(deriveDisplayNameFromEmail(root));
-          walkSubtree(rootDisplay);
+          walkSubtree(rootDisplay, /* enforceTeam */ false);
         }
       }
     } catch (err) {
