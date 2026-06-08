@@ -2,21 +2,21 @@ import { useEffect, useRef, useMemo, useState } from "react";
 import { useNavigate, NavLink, Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
-  BarChart3,
+  // BarChart3,   // hidden with Reports nav
   ClipboardList,
   ChevronLeft,
   ChevronRight,
   LogOut,
-  FileText,
+  // FileText,    // hidden with Report Assistant nav
   Database,
   UserPlus,
   KeyRound,
   ClipboardCheck,
   BellRing,
   Sparkles,
-  Activity,
-  Headphones,
-  Briefcase,
+  // Activity,    // hidden with Performance nav
+  // Headphones,  // hidden with Interview Support nav
+  // Briefcase,   // hidden with Jobs Pool nav
   Megaphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -441,15 +441,16 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   isOpen={isOpen}
                 />
               )}
-              {/* Jobs — admin + marketing team + recruiter */}
-              {['admin', 'mm', 'mam', 'mlead', 'recruiter', 'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole) && (
+              {/* Jobs Pool nav hidden — surface removed (route also removed in App.tsx).
+                  Page file kept on disk; restore this block + the /jobs route to bring it back. */}
+              {/* {['admin', 'mm', 'mam', 'mlead', 'recruiter', 'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole) && (
                 <NavItem
                   icon={Briefcase}
                   label="Jobs"
                   href="/jobs"
                   isOpen={isOpen}
                 />
-              )}
+              )} */}
               {/* Admin Alerts is admin-only */}
               {normalizedRole === 'admin' && (
                 <NavItem
@@ -475,7 +476,10 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
             <Separator className="my-4" />
 
             <nav className="grid gap-1">
-              {['admin', 'mm', 'mam', 'manager', 'assistantmanager'].includes(normalizedRole) && (
+              {/* Reports + Report Assistant nav hidden — surfaces removed (routes also
+                  removed in App.tsx). Page files kept on disk; restore this block + the
+                  /reports and /reports/assistant routes to bring them back. */}
+              {/* {['admin', 'mm', 'mam', 'manager', 'assistantmanager'].includes(normalizedRole) && (
                 <>
                   <NavItem
                     icon={BarChart3}
@@ -490,7 +494,7 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                     isOpen={isOpen}
                   />
                 </>
-              )}
+              )} */}
               {['admin', 'mam', 'mm', 'mlead', 'recruiter', 'manager', 'assistantmanager', 'teamlead'].includes(normalizedRole) && (
                 <NavItem
                   icon={LayoutDashboard}
@@ -499,22 +503,27 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   isOpen={isOpen}
                 />
               )}
-              {normalizedRole === 'admin' && (
+              {/* Performance Monitor (frontend page) nav hidden — surface removed (route
+                  also removed in App.tsx). Backend perf monitoring is unaffected. Page file
+                  kept on disk; restore this block + the /admin/performance route to bring it back. */}
+              {/* {normalizedRole === 'admin' && (
                 <NavItem
                   icon={Activity}
                   label="Performance"
                   href="/admin/performance"
                   isOpen={isOpen}
                 />
-              )}
-              {currentUserEmail === 'harsh.patel@silverspaceinc.com' && (
+              )} */}
+              {/* Interview Support nav hidden — surface removed (route also removed in App.tsx).
+                  Page file kept on disk; restore this block + the /admin/interview-support route to bring it back. */}
+              {/* {currentUserEmail === 'harsh.patel@silverspaceinc.com' && (
                 <NavItem
                   icon={Headphones}
                   label="Interview Support"
                   href="/admin/interview-support"
                   isOpen={isOpen}
                 />
-              )}
+              )} */}
             </nav>
           </div>
         </div>
