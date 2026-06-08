@@ -268,22 +268,14 @@ export class DashboardController {
                     $lte: end.toISOString()
                 };
             } else {
-                // Use $expr for Date of Interview filtering
-                const dateExpr = {
-                    $dateFromString: {
-                        dateString: "$Date of Interview",
-                        format: "%m/%d/%Y",
-                        timezone: "America/New_York",
-                        onError: null,
-                        onNull: null
-                    }
-                };
-                dateMatch.$expr = {
-                    $and: [
-                        { $gte: [dateExpr, start] },
-                        { $lte: [dateExpr, end] }
-                    ]
-                };
+                // Interview-date filter: range on the indexed BSON Date
+                // `interviewStartAt` (EST wall-clock as UTC instant) instead of a
+                // $dateFromString parse of the "Date of Interview" MM/DD/YYYY
+                // string. The string approach was a computed field inside $expr
+                // → unindexable → full taskBody scan, and silently dropped rows
+                // whose string failed to parse. `start`/`end` are already
+                // EST-anchored (calculateDateRange), so the bounds are identical.
+                dateMatch.interviewStartAt = { $gte: start, $lte: end };
             }
             pipeline.push({ $match: dateMatch });
 
@@ -568,14 +560,12 @@ export class DashboardController {
                 {
                     $match: isReceivedDate
                         ? { receivedDateTime: { $gte: start.toISOString(), $lte: end.toISOString() } }
-                        : {
-                            $expr: {
-                                $and: [
-                                    { $gte: [{ $dateFromString: { dateString: "$Date of Interview", format: "%m/%d/%Y", timezone: EST_TIMEZONE, onError: null, onNull: null } }, start] },
-                                    { $lte: [{ $dateFromString: { dateString: "$Date of Interview", format: "%m/%d/%Y", timezone: EST_TIMEZONE, onError: null, onNull: null } }, end] }
-                                ]
-                            }
-                        }
+                        // Interview-date filter on the indexed BSON Date
+                        // `interviewStartAt` (EST-anchored bounds) instead of a
+                        // $dateFromString parse of "Date of Interview" — that was
+                        // an unindexable computed field (full taskBody scan) that
+                        // silently dropped unparseable rows.
+                        : { interviewStartAt: { $gte: start, $lte: end } }
                 },
                 // Stage 2: Lookup and Unwind
                 {
@@ -931,14 +921,14 @@ export class DashboardController {
 
     async getStatsDrilldown(req, res) {
         try {
-            const { type, email, period, dateBasis, startDate } = req.query;
+            const { type, email, period, dateBasis, startDate, endDate } = req.query;
             const user = req.user;
 
             // PostHog: Log request
             logger.info('Dashboard: getStatsDrilldown - Request Started', {
                 endpoint: 'getStatsDrilldown',
                 userEmail: user?.email,
-                queryParams: { type, email, period, dateBasis, startDate }
+                queryParams: { type, email, period, dateBasis, startDate, endDate }
             });
 
             // Re-use logic to scope access
@@ -1001,11 +991,9 @@ export class DashboardController {
             }
 
             // 3. Date Range
-            let { start, end } = this.calculateDateRange(period, startDate);
+            let { start, end } = this.calculateDateRange(period, startDate, endDate);
             const effectiveDateField = dateBasis === 'received' ? 'receivedDateTime' : 'Date of Interview';
 
-            // Adjust for taskModel logic/format
-            // taskModel usually handles strings for "Date of Interview"
             const dateMatch = {};
             if (effectiveDateField === 'receivedDateTime') {
                 dateMatch.receivedDateTime = {
@@ -1013,10 +1001,13 @@ export class DashboardController {
                     $lte: end.toISOString()
                 };
             } else {
-                dateMatch['Date of Interview'] = {
-                    $gte: moment(start).format('MM/DD/YYYY'),
-                    $lte: moment(end).format('MM/DD/YYYY')
-                };
+                // Interview-date filter on the indexed BSON Date
+                // `interviewStartAt`. The previous code compared the
+                // "Date of Interview" STRING against MM/DD/YYYY-formatted
+                // bounds — a lexicographic comparison that is semantically
+                // wrong (e.g. "12/01/2025" sorts after "06/08/2026") and
+                // unindexable. `start`/`end` are EST-anchored.
+                dateMatch.interviewStartAt = { $gte: start, $lte: end };
             }
             pipeline.push({ $match: dateMatch });
 
@@ -1083,40 +1074,10 @@ export class DashboardController {
                         $lte: end.toISOString()
                     }
                 }
-                : {
-                    $expr: {
-                        $and: [
-                            {
-                                $gte: [
-                                    {
-                                        $dateFromString: {
-                                            dateString: "$Date of Interview",
-                                            format: "%m/%d/%Y",
-                                            timezone: EST_TIMEZONE,
-                                            onError: null,
-                                            onNull: null
-                                        }
-                                    },
-                                    start
-                                ]
-                            },
-                            {
-                                $lte: [
-                                    {
-                                        $dateFromString: {
-                                            dateString: "$Date of Interview",
-                                            format: "%m/%d/%Y",
-                                            timezone: EST_TIMEZONE,
-                                            onError: null,
-                                            onNull: null
-                                        }
-                                    },
-                                    end
-                                ]
-                            }
-                        ]
-                    }
-                };
+                // Interview-date filter on the indexed BSON Date
+                // `interviewStartAt` (EST-anchored bounds) instead of an
+                // unindexable $dateFromString parse of "Date of Interview".
+                : { interviewStartAt: { $gte: start, $lte: end } };
 
             const pipeline = [
                 { $match: dateMatch },
@@ -1280,40 +1241,10 @@ export class DashboardController {
                         $lte: end.toISOString()
                     }
                 }
-                : {
-                    $expr: {
-                        $and: [
-                            {
-                                $gte: [
-                                    {
-                                        $dateFromString: {
-                                            dateString: "$Date of Interview",
-                                            format: "%m/%d/%Y",
-                                            timezone: EST_TIMEZONE,
-                                            onError: null,
-                                            onNull: null
-                                        }
-                                    },
-                                    start
-                                ]
-                            },
-                            {
-                                $lte: [
-                                    {
-                                        $dateFromString: {
-                                            dateString: "$Date of Interview",
-                                            format: "%m/%d/%Y",
-                                            timezone: EST_TIMEZONE,
-                                            onError: null,
-                                            onNull: null
-                                        }
-                                    },
-                                    end
-                                ]
-                            }
-                        ]
-                    }
-                };
+                // Interview-date filter on the indexed BSON Date
+                // `interviewStartAt` (EST-anchored bounds) instead of an
+                // unindexable $dateFromString parse of "Date of Interview".
+                : { interviewStartAt: { $gte: start, $lte: end } };
 
             const pipeline = [
                 { $match: dateMatch },
@@ -1442,9 +1373,9 @@ export class DashboardController {
 
     async getOverviewStats(req, res) {
         try {
-            const { period, startDate, dateBasis } = req.query; // Added startDate/dateBasis
+            const { period, startDate, endDate, dateBasis } = req.query; // Added startDate/endDate/dateBasis
             const user = req.user;
-            let { start, end } = this.calculateDateRange(period, startDate);
+            let { start, end } = this.calculateDateRange(period, startDate, endDate);
 
             // PostHog: Log request parameters
             logger.info('Dashboard: getOverviewStats - Request Started', {
@@ -1523,19 +1454,19 @@ export class DashboardController {
                                 }
                             }
                         },
-                        effectiveBranch: { $toUpper: { $ifNull: ['$candidateInfo.Branch', 'UNKNOWN'] } },
-                        interviewDate: {
-                            $dateFromString: {
-                                dateString: '$Date of Interview',
-                                format: '%m/%d/%Y',
-                                onError: null
-                            }
-                        }
+                        effectiveBranch: { $toUpper: { $ifNull: ['$candidateInfo.Branch', 'UNKNOWN'] } }
                     }
                 }
             ];
 
-            // Add date filter
+            // Add date filter. For interview-date, filter on the indexed BSON
+            // Date `interviewStartAt` (EST-anchored bounds) instead of the old
+            // `interviewDate` computed via $dateFromString on the
+            // "Date of Interview" string — that computed field was unindexable
+            // (forced a full taskBody scan) and silently dropped unparseable
+            // rows. `interviewStartAt` is a real field on the source doc, so we
+            // prepend this $match BEFORE the $lookup so it can use the index and
+            // shrink the lookup input.
             const dateMatch = {};
             if (isReceivedDate) {
                 dateMatch.receivedDateTime = {
@@ -1543,12 +1474,12 @@ export class DashboardController {
                     $lte: end.toISOString()
                 };
             } else {
-                dateMatch.interviewDate = {
+                dateMatch.interviewStartAt = {
                     $gte: start,
                     $lte: end
                 };
             }
-            taskBasePipeline.push({ $match: dateMatch });
+            taskBasePipeline.unshift({ $match: dateMatch });
 
             // Apply task scoping
             const taskScopedMatch = await this.getScopedMatchForTasks(user, {});
