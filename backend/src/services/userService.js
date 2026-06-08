@@ -609,7 +609,7 @@ export class UserService {
 
     // 1. Requester's own subtree.
     const ownRoot = this.normalizeNameValue(this.deriveDisplayNameFromEmail(requesterEmail));
-    if (bfsContains(ownRoot, true)) return true;
+    if (bfsContains(ownRoot, /* enforceTeam */ true)) return true;
 
     // 2. Active delegations TO this requester. Lazy import to avoid a
     //    circular dep at module load (delegationService imports userModel).
@@ -624,7 +624,7 @@ export class UserService {
           const root = (d.subtreeRootEmail || '').toLowerCase().trim();
           if (root === target) return true;
           const rootDisplay = this.normalizeNameValue(this.deriveDisplayNameFromEmail(root));
-          if (bfsContains(rootDisplay, false)) return true;
+          if (bfsContains(rootDisplay, /* enforceTeam */ false)) return true;
         }
       }
     } catch (err) {

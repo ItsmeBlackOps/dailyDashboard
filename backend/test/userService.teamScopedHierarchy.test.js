@@ -90,4 +90,18 @@ describe('isUserInRequesterHierarchy — team scoping', () => {
     const result = await userService.isUserInRequesterHierarchy({ email: 'mlead@example.com' }, 'rec.cross@example.com');
     expect(result).toBe(true);
   });
+
+  it('bridge: a same-team node behind a cross-team intermediate is unreachable (traversal is pruned, not just inclusion)', async () => {
+    // requester(marketing) → techMid(technical, reports to requester) → deepRec(marketing, reports to techMid)
+    // techMid is cross-team, so the walk must prune it AND everything behind it —
+    // even though deepRec is the same team as the requester.
+    const techMid = { email: 'techmid@example.com', role: 'lead', team: 'technical', teamLead: 'Mlead' };
+    const deepRec = { email: 'deeprec@example.com', role: 'recruiter', team: 'marketing', teamLead: 'Techmid' };
+    userModel.getAllUsers = jest.fn().mockReturnValue([marketingLead, techMid, deepRec]);
+
+    // The cross-team intermediate itself is excluded:
+    expect(await userService.isUserInRequesterHierarchy({ email: 'mlead@example.com' }, 'techmid@example.com')).toBe(false);
+    // And the same-team node behind it is unreachable because traversal stops at the bridge:
+    expect(await userService.isUserInRequesterHierarchy({ email: 'mlead@example.com' }, 'deeprec@example.com')).toBe(false);
+  });
 });
