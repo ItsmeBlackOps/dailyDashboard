@@ -38,13 +38,22 @@ export interface BulkActionBarProps {
   /** Distinct legacy roles among the selected users. */
   selectedRoles: string[];
   actorRole: string;
+  /** Display names offered as autocomplete for team lead / manager,
+   *  restoring the legacy <datalist> suggestions to reduce typos. */
+  nameOptions?: string[];
   onApply: (patch: BulkPatch) => void;
 }
 
 // Which inline editor (if any) is currently expanded.
 type InlineMode = null | 'role' | 'teamLead' | 'manager';
 
-export function BulkActionBar({ count, selectedRoles, actorRole, onApply }: BulkActionBarProps) {
+export function BulkActionBar({
+  count,
+  selectedRoles,
+  actorRole,
+  nameOptions = [],
+  onApply,
+}: BulkActionBarProps) {
   const [mode, setMode] = useState<InlineMode>(null);
   const [roleValue, setRoleValue] = useState('');
   const [textValue, setTextValue] = useState('');
@@ -142,9 +151,17 @@ export function BulkActionBar({ count, selectedRoles, actorRole, onApply }: Bulk
             aria-label={mode === 'teamLead' ? 'New team lead' : 'New manager'}
             className="h-9 w-[200px]"
             placeholder={mode === 'teamLead' ? 'Team lead name' : 'Manager name'}
+            list={nameOptions.length ? 'bulk-name-suggestions' : undefined}
             value={textValue}
             onChange={(e) => setTextValue(e.target.value)}
           />
+          {nameOptions.length > 0 && (
+            <datalist id="bulk-name-suggestions">
+              {nameOptions.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+          )}
           <Button type="button" size="sm" onClick={applyText}>
             Apply
           </Button>

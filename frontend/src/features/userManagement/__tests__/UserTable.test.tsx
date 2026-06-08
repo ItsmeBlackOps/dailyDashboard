@@ -6,6 +6,7 @@ import '@testing-library/jest-dom/vitest';
 // Library's automatic per-test cleanup is not registered. Unmount manually.
 afterEach(cleanup);
 
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { RoleBadge } from '../RoleBadge';
 import { UserRow } from '../UserRow';
 import { UserTable } from '../UserTable';
@@ -25,11 +26,15 @@ const noop = () => {};
 
 // Helper: render a single component inside a real <table> so <tr>/<td>
 // land in valid DOM (avoids React hydration warnings + keeps roles intact).
+// TooltipProvider mirrors the page-level provider (PageShell) that now
+// hosts the per-row toggle tooltips after they were hoisted out of each cell.
 const renderInTable = (node: React.ReactNode) =>
   render(
-    <table>
-      <tbody>{node}</tbody>
-    </table>,
+    <TooltipProvider>
+      <table>
+        <tbody>{node}</tbody>
+      </table>
+    </TooltipProvider>,
   );
 
 describe('RoleBadge', () => {
@@ -228,17 +233,21 @@ describe('UserTable', () => {
 
   it('passes per-user disabled state through canToggleActive', () => {
     const groups = groupUsers([users[0]], 'none');
+    // Disabled toggles render a Tooltip, which needs the page-level
+    // TooltipProvider (hoisted out of the row cells).
     render(
-      <UserTable
-        groups={groups}
-        selectedEmails={new Set()}
-        canToggleActive={() => false}
-        canToggleAccepts={() => true}
-        onSelect={noop}
-        onOpen={noop}
-        onToggleActive={noop}
-        onToggleAccepts={noop}
-      />,
+      <TooltipProvider>
+        <UserTable
+          groups={groups}
+          selectedEmails={new Set()}
+          canToggleActive={() => false}
+          canToggleAccepts={() => true}
+          onSelect={noop}
+          onOpen={noop}
+          onToggleActive={noop}
+          onToggleAccepts={noop}
+        />
+      </TooltipProvider>,
     );
     expect(screen.getByLabelText('Active')).toBeDisabled();
   });

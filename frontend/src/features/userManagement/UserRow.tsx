@@ -14,7 +14,6 @@ import { TableCell, TableRow } from '@/components/ui/table';
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { RoleBadge } from './RoleBadge';
@@ -69,15 +68,15 @@ function ToggleCell({
   return (
     <StopClick>
       {disabled ? (
-        <TooltipProvider>
-          <Tooltip>
-            {/* span keeps the tooltip working over a disabled control */}
-            <TooltipTrigger asChild>
-              <span className="inline-flex">{control}</span>
-            </TooltipTrigger>
-            <TooltipContent>Not allowed for your role</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        // Provider is hoisted to the page (UserManagementPage / PageShell);
+        // rendering one per cell was 2xN providers for N rows.
+        <Tooltip>
+          {/* span keeps the tooltip working over a disabled control */}
+          <TooltipTrigger asChild>
+            <span className="inline-flex">{control}</span>
+          </TooltipTrigger>
+          <TooltipContent>Not allowed for your role</TooltipContent>
+        </Tooltip>
       ) : (
         control
       )}

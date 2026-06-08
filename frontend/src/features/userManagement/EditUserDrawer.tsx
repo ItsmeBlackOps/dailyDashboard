@@ -6,7 +6,8 @@
 //
 // Save builds a single bulk-update entry and PUTs /api/users/bulk:
 //   - editable fields  → included only when changed from their initial
-//   - auto fields      → always included with the policy's value
+//   - auto fields      → policy value only when the field is currently
+//                        blank; an existing value is preserved (not sent)
 //   - locked / hidden  → never sent
 //   - password         → included only when "Reset password" was used
 //
@@ -41,6 +42,11 @@ import { teamLeadOptionsFor, managerOptionsFor } from './options';
 import type { ManageableUser } from './grouping';
 
 const TEAMS = ['marketing', 'technical', 'sales'] as const;
+
+// Radix <Select> disallows an empty-string item value, so clearing an
+// optional roster field (teamLead / manager) routes through this sentinel
+// and is mapped back to '' before it reaches the form/payload.
+const NONE_VALUE = '__none__';
 
 // Friendly copy for the auto/locked policy reasons surfaced as hints.
 const REASON_HINTS: Record<string, string> = {
@@ -159,8 +165,18 @@ export function EditUserDrawer({
       const policy = policyFor(field);
       if (policy.state === 'hidden' || policy.state === 'locked') continue;
       if (policy.state === 'auto') {
-        // Auto fields are always written with the policy's resolved value.
-        if (policy.value !== undefined) entry[field] = policy.value;
+        // An auto value is a FALLBACK for when the field is blank, not an
+        // override. If the target already has a value, preserve it (omit
+        // from the payload so the backend keeps it). Otherwise seed the
+        // policy's resolved value. Without this, e.g. a mam editing a
+        // recruiter would silently reassign the recruiter's manager to the
+        // mam's own manager on every save.
+        // `field in initial` guards the cast — FieldKey includes 'password',
+        // which is not a FormState key (and is filtered out of `fields`).
+        const existing = field in initial ? initial[field as keyof FormState] : undefined;
+        const hasExisting =
+          existing !== undefined && existing !== null && existing !== '';
+        if (!hasExisting && policy.value !== undefined) entry[field] = policy.value;
         continue;
       }
       // editable → include only when changed from the initial value.
@@ -286,13 +302,18 @@ export function EditUserDrawer({
         <div className="space-y-1">
           <Label>{label}</Label>
           <Select
-            value={current}
-            onValueChange={(v) => setForm((f) => ({ ...f, [field]: v }))}
+            value={current || undefined}
+            onValueChange={(v) =>
+              setForm((f) => ({ ...f, [field]: v === NONE_VALUE ? '' : v }))
+            }
           >
             <SelectTrigger aria-label={label}>
               <SelectValue placeholder={`Select a ${label.toLowerCase()}`} />
             </SelectTrigger>
             <SelectContent>
+              {/* Radix forbids an empty-string item value, so clearing uses
+                  a sentinel mapped back to '' in onValueChange. */}
+              <SelectItem value={NONE_VALUE}>None</SelectItem>
               {merged.map((name) => (
                 <SelectItem key={name} value={name}>
                   {name}

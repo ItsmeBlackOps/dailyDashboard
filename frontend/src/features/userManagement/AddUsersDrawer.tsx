@@ -60,13 +60,22 @@ const REASON_HINTS: Record<string, string> = {
 };
 const hintFor = (reason?: string): string => (reason ? REASON_HINTS[reason] ?? '' : '');
 
+// Radix <Select> disallows an empty-string item value; clearing an
+// optional roster field routes through this sentinel, mapped back to ''.
+const NONE_VALUE = '__none__';
+
+// Module-level so it is compiled once, not per submit.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export interface AddUsersDrawerProps {
   open: boolean;
   actorRole: string;
   actorContext: ActorContext;
   allUsers: ManageableUser[];
   onClose: () => void;
-  onCreated: () => void;
+  /** Called after a create attempt. `hasFailures` is true on a partial
+   *  success so the page can refetch but keep the drawer open. */
+  onCreated: (hasFailures: boolean) => void;
 }
 
 // The role an actor creates by default + whether it is fixed (mlead).
@@ -153,6 +162,22 @@ export function AddUsersDrawer({
   };
 
   const handleSubmit = async () => {
+    // Client-side validation — catch obvious problems before the round-trip
+    // so the user gets instant feedback (mirrors the legacy page).
+    const problems: string[] = [];
+    rows.forEach((r, i) => {
+      if (!EMAIL_RE.test((r.email || '').trim())) problems.push(`Row ${i + 1}: enter a valid email`);
+      if ((r.password || '').length < 8) problems.push(`Row ${i + 1}: password needs 8+ characters`);
+    });
+    if (problems.length) {
+      toast({
+        variant: 'destructive',
+        title: 'Fix these before creating',
+        description: problems.slice(0, 4).join(' · '),
+      });
+      return;
+    }
+
     setSubmitting(true);
     try {
       const users = rows.map(toPayload);
@@ -162,16 +187,36 @@ export function AddUsersDrawer({
         body: JSON.stringify({ users }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || 'Create failed');
-      }
-      const createdCount = Array.isArray(data.created) ? data.created.length : users.length;
+      const created = Array.isArray(data.created) ? data.created : [];
       const failed = Array.isArray(data.failures) ? data.failures : [];
+
+      // Hard failure only when the request was rejected or NOTHING was
+      // created. A partial success (backend returns success:false but with
+      // some `created`) must still refresh the directory and report which
+      // rows failed — otherwise the created users are invisible and a retry
+      // re-creates them.
+      if (!res.ok || (!data?.success && created.length === 0)) {
+        throw new Error((failed[0] && failed[0].error) || data?.error || 'Create failed');
+      }
+
+      const createdCount = created.length || users.length - failed.length;
       toast({
+        variant: failed.length ? 'destructive' : undefined,
         title: `Created ${createdCount} user${createdCount === 1 ? '' : 's'}`,
-        description: failed.length ? `${failed.length} failed — check and retry.` : undefined,
+        description: failed.length
+          ? `${failed.length} failed: ${failed.map((f: any) => f.email).filter(Boolean).join(', ')}`
+          : undefined,
       });
-      onCreated();
+      if (failed.length > 0) {
+        // Keep only the failed rows so the user can correct + retry without
+        // re-typing the ones that already succeeded. The page refetches but
+        // leaves the drawer open (keyed off the hasFailures flag).
+        const failedEmails = new Set(failed.map((f: any) => f.email).filter(Boolean));
+        setRows((prev) => prev.filter((r) => failedEmails.has(r.email)));
+        onCreated(true);
+      } else {
+        onCreated(false);
+      }
     } catch (err: any) {
       toast({
         variant: 'destructive',
@@ -205,11 +250,15 @@ export function AddUsersDrawer({
         return (
           <div className="space-y-1">
             <Label>{label}</Label>
-            <Select value={current} onValueChange={(v) => patchRow(index, { [field]: v })}>
+            <Select
+              value={current || undefined}
+              onValueChange={(v) => patchRow(index, { [field]: v === NONE_VALUE ? '' : v })}
+            >
               <SelectTrigger aria-label={`${label} ${num}`}>
                 <SelectValue placeholder={`Select a ${label.toLowerCase()}`} />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={NONE_VALUE}>None</SelectItem>
                 {merged.map((name) => (
                   <SelectItem key={name} value={name}>
                     {name}
