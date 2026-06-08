@@ -37,6 +37,7 @@ import { usePostHog } from 'posthog-js/react'; // [Harsh] PostHog
 import { useNotifications } from "@/context/NotificationContext";
 import { ResumeDiscussionDrawer } from "@/components/resume/ResumeDiscussionDrawer";
 import { MarketingInfoModal } from "./MarketingInfoModal";
+import { normalizeCandidateRow } from './normalizeCandidateRow';
 import {
   DateRangeFilter,
   resolveDateRange,
@@ -2799,17 +2800,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
           return;
         }
 
-        setCandidates((resp.candidates || []).map((candidate) => ({
-          ...candidate,
-          recruiter: candidate.recruiter || '',
-          recruiterRaw: candidate.recruiterRaw || '',
-          expert: candidate.expert || '',
-          expertRaw: candidate.expertRaw || '',
-          resumeLink: candidate.resumeLink || '',
-          resumeUnderstanding: Boolean(candidate.resumeUnderstanding),
-          resumeUnderstandingStatus: candidate.resumeUnderstandingStatus,
-          workflowStatus: candidate.workflowStatus
-        })));
+        setCandidates((resp.candidates || []).map((candidate) => normalizeCandidateRow(candidate)));
         setRecruiterOptions(normalizeOptionList(resp.options?.recruiterChoices));
         setExpertOptions(normalizeOptionList(resp.options?.expertChoices));
         setCreatePolicy(normalizeCreatePolicy(resp.options?.createPolicy));
