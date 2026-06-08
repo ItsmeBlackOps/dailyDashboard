@@ -64,4 +64,15 @@ describe('collectHierarchyEmails — team scoping', () => {
     expect(allSubordinateEmails.has('rec.cross@example.com')).toBe(true);
     expect(recruiterEmails.has('rec.cross@example.com')).toBe(true);
   });
+
+  it('does not bridge through a cross-team intermediate to a same-team report', async () => {
+    // mlead(marketing) → midCross(technical, reports to mlead) → deepSame(marketing, reports to midCross).
+    // The walk must prune at midCross, so deepSame is unreachable even though it is the requester's team.
+    const midCross = { email: 'midcross@example.com', role: 'lead', team: 'technical', teamLead: 'Mlead' };
+    const deepSame = { email: 'deepsame@example.com', role: 'recruiter', team: 'marketing', teamLead: 'Midcross' };
+    userModel.getAllUsers = jest.fn().mockReturnValue([marketingLead, midCross, deepSame]);
+    const { allSubordinateEmails } = await candidateService.collectHierarchyEmails(marketingLead);
+    expect(allSubordinateEmails.has('midcross@example.com')).toBe(false);
+    expect(allSubordinateEmails.has('deepsame@example.com')).toBe(false); // must not bridge through the cross-team node
+  });
 });
