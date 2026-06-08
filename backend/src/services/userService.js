@@ -568,6 +568,11 @@ export class UserService {
 
     const allUsers = this.userModel.getAllUsers();
 
+    const selfRecord = allUsers.find(
+      (u) => (u.email || '').toString().toLowerCase().trim() === requesterEmail,
+    );
+    const requesterTeam = selfRecord?.team ?? null;
+
     // Pre-build the leadDisplayName → [reports] map once; reused by
     // both the requester's own BFS and any subtree-scoped delegations.
     const leadToUsers = new Map();
@@ -578,7 +583,7 @@ export class UserService {
       leadToUsers.get(k).push(u);
     }
 
-    const bfsContains = (rootDisplayName) => {
+    const bfsContains = (rootDisplayName, enforceTeam) => {
       if (!rootDisplayName) return false;
       const visited = new Set();
       const queue = [rootDisplayName];
@@ -588,6 +593,11 @@ export class UserService {
         visited.add(cur);
         const directs = leadToUsers.get(cur) || [];
         for (const r of directs) {
+          if (enforceTeam) {
+            const { allowed, straggler } = teamScopeDecision(requesterTeam, r.team);
+            if (straggler) emitTeamStragglerWarning(r.email, 'isUserInRequesterHierarchy');
+            if (!allowed) continue; // cross-team: do not include and do not traverse through
+          }
           const rEmail = (r.email || '').toLowerCase().trim();
           if (rEmail === target) return true;
           const rDisplay = this.normalizeNameValue(this.deriveDisplayNameFromEmail(r.email));
@@ -599,7 +609,7 @@ export class UserService {
 
     // 1. Requester's own subtree.
     const ownRoot = this.normalizeNameValue(this.deriveDisplayNameFromEmail(requesterEmail));
-    if (bfsContains(ownRoot)) return true;
+    if (bfsContains(ownRoot, true)) return true;
 
     // 2. Active delegations TO this requester. Lazy import to avoid a
     //    circular dep at module load (delegationService imports userModel).
@@ -614,7 +624,7 @@ export class UserService {
           const root = (d.subtreeRootEmail || '').toLowerCase().trim();
           if (root === target) return true;
           const rootDisplay = this.normalizeNameValue(this.deriveDisplayNameFromEmail(root));
-          if (bfsContains(rootDisplay)) return true;
+          if (bfsContains(rootDisplay, false)) return true;
         }
       }
     } catch (err) {
