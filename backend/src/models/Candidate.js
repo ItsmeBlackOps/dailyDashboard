@@ -928,7 +928,7 @@ export class CandidateModel {
 
     // C-perf: exact match + case-insensitive collation. A case-insensitive
     // $regex cannot use the { 'Email ID': 1 } index and scans the whole
-    // collection on every create; the collation lets the (collation) index
+    // collection on every create; the collation lets the collation index
     // serve a case-insensitive equality directly. Behaviour is unchanged —
     // still case-insensitive duplicate detection.
     const trimmedEmail = email.trim();
