@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, User } from 'lucide-react';
 import { useAuth, API_URL } from '@/hooks/useAuth';
@@ -41,7 +41,7 @@ const STATUS_ACCENT: Record<string, string> = {
   'Unassigned':      'border-l-muted-foreground',
 };
 
-export function CandidateGroupsWidget() {
+export const CandidateGroupsWidget = React.memo(function CandidateGroupsWidget() {
   const { authFetch } = useAuth();
   const navigate = useNavigate();
   const [groups, setGroups] = useState<Group[]>([]);
@@ -154,4 +154,4 @@ export function CandidateGroupsWidget() {
       })}
     </div>
   );
-}
+});

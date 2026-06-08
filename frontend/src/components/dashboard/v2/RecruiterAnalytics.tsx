@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { TaskSheetPrefill } from '@/components/shared/TaskSheet';
 import { lazy, Suspense } from 'react';
@@ -81,7 +81,7 @@ interface RecruiterDataResponse {
     byOwner: RecruiterStat[];
 }
 
-export function RecruiterAnalytics({ period, dateBasis, startDate, endDate }: { period: string; dateBasis: string, startDate?: string, endDate?: string }) {
+export const RecruiterAnalytics = React.memo(function RecruiterAnalytics({ period, dateBasis, startDate, endDate }: { period: string; dateBasis: string, startDate?: string, endDate?: string }) {
     const navigate = useNavigate();
     const [fullData, setFullData] = useState<RecruiterDataResponse>({ bySender: [], byOwner: [] });
     const [viewMode, setViewMode] = useState<'sender' | 'owner'>('sender');
@@ -579,4 +579,4 @@ export function RecruiterAnalytics({ period, dateBasis, startDate, endDate }: { 
             </Suspense>
         </div>
     );
-}
+});

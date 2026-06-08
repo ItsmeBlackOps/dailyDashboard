@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -60,7 +60,7 @@ interface DrilldownTask {
     'suggestions'?: string[];
 }
 
-export function ExpertAnalytics({ period, startDate, endDate, dateBasis }: { period: string; startDate?: string; endDate?: string; dateBasis?: string }) {
+export const ExpertAnalytics = React.memo(function ExpertAnalytics({ period, startDate, endDate, dateBasis }: { period: string; startDate?: string; endDate?: string; dateBasis?: string }) {
     const navigate = useNavigate();
     const [stats, setStats] = useState<ExpertStat[]>([]);
     const [loading, setLoading] = useState(true);
@@ -351,4 +351,4 @@ export function ExpertAnalytics({ period, startDate, endDate, dateBasis }: { per
             </Suspense>
         </div>
     );
-}
+});
