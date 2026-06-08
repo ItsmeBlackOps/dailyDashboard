@@ -926,13 +926,19 @@ export class CandidateModel {
       return null;
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    // C-perf: exact match + case-insensitive collation. A case-insensitive
+    // $regex cannot use the { 'Email ID': 1 } index and scans the whole
+    // collection on every create; the collation lets the (collation) index
+    // serve a case-insensitive equality directly. Behaviour is unchanged —
+    // still case-insensitive duplicate detection.
+    const trimmedEmail = email.trim();
     const document = await this.collection.findOne({
-      'Email ID': { $regex: new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      'Email ID': trimmedEmail,
       docType: { $in: [null, 'candidate'] }
     }, {
       projection: DEFAULT_PROJECTION,
-      sort: { _last_write: -1 }
+      sort: { _last_write: -1 },
+      collation: { locale: 'en', strength: 2 }
     });
 
     return document ? this.mapDocumentToCandidate(document) : null;

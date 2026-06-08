@@ -30,6 +30,13 @@ export async function ensurePerformanceIndexes() {
     );
     await db.collection('candidateDetails').createIndex({ 'Candidate Name': 1 });
     await db.collection('candidateDetails').createIndex({ 'Email ID': 1 });
+    // C-perf: case-insensitive collation index so getCandidateByEmail's
+    // duplicate check is an index-served equality (not a /i-regex collection
+    // scan). Distinct name — coexists with the simple { 'Email ID': 1 } index.
+    await db.collection('candidateDetails').createIndex(
+      { 'Email ID': 1 },
+      { collation: { locale: 'en', strength: 2 }, name: 'emailId_ci' }
+    );
     await db.collection('candidateDetails').createIndex({ Recruiter: 1, status: 1 });
     await db.collection('candidateDetails').createIndex({ Branch: 1, status: 1 });
 
