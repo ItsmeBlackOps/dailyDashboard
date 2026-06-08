@@ -2908,10 +2908,18 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     const handleConnect = () => fetchCandidates();
 
     const handleAuthError = async (err: Error) => {
-      if (err.message !== "Unauthorized") return;
+      if (err.message !== "Unauthorized") {
+        // Non-auth connect error (transport/gateway hiccup). The skeleton (loading)
+        // branch out-ranks the error branch in render, so we MUST clear loading
+        // here — otherwise the page hangs on the skeleton forever and hides this error.
+        setError("Couldn't connect to the server. Please retry.");
+        setLoading(false);
+        return;
+      }
       const ok = await refreshAccessToken();
       if (!ok) {
         setError("Session expired. Please sign in again.");
+        setLoading(false);
         return;
       }
       socket.auth = { token: localStorage.getItem("accessToken") || "" };
