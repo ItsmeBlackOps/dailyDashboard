@@ -3885,7 +3885,27 @@ export default function TasksToday() {
 
   const sortedTasks = useMemo(() => sortByPrimaryStart(tasks), [tasks, sortByPrimaryStart]);
 
-  const displayed = sortedTasks
+  // Hoisted email→user lookup Maps. Previously these were rebuilt inside the
+  // role-filter callback once per task (~4N Map allocations per render); now
+  // they are built once and only when their source arrays change.
+  const roleEmailMaps = useMemo(() => {
+    const activeRecruiters = activeUsersByRole.recruiter || [];
+    const allExperts = wideActiveExperts;
+    const activeMleads = activeUsersByRole.mlead || [];
+    const activeLeads = activeUsersByRole.lead || [];
+    return {
+      activeRecruiters,
+      allExperts,
+      activeMleads,
+      activeLeads,
+      activeRecruitersByEmail: new Map(activeRecruiters.map((u) => [u.email, u])),
+      activeExpertsByEmail: new Map(allExperts.map((u) => [u.email, u])),
+      activeMleadsByEmail: new Map(activeMleads.map((u) => [u.email, u])),
+      activeLeadsByEmail: new Map(activeLeads.map((u) => [u.email, u])),
+    };
+  }, [activeUsersByRole, wideActiveExperts]);
+
+  const displayed = useMemo(() => sortedTasks
     .filter((t) => {
       const s = primaryStart(t);
       return !!s;
@@ -3911,18 +3931,19 @@ export default function TasksToday() {
         : true
     )
     .filter((t) => {
-      // Multi-select role filters
-      const activeRecruiters = activeUsersByRole.recruiter || [];
-      const activeRecruitersByEmail = new Map(activeRecruiters.map((u) => [u.email, u]));
-      // Use the same widened pool as the dropdown — otherwise teamLeads
+      // Multi-select role filters. Lookup Maps and their source arrays come from
+      // the hoisted `roleEmailMaps` memo (built once, not per row). The widened
+      // expert pool (allExperts) matches the dropdown — otherwise teamLeads
       // (Anusree, etc.) appear in the dropdown but selecting them
       // matches zero tasks.
-      const allExperts = wideActiveExperts;
-      const activeExpertsByEmail = new Map(allExperts.map((u) => [u.email, u]));
-      const activeMleads = activeUsersByRole.mlead || [];
-      const activeMleadsByEmail = new Map(activeMleads.map((u) => [u.email, u]));
-      const activeLeads = activeUsersByRole.lead || [];
-      const activeLeadsByEmail = new Map(activeLeads.map((u) => [u.email, u]));
+      const {
+        activeRecruiters,
+        allExperts,
+        activeRecruitersByEmail,
+        activeExpertsByEmail,
+        activeMleadsByEmail,
+        activeLeadsByEmail,
+      } = roleEmailMaps;
 
       const taskRecruiterName = (t.recruiterName || '').toLowerCase();
       const taskExpertName = (t.assignedExpert || '').toLowerCase();
@@ -3969,7 +3990,23 @@ export default function TasksToday() {
 
       if (checks.length === 0) return true;
       return filterLogic === 'AND' ? checks.every(Boolean) : checks.some(Boolean);
-    });
+    }), [
+    sortedTasks,
+    primaryStart,
+    filterStatus,
+    candidateFilter,
+    expertFilter,
+    selectedTeamLead,
+    teamLeadRecruiterMap,
+    user,
+    recruiterFilter,
+    roleEmailMaps,
+    selectedRecruiters,
+    selectedExperts,
+    selectedMleads,
+    selectedLeads,
+    filterLogic,
+  ]);
 
   useEffect(() => {
     const liveTaskIds = new Set(tasks.map((task) => task._id).filter(Boolean));
