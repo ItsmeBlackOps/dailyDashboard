@@ -3243,6 +3243,69 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setCreateResumeError('');
   };
 
+  // Runs AFTER the create dialog has closed. The candidate already exists, so
+  // every step is best-effort — a failure only surfaces a toast and the user
+  // can retry from the candidate page. A final list refetch reconciles the
+  // optimistic row against the active filter/sort.
+  const enrichCandidateInBackground = async (ctx: {
+    candidateId: string;
+    resumeFile: File | null;
+    additionalFiles: File[];
+    notes: string;
+  }) => {
+    const { candidateId, resumeFile, additionalFiles, notes } = ctx;
+    if (!candidateId) return;
+
+    let resumeAttachmentId = '';
+    // 1) Persist the resume as an attachment + mark it the canonical resume.
+    try {
+      if (resumeFile) {
+        const fd = new FormData();
+        fd.append('file', resumeFile);
+        const r = await authFetch(`${API_URL}/api/candidates/${candidateId}/attachments`, { method: 'POST', body: fd });
+        const j = await r.json();
+        if (r.ok && j?.success && j?.attachment?.id) {
+          resumeAttachmentId = String(j.attachment.id);
+          await authFetch(`${API_URL}/api/candidates/${candidateId}/attachments/${resumeAttachmentId}/set-as-resume`, { method: 'POST' });
+        }
+      }
+    } catch { /* non-blocking */ }
+
+    // 2) Upload additional attachments (any format).
+    for (const file of additionalFiles) {
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        await authFetch(`${API_URL}/api/candidates/${candidateId}/attachments/additional`, { method: 'POST', body: fd });
+      } catch { /* non-blocking */ }
+    }
+
+    // 3) Send the §6.2 Assignment Email from the creator's mailbox (delegated).
+    try {
+      let graphToken = '';
+      try { graphToken = await acquireGraphAccessToken(); } catch { /* server enqueues via outbox */ }
+      const r = await authFetch(`${API_URL}/api/candidates/${candidateId}/send-assignment-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(graphToken ? { 'x-graph-access-token': graphToken } : {}) },
+        body: JSON.stringify(resumeAttachmentId ? { attachmentIds: [resumeAttachmentId] } : {})
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        toast({ title: 'Assignment email not sent', description: j?.error || 'You can send it from the candidate page.', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Assignment email not queued', description: 'You can send it from the candidate page.', variant: 'destructive' });
+    }
+
+    // 4) Save the note as a candidatecomments type='notes' entry.
+    if (notes.trim()) {
+      try { socket.emit('addResumeComment', { candidateId, content: notes.trim(), type: 'notes' }, () => {}); } catch { /* non-blocking */ }
+    }
+
+    // 5) Reconcile the optimistic row against the active filter/sort.
+    fetchCandidates();
+  };
+
   const handleCreateCandidate = async () => {
     if (!socket) return;
 
@@ -3436,7 +3499,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     if (trimmedCity) payload.city = trimmedCity;
     if (trimmedState) payload.state = trimmedState;
 
-    socket.emit('createCandidate', payload, async (response: any) => {
+    socket.emit('createCandidate', payload, (response: any) => {
       if (!response?.success) {
         const details = Array.isArray(response?.details) ? response.details.join(', ') : '';
         setCreateError(response?.error || details || 'Unable to create candidate');
@@ -3444,86 +3507,31 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
         return;
       }
 
-      const candidateId = String(response?.candidate?.id || response?.candidate?._id || '');
+      const createdCandidate = response?.candidate;
+      const candidateId = String(createdCandidate?.id || createdCandidate?._id || '');
 
-      // Post-create enrichment. The candidate is already saved, so each
-      // step is non-blocking — a failure only surfaces a toast.
-      if (candidateId) {
-        let resumeAttachmentId = '';
-        // 1) Persist the resume as an attachment (so the assignment email
-        //    can carry it) and mark it the canonical resume.
-        try {
-          if (createResumeFile) {
-            const fd = new FormData();
-            fd.append('file', createResumeFile);
-            const r = await authFetch(`${API_URL}/api/candidates/${candidateId}/attachments`, { method: 'POST', body: fd });
-            const j = await r.json();
-            if (r.ok && j?.success && j?.attachment?.id) {
-              resumeAttachmentId = String(j.attachment.id);
-              await authFetch(`${API_URL}/api/candidates/${candidateId}/attachments/${resumeAttachmentId}/set-as-resume`, { method: 'POST' });
-            }
-          }
-        } catch { /* non-blocking */ }
+      // Capture what the background enrichment needs BEFORE resetCreateState()
+      // clears the form (it nulls createResumeFile / createAdditionalFiles / notes).
+      const enrichmentCtx = {
+        candidateId,
+        resumeFile: createResumeFile,
+        additionalFiles: createAdditionalFiles,
+        notes: createNotes,
+      };
 
-        // 2) Upload additional attachments (any format).
-        for (const file of createAdditionalFiles) {
-          try {
-            const fd = new FormData();
-            fd.append('file', file);
-            await authFetch(`${API_URL}/api/candidates/${candidateId}/attachments/additional`, { method: 'POST', body: fd });
-          } catch { /* non-blocking */ }
-        }
-
-        // 3) Send the §6.2 Assignment Email from the creator's own mailbox
-        //    (delegated, like Interview Support) by passing the Graph token.
-        //    The server falls back to the async outbox if that send fails,
-        //    so the email is never silently lost.
-        try {
-          let graphToken = '';
-          try {
-            graphToken = await acquireGraphAccessToken();
-          } catch {
-            /* no delegated token → server enqueues via the outbox */
-          }
-          const r = await authFetch(`${API_URL}/api/candidates/${candidateId}/send-assignment-email`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(graphToken ? { 'x-graph-access-token': graphToken } : {})
-            },
-            body: JSON.stringify(resumeAttachmentId ? { attachmentIds: [resumeAttachmentId] } : {})
-          });
-          if (!r.ok) {
-            const j = await r.json().catch(() => ({}));
-            toast({
-              title: 'Assignment email not sent',
-              description: j?.error || 'You can send it from the candidate page.',
-              variant: 'destructive'
-            });
-          }
-        } catch {
-          toast({
-            title: 'Assignment email not queued',
-            description: 'You can send it from the candidate page.',
-            variant: 'destructive'
-          });
-        }
-
-        // 4) Save the note as a candidatecomments type='notes' entry.
-        if (createNotes.trim()) {
-          try {
-            socket.emit('addResumeComment', { candidateId, content: createNotes.trim(), type: 'notes' }, () => {});
-          } catch { /* non-blocking */ }
-        }
+      // Release the user immediately: close the dialog, optimistically show the
+      // new row, confirm. resetCreateState() also sets creating=false.
+      resetCreateState();
+      if (createdCandidate) {
+        setCandidates((prev) => [normalizeCandidateRow(createdCandidate), ...prev]);
       }
-
       toast({
         title: 'Candidate created',
-        description: 'Assignment email sent to the Team Lead. Candidate sent to admin alerts for expert assignment.'
+        description: 'Finishing up (resume, assignment email, notes) in the background…'
       });
 
-      resetCreateState();
-      fetchCandidates();
+      // Everything else happens off the critical path.
+      void enrichCandidateInBackground(enrichmentCtx);
     });
   };
 
