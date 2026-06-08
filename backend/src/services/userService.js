@@ -87,6 +87,28 @@ const emitLegacyRoleWarning = (role, source) => {
   }
 };
 
+// C20 phase 2 — team-scoping for the hierarchy walks. The single source of
+// truth for the same-team rule. Fail-open: a missing team on either side never
+// removes access (it falls back to the name-chain result) — scoping only ever
+// removes a *clearly* cross-team edge (both sides teamed, teams differ).
+export const teamScopeDecision = (requesterTeam, targetTeam) => {
+  const a = (requesterTeam || '').toString().toLowerCase().trim() || null;
+  const b = (targetTeam || '').toString().toLowerCase().trim() || null;
+  if (!a) return { allowed: true, straggler: false }; // requester un-teamed (incl. admins)
+  if (!b) return { allowed: true, straggler: true };  // target un-teamed → fall back + warn
+  return { allowed: a === b, straggler: false };
+};
+
+// Deduped straggler warning — one log per (source, email) for the process
+// lifetime, so a large un-migrated cohort doesn't spam the logs.
+const _teamStragglerWarned = new Set();
+export const emitTeamStragglerWarning = (email, source) => {
+  const key = `${source}:${(email || '').toString().toLowerCase().trim()}`;
+  if (_teamStragglerWarned.has(key)) return;
+  _teamStragglerWarned.add(key);
+  logger.warn('team-scope straggler: record has no team; falling back to name-chain', { email, source });
+};
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
