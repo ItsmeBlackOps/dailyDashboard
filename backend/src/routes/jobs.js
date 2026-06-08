@@ -1,7 +1,8 @@
 import express from 'express';
 import { authenticateHTTP } from '../middleware/auth.js';
 import { jobsController as ctl } from '../controllers/jobsController.js';
-import { jobsPoolController as poolCtl } from '../controllers/jobsPoolController.js';
+// Jobs Pool disabled (unused) — 2026-06-08. Pool controller import retained-but-commented for reversibility.
+// import { jobsPoolController as poolCtl } from '../controllers/jobsPoolController.js';
 
 const router = express.Router();
 
@@ -13,13 +14,14 @@ router.get('/sessions/:sessionId',           ctl.getSession);
 router.post('/sessions/:sessionId/tailor',   ctl.tailorResume);
 router.get('/tailored/:tailoredId',          ctl.getTailored);
 
+// Jobs Pool disabled (unused) — 2026-06-08. Routes commented out; handlers/service kept on disk for reversibility.
 // Shared jobs pool — matched per-candidate from previously-scraped data.
-router.get('/pool/stats',                    poolCtl.stats);
-router.get('/pool/list',                     poolCtl.list);
-router.post('/pool/import',                  poolCtl.triggerImport);
-router.post('/pool/prune-non-us',            poolCtl.pruneNonUS);
-router.post('/pool/refresh',                 poolCtl.triggerRefresh);
-router.get('/pool/refresh/state',            poolCtl.refreshStats);
-router.get('/matched/:candidateId',          poolCtl.matchForCandidate);
+// router.get('/pool/stats',                    poolCtl.stats);
+// router.get('/pool/list',                     poolCtl.list);
+// router.post('/pool/import',                  poolCtl.triggerImport);
+// router.post('/pool/prune-non-us',            poolCtl.pruneNonUS);
+// router.post('/pool/refresh',                 poolCtl.triggerRefresh);
+// router.get('/pool/refresh/state',            poolCtl.refreshStats);
+// router.get('/matched/:candidateId',          poolCtl.matchForCandidate);
 
 export default router;
