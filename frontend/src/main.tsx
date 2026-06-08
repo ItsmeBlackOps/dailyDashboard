@@ -23,6 +23,12 @@ const posthogOptions = {
   api_host: 'https://us.i.posthog.com',
   defaults: '2025-11-30', // Updated value
   capture_exceptions: true,
+  // Perf: disable session replay (rrweb), network/web-vitals capture, and DOM
+  // autocapture — the dominant UI overhead. Explicit posthog.capture() events,
+  // identify, and exception capture are unaffected.
+  disable_session_recording: true, // stop rrweb session replay (heaviest cost)
+  capture_performance: false, // stop the network/web-vitals plugin that wraps every fetch
+  autocapture: false, // stop DOM-walking on every click/input
   debug: import.meta.env.MODE === 'development',
   loaded: (posthog: any) => {
     if (import.meta.env.MODE === 'development')
