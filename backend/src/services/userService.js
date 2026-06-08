@@ -87,6 +87,28 @@ const emitLegacyRoleWarning = (role, source) => {
   }
 };
 
+// C20 phase 2 — team-scoping for the hierarchy walks. The single source of
+// truth for the same-team rule. Fail-open: a missing team on either side never
+// removes access (it falls back to the name-chain result) — scoping only ever
+// removes a *clearly* cross-team edge (both sides teamed, teams differ).
+export const teamScopeDecision = (requesterTeam, targetTeam) => {
+  const a = (requesterTeam || '').toString().toLowerCase().trim() || null;
+  const b = (targetTeam || '').toString().toLowerCase().trim() || null;
+  if (!a) return { allowed: true, straggler: false }; // requester un-teamed (incl. admins)
+  if (!b) return { allowed: true, straggler: true };  // target un-teamed → fall back + warn
+  return { allowed: a === b, straggler: false };
+};
+
+// Deduped straggler warning — one log per (source, email) for the process
+// lifetime, so a large un-migrated cohort doesn't spam the logs.
+const _teamStragglerWarned = new Set();
+export const emitTeamStragglerWarning = (email, source) => {
+  const key = `${source}:${(email || '').toString().toLowerCase().trim()}`;
+  if (_teamStragglerWarned.has(key)) return;
+  _teamStragglerWarned.add(key);
+  logger.warn('team-scope straggler: record has no team; falling back to name-chain', { email, source });
+};
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -546,6 +568,11 @@ export class UserService {
 
     const allUsers = this.userModel.getAllUsers();
 
+    const selfRecord = allUsers.find(
+      (u) => (u.email || '').toString().toLowerCase().trim() === requesterEmail,
+    );
+    const requesterTeam = selfRecord?.team ?? null;
+
     // Pre-build the leadDisplayName → [reports] map once; reused by
     // both the requester's own BFS and any subtree-scoped delegations.
     const leadToUsers = new Map();
@@ -556,7 +583,7 @@ export class UserService {
       leadToUsers.get(k).push(u);
     }
 
-    const bfsContains = (rootDisplayName) => {
+    const bfsContains = (rootDisplayName, enforceTeam) => {
       if (!rootDisplayName) return false;
       const visited = new Set();
       const queue = [rootDisplayName];
@@ -566,6 +593,11 @@ export class UserService {
         visited.add(cur);
         const directs = leadToUsers.get(cur) || [];
         for (const r of directs) {
+          if (enforceTeam) {
+            const { allowed, straggler } = teamScopeDecision(requesterTeam, r.team);
+            if (straggler) emitTeamStragglerWarning(r.email, 'isUserInRequesterHierarchy');
+            if (!allowed) continue; // cross-team: do not include and do not traverse through
+          }
           const rEmail = (r.email || '').toLowerCase().trim();
           if (rEmail === target) return true;
           const rDisplay = this.normalizeNameValue(this.deriveDisplayNameFromEmail(r.email));
@@ -577,7 +609,7 @@ export class UserService {
 
     // 1. Requester's own subtree.
     const ownRoot = this.normalizeNameValue(this.deriveDisplayNameFromEmail(requesterEmail));
-    if (bfsContains(ownRoot)) return true;
+    if (bfsContains(ownRoot, /* enforceTeam */ true)) return true;
 
     // 2. Active delegations TO this requester. Lazy import to avoid a
     //    circular dep at module load (delegationService imports userModel).
@@ -592,7 +624,7 @@ export class UserService {
           const root = (d.subtreeRootEmail || '').toLowerCase().trim();
           if (root === target) return true;
           const rootDisplay = this.normalizeNameValue(this.deriveDisplayNameFromEmail(root));
-          if (bfsContains(rootDisplay)) return true;
+          if (bfsContains(rootDisplay, /* enforceTeam */ false)) return true;
         }
       }
     } catch (err) {
