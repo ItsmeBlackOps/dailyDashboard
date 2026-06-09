@@ -758,7 +758,14 @@ export const validateCandidateCreate = (data = {}) => {
     errors.push('state is required');
   } else { payload.state = state.trim(); }
 
-  const visaNeedsEad = payload.visaType && EAD_REQUIRED_VISA_TYPES.has(payload.visaType);
+  // "EAD not started" is a transient, request-only gate: when the form checks
+  // it, the start date stays empty and its required-check is waived. We pass
+  // the flag through to the service (which also honours it) but it is never
+  // persisted — sanitizeCandidatePayload's allow-list drops it.
+  const eadNotStarted = data.eadNotStarted === true || data.eadNotStarted === 'true';
+  if (eadNotStarted) payload.eadNotStarted = true;
+
+  const visaNeedsEad = !eadNotStarted && payload.visaType && EAD_REQUIRED_VISA_TYPES.has(payload.visaType);
   if (visaNeedsEad) {
     if (!eadStartDate || typeof eadStartDate !== 'string' || !eadStartDate.trim()) {
       errors.push('eadStartDate is required for this visa type');
@@ -770,7 +777,7 @@ export const validateCandidateCreate = (data = {}) => {
         && new Date(payload.eadEndDate) <= new Date(payload.eadStartDate)) {
       errors.push('eadEndDate must be after eadStartDate');
     }
-  } else {
+  } else if (!eadNotStarted) {
     if (typeof eadStartDate === 'string' && eadStartDate.trim()) payload.eadStartDate = eadStartDate.trim();
     if (typeof eadEndDate === 'string' && eadEndDate.trim()) payload.eadEndDate = eadEndDate.trim();
   }

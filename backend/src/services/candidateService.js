@@ -1619,7 +1619,13 @@ class CandidateService {
     // visa carries an EAD card (see EAD_REQUIRED_VISA_TYPES). EAD End must
     // be strictly after EAD Start.
     const effectiveVisaType = sanitized.visaType ?? payload.visaType;
-    const eadRequiredByVisa = !!effectiveVisaType && EAD_REQUIRED_VISA_TYPES.has(effectiveVisaType);
+    // "EAD not started" waiver: a transient, request-only flag the create form
+    // sends when the candidate's EAD hasn't been filed yet. It waives the
+    // start-date-required check for EAD visa types but is NEVER persisted —
+    // `sanitized` is an allow-list, so it simply isn't copied into the output.
+    const eadNotStarted = payload.eadNotStarted === true || payload.eadNotStarted === 'true';
+    const eadRequiredByVisa = !eadNotStarted
+      && !!effectiveVisaType && EAD_REQUIRED_VISA_TYPES.has(effectiveVisaType);
 
     if (payload.eadStartDate !== undefined || eadRequiredByVisa) {
       const startRaw = payload.eadStartDate;
