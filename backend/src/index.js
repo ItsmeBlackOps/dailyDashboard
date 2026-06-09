@@ -94,8 +94,12 @@ class Application {
       // Ensure MongoDB performance indexes (idempotent, non-blocking on failure)
       ensurePerformanceIndexes().catch(() => { /* already logged inside */ });
 
-      // One-time backfill: ensure all candidates have a task_created activity
-      await candidateService.backfillTaskCreatedActivities();
+      // The one-time task_created backfill used to run here, BLOCKING
+      // server.listen() until it finished. On a loaded VM that pushed listen
+      // past the Docker healthcheck window → backend marked unhealthy → the
+      // blue/green cutover aborted even though the app was fine. It's a data
+      // backfill, not needed to serve requests, so it now runs in the
+      // background AFTER listen() (see the listen() callback in start()).
 
       // Setup HTTP server and Socket.IO
       this.setupServer();
@@ -319,6 +323,14 @@ class Application {
         startFirefliesBotScheduler();
         startCandidateAlertScheduler();
         startPerfMetricsFlusher();
+
+        // Deferred one-time backfill — moved out of initialize() so it no longer
+        // blocks server.listen() before the deploy healthcheck can pass. Runs in
+        // the background; idempotent, so a failure here just retries next boot.
+        candidateService
+          .backfillTaskCreatedActivities()
+          .then(() => logger.info('✅ task_created activity backfill complete (deferred, post-listen)'))
+          .catch((err) => logger.error('task_created activity backfill failed', { error: err?.message ?? String(err) }));
 
         // PRT Phase 3.5: durable email outbox for assignment emails.
         // The repository must be initialised against the live DB before
