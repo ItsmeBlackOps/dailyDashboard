@@ -114,6 +114,10 @@ wait_for_healthy() {
   return 1
 }
 
+# These now block on the containers' Docker HEALTHCHECK (compose) reaching
+# 'healthy' (app serving GET /health) — not just 'running' — so the nginx
+# flip below is zero-downtime. An unhealthy new build aborts the deploy here,
+# before the flip, leaving the old color serving.
 wait_for_healthy "dailydb-frontend-${TARGET}"
 wait_for_healthy "dailydb-backend-${TARGET}"
 
