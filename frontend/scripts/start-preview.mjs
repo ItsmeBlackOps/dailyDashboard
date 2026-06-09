@@ -18,8 +18,6 @@ const ensureNewRelic = async () => {
   }
 };
 
-await ensureNewRelic();
-
 const port = Number.parseInt(process.env.FRONTEND_PORT ?? "8180", 10);
 const hostEnv = process.env.FRONTEND_HOST;
 const host =
@@ -62,6 +60,17 @@ const server = await preview({
 });
 
 server.printUrls();
+
+// Initialize New Relic AFTER the preview server is already listening, and do
+// NOT await it. The NR agent's dynamic import performs network I/O on load;
+// under VM memory/network pressure that import was blocking `vite preview` from
+// binding for >3 min, so the container's Docker healthcheck (GET /) never
+// passed and the blue/green deploy aborted (new color never went healthy).
+// Server readiness must not depend on optional telemetry — and this is a static
+// SPA host, so server-side NR instrumentation has little value anyway.
+void ensureNewRelic().catch((error) =>
+  console.warn("⚠️ Deferred New Relic init failed:", error?.message ?? error)
+);
 
 process.on("SIGTERM", async () => {
   await server.close();
