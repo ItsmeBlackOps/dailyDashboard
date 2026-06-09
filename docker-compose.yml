@@ -48,8 +48,8 @@ services:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:'+(process.env.FRONTEND_PORT||8180)+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 15s
+      retries: 6
+      start_period: 60s
     depends_on:
       - backend-blue
 
@@ -93,8 +93,8 @@ services:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:'+(process.env.FRONTEND_PORT||8180)+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 15s
+      retries: 6
+      start_period: 60s
     depends_on:
       - backend-green
   scraper:

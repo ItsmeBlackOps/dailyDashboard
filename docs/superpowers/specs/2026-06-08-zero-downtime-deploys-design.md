@@ -70,3 +70,13 @@ A *wrong* healthcheck command would mark the container `unhealthy` → abort **e
 ## Out of scope
 
 Frontend bundle perf (Batch 2), Create Meeting fast-follow, the EAD-start-date form change, secret rotations — all tracked separately.
+
+## Post-deploy hardening (2026-06-09)
+
+First production deploy (#190, SHA `3f6c4b2`) **succeeded** — the log showed `dailydb-frontend-blue is healthy` → `... backend-blue is healthy` → `Switching nginx upstream → blue` → `Deploy successful`, and an in-flight probe recorded **zero 502/503/504** through the cutover. The design works.
+
+But two of the preceding re-dispatched attempts on the same SHA failed with `ERROR: dailydb-frontend-blue entered unhealthy state`. Root cause: the **frontend** cold start (`scripts/start-preview.mjs` does `await import("newrelic")` *before* `vite preview` starts listening — the NR agent init makes network calls) exceeded the original `start_period: 15s` + 5×10s window under load. The load was largely self-inflicted (a verify loop re-dispatched 4 deploys in 13 min — a thundering herd of concurrent builds). `wait_for_healthy` returns immediately on `unhealthy` (it does **not** wait the full 180s), so a slow boot aborts the deploy. Fail-safe held (old color kept serving, 0 downtime), but it blocked shipping.
+
+**Fix:** widen the **frontend** healthcheck only — `start_period: 15s → 60s`, `retries: 5 → 6` (time-to-`unhealthy` ≈150s, still under `wait_for_healthy`'s 180s). Per Docker semantics, the first passing check flips the container to `healthy` even during `start_period`, so a fast/normal start is unaffected — widening is pure upside. Backend unchanged (it reached `healthy` reliably; Atlas connect fits the 40s grace).
+
+Deferred optimization (not blocking): make `ensureNewRelic()` non-blocking so the preview server starts listening immediately and NR initializes alongside it.
