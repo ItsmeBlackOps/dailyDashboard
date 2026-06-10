@@ -120,7 +120,7 @@ class ThanksMailService {
 
   ensureFeatureEnabled() {
     if (config.openai?.profileOnlyMode) {
-      const error = new Error('OpenAI usage temporarily limited to candidate profile extraction.');
+      const error = new Error('AI usage is temporarily limited to candidate profile extraction.');
       error.statusCode = 503;
       throw error;
     }
