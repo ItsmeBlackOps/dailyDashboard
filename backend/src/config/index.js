@@ -91,7 +91,18 @@ const config = {
     // (OPUSMAX_API_KEY preferred; OPENAI_API_KEY kept as a fallback) — never
     // hardcode it: this repo is public.
     apiKey: process.env.OPUSMAX_API_KEY || process.env.OPENAI_API_KEY || '',
-    baseUrl: process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE_URL || 'https://api.opusmax.pro/v1',
+    baseUrl: (() => {
+      const key = process.env.OPUSMAX_API_KEY || process.env.OPENAI_API_KEY || '';
+      let url = process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE_URL || 'https://api.opusmax.pro/v1';
+      // Safety net: an OpusMax key (sk-ant-opm-…) must NEVER be sent to OpenAI.
+      // A stale OPENAI_BASE_URL pointing at api.openai.com would 401 the key —
+      // so when we detect that mismatch, override to the OpusMax gateway.
+      if (/^sk-ant-opm/i.test(key) && /openai\.com/i.test(url)) {
+        console.warn('[config] OpusMax key detected but OPENAI_BASE_URL points at OpenAI — overriding base URL to https://api.opusmax.pro/v1');
+        url = 'https://api.opusmax.pro/v1';
+      }
+      return url;
+    })(),
     model: process.env.OPENAI_REPORTING_MODEL || 'claude-opus-4-8',
     timeoutMs: Number.parseInt(process.env.OPENAI_TIMEOUT_MS || '300000', 10),
     reasoningEffort: stripQuotes(process.env.OPENAI_REASONING_EFFORT || ''),
