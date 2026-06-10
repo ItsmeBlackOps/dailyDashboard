@@ -652,6 +652,34 @@ export class UserService {
     return [...new Set(matches.map(u => (u.role || '').toLowerCase()).filter(Boolean))];
   }
 
+  // When a user is promoted to a lead-level role (teamLead / mlead), their
+  // existing teamLead may now be too junior (e.g. a recruiter whose lead was
+  // another teamLead) and must not be left pointing at themselves (the C16
+  // model validator rejects teamLead/manager === self as a self-loop). Resolve
+  // the closest VALID superior — at level assistantManager / manager / admin —
+  // from the TARGET's own up-chain, so the result is independent of who clicks
+  // "promote" (an admin promoting must not become the new lead's superior).
+  // Order: (1) keep the current teamLead if it already resolves to a superior
+  // level; (2) else the target's existing manager (their real up-chain); (3)
+  // else fall back to the requester, who already passed the permission gate.
+  _resolveSuperiorForPromotedLead(targetUser, requesterDisplayName) {
+    const SUPERIOR_LEVELS = ['assistantManager', 'manager', 'admin'];
+    const resolvesToSuperior = (name) => {
+      const formatted = this.formatNameValue(name);
+      if (!formatted) return null;
+      const levels = this._getRolesForDisplayName(formatted)
+        .map((r) => roleLevel(r))
+        .filter(Boolean);
+      return levels.some((l) => SUPERIOR_LEVELS.includes(l)) ? formatted : null;
+    };
+    return (
+      resolvesToSuperior(targetUser?.teamLead)
+      || resolvesToSuperior(targetUser?.manager)
+      || this.formatNameValue(requesterDisplayName)
+      || ''
+    );
+  }
+
   //   Hierarchy contract (C20 — level-based, accepts legacy + new names):
   //     assistantManager → manager, admin
   //     teamLead         → assistantManager, manager, admin
@@ -1390,6 +1418,18 @@ export class UserService {
 
         const resultingRoleLower = (resultingRole || '').toLowerCase();
 
+        // On promote-to-lead with no explicit superior supplied, resolve the
+        // new lead's teamLead/manager from the TARGET's own up-chain — never
+        // self. The old code assigned `derivedSelfName` (a self-reference
+        // "chain-root"), which the C16 model validator (_validateBeforeWrite)
+        // rejects as a self-loop, so EVERY drawer promote-to-lead failed.
+        // Sourcing from the target's record (not the requester) also means an
+        // admin clicking "promote" doesn't become the new lead's superior —
+        // the real manager (e.g. Aryan) does. See _resolveSuperiorForPromotedLead.
+        const promotedLeadSuperior = roleChangedToMlead
+          ? this._resolveSuperiorForPromotedLead(targetUser, requesterDisplayName)
+          : '';
+
         if (entry.teamLead !== undefined) {
           // C15: only honor explicit input. If caller cleared the field we
           // leave it untouched (preserved later by the role-aware block
@@ -1399,8 +1439,8 @@ export class UserService {
           if (formattedTeamLead) {
             updatePayload.teamLead = formattedTeamLead;
           }
-        } else if (roleChangedToMlead && derivedSelfName) {
-          updatePayload.teamLead = derivedSelfName;
+        } else if (roleChangedToMlead && promotedLeadSuperior) {
+          updatePayload.teamLead = promotedLeadSuperior;
         }
 
         if (entry.manager !== undefined) {
@@ -1408,11 +1448,13 @@ export class UserService {
           const formattedManager = this.formatNameValue(rawManager);
           if (formattedManager) {
             updatePayload.manager = formattedManager;
-          } else if (roleLevel(resultingRoleLower) === 'teamLead' && derivedSelfName) {
-            updatePayload.manager = derivedSelfName;
+          } else if (roleLevel(resultingRoleLower) === 'teamLead' && promotedLeadSuperior) {
+            updatePayload.manager = this.formatNameValue(targetUser.manager) || promotedLeadSuperior;
           }
-        } else if (roleChangedToMlead && derivedSelfName) {
-          updatePayload.manager = derivedSelfName;
+        } else if (roleChangedToMlead && promotedLeadSuperior) {
+          // Keep the target's real manager; only fall back to the resolved
+          // superior if they have none on record.
+          updatePayload.manager = this.formatNameValue(targetUser.manager) || promotedLeadSuperior;
         }
 
         // C20 — accept legacy + new names side-by-side. Same fixups for
