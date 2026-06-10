@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod';
+import { parseAiJson } from '../utils/aiJson.js';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { config } from '../config/index.js';
@@ -47,13 +48,17 @@ For locations, include city/state/country mentioned as current location or prefe
 For employmentTypes, default to ["full_time"] if not stated.
 Return exactly the JSON fields specified — no extra commentary.`;
 
+// OpusMax (Claude gateway) ignores response_format json_schema, so we hand the
+// model the JSON Schema in-prompt and validate the parsed result with zod below.
+const PROFILE_JSON_SCHEMA = zodResponseFormat(PROFILE_SCHEMA, 'candidate_profile')?.json_schema?.schema ?? {};
+
 class CandidateProfileService {
   constructor() {
     this.enabled = Boolean(config.openai?.apiKey);
     this.client = this.enabled
-      ? new OpenAI({ apiKey: config.openai.apiKey })
+      ? new OpenAI({ apiKey: config.openai.apiKey, baseURL: config.openai.baseUrl })
       : null;
-    this.model = process.env.CANDIDATE_PROFILE_MODEL || 'gpt-4o-mini';
+    this.model = process.env.CANDIDATE_PROFILE_MODEL || config.openai.model;
   }
 
   /**
@@ -119,22 +124,29 @@ class CandidateProfileService {
       : resumeText;
 
     // 4. Call OpenAI with structured output
-    const completion = await this.client.chat.completions.parse({
+    const completion = await this.client.chat.completions.create({
       model: this.model,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: `${SYSTEM_PROMPT}\n\nReturn ONLY a JSON object conforming to this JSON Schema:\n${JSON.stringify(PROFILE_JSON_SCHEMA)}` },
         { role: 'user', content: `Resume text:\n\n${truncated}` },
       ],
-      response_format: zodResponseFormat(PROFILE_SCHEMA, 'candidate_profile'),
+      response_format: { type: 'json_object' },
       temperature: 0,
     });
 
     const message = completion.choices[0]?.message;
-    if (!message?.parsed) {
-      throw new Error('OpenAI did not return a parseable structured response.');
+    if (!message?.content) {
+      throw new Error('OpusMax did not return content for the candidate profile.');
     }
 
-    const parsed = message.parsed;
+    // OpusMax returns JSON text (response_format json_object); validate it
+    // against the same zod schema that previously enforced structure on OpenAI.
+    let parsed;
+    try {
+      parsed = PROFILE_SCHEMA.parse(parseAiJson(message.content));
+    } catch (err) {
+      throw new Error(`Candidate profile response was not valid JSON matching the schema: ${err instanceof Error ? err.message : String(err)}`);
+    }
     const usage = completion.usage || {};
     const inputTokens  = usage.prompt_tokens     || 0;
     const outputTokens = usage.completion_tokens || 0;

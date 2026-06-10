@@ -4,6 +4,7 @@ import { config } from '../config/index.js';
 import { taskModel, TASK_EXCLUDE_HEAVY } from '../models/Task.js';
 import { userModel } from '../models/User.js';
 import { logger } from '../utils/logger.js';
+import { parseAiJson } from '../utils/aiJson.js';
 
 const TIMEZONE = 'America/New_York';
 const PLAN_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -196,7 +197,7 @@ class ReportAgentService {
   async buildPlan(message) {
     const raw = await this.callOpenAI(message);
     try {
-      const plan = JSON.parse(raw);
+      const plan = parseAiJson(raw);
       try {
         console.log('[ReportAgent] buildPlan() parsed plan:', JSON.stringify(plan, null, 2));
         sendReportAgentLog('buildPlan_parsed', { plan });

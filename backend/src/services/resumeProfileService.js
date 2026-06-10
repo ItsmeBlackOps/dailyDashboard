@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { parseAiJson } from '../utils/aiJson.js';
 import { ObjectId } from 'mongodb';
 import { config } from '../config/index.js';
 import { database } from '../config/database.js';
@@ -77,9 +78,9 @@ class ResumeProfileService {
   constructor() {
     this.enabled = Boolean(config.openai?.apiKey);
     this.client = this.enabled
-      ? new OpenAI({ apiKey: config.openai.apiKey })
+      ? new OpenAI({ apiKey: config.openai.apiKey, baseURL: config.openai.baseUrl })
       : null;
-    this.model = process.env.RESUME_PROFILE_MODEL || 'gpt-4o-mini';
+    this.model = process.env.RESUME_PROFILE_MODEL || config.openai.model;
   }
 
   /**
@@ -157,17 +158,13 @@ class ResumeProfileService {
     const completion = await this.client.chat.completions.create({
       model: this.model,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        // OpusMax (Claude gateway) honors response_format `json_object` but NOT
+        // `json_schema`, so the schema is supplied in-prompt and the JSON is
+        // parsed below (JSON.parse(rawContent)).
+        { role: 'system', content: `${SYSTEM_PROMPT}\n\nReturn ONLY a JSON object conforming to this JSON Schema:\n${JSON.stringify(RESUME_SEARCH_PROFILE_SCHEMA)}` },
         { role: 'user', content: `RESUME:\n\n${truncated}` },
       ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'ResumeSearchProfile',
-          strict: true,
-          schema: RESUME_SEARCH_PROFILE_SCHEMA,
-        },
-      },
+      response_format: { type: 'json_object' },
       temperature: 0,
     });
 
@@ -187,9 +184,9 @@ class ResumeProfileService {
 
     let parsed;
     try {
-      parsed = JSON.parse(rawContent);
+      parsed = parseAiJson(rawContent);
     } catch (e) {
-      throw new Error(`OpenAI returned non-JSON content: ${rawContent.slice(0, 200)}`);
+      throw new Error(`OpusMax returned non-JSON content: ${rawContent.slice(0, 200)}`);
     }
 
     // 4. Build forgeProfile

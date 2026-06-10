@@ -3,6 +3,7 @@ import { database } from '../config/database.js';
 import { Client, Databases, Query } from 'node-appwrite';
 import { taskService } from './taskService.js';
 import { logger } from '../utils/logger.js';
+import { parseAiJson } from '../utils/aiJson.js';
 import sanitizeHtml from 'sanitize-html';
 
 const ALLOWED_ROLES = new Set(['recruiter', 'mlead', 'mam', 'mm']);
@@ -319,7 +320,7 @@ class InterviewerQuestionService {
 
       try {
         const requestBody = {
-          model: config.openai.model || 'gpt-4o',
+          model: config.openai.model || 'claude-opus-4-8',
           messages: [
             {
               role: 'system',
@@ -363,7 +364,7 @@ class InterviewerQuestionService {
 
         let parsed;
         try {
-          parsed = JSON.parse(content);
+          parsed = parseAiJson(content);
         } catch (parseError) {
           const error = new Error('OpenAI response was not valid JSON.');
           error.statusCode = 502;
