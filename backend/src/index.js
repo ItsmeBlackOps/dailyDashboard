@@ -59,6 +59,7 @@ import { startDelegationSweepScheduler } from './jobs/delegationSweepScheduler.j
 // import { jobsPoolService } from './services/jobsPoolService.js';
 import { ensurePerformanceIndexes } from './jobs/ensurePerfIndexes.js';
 import { recordPerfMetric, startPerfMetricsFlusher, stopPerfMetricsFlusher } from './jobs/perfMetricsBuffer.js';
+import { startEventLoopMonitor, stopEventLoopMonitor } from './jobs/eventLoopMonitor.js';
 
 // Import routes and socket manager
 import apiRoutes from './routes/index.js';
@@ -284,6 +285,7 @@ class Application {
 
         // Drain any buffered perf metrics before the DB closes.
         await stopPerfMetricsFlusher();
+        stopEventLoopMonitor();
 
         // Close database connection
         await database.disconnect();
@@ -323,6 +325,7 @@ class Application {
         startFirefliesBotScheduler();
         startCandidateAlertScheduler();
         startPerfMetricsFlusher();
+        startEventLoopMonitor({ activeRequestsFn: () => this.app?.locals?.activeRequests || 0 });
 
         // Deferred one-time backfill — moved out of initialize() so it no longer
         // blocks server.listen() before the deploy healthcheck can pass. Runs in

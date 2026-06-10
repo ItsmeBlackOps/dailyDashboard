@@ -12,6 +12,7 @@ import permissionRoutes from './permissionRoutes.js';
 import transcriptRequestRoutes from './transcriptRequests.js';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import { getEventLoopSnapshot } from '../jobs/eventLoopMonitor.js';
 
 async function adminPerformance(req, res) {
   if (req.user?.role !== 'admin') return res.status(403).json({ success: false, error: 'admin only' });
@@ -19,7 +20,7 @@ async function adminPerformance(req, res) {
     const db = database.getDb();
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const pipeline = [
-      { $match: { createdAt: { $gte: since } } },
+      { $match: { createdAt: { $gte: since }, type: { $ne: 'eventLoop' } } },
       {
         $group: {
           _id: { user: '$userEmail', role: '$userRole' },
@@ -33,8 +34,40 @@ async function adminPerformance(req, res) {
       { $limit: 200 },
     ];
     const rows = await db.collection('perfMetrics').aggregate(pipeline).toArray();
+
+    // Event-loop health — the head-of-line-blocking signal. Live snapshot from
+    // the monitor plus 24h peaks from the persisted samples.
+    const loopAgg = await db.collection('perfMetrics').aggregate([
+      { $match: { type: 'eventLoop', createdAt: { $gte: since } } },
+      {
+        $group: {
+          _id: null,
+          avgLagMeanMs: { $avg: '$loopLagMeanMs' },
+          peakLagP99Ms: { $max: '$loopLagP99Ms' },
+          peakLagMaxMs: { $max: '$loopLagMaxMs' },
+          avgElu: { $avg: '$eluUtilization' },
+          peakElu: { $max: '$eluUtilization' },
+          peakActiveRequests: { $max: '$activeRequests' },
+          samples: { $sum: 1 },
+        },
+      },
+    ]).toArray();
+    const a = loopAgg[0];
+    const loop24h = a ? {
+      avgLagMeanMs: Math.round((a.avgLagMeanMs || 0) * 100) / 100,
+      peakLagP99Ms: a.peakLagP99Ms,
+      peakLagMaxMs: a.peakLagMaxMs,
+      avgElu: Math.round((a.avgElu || 0) * 1000) / 1000,
+      peakElu: a.peakElu,
+      peakActiveRequests: a.peakActiveRequests,
+      samples: a.samples,
+    } : null;
+
     return res.json({
-      success: true, since, rows: rows.map(r => ({
+      success: true,
+      since,
+      eventLoop: { ...getEventLoopSnapshot(), last24h: loop24h },
+      rows: rows.map(r => ({
         email: r._id.user || '(unauth)',
         role: r._id.role || '',
         avgMs: Math.round(r.avgMs),
