@@ -225,6 +225,34 @@ describe('candidateService.sanitizeCandidatePayload — PRT extensions', () => {
         visaType: 'OPT', eadStartDate: 'not-a-date', eadEndDate: '2027-01-15'
       })).toThrow(/Invalid EAD Start Date/);
     });
+
+    describe('"EAD not started" waiver (transient, request-only)', () => {
+      it('waives the eadStartDate requirement for EAD visa types when eadNotStarted is true', () => {
+        // Without the flag this throws (see the require test above).
+        const s = candidateService.sanitizeCandidatePayload({ visaType: 'OPT', eadNotStarted: true });
+        expect(s.visaType).toBe('OPT');
+        expect(s.eadStartDate).toBeUndefined();
+        expect(s.eadEndDate).toBeUndefined();
+      });
+
+      it('also accepts the string "true" form of the flag', () => {
+        const s = candidateService.sanitizeCandidatePayload({ visaType: 'STEM OPT', eadNotStarted: 'true' });
+        expect(s.eadStartDate).toBeUndefined();
+      });
+
+      it('never persists eadNotStarted into the sanitized output (not an allow-listed field)', () => {
+        const s = candidateService.sanitizeCandidatePayload({ visaType: 'OPT', eadNotStarted: true });
+        expect(s).not.toHaveProperty('eadNotStarted');
+        expect(Object.keys(s)).not.toContain('eadNotStarted');
+      });
+
+      it('still enforces the requirement when the flag is absent or falsey', () => {
+        expect(() => candidateService.sanitizeCandidatePayload({ visaType: 'OPT' }))
+          .toThrow(/EAD Start Date is required/);
+        expect(() => candidateService.sanitizeCandidatePayload({ visaType: 'OPT', eadNotStarted: false }))
+          .toThrow(/EAD Start Date is required/);
+      });
+    });
   });
 
   describe('technology (60-day warn-only window)', () => {
@@ -511,6 +539,76 @@ describe('candidateService.createCandidateFromManager — SP1 marketing-info har
       delete payload[field];
       await expect(callCreate(payload)).rejects.toMatchObject({ statusCode: 400 });
     }
+  });
+});
+
+describe('candidateService.createCandidateFromManager — "EAD not started" waiver at creation', () => {
+  // Complete, valid manager-create payload but with an EAD visa type (OPT) and
+  // NO eadStartDate — so the conditional-EAD rule is in play.
+  const eadPayloadNoStart = () => ({
+    name: 'Eve Adams',
+    email: 'eve.adams@example.com',
+    technology: 'Software Developer',
+    branch: 'LKN',
+    recruiter: 'recruiter@example.com',
+    teamLead: 'tlead@example.com',
+    resumeLink: SAMPLE_RESUME_LINK,
+    visaType: 'OPT',
+    company: 'SST',
+    experienceYears: 5,
+    city: 'Ahmedabad',
+    state: 'Gujarat'
+  });
+
+  beforeEach(() => {
+    candidateModel.getCandidateByEmail = jest.fn().mockResolvedValue(null);
+    candidateModel.createCandidate = jest.fn().mockResolvedValue({
+      _id: { toString: () => 'ead-created' }
+    });
+    userModel.getUserByEmail = jest.fn((email) => {
+      const e = String(email || '').toLowerCase();
+      if (e === 'mam.user@company.com') {
+        return { email: e, role: 'mam', manager: 'tushar.ahuja@silverspaceinc.com', active: true };
+      }
+      if (e === 'tushar.ahuja@silverspaceinc.com') {
+        return { email: e, role: 'manager', team: 'marketing', active: true };
+      }
+      return null;
+    });
+    userModel.getAllUsers = jest.fn().mockReturnValue([]);
+    userService.collectManageableUsers = jest.fn().mockReturnValue([
+      { email: 'recruiter@example.com', role: 'recruiter', active: true }
+    ]);
+  });
+
+  const callCreate = (payload) =>
+    candidateService.createCandidateFromManager(
+      { email: 'mam.user@company.com', role: 'MAM' },
+      payload
+    );
+
+  it('(a) REJECTS an EAD visa type with no eadStartDate and no flag (current behavior preserved)', async () => {
+    await expect(callCreate(eadPayloadNoStart())).rejects.toThrow(/EAD Start Date is required/);
+    expect(candidateModel.createCandidate).not.toHaveBeenCalled();
+  });
+
+  it('(b) ACCEPTS the same payload when eadNotStarted is true', async () => {
+    await callCreate({ ...eadPayloadNoStart(), eadNotStarted: true });
+    expect(candidateModel.createCandidate).toHaveBeenCalledTimes(1);
+    expect(candidateModel.createCandidate).toHaveBeenCalledWith(expect.objectContaining({
+      visaType: 'OPT',
+      company: 'SST'
+    }));
+  });
+
+  it('(c) does NOT persist eadNotStarted on the stored candidate document', async () => {
+    await callCreate({ ...eadPayloadNoStart(), eadNotStarted: true });
+    expect(candidateModel.createCandidate).toHaveBeenCalledTimes(1);
+    const stored = candidateModel.createCandidate.mock.calls[0][0];
+    expect(stored).not.toHaveProperty('eadNotStarted');
+    expect(Object.keys(stored)).not.toContain('eadNotStarted');
+    // And no eadStartDate was invented for the waived candidate.
+    expect(stored.eadStartDate).toBeUndefined();
   });
 });
 

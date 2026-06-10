@@ -49,4 +49,30 @@ describe('validateCandidateCreate — PRT mandatory fields', () => {
     expect(ok.isValid).toBe(true);
     expect(ok.payload).toMatchObject({ eadStartDate: '2026-01-01', eadEndDate: '2027-01-01' });
   });
+
+  describe('"EAD not started" waiver', () => {
+    it('waives the EAD-date requirement for EAD-card visas when eadNotStarted is true', () => {
+      const opt = { ...base, visaType: 'OPT' };
+      // Without the flag this is invalid (covered above); with it, valid.
+      const res = validateCandidateCreate({ ...opt, eadNotStarted: true });
+      expect(res.isValid).toBe(true);
+      expect(res.errors).toEqual([]);
+    });
+
+    it('forwards eadNotStarted: true to the service and omits the EAD dates', () => {
+      const res = validateCandidateCreate({ ...base, visaType: 'OPT', eadNotStarted: true });
+      expect(res.payload.eadNotStarted).toBe(true);
+      expect(res.payload).not.toHaveProperty('eadStartDate');
+      expect(res.payload).not.toHaveProperty('eadEndDate');
+    });
+
+    it('does NOT forward eadNotStarted when the flag is absent (so it is never persisted by default)', () => {
+      const res = validateCandidateCreate({ ...base, visaType: 'H1B' });
+      expect(res.payload).not.toHaveProperty('eadNotStarted');
+    });
+
+    it('still rejects a missing EAD start date when the flag is absent', () => {
+      expect(validateCandidateCreate({ ...base, visaType: 'OPT' }).isValid).toBe(false);
+    });
+  });
 });

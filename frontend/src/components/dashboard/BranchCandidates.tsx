@@ -566,6 +566,10 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
   const [createAdditionalFiles, setCreateAdditionalFiles] = useState<File[]>([]);
   const [createNotes, setCreateNotes] = useState('');
   const [createTechCustom, setCreateTechCustom] = useState(false);
+  // PRT: transient "EAD not started" gate. When checked, it waives the
+  // EAD-start-date requirement for EAD visa types (request-only — the backend
+  // reads it to skip the check and never persists it).
+  const [createEadNotStarted, setCreateEadNotStarted] = useState(false);
   const [creating, setCreating] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState<string>('');
@@ -3186,6 +3190,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     setCreateAdditionalFiles([]);
     setCreateNotes('');
     setCreateTechCustom(false);
+    setCreateEadNotStarted(false);
   };
 
   const handleCreateFieldChange = (field: keyof typeof createForm, value: string) => {
@@ -3436,7 +3441,9 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       setCreating(false);
       return;
     }
-    if (PRT_EAD_REQUIRED_VISA_TYPES.has(trimmedVisaType)) {
+    // "EAD not started" waives the start-date requirement for EAD visa types.
+    // When unchecked, the existing required + end>start rules apply.
+    if (PRT_EAD_REQUIRED_VISA_TYPES.has(trimmedVisaType) && !createEadNotStarted) {
       if (!trimmedEadStart) {
         setCreateError('EAD Start Date is required for this visa type');
         setCreating(false);
@@ -3486,7 +3493,7 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
       return;
     }
 
-    const payload: Record<string, string | number> = {
+    const payload: Record<string, string | number | boolean> = {
       name: trimmedName,
       email: trimmedEmail,
       technology: trimmedTechnology,
@@ -3502,8 +3509,14 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
     payload.contact = trimmedContact;
     // teamLead intentionally NOT sent — the server derives it from the
     // recruiter's record (display-name → email). The form only displays it.
-    if (trimmedEadStart) payload.eadStartDate = trimmedEadStart;
-    if (trimmedEadEnd) payload.eadEndDate = trimmedEadEnd;
+    // "EAD not started" is request-only: it waives the start-date requirement
+    // server-side and is NOT persisted. When set, the EAD dates are omitted.
+    if (createEadNotStarted) {
+      payload.eadNotStarted = true;
+    } else {
+      if (trimmedEadStart) payload.eadStartDate = trimmedEadStart;
+      if (trimmedEadEnd) payload.eadEndDate = trimmedEadEnd;
+    }
     if (trimmedCity) payload.city = trimmedCity;
     if (trimmedState) payload.state = trimmedState;
 
@@ -4895,26 +4908,49 @@ export function BranchCandidates({ role }: BranchCandidatesProps) {
                 </div>
               </div>
               {PRT_EAD_REQUIRED_VISA_TYPES.has(createForm.visaType) && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="create-ead-start">EAD Start Date</Label>
-                    <Input
-                      id="create-ead-start"
-                      type="date"
-                      value={createForm.eadStartDate}
-                      onChange={(e) => handleCreateFieldChange('eadStartDate', e.target.value)}
+                <>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="create-ead-not-started"
+                      checked={createEadNotStarted}
+                      onCheckedChange={(value) => {
+                        const isChecked = value === true;
+                        setCreateEadNotStarted(isChecked);
+                        if (isChecked) {
+                          // Clear the dates — the requirement is waived and the
+                          // values are not sent.
+                          setCreateForm((prev) => ({ ...prev, eadStartDate: '', eadEndDate: '' }));
+                        }
+                      }}
+                      disabled={creating}
                     />
+                    <Label htmlFor="create-ead-not-started" className="text-sm">
+                      EAD not started
+                    </Label>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="create-ead-end">EAD End Date</Label>
-                    <Input
-                      id="create-ead-end"
-                      type="date"
-                      value={createForm.eadEndDate}
-                      onChange={(e) => handleCreateFieldChange('eadEndDate', e.target.value)}
-                    />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="create-ead-start">EAD Start Date</Label>
+                      <Input
+                        id="create-ead-start"
+                        type="date"
+                        value={createForm.eadStartDate}
+                        onChange={(e) => handleCreateFieldChange('eadStartDate', e.target.value)}
+                        disabled={createEadNotStarted}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="create-ead-end">EAD End Date</Label>
+                      <Input
+                        id="create-ead-end"
+                        type="date"
+                        value={createForm.eadEndDate}
+                        onChange={(e) => handleCreateFieldChange('eadEndDate', e.target.value)}
+                        disabled={createEadNotStarted}
+                      />
+                    </div>
                   </div>
-                </div>
+                </>
               )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
