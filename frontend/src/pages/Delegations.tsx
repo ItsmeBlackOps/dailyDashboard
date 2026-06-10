@@ -11,7 +11,6 @@
 // collects intent + surfaces errors clearly.
 
 import { useEffect, useMemo, useState } from 'react';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -167,7 +166,7 @@ export default function DelegationsPage() {
   );
 
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-6 p-6">
         <div>
           <h1 className="text-2xl font-bold">Delegations</h1>
@@ -349,6 +348,6 @@ export default function DelegationsPage() {
           </CardContent>
         </Card>
       </div>
-    </DashboardLayout>
+    </>
   );
 }

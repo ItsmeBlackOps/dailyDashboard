@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { BranchCandidates as BranchCandidatesCard } from '@/components/dashboard/BranchCandidates';
 
 const BranchCandidatesPage = () => {
@@ -12,7 +11,7 @@ const BranchCandidatesPage = () => {
   }, []);
 
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-6">
         {canView ? (
           <BranchCandidatesCard role={role} />
@@ -22,7 +21,7 @@ const BranchCandidatesPage = () => {
           </p>
         )}
       </div>
-    </DashboardLayout>
+    </>
   );
 };
 

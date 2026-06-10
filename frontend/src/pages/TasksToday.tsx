@@ -37,7 +37,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, API_URL, SOCKET_URL } from "@/hooks/useAuth";
 import { playTune, sendNotification } from "@/utils/notify";
@@ -4084,7 +4083,7 @@ export default function TasksToday() {
 
 
   return (
-    <DashboardLayout>
+    <>
 
       <div className="p-4 space-y-4">
         <MarketingMeetingAckModal />
@@ -5109,6 +5108,6 @@ export default function TasksToday() {
         onClose={() => { setPoSheetOpen(false); setPoPrefill(null); }}
         prefill={poPrefill}
       />
-    </DashboardLayout >
+    </>
   );
 }

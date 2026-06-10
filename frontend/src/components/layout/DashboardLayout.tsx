@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
+import { Outlet } from 'react-router-dom';
 import { Header } from './Header';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ThemeProvider } from '@/hooks/useTheme';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { UserProfileProvider } from '@/contexts/UserProfileContext';
@@ -13,7 +15,29 @@ import { RecruiterCallAlertDialog } from './RecruiterCallAlertDialog';
 import { ContactNumberRequiredDialog } from './ContactNumberRequiredDialog';
 
 interface DashboardLayoutProps {
-  children: React.ReactNode;
+  // Optional: when DashboardLayout is used as a layout *route* (the normal case
+  // now) it has no children and renders the matched page via <Outlet/>. The
+  // optional-children path keeps the handful of unrouted/legacy pages that
+  // still wrap themselves in <DashboardLayout> compiling unchanged.
+  children?: React.ReactNode;
+}
+
+// Content-area skeleton shown while a lazily-loaded page chunk streams in.
+// Scoped to <main> so the shell (sidebar/header) stays on screen — unlike a
+// full-viewport splash, which looked like a whole-page reload on every nav.
+function ContentSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Loading">
+      <Skeleton className="h-8 w-64" />
+      <Skeleton className="h-4 w-96" />
+      <div className="space-y-3 pt-4">
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+      </div>
+    </div>
+  );
 }
 
 const SIDEBAR_KEY = 'sidebarOpen';
@@ -77,7 +101,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="flex flex-1 overflow-hidden">
             <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
             <main className="flex-1 overflow-auto p-4 md:p-6 relative">
-              {children}
+              {children ?? (
+                <Suspense fallback={<ContentSkeleton />}>
+                  <Outlet />
+                </Suspense>
+              )}
             </main>
           </div>
           <RoleDetailRequiredDialog />

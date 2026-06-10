@@ -5,7 +5,6 @@ import DOMPurify from "dompurify";
 import { io, Socket } from "socket.io-client";
 import { MessageSquare } from "lucide-react";
 
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -356,7 +355,7 @@ export default function ResumeUnderstanding() {
 
   if (!allowed) {
     return (
-      <DashboardLayout>
+      <>
         <div className="space-y-6">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Resume Understanding</h1>
@@ -365,12 +364,12 @@ export default function ResumeUnderstanding() {
             </p>
           </div>
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Resume Understanding</h1>
@@ -542,6 +541,6 @@ export default function ResumeUnderstanding() {
           expertRaw={selectedCandidate.expertRaw}
         />
       )}
-    </DashboardLayout>
+    </>
   );
 }

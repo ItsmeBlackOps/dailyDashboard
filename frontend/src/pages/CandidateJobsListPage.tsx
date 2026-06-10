@@ -1,7 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Briefcase, ExternalLink, MapPin } from 'lucide-react';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -58,7 +57,7 @@ export default function CandidateJobsListPage() {
   const fp = data?.forgeProfile;
 
   return (
-    <DashboardLayout>
+    <>
       <div className="px-4 md:px-6 py-4 space-y-5 max-w-4xl mx-auto">
         <Button variant="ghost" size="sm" className="gap-1.5 text-xs -ml-1" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-3.5 w-3.5" /> Back
@@ -151,6 +150,6 @@ export default function CandidateJobsListPage() {
           </a>
         ))}
       </div>
-    </DashboardLayout>
+    </>
   );
 }

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -76,7 +75,7 @@ export default function NotificationSettings() {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div className="mx-auto max-w-2xl space-y-6 p-4">
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
@@ -115,6 +114,6 @@ export default function NotificationSettings() {
           </CardContent>
         </Card>
       </div>
-    </DashboardLayout>
+    </>
   );
 }

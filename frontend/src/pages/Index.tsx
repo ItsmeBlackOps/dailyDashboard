@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePostHog } from 'posthog-js/react';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { TopAgents } from '@/components/dashboard/TopAgents';
 import { KpiOverview } from '@/components/dashboard/KpiOverview';
 // import { BranchCandidates } from '@/components/dashboard/BranchCandidates';
@@ -81,7 +80,7 @@ const Index = () => {
   }, [role]);
 
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight mb-2">Dashboard Overview</h1>
@@ -96,7 +95,7 @@ const Index = () => {
           {/* {role === 'MM' && <BranchCandidates role={role} />} */}
         </div>
       </div>
-    </DashboardLayout>
+    </>
   );
 };
 

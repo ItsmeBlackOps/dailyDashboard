@@ -53,6 +53,7 @@ import SignIn from './pages/auth/SignIn';
 import { Toaster } from './components/ui/toaster';
 import { Toast } from './components/ui/toast';
 import AuthorizedRoute from './routes/AuthorizedRoute';
+import { DashboardLayout } from './components/layout/DashboardLayout';
 
 // C1 — lazy-load every auth-gated route. Previously these were all
 // eager imports (~200-300 KB combined), meaning every login parsed
@@ -120,6 +121,11 @@ const App = () => (
             <Routes>
               {/* Protected dashboard for admin only */}
               <Route element={<AuthorizedRoute />}>
+                {/* Persistent shell: DashboardLayout mounts ONCE here and renders
+                    the matched page via <Outlet/>, so switching tabs swaps only
+                    the content (with a skeleton) instead of remounting the whole
+                    shell (sidebar sockets, header, profile fetch) every nav. */}
+                <Route element={<DashboardLayout />}>
                 <Route path="/" element={<DashboardV2 />} />
                 <Route path="/legacy-dashboard" element={<Index />} />
                 <Route path="/tasks" element={<TasksToday />} />
@@ -148,6 +154,7 @@ const App = () => (
                 <Route path="/jobs/:sessionId" element={<JobsPage />} />
                 <Route path="/candidate/:candidateId/jobs" element={<CandidateJobsListPage />} />
                 {/* Add any other protected routes here */}
+                </Route>
               </Route>
 
               <Route path="/auth/signin" element={<SignIn />} />

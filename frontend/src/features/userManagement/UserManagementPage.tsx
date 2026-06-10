@@ -19,7 +19,6 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { AlertCircle, Users } from 'lucide-react';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -63,7 +62,7 @@ const distinctRoles = (users: ManageableUser[]): string[] =>
 
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
-    <DashboardLayout>
+    <>
       {/* Single TooltipProvider for the whole page — the per-row ToggleCell
           tooltips render under this one provider instead of mounting one
           provider per cell (which was 2×N providers for N rows). */}
@@ -78,7 +77,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </TooltipProvider>
-    </DashboardLayout>
+    </>
   );
 }
 

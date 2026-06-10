@@ -1,6 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth, API_URL } from '@/hooks/useAuth';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -218,7 +217,7 @@ export default function PermissionsManagement() {
 
     if (!isAdmin) {
         return (
-            <DashboardLayout>
+            <>
                 <div className="container mx-auto p-6">
                     <Alert variant="destructive">
                         <AlertCircle className="h-4 w-4" />
@@ -227,12 +226,12 @@ export default function PermissionsManagement() {
                         </AlertDescription>
                     </Alert>
                 </div>
-            </DashboardLayout>
+            </>
         );
     }
 
     return (
-        <DashboardLayout>
+        <>
             <div className="container mx-auto p-6 space-y-6">
                 <div className="flex justify-between items-center">
                     <div>
@@ -421,6 +420,6 @@ export default function PermissionsManagement() {
                     </CardContent>
                 </Card>
             </div>
-        </DashboardLayout>
+        </>
     );
 }
