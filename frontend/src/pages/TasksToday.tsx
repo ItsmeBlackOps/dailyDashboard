@@ -3294,16 +3294,17 @@ export default function TasksToday() {
     const shouldReplace = options.replace ?? isInitial;
     const BATCH_SIZE = isInitial ? 30 : 20;
     const basePayload = buildDashboardPayload({ ...filters, dateField: selectedTabRef.current as any });
-    // DASH-S1 — for the "day" preset, do NOT ship browser-derived absolute
-    // start/end timestamps. Send only `range: 'day'` and let the backend
-    // anchor the boundaries to America/New_York (EST/EDT) so "today" is the
-    // Eastern calendar day regardless of the viewer's machine clock. The
-    // week/month/custom presets keep their explicit (already EST-anchored)
-    // bounds. UI/labels are unchanged — this only affects the wire payload.
-    if (basePayload.range === 'day') {
-      delete basePayload.start;
-      delete basePayload.end;
-    }
+    // Ship the picker's start/end for EVERY preset — day included. The day
+    // picker anchors its bounds to America/New_York client-side (dateRanges +
+    // DashboardFilters, #197), so "today" is already the Eastern calendar day
+    // and a PICKED day carries that day's Eastern bounds.
+    //
+    // This previously stripped start/end whenever range==='day' and let the
+    // backend recompute "today". That was a pre-#197 workaround for browser-tz
+    // bounds, but range stays 'day' for ANY picked date — so stripping made the
+    // backend ignore the chosen day and always return today's tasks. The
+    // backend's resolveDateRange honors explicit start/end for the day range
+    // and only falls back to Eastern "today" when they're absent.
     const payload = {
       ...basePayload,
       limit: BATCH_SIZE,
