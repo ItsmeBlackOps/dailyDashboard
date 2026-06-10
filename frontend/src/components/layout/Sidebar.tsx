@@ -60,6 +60,20 @@ function NavItem({ icon: Icon, label, href, badge, showDot, isOpen, tourId }: Na
   const posthog = usePostHog();
   const role = localStorage.getItem("role") || "unknown";
 
+  // Query-aware active state. Some items share a pathname and differ only by
+  // query — e.g. "Branch Candidates" (/branch-candidates) vs "Move to Marketing"
+  // (/branch-candidates?new=1). NavLink's built-in isActive matches pathname
+  // only, so both used to highlight at once. Distinguish them by the `new`
+  // flag; other transient params (e.g. ?clone=…) are ignored so the page stays
+  // correctly highlighted during those flows.
+  const hrefPath = href.split("?")[0];
+  const wantsNew = href.includes("new=1");
+  const hasNew = new URLSearchParams(location.search).get("new") === "1";
+  const isActive =
+    href === "/"
+      ? location.pathname === "/"
+      : location.pathname === hrefPath && wantsNew === hasNew;
+
   const handleClick = () => {
     posthog.capture('sidebar_navigation_clicked', {
       destination: href,
@@ -73,17 +87,15 @@ function NavItem({ icon: Icon, label, href, badge, showDot, isOpen, tourId }: Na
       to={href}
       end={href === "/"}
       onClick={handleClick}
-      className={({ isActive }) =>
-        cn(
-          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-white/5",
-          isActive
-            ? "bg-primary/20 text-primary shadow-[0_0_15px_-3px_rgba(var(--primary),0.4)] font-semibold border border-primary/20"
-            : "text-muted-foreground hover:text-foreground"
-        )
-      }
+      className={cn(
+        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-white/5",
+        isActive
+          ? "bg-primary/20 text-primary shadow-[0_0_15px_-3px_rgba(var(--primary),0.4)] font-semibold border border-primary/20"
+          : "text-muted-foreground hover:text-foreground"
+      )}
       data-nav-item={href}
       data-tour-id={tourId}
-      aria-current={location.pathname === href ? "page" : undefined}
+      aria-current={isActive ? "page" : undefined}
       title={label}
     >
       <span className="relative flex-shrink-0">
