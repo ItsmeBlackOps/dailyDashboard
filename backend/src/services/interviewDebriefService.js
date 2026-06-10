@@ -533,7 +533,7 @@ class InterviewDebriefService {
 
         if (!response.ok) {
           const responseText = await response.text();
-          const error = new Error(`OpenAI request failed: ${response.status} ${responseText}`);
+          const error = new Error(`AI request failed: ${response.status} ${responseText}`);
           error.statusCode = response.status >= 500 ? 502 : 400;
           throw error;
         }
@@ -563,7 +563,7 @@ class InterviewDebriefService {
             error.statusCode = 502;
           }
           lastError = error;
-          logger.error('Interview debrief OpenAI request failed', {
+          logger.error('Interview debrief AI request failed', {
             attempt,
             error: error.message
           });

@@ -349,7 +349,7 @@ class InterviewerQuestionService {
 
         if (!response.ok) {
           const errText = await response.text();
-          const error = new Error(`OpenAI request failed: ${response.status} ${errText}`);
+          const error = new Error(`AI request failed: ${response.status} ${errText}`);
           error.statusCode = response.status >= 500 ? 502 : 400;
           throw error;
         }

@@ -4670,7 +4670,7 @@ export default function TasksToday() {
           {questionsDialogTask ? (
             <div className="space-y-4">
               <Alert>
-                <AlertTitle>GPT-5 usage is limited</AlertTitle>
+                <AlertTitle>Opus usage is limited</AlertTitle>
                 <AlertDescription className="text-sm text-muted-foreground">
                   You can extract up to {QUESTIONS_LIMIT} question lists every {QUESTIONS_WINDOW_HOURS} hours. Results are cached locally for{' '}
                   {questionsDialogTask["Candidate Name"] || 'this candidate'}.
@@ -4757,7 +4757,7 @@ export default function TasksToday() {
               disabled={questionsLoading || !questionsDialogTask?.transcription}
               className="sm:w-auto"
             >
-              {questionsLoading ? 'Extracting… (takes up to a minute)' : 'Extract with GPT-5'}
+              {questionsLoading ? 'Extracting… (takes up to a minute)' : 'Extract with Opus'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4770,7 +4770,7 @@ export default function TasksToday() {
           {thanksDialogTask ? (
             <div className="space-y-4">
               <Alert>
-                <AlertTitle>GPT-5 usage is limited</AlertTitle>
+                <AlertTitle>Opus usage is limited</AlertTitle>
                 <AlertDescription className="text-sm text-muted-foreground">
                   You can generate up to {THANKS_MAIL_LIMIT} drafts every {THANKS_MAIL_WINDOW_HOURS} hours. The draft is stored locally for {thanksDialogTask["Candidate Name"] || 'this candidate'} so you can reuse or tweak it without another API call.
                 </AlertDescription>
@@ -4847,7 +4847,7 @@ export default function TasksToday() {
               disabled={thanksMailLoading || !thanksDialogTask?.transcription}
               className="sm:w-auto"
             >
-              {thanksMailLoading ? 'Generating… (takes up to a minute)' : 'Generate with GPT-5'}
+              {thanksMailLoading ? 'Generating… (takes up to a minute)' : 'Generate with Opus'}
             </Button>
           </DialogFooter>
         </DialogContent>
