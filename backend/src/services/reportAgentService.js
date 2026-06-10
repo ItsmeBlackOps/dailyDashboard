@@ -174,7 +174,7 @@ class ReportAgentService {
 
       if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`OpenAI request failed: ${response.status} ${errText}`);
+        throw new Error(`AI request failed: ${response.status} ${errText}`);
       }
 
       const data = await response.json();

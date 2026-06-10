@@ -389,7 +389,7 @@ class ThanksMailService {
 
         if (!response.ok) {
           const errText = await response.text();
-          const error = new Error(`OpenAI request failed: ${response.status} ${errText}`);
+          const error = new Error(`AI request failed: ${response.status} ${errText}`);
           error.statusCode = response.status >= 500 ? 502 : 400;
           throw error;
         }
@@ -417,7 +417,7 @@ class ThanksMailService {
           if (!error.statusCode) {
             error.statusCode = 502;
           }
-          logger.error('OpenAI request failed', {
+          logger.error('AI request failed', {
             attempt,
             message: error.message
           });
