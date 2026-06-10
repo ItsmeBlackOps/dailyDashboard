@@ -95,8 +95,12 @@ const config = {
     model: process.env.OPENAI_REPORTING_MODEL || 'claude-opus-4-8',
     timeoutMs: Number.parseInt(process.env.OPENAI_TIMEOUT_MS || '300000', 10),
     reasoningEffort: stripQuotes(process.env.OPENAI_REASONING_EFFORT || ''),
-    // Feature flag: when true, only candidateProfileService may use OpenAI
-    profileOnlyMode: process.env.OPENAI_PROFILE_ONLY_MODE !== 'false', // default true
+    // Feature flag: when true, only candidateProfileService may call the AI
+    // provider — debriefs / thanks-mail / interviewer-questions / reports are
+    // blocked. Defaulted OFF now that the provider is OpusMax (the OpenAI-cost
+    // guard this flag once enforced no longer applies). Set
+    // OPENAI_PROFILE_ONLY_MODE=true to re-enable the limit as a kill-switch.
+    profileOnlyMode: process.env.OPENAI_PROFILE_ONLY_MODE === 'true', // default false
   },
 
   newRelic: {

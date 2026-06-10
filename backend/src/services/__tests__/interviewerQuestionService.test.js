@@ -270,7 +270,7 @@ describe('interviewerQuestionService — profileOnlyMode gate', () => {
 
     try {
       expect(() => interviewerQuestionService.ensureFeatureEnabled()).toThrow(
-        'OpenAI usage temporarily limited to candidate profile extraction.'
+        'AI usage is temporarily limited to candidate profile extraction.'
       );
     } finally {
       config.openai.profileOnlyMode = saved;

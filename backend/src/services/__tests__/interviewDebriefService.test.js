@@ -127,7 +127,7 @@ describe('interviewDebriefService — profileOnlyMode gate', () => {
 
     try {
       expect(() => interviewDebriefService.ensureOpenAiEnabled()).toThrow(
-        'OpenAI usage temporarily limited to candidate profile extraction.'
+        'AI usage is temporarily limited to candidate profile extraction.'
       );
     } finally {
       config.openai.profileOnlyMode = saved;
