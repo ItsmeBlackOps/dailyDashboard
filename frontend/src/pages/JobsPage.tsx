@@ -4,7 +4,6 @@ import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth, API_URL, SOCKET_URL } from '@/hooks/useAuth';
@@ -317,7 +316,7 @@ export default function JobsPage() {
   );
 
   return (
-    <DashboardLayout>
+    <>
       <div className="flex flex-col h-full min-h-0 overflow-hidden">
         <div className="px-4 pt-2">
           <Button variant="ghost" size="sm" className="gap-1.5 text-xs -ml-1" onClick={() => navigate('/jobs')}>
@@ -431,6 +430,6 @@ export default function JobsPage() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </>
   );
 }

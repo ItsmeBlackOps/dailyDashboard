@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { canCreatePO } from '@/lib/roleAliases';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -149,7 +148,7 @@ export default function CandidateDetailPage() {
   }
 
   return (
-    <DashboardLayout>
+    <>
       <div className="px-4 md:px-6 py-4 space-y-5 max-w-3xl mx-auto">
         {/* Back */}
         <Button variant="ghost" size="sm" className="gap-1.5 text-xs -ml-1" onClick={() => navigate(-1)}>
@@ -476,6 +475,6 @@ export default function CandidateDetailPage() {
           candidateName={candidate.name}
         />
       )}
-    </DashboardLayout>
+    </>
   );
 }

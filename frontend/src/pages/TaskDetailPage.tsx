@@ -4,7 +4,6 @@ import {
   ArrowLeft, Calendar, Clock, Building2, Briefcase, User, Mail,
   Layers, Users, ExternalLink, MessageSquare, FileText,
 } from 'lucide-react';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -183,7 +182,7 @@ export default function TaskDetailPage() {
   }, [taskId, authFetch]);
 
   return (
-    <DashboardLayout>
+    <>
       <div className="px-4 md:px-6 py-4 space-y-4 max-w-3xl mx-auto">
         {/* Back */}
         <Button variant="ghost" size="sm" className="gap-1.5 text-xs -ml-1" onClick={() => navigate(-1)}>
@@ -331,6 +330,6 @@ export default function TaskDetailPage() {
           </>
         )}
       </div>
-    </DashboardLayout>
+    </>
   );
 }

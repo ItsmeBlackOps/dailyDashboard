@@ -2,7 +2,6 @@ import { useState } from "react";
 import { CheckCircle2, FileText, ShieldX } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { AdminAwaitingExpert } from "@/components/candidates/AdminAwaitingExpert";
 import { TranscriptApprovalQueue } from "@/components/admin/TranscriptApprovalQueue";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,7 +15,7 @@ const AdminAlertsPage = () => {
   const navigate = useNavigate();
 
   return (
-    <DashboardLayout>
+    <>
       {isAdmin ? (
         <div className="space-y-4">
           <div>
@@ -58,7 +57,7 @@ const AdminAlertsPage = () => {
           </CardContent>
         </Card>
       )}
-    </DashboardLayout>
+    </>
   );
 };
 

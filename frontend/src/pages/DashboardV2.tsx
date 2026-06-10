@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth, API_URL } from '@/hooks/useAuth';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -141,7 +140,7 @@ export default function DashboardV2() {
     })();
 
     return (
-        <DashboardLayout>
+        <>
             <div className="flex flex-col h-full">
                 {/* ── Header ── */}
                 <div className="px-4 md:px-6 pt-4 md:pt-6 pb-3 border-b">
@@ -321,6 +320,6 @@ export default function DashboardV2() {
                     </Tabs>
                 </div>
             </div>
-        </DashboardLayout>
+        </>
     );
 }
