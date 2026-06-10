@@ -111,7 +111,15 @@ describe('UserService bulk update defaults', () => {
 
     service.userModel = {
       getUserByEmail,
-      updateUser
+      updateUser,
+      // Promote-to-lead now resolves the new lead's superior via the roster
+      // and validates the resulting (role, teamLead) pair, so getAllUsers must
+      // be present. Suraj has no up-chain (empty teamLead + manager), so the
+      // superior falls back to the requester (the MAM), who must resolve to a
+      // valid superior level here.
+      getAllUsers: () => [
+        { email: 'brhamdev.sharma@vizvainc.com', role: 'mam', active: true }
+      ]
     };
 
     service.refreshTokenModel = {
@@ -124,12 +132,15 @@ describe('UserService bulk update defaults', () => {
     );
 
     expect(result.success).toBe(true);
+    // Self-loop fix: a newly-promoted lead is no longer set as their OWN
+    // teamLead/manager (the C16 model validator rejects self-loops). With no
+    // existing up-chain to inherit, the promoting MAM becomes the superior.
     expect(updateUser).toHaveBeenCalledWith(
       'suraj.bohra@vizvainc.com',
       expect.objectContaining({
         role: 'mlead',
-        teamLead: 'Suraj Bohra',
-        manager: 'Suraj Bohra'
+        teamLead: 'Brhamdev Sharma',
+        manager: 'Brhamdev Sharma'
       })
     );
     expect(revokeTokens).toHaveBeenCalledWith('suraj.bohra@vizvainc.com');
@@ -206,15 +217,28 @@ describe('UserService permission checks', () => {
       revokeAllTokensForUser: revokeTokens
     };
 
+    // Promote-to-lead resolves the new lead's superior via the roster and
+    // validates the resulting (role, teamLead) pair, so getAllUsers must be
+    // present. Neha's existing teamLead 'Existing Lead' is too junior to be a
+    // lead's superior, so the fix uses her real manager 'Existing Manager'
+    // (never self, never the promoting MM).
+    service.userModel.getAllUsers = () => [
+      { email: 'sukhdeep.saxena@vizvainc.com', role: 'mm', active: true },
+      { email: 'existing.lead@vizvainc.com', role: 'lead', active: true },
+      { email: 'existing.manager@vizvainc.com', role: 'mm', active: true }
+    ];
+
     const result = await service.bulkUpdateUsers(
       { email: 'sukhdeep.saxena@vizvainc.com', role: 'MM' },
       [{ email: 'neha.singh@vizvainc.com', role: 'mlead' }]
     );
 
     expect(result.success).toBe(true);
+    // Self-loop fix: the promoted lead's superior comes from her real up-chain
+    // (manager 'Existing Manager'), not self and not the promoting MM.
     expect(updateUser).toHaveBeenCalledWith(
       'neha.singh@vizvainc.com',
-      expect.objectContaining({ role: 'mlead' })
+      expect.objectContaining({ role: 'mlead', teamLead: 'Existing Manager' })
     );
   });
 
