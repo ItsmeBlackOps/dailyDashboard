@@ -15,6 +15,20 @@ export async function ensurePerformanceIndexes() {
     // (interviewStartAt/interviewEndsAt are proper BSON Dates in UTC).
     await db.collection('taskBody').createIndex({ interviewStartAt: 1 });
     await db.collection('taskBody').createIndex({ interviewEndsAt: 1 });
+    // SP3 perf-regression fix: getTasksByRange/search aggregates run with a
+    // case-insensitive collation (for the candidate-name $lookup). Mongo only
+    // uses a collation-MATCHED index, so the simple { interviewStartAt: 1 }
+    // above is ignored under those aggregates → window scan + in-memory sort.
+    // This collation-matched compound index serves both the interviewStartAt
+    // range $match and the { interviewStartAt: 1, _id: -1 } $sort under collation.
+    try {
+      await db.collection('taskBody').createIndex(
+        { interviewStartAt: 1, _id: -1 },
+        { collation: { locale: 'en', strength: 2 }, name: 'interviewStartAt_id_ci' }
+      );
+    } catch (err) {
+      logger.warn('interviewStartAt_id_ci collation index not created (continuing)', { error: err.message });
+    }
 
     // ── candidateDetails indexes ──
     await db.collection('candidateDetails').createIndex({ status: 1 });

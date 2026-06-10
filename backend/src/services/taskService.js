@@ -141,7 +141,27 @@ export class TaskService {
         { $match: initialMatch }
       ];
 
-      // 3. Lookups (Access Control Dependencies) -- SAME AS SEARCH
+      // 3. Access Control (Visibility Filter) — runs BEFORE the candidate
+      // lookup because it depends ONLY on task fields (sender/cc/assignedTo/
+      // assignedExpert), never on the candidateDetails lookup. Filtering first
+      // lets us sort + paginate the matched set and join only the page we
+      // actually return (the lookup used to run over the whole date window).
+      const visibilityMatch = this.buildTaskVisibilityMatch(userEmail, userRole, teamLead, manager);
+
+      if (Object.keys(visibilityMatch).length > 0) {
+        pipeline.push({ $match: visibilityMatch });
+      }
+
+      // 4. Pagination — sort on the (collation-matched) interviewStartAt index,
+      // then skip/limit, BEFORE the lookup so the join touches only the returned
+      // rows. `_id` is a stable secondary key when starts tie / are null.
+      pipeline.push({ $sort: { interviewStartAt: 1, _id: -1 } });
+      if (offset) pipeline.push({ $skip: offset });
+      if (limit) pipeline.push({ $limit: limit });
+
+      // 5. Enrich only the paginated page: join candidateDetails for the
+      // candidate's Expert (candidateExpertRaw, consumed by formatTask), then
+      // drop the heavy email-thread blobs (body/replies) before returning.
       pipeline.push(
         {
           $lookup: {
@@ -166,23 +186,6 @@ export class TaskService {
         },
         { $unset: ['replies', 'body', 'candidateDetails'] }
       );
-
-      // 4. Access Control (Visibility Filter) -- SAME AS SEARCH
-      // We should extract this logic ideally, but for now copying ensures strict equivalence.
-      const visibilityMatch = this.buildTaskVisibilityMatch(userEmail, userRole, teamLead, manager);
-
-      if (Object.keys(visibilityMatch).length > 0) {
-        pipeline.push({ $match: visibilityMatch });
-      }
-
-      // 5. Pagination & Formatting
-      // Sort by the indexed `interviewStartAt` (soonest first) so the day's
-      // interviews list in chronological order; the `interviewStartAt: 1`
-      // index serves both this sort and the date-range filter above. `_id`
-      // is a stable secondary key for pagination when starts tie / are null.
-      pipeline.push({ $sort: { interviewStartAt: 1, _id: -1 } });
-      if (offset) pipeline.push({ $skip: offset });
-      if (limit) pipeline.push({ $limit: limit });
 
       const collation = { locale: 'en', strength: 2 };
 
