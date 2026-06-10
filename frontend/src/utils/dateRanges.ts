@@ -93,3 +93,44 @@ export function clampWeekIndex(index: number, options: WeekOption[]): number {
   const found = options.find((option) => option.index === index);
   return found ? found.index : options[0].index;
 }
+
+// ── Eastern-anchored day-picker helpers ──────────────────────────────────
+// The day/range Calendar hands back JS Dates at the BROWSER's local midnight.
+// Passing that instant into computeDayRange re-interprets it in Eastern and can
+// land on a neighbouring Eastern day (the off-by-one non-ET users saw). These
+// keep the picker Eastern-consistent: take the picked wall-clock Y-M-D, anchor
+// it to Eastern, and render Eastern back out.
+
+/** A picked calendar Date (local midnight) → its wall-clock `YYYY-MM-DD`. */
+export function localDateToYmd(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** Eastern day boundaries for a wall-clock `YYYY-MM-DD`. */
+export function computeDayRangeFromYmd(ymd: string, timezone = DEFAULT_TIMEZONE): DateRangeResult & { dayIso: string } {
+  const start = moment.tz(ymd, 'YYYY-MM-DD', timezone).startOf('day');
+  const end = start.clone().add(1, 'day');
+  return { startIso: start.toISOString(), endIso: end.toISOString(), dayIso: start.toISOString() };
+}
+
+/** Eastern boundaries for an inclusive `from`..`to` wall-clock day range. */
+export function computeRangeFromYmd(fromYmd: string, toYmd: string, timezone = DEFAULT_TIMEZONE): DateRangeResult {
+  const start = moment.tz(fromYmd, 'YYYY-MM-DD', timezone).startOf('day');
+  const end = moment.tz(toYmd, 'YYYY-MM-DD', timezone).startOf('day').add(1, 'day'); // `to` inclusive
+  return { startIso: start.toISOString(), endIso: end.toISOString() };
+}
+
+/** An Eastern-day ISO → a LOCAL Date at that day's Y-M-D, so the Calendar
+ *  (which works in local time) highlights the correct cell. */
+export function estDayIsoToLocalDate(iso: string, timezone = DEFAULT_TIMEZONE): Date {
+  const m = moment.tz(iso, timezone);
+  return new Date(m.year(), m.month(), m.date());
+}
+
+/** An Eastern-day ISO → a display label rendered in Eastern. */
+export function formatEstDayLabel(iso: string, timezone = DEFAULT_TIMEZONE): string {
+  return moment.tz(iso, timezone).format('MMM DD, YYYY');
+}

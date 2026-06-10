@@ -6,6 +6,11 @@ import {
   generateWeekOptions,
   clampWeekIndex,
   DEFAULT_TIMEZONE,
+  localDateToYmd,
+  computeDayRangeFromYmd,
+  computeRangeFromYmd,
+  estDayIsoToLocalDate,
+  formatEstDayLabel,
 } from './dateRanges';
 
 const tz = DEFAULT_TIMEZONE;
@@ -50,5 +55,37 @@ describe('date range utilities', () => {
     const resolved = clampWeekIndex(invalidIndex, options);
 
     expect(options.some((option) => option.index === resolved)).toBe(true);
+  });
+});
+
+describe('Eastern-anchored day-picker helpers', () => {
+  it('localDateToYmd uses the picked wall-clock day', () => {
+    // new Date(y, monthIndex, d) is local midnight; getFullYear/Month/Date
+    // return those same components regardless of the host timezone.
+    expect(localDateToYmd(new Date(2026, 5, 9))).toBe('2026-06-09'); // June = index 5
+  });
+
+  it('computeDayRangeFromYmd anchors the picked day to Eastern (June = EDT, UTC-4)', () => {
+    const { startIso, endIso, dayIso } = computeDayRangeFromYmd('2026-06-09', tz);
+    expect(startIso).toBe('2026-06-09T04:00:00.000Z'); // EDT midnight = 04:00 UTC
+    expect(endIso).toBe('2026-06-10T04:00:00.000Z');
+    expect(dayIso).toBe(startIso);
+  });
+
+  it('computeRangeFromYmd makes the `to` day inclusive', () => {
+    const { startIso, endIso } = computeRangeFromYmd('2026-06-09', '2026-06-11', tz);
+    expect(startIso).toBe('2026-06-09T04:00:00.000Z');
+    expect(endIso).toBe('2026-06-12T04:00:00.000Z'); // through the end of the 11th
+  });
+
+  it('estDayIsoToLocalDate maps an Eastern day back to its Y-M-D', () => {
+    const local = estDayIsoToLocalDate('2026-06-09T04:00:00.000Z', tz);
+    expect(local.getFullYear()).toBe(2026);
+    expect(local.getMonth()).toBe(5); // June
+    expect(local.getDate()).toBe(9);
+  });
+
+  it('formatEstDayLabel renders the Eastern day', () => {
+    expect(formatEstDayLabel('2026-06-09T04:00:00.000Z', tz)).toBe('Jun 09, 2026');
   });
 });

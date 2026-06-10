@@ -9,15 +9,20 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, RefreshCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { endOfDay, format, startOfDay } from "date-fns";
+import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import {
   clampWeekIndex,
   computeDayRange,
+  computeDayRangeFromYmd,
   computeMonthRange,
+  computeRangeFromYmd,
   computeWeekRange,
   DEFAULT_TIMEZONE,
+  estDayIsoToLocalDate,
+  formatEstDayLabel,
   generateWeekOptions,
+  localDateToYmd,
 } from "@/utils/dateRanges";
 import { Switch } from "@/components/ui/switch";
 
@@ -115,7 +120,7 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
   const monthValue = filters.monthMonth ?? currentMonth;
 
   const formattedDayLabel = filters.dayDate
-    ? format(new Date(filters.dayDate), "LLL dd, y")
+    ? formatEstDayLabel(filters.dayDate)
     : "Select a day";
 
   const formattedMonthLabel = format(new Date(monthYear, monthValue, 1), "LLLL yyyy");
@@ -150,7 +155,10 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
   }, []);
 
   const applyDayValue = (date: Date) => {
-    const { startIso, endIso, dayIso } = computeDayRange(date, DEFAULT_TIMEZONE);
+    // Anchor the picked calendar day's wall-clock Y-M-D to Eastern — not the
+    // local-midnight Date instant, which computeDayRange would re-interpret in
+    // Eastern and shift to a neighbouring day for non-ET browsers.
+    const { startIso, endIso, dayIso } = computeDayRangeFromYmd(localDateToYmd(date), DEFAULT_TIMEZONE);
     trackFilterChange('range_specific', 'day', { day_date: dayIso });
     onChange({
       ...filters,
@@ -258,8 +266,9 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
       return;
     }
 
-    const startIso = startOfDay(range.from).toISOString();
-    const endIso = endOfDay(range.to).toISOString();
+    // Anchor the picked from/to wall-clock days to Eastern (inclusive `to`),
+    // not the browser-local startOfDay/endOfDay that shifted ranges off by a day.
+    const { startIso, endIso } = computeRangeFromYmd(localDateToYmd(range.from), localDateToYmd(range.to), DEFAULT_TIMEZONE);
 
     trackFilterChange('custom_range', 'set', { start_iso: startIso, end_iso: endIso });
     onChange({ ...filters, range: "custom", start: startIso, end: endIso });
@@ -343,7 +352,7 @@ export function DashboardFilters({ filters, onChange, allowReceivedDate = false 
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
-                    selected={filters.dayDate ? new Date(filters.dayDate) : undefined}
+                    selected={filters.dayDate ? estDayIsoToLocalDate(filters.dayDate) : undefined}
                     onSelect={(date) => {
                       if (date) {
                         applyDayValue(date);
