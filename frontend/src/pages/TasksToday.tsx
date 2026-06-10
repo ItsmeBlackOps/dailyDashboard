@@ -1999,8 +1999,15 @@ export default function TasksToday() {
         return;
       }
 
-      if (!jdAttachment || !jdAttachment.data) {
-        setMockError('Attach the job description (PDF, up to 2 MB).');
+      // The JD may be supplied as a PDF attachment OR as text in the "Job
+      // Description Notes" field — the backend embeds jobDescriptionText in the
+      // mock email body, so a JD PDF is not mandatory. Only block when NEITHER
+      // is present. (Sending a mock from an existing task whose JD was cached
+      // as text rather than a PDF used to be blocked here even though the JD
+      // text was already populated in the notes input.)
+      const hasJdText = sanitizedJobDescription.length > 0;
+      if ((!jdAttachment || !jdAttachment.data) && !hasJdText) {
+        setMockError('Add the job description — paste it in the notes field or attach a PDF (up to 2 MB).');
         setMockSending(false);
         return;
       }
@@ -2020,10 +2027,12 @@ export default function TasksToday() {
         interviewRound: mockPreview.interviewRound,
         interviewDateTime: mockPreview.interviewDateTimeIso,
         jobDescriptionText: sanitizedJobDescription,
-        attachments: [
-          { ...resumeAttachment, category: 'resume' },
-          { ...jdAttachment, category: 'jobDescription' }
-        ],
+        attachments: jdAttachment && jdAttachment.data
+          ? [
+              { ...resumeAttachment, category: 'resume' },
+              { ...jdAttachment, category: 'jobDescription' }
+            ]
+          : [{ ...resumeAttachment, category: 'resume' }],
         sourceTaskId: mockPreview.sourceTaskId || mockDialogTask._id
       };
 
