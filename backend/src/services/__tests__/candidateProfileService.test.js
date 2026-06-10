@@ -30,9 +30,10 @@ const MOCK_PARSED_PROFILE = {
 const MOCK_COMPLETION = {
   choices: [{
     message: {
-      content: null,
       role: 'assistant',
-      parsed: MOCK_PARSED_PROFILE,
+      // OpusMax returns the profile as a JSON string in `content`
+      // (response_format json_object); the service JSON.parses + zod-validates it.
+      content: JSON.stringify(MOCK_PARSED_PROFILE),
     },
     finish_reason: 'stop',
   }],
@@ -48,11 +49,11 @@ const FAKE_PDF_BUFFER = Buffer.from('%PDF-1.4 fake pdf content with resume data 
 // ---------------------------------------------------------------------------
 // Mock: openai
 // ---------------------------------------------------------------------------
-const mockParse = jest.fn().mockResolvedValue(MOCK_COMPLETION);
+const mockCreate = jest.fn().mockResolvedValue(MOCK_COMPLETION);
 const MockOpenAI = jest.fn().mockImplementation(() => ({
   chat: {
     completions: {
-      parse: mockParse,
+      create: mockCreate,
     },
   },
 }));
@@ -108,7 +109,7 @@ describe('CandidateProfileService', () => {
     mockFetch(FAKE_PDF_BUFFER);
     // Ensure service looks enabled for most tests
     candidateProfileService.enabled = true;
-    candidateProfileService.client = { chat: { completions: { parse: mockParse } } };
+    candidateProfileService.client = { chat: { completions: { create: mockCreate } } };
   });
 
   describe('extractFromResume', () => {
@@ -138,8 +139,8 @@ describe('CandidateProfileService', () => {
       expect(tokensUsed.inputTokens).toBe(1200);
       expect(tokensUsed.outputTokens).toBe(280);
 
-      // OpenAI parse was called once
-      expect(mockParse).toHaveBeenCalledTimes(1);
+      // OpusMax chat.completions.create was called once
+      expect(mockCreate).toHaveBeenCalledTimes(1);
     });
 
     it('generates a stable resumeHash for the same content (idempotency)', async () => {
@@ -148,7 +149,7 @@ describe('CandidateProfileService', () => {
         candidateDoc: FAKE_CANDIDATE,
       });
 
-      mockParse.mockClear();
+      mockCreate.mockClear();
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
         arrayBuffer: async () => FAKE_PDF_BUFFER.buffer.slice(
@@ -202,9 +203,9 @@ describe('CandidateProfileService', () => {
       ).rejects.toThrow('Failed to download resume (404)');
     });
 
-    it('throws when OpenAI returns no parsed content', async () => {
-      mockParse.mockResolvedValueOnce({
-        choices: [{ message: { content: null, parsed: null }, finish_reason: 'stop' }],
+    it('throws when OpusMax returns no content', async () => {
+      mockCreate.mockResolvedValueOnce({
+        choices: [{ message: { content: null }, finish_reason: 'stop' }],
         usage: { prompt_tokens: 100, completion_tokens: 10 },
       });
 
@@ -213,7 +214,23 @@ describe('CandidateProfileService', () => {
           resumeUrl: 'https://example.com/resume.pdf',
           candidateDoc: FAKE_CANDIDATE,
         })
-      ).rejects.toThrow('OpenAI did not return a parseable structured response');
+      ).rejects.toThrow('OpusMax did not return content for the candidate profile');
+    });
+
+    it('throws when the returned content is not valid schema JSON', async () => {
+      // json_object can still return malformed/incomplete JSON; the service
+      // JSON.parses + zod-validates and must reject bad payloads.
+      mockCreate.mockResolvedValueOnce({
+        choices: [{ message: { content: '{"roleFamily": "backend"' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 100, completion_tokens: 10 },
+      });
+
+      await expect(
+        candidateProfileService.extractFromResume({
+          resumeUrl: 'https://example.com/resume.pdf',
+          candidateDoc: FAKE_CANDIDATE,
+        })
+      ).rejects.toThrow('was not valid JSON matching the schema');
     });
   });
 });

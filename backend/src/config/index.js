@@ -84,9 +84,15 @@ const config = {
   })(),
 
   openai: {
-    apiKey: process.env.OPENAI_API_KEY || '',
-    baseUrl: process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE_URL || 'https://api.openai.com/v1',
-    model: process.env.OPENAI_REPORTING_MODEL || 'gpt-4o',
+    // AI provider: OpusMax — an OpenAI-compatible Claude gateway
+    // (https://api.opusmax.pro/v1). The request/response shape is identical to
+    // OpenAI's /chat/completions, so the existing call sites are unchanged
+    // except for the model id. The API key MUST come from the environment
+    // (OPUSMAX_API_KEY preferred; OPENAI_API_KEY kept as a fallback) — never
+    // hardcode it: this repo is public.
+    apiKey: process.env.OPUSMAX_API_KEY || process.env.OPENAI_API_KEY || '',
+    baseUrl: process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE_URL || 'https://api.opusmax.pro/v1',
+    model: process.env.OPENAI_REPORTING_MODEL || 'claude-opus-4-8',
     timeoutMs: Number.parseInt(process.env.OPENAI_TIMEOUT_MS || '300000', 10),
     reasoningEffort: stripQuotes(process.env.OPENAI_REASONING_EFFORT || ''),
     // Feature flag: when true, only candidateProfileService may use OpenAI

@@ -503,7 +503,7 @@ class InterviewDebriefService {
 
       try {
         const requestBody = {
-          model: model || 'gpt-4o',
+          model: model || 'claude-opus-4-8',
           messages: [
             {
               role: 'user',
