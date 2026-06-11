@@ -40,6 +40,28 @@ vi.mock('@/contexts/MicrosoftConsentContext', () => ({
   MicrosoftConsentProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+const mockAuthFetch = vi.hoisted(() =>
+  vi.fn(() => Promise.reject(new Error('authFetch not mocked')))
+);
+
+// The returned object MUST be referentially stable across renders — the real
+// hook memoizes authFetch, and effects depend on its identity. A fresh object
+// per call re-runs those effects forever (render loop → OOM).
+const mockUseAuthValue = vi.hoisted(() => ({
+  authFetch: (...args: unknown[]) => (mockAuthFetch as any)(...args),
+  logout: () => {},
+  refreshAccessToken: async () => undefined,
+  user: undefined as unknown,
+}));
+
+vi.mock('@/hooks/useAuth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useAuth')>();
+  return {
+    ...actual,
+    useAuth: () => mockUseAuthValue,
+  };
+});
+
 vi.mock('@/context/NotificationContext', () => ({
   useNotifications: () => ({
     notifications: [],
@@ -350,6 +372,80 @@ describe('TasksToday', () => {
     await waitFor(() => {
       expect(fetchCalls()).toBe(2);
     });
+  });
+
+  it('restores a cached interview debrief when the dialog opens', async () => {
+    const socket = setupSocket();
+
+    // Task must have a transcript for the debrief dialog to open.
+    const today = new Date();
+    const dateStr = `${(today.getMonth() + 1).toString().padStart(2, '0')}/${today
+      .getDate()
+      .toString()
+      .padStart(2, '0')}/${today.getFullYear()}`;
+    socket.emit.mockImplementation((event: string, _payload: any, cb?: Function) => {
+      if (event === 'getTasksByRange' && typeof cb === 'function') {
+        cb({
+          success: true,
+          tasks: [
+            {
+              _id: 't1',
+              subject: 'Interview Support - Example',
+              'Candidate Name': 'Test Candidate',
+              'Date of Interview': dateStr,
+              'Start Time Of Interview': '10:00 AM',
+              'End Time Of Interview': '11:00 AM',
+              'End Client': 'ClientX',
+              'Interview Round': 'Round 1',
+              assignedExpert: 'Not Assigned',
+              assignedEmail: 'tester@example.com',
+              transcription: true,
+              candidateExpertDisplay: 'Ayush K'
+            }
+          ]
+        });
+      }
+    });
+
+    mockAuthFetch.mockImplementation(async (url: string) => {
+      if (String(url).includes('/interview-debrief')) {
+        expect(String(url)).toContain('autoQueue=false');
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            status: 'ready',
+            markdown: '## Saved\nCached debrief body',
+            html: '<h2>Saved</h2><p>Cached debrief body</p>',
+            generatedAt: '2026-06-10T21:51:29.000Z',
+            cached: true
+          })
+        } as any;
+      }
+      return Promise.reject(new Error('unmocked endpoint: ' + url));
+    });
+
+    render(
+      <BrowserRouter>
+        <TooltipProvider>
+          <TasksToday />
+        </TooltipProvider>
+      </BrowserRouter>
+    );
+
+    await screen.findByText(/Test Candidate/);
+
+    // Radix dropdowns don't open from synthetic pointer events in jsdom;
+    // the keyboard path (ArrowDown on the trigger) opens them reliably.
+    const actionsTrigger = screen.getAllByRole('button', { name: 'Actions' })[0];
+    fireEvent.keyDown(actionsTrigger, { key: 'ArrowDown' });
+
+    const menuItem = await screen.findByRole('menuitem', { name: 'Interview Debrief' });
+    fireEvent.click(menuItem);
+
+    // The previously generated debrief is hydrated from the server cache.
+    await screen.findByText(/Cached debrief body/);
   });
 
   it('removes task row when taskRemoved is received', async () => {
