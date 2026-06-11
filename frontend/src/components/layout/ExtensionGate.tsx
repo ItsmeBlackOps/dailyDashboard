@@ -1,101 +1,61 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { X, AlertTriangle } from 'lucide-react';
 import { useExtensionInstalled } from '@/hooks/useExtensionInstalled';
 import { isTechnicalTeam } from '@/lib/technicalTeam';
-import { useAuth } from '@/hooks/useAuth';
 
-// Technical-team members can only use the dashboard with the Meeting Detector
-// extension installed. This renders a full-screen, self-clearing install guide
-// for them whenever the extension isn't detected. Non-technical users and
-// admins are never gated. The guide watches for the extension live, so the
-// moment it's installed the overlay disappears on its own.
+// Warn-but-allow: technical-team members without the Meeting Detector extension
+// are NOT blocked — they get a non-blocking warning that interviews won't be
+// auto-marked as started, with a one-click path to set it up. The notice clears
+// itself the moment the extension is detected (live), and can be dismissed for
+// the current session. Non-technical users and admins never see it.
 export function ExtensionGate() {
   const role = (typeof localStorage !== 'undefined' && localStorage.getItem('role')) || '';
   const gated = isTechnicalTeam(role);
-  const { status, recheck } = useExtensionInstalled();
-  const { logout } = useAuth();
+  const { status } = useExtensionInstalled();
+  const [dismissed, setDismissed] = useState(false);
 
-  if (!gated || status === 'installed') {
+  // Only warn once detection has concluded 'missing' (avoids a flash for
+  // installed users during the brief initial check).
+  if (!gated || status !== 'missing' || dismissed) {
     return null;
   }
 
-  const verifying = status === 'checking';
-
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/95 backdrop-blur-sm">
-      <div className="mx-4 w-full max-w-lg rounded-xl border bg-card p-6 shadow-xl">
-        <div className="flex items-center gap-2">
-          <span
-            className={
-              'inline-block h-2.5 w-2.5 rounded-full ' +
-              (verifying ? 'animate-pulse bg-amber-500' : 'bg-destructive')
-            }
-          />
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {verifying ? 'Verifying meeting detector…' : 'Meeting detector required'}
-          </span>
-        </div>
-
-        <h1 className="mt-3 text-xl font-semibold">
-          {verifying ? 'Checking your browser…' : 'Install the Meeting Detector to continue'}
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Your team uses the Meeting Detector browser extension so interviews are marked
-          <strong> started </strong>
-          automatically the moment you join the Teams call. The dashboard stays locked until it's
-          installed in this browser.
-        </p>
-
-        {!verifying && (
-          <ol className="mt-4 space-y-2 text-sm">
-            <li className="flex gap-2">
-              <span className="font-semibold text-muted-foreground">1.</span>
-              <span>
-                Get the <strong>Interview Meeting Detector</strong> extension from your admin, then load it:
-                open <code className="rounded bg-muted px-1.5 py-0.5 text-xs">chrome://extensions</code>, turn on{' '}
-                <strong>Developer mode</strong>, click <strong>Load unpacked</strong>, and pick the extension folder.
-              </span>
-            </li>
-            <li className="flex gap-2">
-              <span className="font-semibold text-muted-foreground">2.</span>
-              <span>Come back to this tab — you'll be let in automatically within a second or two.</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="font-semibold text-muted-foreground">3.</span>
-              <span>
-                Finish setup once you're in: open <strong>Meeting Detector</strong> in the sidebar and connect your token.
-              </span>
-            </li>
-          </ol>
-        )}
-
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-            <span className="text-muted-foreground">Watching for the extension…</span>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
+    <div className="fixed bottom-4 right-4 z-[9998] w-[340px] max-w-[calc(100vw-2rem)] rounded-lg border border-amber-300 bg-amber-50 p-4 shadow-lg dark:border-amber-700/60 dark:bg-amber-950/40">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="mt-0.5 h-5 w-5 flex-none text-amber-600 dark:text-amber-400" />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            Meeting Detector not installed
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-300/90">
+            Without the browser extension, your interviews won't be marked <strong>started</strong>{' '}
+            automatically when you join the Teams call. Set it up to enable it.
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <Link
+              to="/meeting-detector"
+              className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700"
+            >
+              Set up the extension
+            </Link>
             <button
               type="button"
-              onClick={recheck}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+              onClick={() => setDismissed(true)}
+              className="rounded-md px-2 py-1.5 text-xs text-amber-800 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900/40"
             >
-              Re-check now
-            </button>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
-            >
-              Reload page
+              Later
             </button>
           </div>
         </div>
-
         <button
           type="button"
-          onClick={logout}
-          className="mt-5 text-xs text-muted-foreground underline-offset-2 hover:underline"
+          aria-label="Dismiss"
+          onClick={() => setDismissed(true)}
+          className="ml-auto flex-none rounded p-1 text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900/40"
         >
-          Sign out
+          <X className="h-4 w-4" />
         </button>
       </div>
     </div>
