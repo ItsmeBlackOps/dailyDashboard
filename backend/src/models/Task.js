@@ -400,16 +400,21 @@ export class TaskModel {
   }
 
   async enrichWithTranscriptStatus(tasks) {
+    // Transcript presence only ever flips false -> true, so once detected we
+    // persist `transcription: true` on the task documents and trust the flag
+    // forever after — flagged tasks never hit Appwrite again.
+    const isFlagged = (task) => task?.transcription === true;
+
     // 1. Check if Appwrite is initialized
     if (!this.appwriteDatabases) {
       logger.warn('Transcript check skipped: appwriteDatabases is null');
-      return (tasks || []).map(task => ({ ...task, transcription: false }));
+      return (tasks || []).map(task => ({ ...task, transcription: isFlagged(task) }));
     }
 
     // 2. Check if tasks array is valid
     if (!Array.isArray(tasks) || tasks.length === 0) {
       logger.info('Transcript check skipped: no tasks');
-      return (tasks || []).map(task => ({ ...task, transcription: false }));
+      return (tasks || []).map(task => ({ ...task, transcription: isFlagged(task) }));
     }
 
     const { databaseId, transcriptsCollectionId } = config.appwrite;
@@ -423,18 +428,37 @@ export class TaskModel {
       logger.warn('Transcript check skipped: no subjects on tasks', {
         sampleTaskKeys: tasks[0] ? Object.keys(tasks[0]).slice(0, 10) : []
       });
-      return tasks.map(task => ({ ...task, transcription: false }));
+      return tasks.map(task => ({ ...task, transcription: isFlagged(task) }));
     }
 
-    logger.info('Transcript check starting', { subjectCount: subjects.length });
+    // Subjects already flagged on ANY of their tasks are known — seed the
+    // result set with them and only ask Appwrite about the rest.
+    const flaggedSubjects = new Set(tasks
+      .filter(isFlagged)
+      .map(t => (t.subject || t.Subject || '').trim())
+      .filter(Boolean));
+    const subjectsToQuery = subjects.filter(s => !flaggedSubjects.has(s));
 
-    const transcriptTitles = new Set();
+    const transcriptTitles = new Set(flaggedSubjects);
+
+    if (subjectsToQuery.length === 0) {
+      logger.info('Transcript check satisfied from persisted flags — Appwrite skipped', {
+        flaggedCount: flaggedSubjects.size
+      });
+      return tasks.map(task => ({ ...task, transcription: true }));
+    }
+
+    logger.info('Transcript check starting', {
+      subjectCount: subjectsToQuery.length,
+      skippedAlreadyFlagged: flaggedSubjects.size
+    });
+
     const BATCH_SIZE = 50;
 
     try {
       // Process in batches
-      for (let i = 0; i < subjects.length; i += BATCH_SIZE) {
-        const batch = subjects.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < subjectsToQuery.length; i += BATCH_SIZE) {
+        const batch = subjectsToQuery.slice(i, i + BATCH_SIZE);
 
         posthogLogger.emit({
           severityText: 'INFO',
@@ -462,6 +486,33 @@ export class TaskModel {
       const matchedSubjects = subjects.filter(s => transcriptTitles.has(s));
       const unmatchedSubjects = subjects.filter(s => !transcriptTitles.has(s));
 
+      // Persist newly detected transcripts on the task documents so future
+      // loads skip Appwrite for them and downstream consumers (auto-debrief
+      // scheduler) can key off the flag flip. Non-fatal on failure.
+      const newlyMatched = subjectsToQuery.filter(s => transcriptTitles.has(s));
+      if (newlyMatched.length > 0 && this.collection) {
+        try {
+          const res = await this.collection.updateMany(
+            {
+              $or: [
+                { subject: { $in: newlyMatched } },
+                { Subject: { $in: newlyMatched } },
+              ],
+              transcription: { $ne: true },
+            },
+            { $set: { transcription: true, transcriptionDetectedAt: new Date() } }
+          );
+          logger.info('Persisted transcription flag on tasks', {
+            subjects: newlyMatched.length,
+            modified: res.modifiedCount,
+          });
+        } catch (persistErr) {
+          logger.warn('Failed to persist transcription flag (non-fatal)', {
+            error: persistErr.message,
+          });
+        }
+      }
+
       logger.info('Transcript check complete', {
         foundCount: transcriptTitles.size,
         total: subjects.length
@@ -487,7 +538,7 @@ export class TaskModel {
         const subject = (task.subject || task.Subject || '').trim();
         return {
           ...task,
-          transcription: transcriptTitles.has(subject)
+          transcription: isFlagged(task) || transcriptTitles.has(subject)
         };
       });
     } catch (error) {
@@ -495,8 +546,8 @@ export class TaskModel {
         error: error.message,
         stack: error.stack
       });
-      // On error, return tasks with transcription=false
-      return tasks.map(task => ({ ...task, transcription: false }));
+      // On error, fall back to whatever was already persisted on each task.
+      return tasks.map(task => ({ ...task, transcription: isFlagged(task) }));
     }
   }
 
