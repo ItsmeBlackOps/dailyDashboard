@@ -11,7 +11,10 @@ export default function MeetingDetector() {
   const [error, setError] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
-  const dashboardUrl = window.location.origin;
+  // The extension POSTs to `${dashboardUrl}/api/meeting-presence/report`, which
+  // is the API origin — it can differ from the page origin (frontend vs API
+  // domain), so hand out API_URL, not window.location.origin.
+  const dashboardUrl = API_URL;
 
   const generate = useCallback(async () => {
     setLoading(true);

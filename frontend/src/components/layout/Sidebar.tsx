@@ -18,6 +18,7 @@ import {
   // Headphones,  // hidden with Interview Support nav
   // Briefcase,   // hidden with Jobs Pool nav
   Megaphone,
+  Puzzle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -434,6 +435,14 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 isOpen={isOpen}
                 tourId="tasks-link"
               />
+              {['user', 'expert', 'lead', 'am'].includes(normalizedRole) && (
+                <NavItem
+                  icon={Puzzle}
+                  label="Meeting Detector"
+                  href="/meeting-detector"
+                  isOpen={isOpen}
+                />
+              )}
               {['admin', 'mm', 'mam', 'mlead', 'lead', 'user', 'am', 'recruiter', 'manager', 'assistantmanager', 'teamlead', 'expert'].includes(normalizedRole) && (
                 <NavItem
                   icon={Database}
