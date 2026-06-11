@@ -124,7 +124,20 @@ export const authenticateHTTP = (req, res, next) => {
   const token = authHeader.substring(7);
 
   try {
-    const { email } = jwt.verify(token, config.auth.jwtSecret);
+    const decoded = jwt.verify(token, config.auth.jwtSecret);
+
+    // Scoped tokens (e.g. the meeting-detector extension token) carry a
+    // `scope` claim and must NOT be usable on the normal API — only the
+    // endpoint that minted their scope accepts them. Normal access/refresh
+    // tokens are `{ email }` with no scope, so this never affects them.
+    if (decoded.scope) {
+      return res.status(401).json({
+        success: false,
+        error: 'Token not valid for this endpoint'
+      });
+    }
+
+    const { email } = decoded;
     const user = userModel.getUserByEmail(email);
 
     if (!user) {
@@ -211,4 +224,33 @@ export const requireHTTPRole = (roles) => {
 
     next();
   };
+};
+
+// Validates the meeting-detector extension token (scope='meeting-presence').
+// Distinct from authenticateHTTP: it ONLY accepts the scoped token and never
+// touches req.user / role gates — it just identifies which expert is
+// reporting presence. Used solely by the meeting-presence report endpoint.
+export const authenticateMeetingDetector = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, error: 'Authorization header missing or invalid' });
+  }
+  const token = authHeader.substring(7);
+  try {
+    const decoded = jwt.verify(token, config.auth.jwtSecret);
+    if (decoded.scope !== 'meeting-presence' || !decoded.email) {
+      return res.status(401).json({ success: false, error: 'Invalid detector token' });
+    }
+    const user = userModel.getUserByEmail(decoded.email);
+    if (!user || user.active === false) {
+      return res.status(401).json({ success: false, error: 'Detector account not found or inactive' });
+    }
+    req.detectorEmail = decoded.email;
+    next();
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ success: false, error: 'Detector token expired — re-enroll the extension' });
+    }
+    return res.status(401).json({ success: false, error: 'Invalid detector token' });
+  }
 };
