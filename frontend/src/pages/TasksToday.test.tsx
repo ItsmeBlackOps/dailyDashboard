@@ -448,6 +448,93 @@ describe('TasksToday', () => {
     await screen.findByText(/Cached debrief body/);
   });
 
+  it('copies the debrief as rich text (text/html) when the Clipboard API supports it', async () => {
+    const socket = setupSocket();
+    const today = new Date();
+    const dateStr = `${(today.getMonth() + 1).toString().padStart(2, '0')}/${today
+      .getDate()
+      .toString()
+      .padStart(2, '0')}/${today.getFullYear()}`;
+    socket.emit.mockImplementation((event: string, _payload: any, cb?: Function) => {
+      if (event === 'getTasksByRange' && typeof cb === 'function') {
+        cb({
+          success: true,
+          tasks: [{
+            _id: 't1',
+            subject: 'Interview Support - Example',
+            'Candidate Name': 'Test Candidate',
+            'Date of Interview': dateStr,
+            'Start Time Of Interview': '10:00 AM',
+            'End Time Of Interview': '11:00 AM',
+            'End Client': 'ClientX',
+            'Interview Round': 'Round 1',
+            assignedExpert: 'Not Assigned',
+            assignedEmail: 'tester@example.com',
+            transcription: true,
+            candidateExpertDisplay: 'Ayush K'
+          }]
+        });
+      }
+    });
+    mockAuthFetch.mockImplementation(async (url: string) => {
+      if (String(url).includes('/interview-debrief')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            status: 'ready',
+            markdown: '## Saved\nCached debrief body',
+            html: '<h2>Saved</h2><p>Cached debrief body</p>',
+            generatedAt: '2026-06-10T21:51:29.000Z',
+            cached: true
+          })
+        } as any;
+      }
+      return Promise.reject(new Error('unmocked endpoint: ' + url));
+    });
+
+    const writtenItems: any[] = [];
+    class FakeClipboardItem {
+      items: Record<string, Blob>;
+      constructor(items: Record<string, Blob>) { this.items = items; }
+    }
+    (window as any).ClipboardItem = FakeClipboardItem;
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        write: vi.fn(async (items: any[]) => { writtenItems.push(...items); }),
+        writeText: vi.fn(async () => {}),
+      },
+    });
+
+    render(
+      <BrowserRouter>
+        <TooltipProvider>
+          <TasksToday />
+        </TooltipProvider>
+      </BrowserRouter>
+    );
+
+    await screen.findByText(/Test Candidate/);
+    const actionsTrigger = screen.getAllByRole('button', { name: 'Actions' })[0];
+    fireEvent.keyDown(actionsTrigger, { key: 'ArrowDown' });
+    const menuItem = await screen.findByRole('menuitem', { name: 'Interview Debrief' });
+    fireEvent.click(menuItem);
+    await screen.findByText(/Cached debrief body/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+
+    await waitFor(() => {
+      expect((navigator.clipboard as any).write).toHaveBeenCalledTimes(1);
+    });
+    expect(writtenItems[0]).toBeInstanceOf(FakeClipboardItem);
+    expect(Object.keys(writtenItems[0].items)).toEqual(
+      expect.arrayContaining(['text/html', 'text/plain'])
+    );
+    expect((navigator.clipboard as any).writeText).not.toHaveBeenCalled();
+  });
+
   it('removes task row when taskRemoved is received', async () => {
     const socket = setupSocket();
 

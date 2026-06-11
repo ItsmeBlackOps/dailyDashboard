@@ -2614,6 +2614,20 @@ export default function TasksToday() {
     }
 
     try {
+      // Prefer rich text: pasting into Outlook/Word/Docs keeps headings,
+      // bold and lists instead of raw markdown markers.
+      if (sanitizedDebriefHtml && typeof window.ClipboardItem === 'function' && navigator?.clipboard?.write) {
+        const item = new window.ClipboardItem({
+          'text/html': new Blob([sanitizedDebriefHtml], { type: 'text/html' }),
+          'text/plain': new Blob([debriefContent], { type: 'text/plain' }),
+        });
+        await navigator.clipboard.write([item]);
+        toast({
+          title: 'Copied to clipboard',
+          description: 'Interview debrief copied with formatting.'
+        });
+        return;
+      }
       if (!navigator?.clipboard?.writeText) {
         setDebriefError('Clipboard access is unavailable in this environment. Copy the debrief manually.');
         return;
@@ -2627,7 +2641,7 @@ export default function TasksToday() {
       setDebriefError('Unable to copy the debrief. Copy it manually instead.');
       console.error('Failed to copy interview debrief', error);
     }
-  }, [debriefContent, toast]);
+  }, [debriefContent, sanitizedDebriefHtml, toast]);
 
   const closeTranscriptDialog = useCallback(() => {
     setTranscriptDialogTask(null);
@@ -4965,7 +4979,7 @@ export default function TasksToday() {
                   </Button>
                 </div>
               </div>
-              <ScrollArea className="min-h-0 flex-1 rounded-md border bg-card/30 p-4">
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-md border bg-card/30 p-4">
                 {debriefLoading ? (
                   <p className="text-sm text-muted-foreground animate-pulse">
                     Generating interview debrief...
@@ -5026,7 +5040,7 @@ export default function TasksToday() {
                     No interview debrief available yet for this task.
                   </p>
                 )}
-              </ScrollArea>
+              </div>
               {debriefStatusMessage && !debriefError && (
                 <p className="text-xs text-muted-foreground">{debriefStatusMessage}</p>
               )}
