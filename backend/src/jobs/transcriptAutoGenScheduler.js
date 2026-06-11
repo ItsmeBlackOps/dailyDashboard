@@ -23,6 +23,12 @@ import { acquireTickLease } from './tickLease.js';
 const TICK_MS = parseInt(process.env.TRANSCRIPT_AUTOGEN_TICK_MS || '600000', 10); // 10 min
 const BATCH_PER_TICK = parseInt(process.env.TRANSCRIPT_AUTOGEN_BATCH || '5', 10);
 const LOOKBACK_DAYS = parseInt(process.env.TRANSCRIPT_AUTOGEN_LOOKBACK_DAYS || '14', 10);
+// Self-heal: a generation that fails (e.g. "Transcript not found" because the
+// transcript arrives late, or matching wasn't yet able to find a rescheduled
+// title) is retried up to MAX_ATTEMPTS with a backoff, then left terminal so
+// genuinely transcript-less tasks don't loop forever.
+const MAX_ATTEMPTS = parseInt(process.env.TRANSCRIPT_AUTOGEN_MAX_ATTEMPTS || '4', 10);
+const RECOVERY_BACKOFF_MS = parseInt(process.env.TRANSCRIPT_AUTOGEN_RETRY_BACKOFF_MS || String(30 * 60_000), 10);
 const REQUESTED_BY = 'transcript-autogen';
 const LEASE_ID = 'transcriptAutoGenScheduler';
 const BASELINE_ID = 'transcriptAutoGenBaseline';
@@ -87,26 +93,71 @@ async function sweepQueued(col) {
       const queuedAt = task.autoDebrief?.at ? new Date(task.autoDebrief.at).getTime() : 0;
       const stale = !state && Date.now() - queuedAt > 30 * 60_000; // restart lost the in-memory queue
       if (state?.status === 'failed' || stale) {
-        const retries = task.autoDebrief?.retries || 0;
-        if (retries < 1) {
+        const attempts = task.autoDebrief?.attempts || 1;
+        if (attempts < MAX_ATTEMPTS) {
           const doc = await col.findOne({ _id: task._id });
           interviewDebriefService.enqueueDebriefGeneration(id, doc, REQUESTED_BY, false);
           await col.updateOne(
             { _id: task._id },
-            { $set: { autoDebrief: { status: 'queued', at: new Date(), retries: retries + 1, requestedBy: REQUESTED_BY } } }
+            { $set: { autoDebrief: { status: 'queued', at: new Date(), attempts: attempts + 1, requestedBy: REQUESTED_BY } } }
           );
-          logger.warn('Transcript auto-gen: retrying debrief generation', { taskId: id, error: state?.error || 'state lost' });
+          logger.warn('Transcript auto-gen: retrying debrief generation', { taskId: id, attempt: attempts + 1, error: state?.error || 'state lost' });
         } else {
           await col.updateOne(
             { _id: task._id },
-            { $set: { autoDebrief: { status: 'failed', at: new Date(), error: state?.error || 'state lost after retry', requestedBy: REQUESTED_BY } } }
+            { $set: { autoDebrief: { status: 'failed', at: new Date(), error: state?.error || 'state lost after retries', attempts, requestedBy: REQUESTED_BY } } }
           );
-          logger.error('Transcript auto-gen: debrief generation failed permanently', { taskId: id, error: state?.error || 'state lost' });
+          logger.error('Transcript auto-gen: debrief generation failed permanently', { taskId: id, attempts, error: state?.error || 'state lost' });
         }
       }
       // status queued/processing with live state -> leave it; next tick re-checks
     } catch (err) {
       logger.warn('Transcript auto-gen: sweep item failed (non-fatal)', { taskId: id, error: err.message });
+    }
+  }
+}
+
+// Re-open previously-FAILED tasks so they self-heal: a transcript that
+// arrived late (or only became matchable once reschedule-tolerant matching
+// shipped) gets another generation attempt. Bounded by MAX_ATTEMPTS and a
+// per-task backoff so a genuinely transcript-less task settles terminal.
+async function recoverFailed(col) {
+  const lookbackStart = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60_000);
+  const backoffCutoff = new Date(Date.now() - RECOVERY_BACKOFF_MS);
+  const failed = await col
+    .find({
+      'autoDebrief.status': 'failed',
+      'autoDebrief.at': { $lt: backoffCutoff },
+      transcription: true,
+      interviewStartAt: { $gte: lookbackStart },
+    }, { projection: { _id: 1, autoDebrief: 1 } })
+    .sort({ 'autoDebrief.at': 1 })
+    .limit(BATCH_PER_TICK)
+    .toArray();
+
+  for (const task of failed) {
+    const id = String(task._id);
+    const attempts = task.autoDebrief?.attempts || 1;
+    if (attempts >= MAX_ATTEMPTS) continue;
+    try {
+      const cached = await interviewDebriefService.getCachedContent(id);
+      if (cached?.content) {
+        await col.updateOne(
+          { _id: task._id },
+          { $set: { autoDebrief: { status: 'generated', at: new Date(), requestedBy: REQUESTED_BY } } }
+        );
+        logger.info('Transcript auto-gen: failed task already cached — marked generated', { taskId: id });
+        continue;
+      }
+      const doc = await col.findOne({ _id: task._id });
+      interviewDebriefService.enqueueDebriefGeneration(id, doc, REQUESTED_BY, false);
+      await col.updateOne(
+        { _id: task._id },
+        { $set: { autoDebrief: { status: 'queued', at: new Date(), attempts: attempts + 1, requestedBy: REQUESTED_BY } } }
+      );
+      logger.warn('Transcript auto-gen: recovering previously-failed debrief', { taskId: id, attempt: attempts + 1 });
+    } catch (err) {
+      logger.warn('Transcript auto-gen: recovery item failed (non-fatal)', { taskId: id, error: err.message });
     }
   }
 }
@@ -124,6 +175,7 @@ async function tick() {
     const col = db.collection('taskBody');
 
     await sweepQueued(col);
+    await recoverFailed(col);
 
     const lookbackStart = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60_000);
     const candidates = await col
@@ -143,7 +195,7 @@ async function tick() {
         // atomic claim — the loser of any race sees autoDebrief already set
         const claimed = await col.findOneAndUpdate(
           { _id: task._id, autoDebrief: { $exists: false } },
-          { $set: { autoDebrief: { status: 'queued', at: new Date(), requestedBy: REQUESTED_BY } } }
+          { $set: { autoDebrief: { status: 'queued', at: new Date(), attempts: 1, requestedBy: REQUESTED_BY } } }
         );
         if (!claimed || (claimed.value !== undefined && !claimed.value)) {
           continue;
