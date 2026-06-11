@@ -3294,6 +3294,15 @@ export default function TasksToday() {
     localStorage.setItem(TASK_STATUS_MAP, JSON.stringify(m));
   }, []);
 
+  // Double-fire guard: the mount fetch and the on-connect catch-up (socket.io
+  // buffers the mount emit until the same 'connect' event) used to issue the
+  // SAME initial request 0.1-0.4s apart — each costing a full server query +
+  // transcript sweep. Skip an initial fetch only while an IDENTICAL one is
+  // still in flight: a changed payload (filters, tab, date) fetches
+  // immediately, and a reconnect catch-up runs whenever nothing is pending.
+  // The 10s ceiling unsticks the guard if an ack is lost mid-reconnect.
+  const lastInitialFetchRef = useRef<{ key: string; at: number; pending: boolean }>({ key: '', at: 0, pending: false });
+
   const fetchTasks = useCallback((
     isInitial = true,
     offset = 0,
@@ -3320,6 +3329,15 @@ export default function TasksToday() {
       offset
     };
 
+    if (isInitial && offset === 0) {
+      const key = JSON.stringify(payload);
+      const last = lastInitialFetchRef.current;
+      if (last.pending && last.key === key && Date.now() - last.at < 10_000) {
+        return;
+      }
+      lastInitialFetchRef.current = { key, at: Date.now(), pending: true };
+    }
+
     if (!silent) {
       if (isInitial) {
         setIsLoadingInitial(true);
@@ -3333,6 +3351,9 @@ export default function TasksToday() {
       "getTasksByRange",
       payload,
       (resp: { success: boolean; tasks?: Task[]; error?: string }) => {
+        if (isInitial && offset === 0) {
+          lastInitialFetchRef.current.pending = false;
+        }
         if (!resp.success) {
           if (!silent) {
             if (isInitial) {
@@ -3743,10 +3764,10 @@ export default function TasksToday() {
     };
   }, [socket]);
 
-  // When filters change, refetch
-  useEffect(() => {
-    if (socket.connected) fetchTasks();
-  }, [filters.range, filters.start, filters.end, filters.dateField, filters.upcoming, fetchTasks, socket]);
+  // (Refetch-on-filter-change lives in the [fetchTasks] effect above: `filters`
+  // is a dependency of the fetchTasks callback, so any filter change recreates
+  // it and re-runs that effect. A second "when filters change, refetch" effect
+  // here used to fire the same initial request again on every mount.)
 
   // === Filtering / sorting ===
   const teamLeadOptions = useMemo(() => {
