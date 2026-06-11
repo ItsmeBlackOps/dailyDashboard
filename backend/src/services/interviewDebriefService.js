@@ -2,6 +2,7 @@ import { config } from '../config/index.js';
 import { Client, Databases, Query } from 'node-appwrite';
 import { taskService } from './taskService.js';
 import { logger } from '../utils/logger.js';
+import { findTranscriptByTitle } from '../utils/transcriptTitle.js';
 import { marked } from 'marked';
 import sanitizeHtml from 'sanitize-html';
 
@@ -395,17 +396,17 @@ class InterviewDebriefService {
     }
 
     try {
-      const response = await this.databases.listDocuments(
+      const transcriptDoc = await findTranscriptByTitle(
+        this.databases,
         config.appwrite.databaseId,
         config.appwrite.transcriptsCollectionId,
-        [Query.equal('title', title), Query.limit(1)]
+        title,
+        logger
       );
 
-      if (!response || response.documents.length === 0) {
+      if (!transcriptDoc) {
         return null;
       }
-
-      const transcriptDoc = response.documents[0];
       if (transcriptDoc.sentences_json && typeof transcriptDoc.sentences_json === 'string') {
         try {
           transcriptDoc.sentences = JSON.parse(transcriptDoc.sentences_json);

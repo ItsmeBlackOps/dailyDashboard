@@ -1,6 +1,7 @@
 import { ObjectId } from 'mongodb';
 import { database } from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import { transcriptTitlePrefix } from '../utils/transcriptTitle.js';
 import { logSuggestionDebug } from '../utils/logflare.js';
 import moment from 'moment-timezone';
 import { Client, Databases, Query } from 'node-appwrite';
@@ -480,6 +481,36 @@ export class TaskModel {
         );
 
         response.documents.forEach(doc => transcriptTitles.add(doc.title));
+      }
+
+      // Second pass — reschedule tolerance: a moved meeting keeps the
+      // subject's date-level prefix but not its time, so exact equality
+      // misses it. Look the leftovers up by prefix, bounded to keep page
+      // loads cheap; the persisted flag below makes this a one-time cost.
+      const unmatchedAfterExact = subjectsToQuery.filter(s => !transcriptTitles.has(s));
+      const PREFIX_LOOKUP_CAP = 10;
+      const prefixPairs = unmatchedAfterExact
+        .map(s => ({ subject: s, prefix: transcriptTitlePrefix(s) }))
+        .filter(p => p.prefix && p.prefix !== p.subject)
+        .slice(0, PREFIX_LOOKUP_CAP);
+      for (const pair of prefixPairs) {
+        try {
+          const resp = await this.appwriteDatabases.listDocuments(
+            databaseId,
+            transcriptsCollectionId,
+            [Query.startsWith('title', pair.prefix), Query.limit(1)]
+          );
+          if (resp?.documents?.length > 0) {
+            // mark the SUBJECT as matched so persistence + the final map
+            // treat it exactly like an exact-title hit
+            transcriptTitles.add(pair.subject);
+          }
+        } catch (prefixErr) {
+          // startsWith may be unsupported on older Appwrite servers —
+          // degrade silently to exact-only behavior.
+          logger.debug('Transcript prefix fallback unavailable (non-fatal)', { error: prefixErr.message });
+          break;
+        }
       }
 
       // Identify matched and unmatched

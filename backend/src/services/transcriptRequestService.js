@@ -1,6 +1,7 @@
 import { Client, Databases, Query } from 'node-appwrite';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
+import { findTranscriptByTitle } from '../utils/transcriptTitle.js';
 import { taskService } from './taskService.js';
 import { transcriptRequestModel, TRANSCRIPT_REQUEST_STATUS } from '../models/TranscriptRequest.js';
 
@@ -124,17 +125,19 @@ class TranscriptRequestService {
       return null;
     }
 
-    const response = await this.databases.listDocuments(
+    const doc = await findTranscriptByTitle(
+      this.databases,
       config.appwrite.databaseId,
       config.appwrite.transcriptsCollectionId,
-      [Query.equal('title', normalizedTitle), Query.limit(1)]
+      normalizedTitle,
+      logger
     );
 
-    if (!response || !Array.isArray(response.documents) || response.documents.length === 0) {
+    if (!doc) {
       return null;
     }
 
-    return this.normalizeTranscriptDocument(response.documents[0]);
+    return this.normalizeTranscriptDocument(doc);
   }
 
   async fetchTranscriptDocumentForTask(task) {
