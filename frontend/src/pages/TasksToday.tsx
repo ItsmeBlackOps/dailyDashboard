@@ -4684,12 +4684,12 @@ export default function TasksToday() {
         </DialogContent>
       </Dialog>
       <Dialog open={Boolean(questionsDialogTask)} onOpenChange={(open) => !open && closeQuestionsDialog()}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Extract Interviewer Questions</DialogTitle>
           </DialogHeader>
           {questionsDialogTask ? (
-            <div className="space-y-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
               <Alert>
                 <AlertTitle>Opus usage is limited</AlertTitle>
                 <AlertDescription className="text-sm text-muted-foreground">
@@ -4713,7 +4713,7 @@ export default function TasksToday() {
                   Last extracted on {new Date(questionsGeneratedAt).toLocaleString()}
                 </p>
               )}
-              <div className="rounded-md border bg-card/30 p-4">
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-md border bg-card/30 p-4">
                 {questionsList.length > 0 ? (
                   <ol className="space-y-3 text-sm text-foreground">
                     {questionsList.map((entry, index) => (
@@ -4784,12 +4784,12 @@ export default function TasksToday() {
         </DialogContent>
       </Dialog>
       <Dialog open={Boolean(thanksDialogTask)} onOpenChange={(open) => !open && closeThanksDialog()}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Generate Thank-You Email</DialogTitle>
           </DialogHeader>
           {thanksDialogTask ? (
-            <div className="space-y-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
               <Alert>
                 <AlertTitle>Opus usage is limited</AlertTitle>
                 <AlertDescription className="text-sm text-muted-foreground">
@@ -4812,10 +4812,10 @@ export default function TasksToday() {
                   Last generated on {new Date(thanksMailGeneratedAt).toLocaleString()}
                 </p>
               )}
-              <div className="rounded-md border bg-card/30 p-4">
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-md border bg-card/30 p-4">
                 {sanitizedThanksMailHtml ? (
                   <div
-                    className="space-y-2 text-sm leading-6 text-foreground"
+                    className="prose prose-sm dark:prose-invert max-w-none"
                     dangerouslySetInnerHTML={{ __html: sanitizedThanksMailHtml }}
                   />
                 ) : thanksMailContent ? (
@@ -4874,12 +4874,12 @@ export default function TasksToday() {
         </DialogContent>
       </Dialog>
       <Dialog open={Boolean(debriefDialogTask)} onOpenChange={(open) => !open && closeDebriefDialog()}>
-        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-hidden">
+        <DialogContent className="flex max-h-[90vh] w-[95vw] max-w-4xl flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Interview Debrief</DialogTitle>
           </DialogHeader>
           {debriefDialogTask ? (
-            <div className="space-y-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
               <Alert>
                 <AlertTitle>Structured screening analysis</AlertTitle>
                 <AlertDescription className="text-sm text-muted-foreground">
@@ -4926,11 +4926,16 @@ export default function TasksToday() {
                   </Button>
                 </div>
               </div>
-              <ScrollArea className="h-[58vh] rounded-md border bg-card/30 p-4">
+              <ScrollArea className="min-h-0 flex-1 rounded-md border bg-card/30 p-4">
                 {debriefLoading ? (
                   <p className="text-sm text-muted-foreground animate-pulse">
                     Generating interview debrief...
                   </p>
+                ) : sanitizedDebriefHtml ? (
+                  <div
+                    className="prose prose-sm dark:prose-invert max-w-none"
+                    dangerouslySetInnerHTML={{ __html: sanitizedDebriefHtml }}
+                  />
                 ) : debriefSections.length > 0 ? (
                   <div className="space-y-3 pr-2">
                     {debriefSections.map((section) => (
@@ -4975,11 +4980,6 @@ export default function TasksToday() {
                       </Card>
                     ))}
                   </div>
-                ) : sanitizedDebriefHtml ? (
-                  <div
-                    className="prose prose-sm dark:prose-invert max-w-none space-y-3 text-sm leading-6 text-foreground"
-                    dangerouslySetInnerHTML={{ __html: sanitizedDebriefHtml }}
-                  />
                 ) : debriefContent ? (
                   <pre className="whitespace-pre-wrap text-sm text-foreground">{debriefContent}</pre>
                 ) : (
