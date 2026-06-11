@@ -48,11 +48,20 @@ content.js watches the DOM
 4. Join Teams meetings in this browser as usual. The icon shows a green dot while
    you're reported as in-call.
 
+## Presence handshake (gate)
+
+`dashboard-bridge.js` runs on the dashboard origin and answers a
+`window.postMessage` ping from the page, so the dashboard can detect that the
+extension is installed (no extension ID needed). The dashboard uses this to
+**require** the extension for technical-team members: they see a self-clearing
+install guide until the extension is detected, then they're let in
+automatically. `host_permissions` includes the dashboard + API domains so the
+report POST and the handshake are exempt from CORS.
+
 ## Limitations
 
 - **Browser joins only** — if an expert joins from the Teams *desktop app*, the
-  extension can't see it. Pair with the server-side Graph-attendance check for
-  full coverage.
+  extension can't see it. (Not a concern here — experts join in the browser.)
 - Teams occasionally changes its DOM; the `data-tid` / `aria-label` selectors in
   `content.js` may need the odd update.
 - Some orgs block custom extensions; distribute privately via Intune / group
