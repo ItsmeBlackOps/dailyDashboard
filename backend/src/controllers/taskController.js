@@ -216,7 +216,9 @@ export class TaskController {
     const result = await interviewDebriefService.getInterviewDebriefStatus({
       taskId,
       user: req.user,
-      autoQueue: true
+      // autoQueue=false lets read-only callers (dialog-open cache hydration)
+      // check for a saved debrief without silently starting a paid generation.
+      autoQueue: req.query.autoQueue !== 'false'
     });
 
     if (result.status === 'ready') {

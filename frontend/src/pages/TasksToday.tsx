@@ -591,6 +591,9 @@ export default function TasksToday() {
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questionsRateInfo, setQuestionsRateInfo] = useState<{ remaining: number; resetAt?: string } | null>(null);
   const [debriefDialogTask, setDebriefDialogTask] = useState<Task | null>(null);
+  // Tracks which task the debrief dialog is open for, so the async cache
+  // hydration on open can drop stale responses (open A, quickly open B).
+  const debriefDialogTaskIdRef = useRef<string | null>(null);
   const [debriefContent, setDebriefContent] = useState('');
   const [debriefHtml, setDebriefHtml] = useState('');
   const [debriefGeneratedAt, setDebriefGeneratedAt] = useState<string | null>(null);
@@ -2377,6 +2380,7 @@ export default function TasksToday() {
   }, [questionsList, toast]);
 
   const closeDebriefDialog = useCallback(() => {
+    debriefDialogTaskIdRef.current = null;
     setDebriefDialogTask(null);
     setDebriefContent('');
     setDebriefHtml('');
@@ -2446,8 +2450,13 @@ export default function TasksToday() {
     };
   }, [API_URL, authFetch, parseDebriefResult]);
 
-  const getInterviewDebriefStatus = useCallback(async (taskId: string): Promise<InterviewDebriefRequestResult> => {
-    const response = await authFetch(`${API_URL}/api/tasks/${taskId}/interview-debrief`);
+  const getInterviewDebriefStatus = useCallback(async (
+    taskId: string,
+    options: { autoQueue?: boolean } = {}
+  ): Promise<InterviewDebriefRequestResult> => {
+    // autoQueue=false = read-only cache check (dialog open); never starts a generation.
+    const suffix = options.autoQueue === false ? '?autoQueue=false' : '';
+    const response = await authFetch(`${API_URL}/api/tasks/${taskId}/interview-debrief${suffix}`);
     const payload = await response.json().catch(() => ({}));
 
     if (response.status === 200 && payload?.status === 'ready') {
@@ -2561,13 +2570,43 @@ export default function TasksToday() {
     }
 
     setDebriefDialogTask(task);
+    debriefDialogTaskIdRef.current = task._id;
     setDebriefContent('');
     setDebriefHtml('');
     setDebriefGeneratedAt(null);
     setDebriefError('');
-    setDebriefStatusMessage('');
+    setDebriefStatusMessage('Checking for a saved debrief...');
     setDebriefLoading(false);
-  }, [toast]);
+
+    // Restore a previously generated debrief from the server cache, so
+    // reopening the dialog shows the saved result instead of an empty state.
+    void (async () => {
+      try {
+        const statusResult = await getInterviewDebriefStatus(task._id, { autoQueue: false });
+        if (debriefDialogTaskIdRef.current !== task._id) {
+          return;
+        }
+        if (statusResult.status === 'ready' && statusResult.result) {
+          setDebriefContent(statusResult.result.markdown);
+          setDebriefHtml(statusResult.result.html);
+          setDebriefGeneratedAt(statusResult.result.generatedAt);
+          setDebriefStatusMessage('');
+          return;
+        }
+        if (statusResult.status === 'processing') {
+          // A background generation is already running — resume polling.
+          setDebriefStatusMessage(statusResult.message || 'Interview debrief is processing in background...');
+          setDebriefLoading(true);
+          return;
+        }
+        setDebriefStatusMessage('');
+      } catch {
+        if (debriefDialogTaskIdRef.current === task._id) {
+          setDebriefStatusMessage('');
+        }
+      }
+    })();
+  }, [toast, getInterviewDebriefStatus]);
 
   const handleCopyDebrief = useCallback(async () => {
     if (!debriefContent) {
