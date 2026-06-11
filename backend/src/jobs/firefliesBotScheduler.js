@@ -1,3 +1,4 @@
+import os from 'os';
 import moment from 'moment-timezone';
 import { firefliesService, FirefliesRateLimitError } from '../services/firefliesService.js';
 import { database } from '../config/database.js';
@@ -23,7 +24,7 @@ async function audit(phase, level, task, detail, extra = {}) {
     const auditCol = database.getCollection('auditLog');
     if (!auditCol) return;
     await auditCol.insertOne({
-      subject: task?.subject || task?.Subject || `task:${task?._id}`,
+      subject: task?.subject || task?.Subject || (task?._id ? `task:${task._id}` : 'scheduler'),
       phase,
       detail: (detail || '').toString().slice(0, 500),
       level,
@@ -44,6 +45,18 @@ import { logger } from '../utils/logger.js';
 
 const TICK_INTERVAL_MS = 60_000;
 const TIMEZONE = 'America/New_York';
+
+// Visibility: a cooldown skip must leave a trace. The audit row is throttled
+// (cooldowns can last hours; one row per tick would be spam) but the warn
+// fires on every skipped tick so `docker logs` shows the condition live.
+const SKIP_AUDIT_INTERVAL_MS = parseInt(process.env.FIREFLIES_SKIP_AUDIT_INTERVAL_MS || '600000', 10);
+let lastSkipAuditAt = 0;
+
+// Catch-up: when ticks were skipped (cooldown, restart, lease handover), the
+// first live tick widens Stage C's late bound so meetings that started during
+// the gap still get a bot — capped so we never join a meeting mostly over.
+const CATCHUP_MAX_LATE_MIN = parseInt(process.env.FIREFLIES_CATCHUP_MAX_LATE_MIN || '15', 10);
+let lastTickFinishedAt = Date.now();
 
 // NOTE: meeting links now come exclusively from the "Create meeting" flow
 // (joinUrl / joinWebUrl → meetingLink). Interview emails no longer carry the
@@ -74,7 +87,7 @@ function getMinutesUntil(task) {
   return (meetingMoment.valueOf() - Date.now()) / 60_000;
 }
 
-async function processTask(collection, task) {
+async function processTask(collection, task, lateGraceMin = 0) {
   const minutesUntil = getMinutesUntil(task);
   if (minutesUntil === null) return;
 
@@ -198,10 +211,11 @@ async function processTask(collection, task) {
     return;
   }
 
-  // Stage C — Main bot invite (T+0 to T+5)
+  // Stage C — Main bot invite (T+0 to T+5, extended by catch-up grace after
+  // skipped ticks so meetings that started during a gap still get a bot)
   if (
     minutesUntil <= 0 &&
-    minutesUntil > -5 &&
+    minutesUntil > -(5 + lateGraceMin) &&
     ['pending', 'precheck_joined', 'precheck_failed'].includes(botStatus)
   ) {
     await audit(FIREFLIES_PHASE.INVITE_ATTEMPT, 'info', task,
@@ -314,23 +328,85 @@ async function processTask(collection, task) {
   }
 }
 
+// Both blue/green backends run this scheduler; without ownership each
+// in-window task could be invited twice. A short Mongo lease makes exactly
+// one process the owner per tick window; on owner death the lease expires
+// and the other color takes over within ~LEASE_MS (the catch-up grace
+// covers the handover gap).
+const LEASE_MS = 90_000;
+const LEASE_OWNER = `${os.hostname()}:${process.pid}`;
+
+async function acquireTickLease(db) {
+  const now = new Date();
+  try {
+    const doc = await db.collection('schedulerLocks').findOneAndUpdate(
+      {
+        _id: 'firefliesBotScheduler',
+        $or: [{ owner: LEASE_OWNER }, { expiresAt: { $lt: now } }],
+      },
+      { $set: { owner: LEASE_OWNER, expiresAt: new Date(now.getTime() + LEASE_MS) } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    // driver v6 returns the doc (or null); v5 wrapped it in { value }
+    return Boolean(doc && (doc.value !== undefined ? doc.value : doc));
+  } catch (err) {
+    if (err && err.code === 11000) return false; // upsert raced an unexpired holder
+    throw err;
+  }
+}
+
 async function tick() {
   if (!firefliesService.enabled) return;
-  // If a prior request put us into rate-limit cooldown, skip the whole
-  // tick. The Mongo scan + per-task work + pacing waits all yield zero
-  // useful progress while we're throttled — every call would just
-  // refresh the same cooldown.
-  if (firefliesService.isRateLimited()) {
-    logger.debug('Fireflies tick skipped — rate-limit cooldown active');
+
+  try {
+    if (!(await acquireTickLease(database.getDb()))) {
+      logger.debug('Fireflies tick skipped — lease held by another instance');
+      return;
+    }
+  } catch (err) {
+    logger.error('Fireflies tick lease check failed — skipping tick', { error: err.message });
+    return;
+  }
+
+  // If a prior INVITE request put us into rate-limit cooldown, skip the
+  // whole tick — but loudly. The silent debug-only version of this gate
+  // hid a month of skipped invites (zero audit rows, zero attempts).
+  if (firefliesService.isRateLimited('invite')) {
+    const until = firefliesService.getRateLimitedUntil('invite');
+    logger.warn('Fireflies tick skipped — rate-limit cooldown active', {
+      cooldownUntil: new Date(until).toISOString(),
+    });
+    if (Date.now() - lastSkipAuditAt >= SKIP_AUDIT_INTERVAL_MS) {
+      lastSkipAuditAt = Date.now();
+      await audit('FIREFLIES_TICK_SKIPPED_RATELIMIT', 'warning', null,
+        'Scheduler tick skipped — rate-limit cooldown active',
+        { cooldownUntil: new Date(until).toISOString() });
+    }
     return;
   }
 
   try {
     const collection = database.getDb().collection('taskBody');
 
+    // Catch-up: if no tick completed recently (cooldown skips, restarts,
+    // lease handover), widen the late window so meetings that started in
+    // the gap are still invited.
+    const gapMs = Date.now() - lastTickFinishedAt;
+    const lateGraceMin = gapMs > TICK_INTERVAL_MS * 2.5
+      ? Math.min(CATCHUP_MAX_LATE_MIN, Math.ceil(gapMs / 60_000))
+      : 0;
+    if (lateGraceMin > 0) {
+      logger.warn('Fireflies catch-up sweep — extending late window after skipped ticks', {
+        gapMinutes: Math.round(gapMs / 60_000), lateGraceMin,
+      });
+      await audit('FIREFLIES_CATCHUP_SWEEP', 'info', null,
+        `Catch-up after ~${Math.round(gapMs / 60_000)} min without a completed tick`,
+        { lateGraceMin });
+    }
+
     // interviewDateTime is a string 'YYYY-MM-DDTHH:mm' in EST.
     // Build string bounds for the range (EST, same format).
-    const cutoffStart = moment().tz(TIMEZONE).subtract(10, 'minutes').format('YYYY-MM-DDTHH:mm');
+    const cutoffStart = moment().tz(TIMEZONE).subtract(10 + lateGraceMin, 'minutes').format('YYYY-MM-DDTHH:mm');
     const cutoffEnd = moment().tz(TIMEZONE).add(25, 'minutes').format('YYYY-MM-DDTHH:mm');
 
     const candidates = await collection
@@ -401,7 +477,7 @@ async function tick() {
     for (let i = 0; i < candidates.length; i++) {
       const task = candidates[i];
       try {
-        await processTask(collection, task);
+        await processTask(collection, task, lateGraceMin);
       } catch (err) {
         logger.error('Fireflies scheduler: task failed', { taskId: task._id, error: err.message });
       }
@@ -411,6 +487,10 @@ async function tick() {
         await new Promise((r) => setTimeout(r, pacingMs));
       }
     }
+
+    // Only a COMPLETED pass moves the clock — skip/lease/error paths leave
+    // it stale on purpose, which is what arms the catch-up sweep above.
+    lastTickFinishedAt = Date.now();
   } catch (err) {
     logger.error('Fireflies scheduler tick failed', { error: err.message });
   }
@@ -431,3 +511,9 @@ export function startFirefliesBotScheduler() {
 // lets ops kick a single tick on demand (e.g. after a cooldown reset
 // or to confirm the scheduler is healthy without waiting 60s).
 export const _tick = tick;
+
+// Test seams — module-level clocks are otherwise unreachable from tests.
+export const _testing = {
+  setLastTickFinishedAt(v) { lastTickFinishedAt = v; },
+  setLastSkipAuditAt(v) { lastSkipAuditAt = v; },
+};

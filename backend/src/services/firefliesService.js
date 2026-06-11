@@ -62,6 +62,11 @@ const extractGraphQLRateLimit = (parsed) => {
   return retryAfter;
 };
 
+// Fireflies has answered 429 with "retry after next midnight UTC" — honoring
+// that verbatim silenced the bot scheduler for a whole day at a time. Cap how
+// long any single 429 can mute us; worst case we probe once per cap window.
+const COOLDOWN_CAP_MS = parseInt(process.env.FIREFLIES_COOLDOWN_CAP_MS || String(60 * 60 * 1000), 10);
+
 class FirefliesService {
   constructor() {
     const apiKey = config.fireflies.apiKey;
@@ -71,7 +76,12 @@ class FirefliesService {
     // Set when Fireflies returns a rate-limit error. Subsequent
     // _request() calls short-circuit until this clears. Per-process —
     // each backend container holds its own cooldown clock.
-    this._rateLimitedUntil = 0;
+    //
+    // Two clocks: read operations (status checks, diagnostics) must never
+    // mute invite mutations — a stray 429 from a read once silenced the
+    // bot scheduler for a month. Invite-path 429s set both clocks.
+    this._rateLimitedUntil = 0;        // read operations
+    this._inviteRateLimitedUntil = 0;  // invite mutations — the scheduler gates on this
 
     if (this.enabled) {
       logger.info('✅ Fireflies service configured');
@@ -80,20 +90,31 @@ class FirefliesService {
     }
   }
 
-  isRateLimited() {
-    return Date.now() < this._rateLimitedUntil;
+  isRateLimited(kind = 'read') {
+    const until = kind === 'invite' ? this._inviteRateLimitedUntil : this._rateLimitedUntil;
+    return Date.now() < until;
   }
 
-  _applyRateLimit(retryAfterEpochMs, source) {
-    if (retryAfterEpochMs > this._rateLimitedUntil) {
-      this._rateLimitedUntil = retryAfterEpochMs;
-      const seconds = Math.ceil((retryAfterEpochMs - Date.now()) / 1000);
-      logger.warn('Fireflies rate-limited — cooldown engaged', {
-        source,
-        until: new Date(retryAfterEpochMs).toISOString(),
-        seconds,
-      });
+  getRateLimitedUntil(kind = 'read') {
+    return kind === 'invite' ? this._inviteRateLimitedUntil : this._rateLimitedUntil;
+  }
+
+  _applyRateLimit(retryAfterEpochMs, source, op = 'read') {
+    const capped = Math.min(retryAfterEpochMs, Date.now() + COOLDOWN_CAP_MS);
+    if (capped > this._rateLimitedUntil) {
+      this._rateLimitedUntil = capped;
     }
+    if (op === 'invite' && capped > this._inviteRateLimitedUntil) {
+      this._inviteRateLimitedUntil = capped;
+    }
+    const seconds = Math.ceil((capped - Date.now()) / 1000);
+    logger.warn('Fireflies rate-limited — cooldown engaged', {
+      source,
+      op,
+      until: new Date(capped).toISOString(),
+      seconds,
+      cappedFrom: retryAfterEpochMs !== capped ? new Date(retryAfterEpochMs).toISOString() : undefined,
+    });
   }
 
   // Bug 3 fix — _request now retries on transient failures (5xx, network)
@@ -101,16 +122,17 @@ class FirefliesService {
   // GraphQL errors[]) fail fast — no retry. Each attempt is logged at
   // warn so we can spot recurring transient noise without it being a
   // single log line per stage.
-  async _request(query, variables = {}, { maxAttempts = 3 } = {}) {
+  async _request(query, variables = {}, { maxAttempts = 3, op = 'read' } = {}) {
     if (!this.enabled) {
       throw new FirefliesNotConfiguredError();
     }
 
     // Fail-fast if we're still in cooldown from a prior rate-limit.
     // Avoids burning another quota unit and propagates a typed error
-    // the scheduler knows not to mark the task as failed.
-    if (this.isRateLimited()) {
-      throw new FirefliesRateLimitError(this._rateLimitedUntil, null);
+    // the scheduler knows not to mark the task as failed. Gated per
+    // operation kind so read cooldowns never block invite mutations.
+    if (this.isRateLimited(op)) {
+      throw new FirefliesRateLimitError(this.getRateLimitedUntil(op), null);
     }
 
     let lastError = null;
@@ -148,7 +170,7 @@ class FirefliesService {
             } else {
               retryAfter = Date.now() + 60_000;
             }
-            this._applyRateLimit(retryAfter, 'http-429');
+            this._applyRateLimit(retryAfter, 'http-429', op);
             throw new FirefliesRateLimitError(retryAfter, parsed);
           }
           const isRetryable = response.status >= 500;
@@ -174,7 +196,7 @@ class FirefliesService {
           // carries the cooldown epoch ms directly.
           const retryAfter = extractGraphQLRateLimit(parsed);
           if (retryAfter !== null) {
-            this._applyRateLimit(retryAfter, 'graphql-too-many-requests');
+            this._applyRateLimit(retryAfter, 'graphql-too-many-requests', op);
             throw new FirefliesRateLimitError(retryAfter, parsed);
           }
 
@@ -235,7 +257,7 @@ class FirefliesService {
       ...(duration != null && { duration: parseInt(duration, 10) }),
     };
 
-    const data = await this._request(query, variables);
+    const data = await this._request(query, variables, { op: 'invite' });
     return {
       success: data?.addToLiveMeeting?.success ?? false,
       message: data?.addToLiveMeeting?.message ?? '',
