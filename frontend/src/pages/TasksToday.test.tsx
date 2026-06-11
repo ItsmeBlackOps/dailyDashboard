@@ -311,6 +311,47 @@ describe('TasksToday', () => {
     });
   });
 
+  it('suppresses a duplicate initial fetch while an identical one is in flight', async () => {
+    const socket = setupSocket();
+
+    // Hold getTasksByRange acks so the mount fetch stays in flight — this is
+    // the production shape of the double-fire: the on-connect catch-up lands
+    // 0.1-0.4s after the buffered mount emit, before its response arrives.
+    const pendingAcks: Function[] = [];
+    socket.emit.mockImplementation((event: string, _payload: any, cb?: Function) => {
+      if (event === 'getTasksByRange' && typeof cb === 'function') {
+        pendingAcks.push(cb);
+      }
+    });
+
+    render(
+      <BrowserRouter>
+        <TooltipProvider>
+          <TasksToday />
+        </TooltipProvider>
+      </BrowserRouter>
+    );
+
+    const fetchCalls = () => socket.emit.mock.calls.filter((call) => call[0] === 'getTasksByRange').length;
+    await waitFor(() => {
+      expect(fetchCalls()).toBe(1);
+    });
+
+    // Catch-up fires while the identical mount fetch is pending → no re-emit.
+    socket.recovered = false;
+    socket.__trigger('connect');
+    expect(fetchCalls()).toBe(1);
+
+    // Release the ack; a later unrecovered reconnect (nothing pending) refetches.
+    act(() => {
+      pendingAcks.shift()!({ success: true, tasks: [] });
+    });
+    socket.__trigger('connect');
+    await waitFor(() => {
+      expect(fetchCalls()).toBe(2);
+    });
+  });
+
   it('removes task row when taskRemoved is received', async () => {
     const socket = setupSocket();
 
