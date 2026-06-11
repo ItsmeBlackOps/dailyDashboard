@@ -3,6 +3,7 @@ import { database } from '../config/database.js';
 import { Client, Databases, Query } from 'node-appwrite';
 import { taskService } from './taskService.js';
 import { logger } from '../utils/logger.js';
+import { findTranscriptByTitle } from '../utils/transcriptTitle.js';
 import { marked } from 'marked';
 import sanitizeHtml from 'sanitize-html';
 import { createHash } from 'node:crypto';
@@ -193,14 +194,15 @@ class ThanksMailService {
         queryType: 'Query.equal'
       });
 
-      const response = await this.databases.listDocuments(
+      const doc = await findTranscriptByTitle(
+        this.databases,
         databaseId,
         transcriptsCollectionId,
-        [Query.equal('title', title)]
+        title,
+        logger
       );
 
-      if (response && response.documents.length > 0) {
-        const doc = response.documents[0];
+      if (doc) {
         logger.debug('Transcript found', {
           title,
           documentId: doc.$id,

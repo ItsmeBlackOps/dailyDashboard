@@ -21,7 +21,12 @@ jest.unstable_mockModule('../../utils/posthogLogger.js', () => ({
 jest.unstable_mockModule('node-appwrite', () => ({
   Client: class { setEndpoint() { return this; } setProject() { return this; } setKey() { return this; } },
   Databases: class {},
-  Query: { equal: (field, values) => ({ field, values }) },
+  Query: {
+    equal: (field, values) => ({ method: 'equal', field, values }),
+    startsWith: (field, value) => ({ method: 'startsWith', field, value }),
+    orderDesc: (field) => ({ method: 'orderDesc', field }),
+    limit: (n) => ({ method: 'limit', n }),
+  },
 }));
 
 const { taskModel } = await import('../Task.js');
@@ -72,6 +77,26 @@ describe('enrichWithTranscriptStatus with persisted flags', () => {
     expect(out.find(t => t._id === '1').transcription).toBe(true);
     expect(out.find(t => t._id === '2').transcription).toBe(true);
     expect(out.find(t => t._id === '3').transcription).toBe(false);
+  });
+
+  it('matches a rescheduled transcript by date-level prefix and persists the flag', async () => {
+    const subject = 'Interview Support - Janavi Soni - Tax Preparer - Jun 11, 2026 at 11:00 AM EST';
+    const tasks = [{ _id: '1', subject }];
+    listDocuments.mockImplementation(async (_db, _coll, queries) => {
+      if (queries?.[0]?.method === 'startsWith') {
+        expect(queries[0].value).toBe('Interview Support - Janavi Soni - Tax Preparer - Jun 11, 2026');
+        return { documents: [{ title: 'Interview Support - Janavi Soni - Tax Preparer - Jun 11, 2026 at 03:30 PM EST' }] };
+      }
+      return { documents: [] }; // exact pass misses
+    });
+
+    const out = await taskModel.enrichWithTranscriptStatus(tasks);
+
+    expect(out[0].transcription).toBe(true);
+    // persisted exactly like an exact-title hit
+    const [filter, update] = updateMany.mock.calls[0];
+    expect(filter.$or[0].subject.$in).toEqual([subject]);
+    expect(update.$set.transcription).toBe(true);
   });
 
   it('keeps persisted flags on the Appwrite error path instead of zeroing them', async () => {
