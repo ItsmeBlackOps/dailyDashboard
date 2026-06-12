@@ -186,12 +186,14 @@ function TaskSheetSkeleton() {
 export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
   const navigate = useNavigate();
   const { authFetch } = useAuth();
+  const { toast } = useToast();
   const [task, setTask] = useState<TaskFull | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [linkDraft, setLinkDraft] = useState('');
   const [passwordDraft, setPasswordDraft] = useState('');
   const [savingLink, setSavingLink] = useState(false);
+  const [reinviting, setReinviting] = useState(false);
 
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -235,6 +237,21 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
       console.error(err);
     } finally {
       setSavingLink(false);
+    }
+  };
+
+  const handleReinviteBot = async () => {
+    if (!taskId) return;
+    setReinviting(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/tasks/${taskId}/invite-bot`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+      toast({ title: 'Recorder invited', description: data.message || 'Fred should join within a minute.' });
+    } catch (err) {
+      toast({ title: 'Re-invite failed', description: (err as Error).message, variant: 'destructive' });
+    } finally {
+      setReinviting(false);
     }
   };
 
@@ -343,6 +360,17 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
                           Join Meeting
                           <ExternalLink className="h-3 w-3 ml-auto opacity-80" />
                         </a>
+                      </Button>
+                      {/* One-click recorder rescue — pairs with the
+                          "recorder missing" alert; server enforces who may. */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full gap-1.5 text-xs"
+                        disabled={reinviting}
+                        onClick={() => void handleReinviteBot()}
+                      >
+                        {reinviting ? 'Inviting recorder…' : 'Re-invite recorder (Fred)'}
                       </Button>
                       {canSeeBotStatus() && (
                         <BotLifecycle

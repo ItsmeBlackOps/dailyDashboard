@@ -1376,6 +1376,84 @@ export class TaskService {
     return out;
   }
 
+  /**
+   * One-click "send Fred back in" — re-invites the Fireflies bot to a
+   * task's live meeting (addToLiveMeeting). Allowed: admin, lead-tier,
+   * the assigned expert, or a co-expert on the task. Pairs with the
+   * recorder-missing alert (botMissingAlertScheduler).
+   */
+  async reinviteBot(actor, taskId) {
+    let oid;
+    try { oid = new ObjectId(taskId); }
+    catch { const e = new Error('Invalid task ID'); e.statusCode = 400; throw e; }
+    const col = this.taskModel.collection;
+    if (!col) { const e = new Error('Database not ready'); e.statusCode = 503; throw e; }
+    const task = await col.findOne(
+      { _id: oid },
+      { projection: {
+        subject: 1, assignedTo: 1, assignedExpert: 1, coAssignees: 1,
+        meetingLink: 1, joinUrl: 1, joinWebUrl: 1, meetingPassword: 1,
+        interviewEndsAt: 1,
+      } }
+    );
+    if (!task) { const e = new Error('Task not found'); e.statusCode = 404; throw e; }
+
+    const actorEmail = (actor.email || '').toLowerCase();
+    const actorRole = (actor.role || '').toLowerCase();
+    const ownerEmail = (task.assignedTo || task.assignedExpert || '').toLowerCase();
+    const coAssignees = (task.coAssignees || []).map((x) => (x || '').toLowerCase());
+    const allowed =
+      actorRole === 'admin' ||
+      this._isLeadTier(actorRole) ||
+      actorEmail === ownerEmail ||
+      coAssignees.includes(actorEmail);
+    if (!allowed) {
+      const e = new Error('only the assigned expert, a co-expert, a lead, or an admin can re-invite the recorder');
+      e.statusCode = 403; throw e;
+    }
+
+    const meetingLink = task.meetingLink || task.joinUrl || task.joinWebUrl;
+    if (!meetingLink) { const e = new Error('this task has no meeting link'); e.statusCode = 400; throw e; }
+
+    // Record until the scheduled end (+10 min slack); sane bounds.
+    let duration = 60;
+    if (task.interviewEndsAt) {
+      const mins = Math.ceil((new Date(task.interviewEndsAt).getTime() - Date.now()) / 60000) + 10;
+      duration = Math.min(Math.max(mins, 15), 120);
+    }
+
+    const { firefliesService } = await import('./firefliesService.js');
+    let result;
+    try {
+      result = await firefliesService.inviteBot({
+        meetingLink,
+        title: task.subject || 'Interview',
+        duration,
+        password: task.meetingPassword || undefined,
+      });
+    } catch (err) {
+      const e = new Error(`Fireflies invite failed: ${err.message}`);
+      e.statusCode = 502; throw e;
+    }
+
+    await col.updateOne(
+      { _id: oid },
+      {
+        $set: {
+          botStatus: result.success ? 'main_invited' : 'main_failed',
+          botLastError: result.success ? null : (result.message || 'invite rejected'),
+          botLastInviteBy: actorEmail,
+          botLastInviteAt: new Date(),
+        },
+        $inc: { botInviteAttempts: 1 },
+      }
+    );
+    logger.info('recorder re-invited on demand', {
+      taskId, by: actorEmail, success: result.success, message: result.message,
+    });
+    return { success: result.success === true, message: result.message || (result.success ? 'Recorder invited — it should join within a minute.' : 'Fireflies rejected the invite') };
+  }
+
   _normName(value) {
     return (value || '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
   }

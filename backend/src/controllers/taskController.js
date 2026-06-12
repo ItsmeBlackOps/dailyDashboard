@@ -99,6 +99,16 @@ export class TaskController {
     res.status(200).json({ success: true, items });
   });
 
+  // POST /tasks/:taskId/invite-bot — one-click recorder re-invite.
+  reinviteBot = asyncHandler(async (req, res) => {
+    try {
+      const result = await this.taskService.reinviteBot(req.user, req.params.taskId);
+      res.status(200).json(result);
+    } catch (err) {
+      res.status(err.statusCode || 400).json({ success: false, error: err.message });
+    }
+  });
+
   // ── Co-assignees (second expert on a task) ─────────────────────────
   addCoAssignee = asyncHandler(async (req, res) => {
     try {
