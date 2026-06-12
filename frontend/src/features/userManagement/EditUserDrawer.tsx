@@ -147,11 +147,11 @@ export function EditUserDrawer({
     fieldPolicy(actorRole, user.role, field, actorContext);
 
   const teamLeadOpts = useMemo(
-    () => teamLeadOptionsFor(user.role, allUsers),
+    () => teamLeadOptionsFor(user.role, allUsers, user.team),
     [user.role, allUsers],
   );
   const managerOpts = useMemo(
-    () => managerOptionsFor(user.role, allUsers),
+    () => managerOptionsFor(user.role, allUsers, user.team),
     [user.role, allUsers],
   );
   const assignableRoles = useMemo(() => canAssign(actorRole), [actorRole]);

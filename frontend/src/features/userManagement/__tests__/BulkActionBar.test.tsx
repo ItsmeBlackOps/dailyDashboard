@@ -82,15 +82,69 @@ describe('BulkActionBar', () => {
     expect(screen.getByRole('button', { name: /change manager/i })).toBeInTheDocument();
   });
 
-  it('Change team lead → inline input + Apply calls onApply({ teamLead })', () => {
+  it('Change team lead → dropdown of eligible leads; Apply calls onApply({ teamLead })', async () => {
     const onApply = vi.fn();
     render(
-      <BulkActionBar count={2} selectedRoles={['recruiter']} actorRole="mm" onApply={onApply} />,
+      <BulkActionBar
+        count={2}
+        selectedRoles={['recruiter']}
+        actorRole="mm"
+        teamLeadOptions={['Brhamdev Sharma', 'Shashank Sharma']}
+        managerOptions={['Tushar Ahuja']}
+        onApply={onApply}
+      />,
     );
     fireEvent.click(screen.getByRole('button', { name: /change team lead/i }));
-    const input = screen.getByLabelText('New team lead');
-    fireEvent.change(input, { target: { value: 'Brhamdev Sharma' } });
+
+    // A combobox, not a free-text input.
+    const trigger = screen.getByLabelText('New team lead');
+    expect(trigger).toHaveAttribute('role', 'combobox');
+    expect(screen.queryByRole('textbox')).toBeNull();
+
+    // Open via keyboard (Radix Select in jsdom) and pick an option.
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const option = await screen.findByRole('option', { name: 'Brhamdev Sharma' });
+    fireEvent.click(option);
+
     fireEvent.click(screen.getByRole('button', { name: /^apply$/i }));
     expect(onApply).toHaveBeenCalledWith({ teamLead: 'Brhamdev Sharma' });
+  });
+
+  it('Change manager → dropdown lists the manager options', async () => {
+    const onApply = vi.fn();
+    render(
+      <BulkActionBar
+        count={1}
+        selectedRoles={['recruiter']}
+        actorRole="admin"
+        teamLeadOptions={['Brhamdev Sharma']}
+        managerOptions={['Akash Avasthi', 'Tushar Ahuja']}
+        onApply={onApply}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /change manager/i }));
+    const trigger = screen.getByLabelText('New manager');
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const option = await screen.findByRole('option', { name: 'Akash Avasthi' });
+    fireEvent.click(option);
+    fireEvent.click(screen.getByRole('button', { name: /^apply$/i }));
+    expect(onApply).toHaveBeenCalledWith({ manager: 'Akash Avasthi' });
+  });
+
+  it('shows a hint instead of a control when no names are eligible', () => {
+    render(
+      <BulkActionBar
+        count={2}
+        selectedRoles={['recruiter', 'user']}
+        actorRole="admin"
+        teamLeadOptions={[]}
+        managerOptions={[]}
+        onApply={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /change team lead/i }));
+    expect(screen.getByText(/no eligible team leads/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('New team lead')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull();
   });
 });
