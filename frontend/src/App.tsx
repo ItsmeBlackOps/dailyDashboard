@@ -36,7 +36,11 @@ try {
     // If we wiped credentials and we're not already on /signin, bounce
     // there. Routing isn't mounted yet at module-eval, so set a hint
     // and let AuthorizedRoute handle the redirect on its first render.
-    if (typeof window !== 'undefined' && window.location.pathname !== '/signin') {
+    // PUBLIC pages must survive the reset — a first-ever visitor landing
+    // on e.g. the extension privacy policy (store reviewers!) must not be
+    // bounced to the login screen.
+    const PUBLIC_PATHS = ['/signin', '/auth/signin', '/extension-privacy', '/toast'];
+    if (typeof window !== 'undefined' && !PUBLIC_PATHS.includes(window.location.pathname)) {
       // history.replaceState avoids a server round-trip; React Router
       // picks this up on mount.
       window.history.replaceState({}, '', '/signin');
@@ -50,6 +54,7 @@ try {
 
 // Eager imports — auth, layout, and the landing page after login
 import SignIn from './pages/auth/SignIn';
+import ExtensionPrivacy from './pages/ExtensionPrivacy';
 import { Toaster } from './components/ui/toaster';
 import { Toast } from './components/ui/toast';
 import AuthorizedRoute from './routes/AuthorizedRoute';
@@ -162,6 +167,8 @@ const App = () => (
               </Route>
 
               <Route path="/auth/signin" element={<SignIn />} />
+              {/* Public privacy policy for the browser extension (store requirement) */}
+              <Route path="/extension-privacy" element={<ExtensionPrivacy />} />
               <Route path="/toast" element={<Toast />} />
 
               {/* Fallback */}
