@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mock Support — How it works</title>
+<style>
+  :root{
+    --bg:#0f1222; --panel:#171b30; --panel2:#1d2240; --line:#2a3057;
+    --text:#e8eaf6; --muted:#9aa3c7; --accent:#6c7bff; --accent2:#22c9a8;
+    --warn:#f5a524; --danger:#ef5466; --ok:#2fbf71; --rec:#ff4d6d;
+    --chip:#232a4d;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:15px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif;min-height:100vh}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 22px 60px}
+  header h1{font-size:26px;font-weight:650;letter-spacing:.2px}
+  header p{color:var(--muted);margin-top:6px;max-width:860px}
+  .badge{display:inline-block;background:var(--chip);border:1px solid var(--line);color:var(--muted);font-size:12px;padding:3px 10px;border-radius:999px;margin-top:10px}
+
+  /* Scenario tabs */
+  .tabs{display:flex;gap:10px;flex-wrap:wrap;margin:26px 0 18px}
+  .tab{background:var(--panel);border:1px solid var(--line);color:var(--text);padding:10px 16px;border-radius:12px;cursor:pointer;font-size:14px;transition:all .2s}
+  .tab small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+  .tab:hover{border-color:var(--accent)}
+  .tab.active{background:linear-gradient(135deg,#2a3170,#1d2240);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+
+  /* Stepper */
+  .stepper{display:flex;align-items:flex-start;gap:0;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 18px 14px;overflow-x:auto}
+  .step{flex:1;min-width:96px;text-align:center;position:relative}
+  .step::before{content:"";position:absolute;top:15px;left:-50%;width:100%;height:3px;background:var(--line);z-index:0;transition:background .4s}
+  .step:first-child::before{display:none}
+  .dot{width:32px;height:32px;border-radius:50%;background:var(--panel2);border:2px solid var(--line);display:flex;align-items:center;justify-content:center;margin:0 auto;position:relative;z-index:1;font-size:13px;transition:all .35s}
+  .step .lbl{font-size:11.5px;color:var(--muted);margin-top:7px;transition:color .3s}
+  .step.done .dot{background:var(--accent);border-color:var(--accent);color:#fff}
+  .step.done::before{background:var(--accent)}
+  .step.current .dot{background:var(--accent2);border-color:var(--accent2);color:#06281f;box-shadow:0 0 0 6px rgba(34,201,168,.18);animation:pulse 1.4s infinite}
+  .step.current .lbl{color:var(--text);font-weight:600}
+  .step.blocked .dot{background:var(--danger);border-color:var(--danger);color:#fff;animation:pulse 1.2s infinite}
+  .step.blocked .lbl{color:var(--danger);font-weight:600}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.22)}70%{box-shadow:0 0 0 9px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
+
+  /* Stage */
+  .stage{display:grid;grid-template-columns:1.25fr .9fr;gap:18px;margin-top:18px}
+  @media(max-width:900px){.stage{grid-template-columns:1fr}}
+  .actors{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;position:relative;overflow:hidden}
+  .actors h3,.feedwrap h3{font-size:13px;text-transform:uppercase;letter-spacing:1.1px;color:var(--muted);margin-bottom:14px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:560px){.grid{grid-template-columns:repeat(2,1fr)}}
+  .actor{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:12px 10px;text-align:center;transition:all .3s;position:relative}
+  .actor .av{width:42px;height:42px;border-radius:50%;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#fff}
+  .actor .nm{font-size:13px;font-weight:600}
+  .actor .rl{font-size:11px;color:var(--muted)}
+  .actor.active{border-color:var(--accent2);box-shadow:0 0 0 1px var(--accent2),0 8px 22px -10px rgba(34,201,168,.45);transform:translateY(-2px)}
+  .actor.alert{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger);animation:shake .5s}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+  .actor .bub{position:absolute;left:50%;transform:translateX(-50%) translateY(6px);bottom:calc(100% + 6px);background:#fff;color:#15183a;font-size:11.5px;font-weight:600;border-radius:9px;padding:6px 9px;white-space:nowrap;opacity:0;pointer-events:none;transition:all .35s;box-shadow:0 6px 18px rgba(0,0,0,.4);z-index:5;max-width:230px;white-space:normal;width:max-content}
+  .actor .bub::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:#fff}
+  .actor.speak .bub{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* floating effects */
+  .fx{position:absolute;font-size:22px;z-index:8;opacity:0;pointer-events:none}
+  .fx.fly{animation:fly 1.6s ease-in-out forwards}
+  @keyframes fly{0%{opacity:0;transform:translate(0,0) scale(.7)}15%{opacity:1}85%{opacity:1}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1.05)}}
+  .rec{display:none;position:absolute;top:14px;right:16px;background:rgba(255,77,109,.14);border:1px solid var(--rec);color:#ff8aa0;font-size:11.5px;font-weight:700;border-radius:999px;padding:4px 12px;letter-spacing:1px;z-index:6}
+  .rec .d{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--rec);margin-right:6px;animation:pulse 1s infinite}
+  .rec.on{display:inline-block}
+  .toast{position:absolute;top:14px;left:16px;background:linear-gradient(135deg,#3a2a72,#272e63);border:1px solid var(--accent);border-radius:12px;padding:9px 13px;font-size:12.5px;max-width:300px;opacity:0;transform:translateY(-8px);transition:all .35s;z-index:7;box-shadow:0 12px 30px -8px rgba(0,0,0,.55)}
+  .toast.show{opacity:1;transform:translateY(0)}
+  .toast b{color:#cfd5ff}
+  .blockbar{margin-top:14px;background:rgba(239,84,102,.1);border:1px solid var(--danger);color:#ff9aa8;border-radius:12px;padding:10px 13px;font-size:12.5px;display:none}
+  .blockbar.on{display:block;animation:shake .5s}
+
+  /* checklist */
+  .check{margin-top:14px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:11px 13px;display:none}
+  .check.on{display:block}
+  .check h4{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+  .check ul{list-style:none}
+  .check li{font-size:12.5px;color:var(--muted);padding:2.5px 0;transition:color .3s}
+  .check li::before{content:"○ ";color:var(--muted)}
+  .check li.done{color:var(--accent2)}
+  .check li.done::before{content:"✔ ";color:var(--accent2)}
+  .check li.skip{color:var(--warn);text-decoration:line-through}
+  .check li.skip::before{content:"– ";color:var(--warn)}
+
+  /* Feed */
+  .feedwrap{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;max-height:560px}
+  .feed{overflow-y:auto;display:flex;flex-direction:column;gap:9px;padding-right:6px}
+  .ev{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:9px 12px;font-size:13px;opacity:0;transform:translateY(8px);animation:in .4s forwards}
+  .ev .t{font-size:11px;color:var(--muted);display:block;margin-bottom:2px}
+  .ev.sys{border-left-color:var(--muted);color:var(--muted);font-style:italic}
+  .ev.warn{border-left-color:var(--danger)}
+  .ev.good{border-left-color:var(--accent2)}
+  .ev.mail{border-left-color:var(--warn)}
+  .ev.ai{border-left-color:#b06cff;background:linear-gradient(135deg,#251d40,#1d2240)}
+  @keyframes in{to{opacity:1;transform:translateY(0)}}
+
+  /* Controls */
+  .controls{display:flex;align-items:center;gap:10px;margin-top:16px;flex-wrap:wrap}
+  .btn{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 16px;font-size:14px;cursor:pointer;transition:all .2s}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn:disabled{opacity:.4;cursor:default}
+  .prog{flex:1;min-width:160px;height:6px;background:var(--panel2);border-radius:999px;overflow:hidden}
+  .prog i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .4s}
+  .stepcount{font-size:12px;color:var(--muted);min-width:70px;text-align:right}
+  .legend{margin-top:26px;color:var(--muted);font-size:12.5px;display:flex;gap:18px;flex-wrap:wrap}
+  .legend span i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Mock Support — how it works, animated</h1>
+    <p>The whole mock-interview journey lives on the dashboard: a Technical Team Lead requests it, the candidate's expert runs it at their own pace, everyone related to the candidate watches it live, and the only email ever sent is the meeting invite. Press <b>Play</b> — or step through.</p>
+    <span class="badge">For stakeholders · candidates shown are illustrative</span>
+  </header>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="stepper" id="stepper"></div>
+
+  <div class="stage">
+    <div class="actors">
+      <h3>Who's involved</h3>
+      <span class="rec" id="rec"><span class="d"></span>RECORDING</span>
+      <div class="toast" id="toast"></div>
+      <div class="grid" id="actors"></div>
+      <div class="blockbar" id="blockbar"></div>
+      <div class="check" id="check"></div>
+    </div>
+    <div class="feedwrap">
+      <h3>What everyone sees (live activity)</h3>
+      <div class="feed" id="feed"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn primary" id="play">▶ Play</button>
+    <button class="btn" id="prev">‹ Back</button>
+    <button class="btn" id="next">Next ›</button>
+    <button class="btn" id="restart">↺ Restart</button>
+    <div class="prog"><i id="bar"></i></div>
+    <span class="stepcount" id="count"></span>
+  </div>
+
+  <div class="legend">
+    <span><i style="background:var(--accent)"></i>Status / action</span>
+    <span><i style="background:var(--accent2)"></i>Good news</span>
+    <span><i style="background:var(--danger)"></i>Blocker (recruiter helps)</span>
+    <span><i style="background:var(--warn)"></i>The only email — the meeting invite</span>
+    <span><i style="background:#b06cff"></i>AI Mock Debrief (automatic)</span>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ---------- cast ---------- */
+const CAST = {
+  lead:      {nm:"Prateek",  rl:"Technical Team Lead", c:"#6c7bff"},
+  expert:    {nm:"Aditya",   rl:"Technical Expert",    c:"#22c9a8"},
+  recruiter: {nm:"Ahmed",    rl:"Recruiter",           c:"#f5a524"},
+  mlead:     {nm:"Shashank", rl:"Marketing Lead",      c:"#e36cd0"},
+  manager:   {nm:"Akash",    rl:"Manager",             c:"#8a93b8"},
+  candidate: {nm:"—",        rl:"Candidate",           c:"#5db4ff"}
+};
+const STEPS = ["Requested","Started","Scheduling","Scheduled","Meeting","Connected","Completed"];
+
+/* Each event: {t,who,bub,log,type,step,blocked,popupTo,fx,check,rec,blocker} */
+const SCENARIOS = [
+{
+  id:"A", title:"Scenario A — Smooth path",
+  sub:"Ananya Iyer · Data Engineer",
+  candidate:"Ananya",
+  checklist:["Resume walkthrough","SQL & data-modeling Q&A","Pipeline project deep-dive","Behavioral","Logistics check"],
+  events:[
+    {t:"Wed 6:40 PM", who:"lead", step:0, bub:"Request Mock → picks Ananya from MY team's candidates",
+     log:"Prateek opens <b>Request Mock</b>. The picker shows only his team's bench. He selects <b>Ananya Iyer</b> — her expert <b>Aditya</b> is filled in automatically from her profile.", check:"show"},
+    {t:"Wed 6:40 PM", who:"lead", step:0, bub:"Checklist: 5 items + note",
+     log:"He ticks the checklist and adds a note: <i>“final round Friday 11 AM — client loves scenario questions.”</i> No email is sent.", type:"sys"},
+    {t:"Wed 6:40 PM", who:"expert", step:0, popupTo:"expert",
+     log:"<b>Pop-up to Aditya:</b> “New mock requested for Ananya Iyer.” Recruiter Ahmed, Marketing Lead Shashank and Manager Akash now all see the card: <b>Requested</b>.", type:"good"},
+    {t:"Thu 6:10 PM", who:"expert", step:1, bub:"Start — I'm free now",
+     log:"Aditya finishes his support task and clicks <b>Start</b>. Nothing was fixed-time — he begins when he's actually available."},
+    {t:"Thu 6:15 PM", who:"candidate", step:2, fx:{icon:"📞",from:"expert",to:"candidate"}, bub:"Ring ring…",
+     log:"Aditya clicks <b>Calling candidate</b> and phones Ananya."},
+    {t:"Thu 6:17 PM", who:"candidate", step:3, bub:"“9 PM tonight works!”",
+     log:"She picks up — agreed time: <b>tonight 9:00 PM</b>. The card flips to <b>Scheduled · 9:00 PM</b> for everyone, instantly.", type:"good"},
+    {t:"Thu 8:55 PM", who:"expert", step:4, fx:{icon:"✉️",from:"expert",to:"candidate"},
+     log:"<b>Create meeting & invite</b> — the Teams invite lands in Ananya's email. <u>This is the only email in the entire flow.</u> The recorder is on the invite too.", type:"mail"},
+    {t:"Thu 9:00 PM", who:"expert", step:5, rec:true, bub:"Joined from the browser",
+     log:"Aditya joins — the dashboard marks <b>Connected</b> by itself (the meeting-detector extension). Recording is on.", type:"good"},
+    {t:"Thu 9:00–9:50", who:"candidate", step:5, check:"tick-all",
+     log:"The mock runs against the checklist — all five areas covered. Aditya gives Ananya his full feedback <b>on the call</b>."},
+    {t:"Thu 9:55 PM", who:"expert", step:6, bub:"Feedback: 4/5 · Ready",
+     log:"He submits the structured form: <b>4/5 · Ready</b> — “strong on modeling; rehearsed two weak scenario answers live; 5/5 checklist covered.” Card: <b>Completed</b>.", type:"good"},
+    {t:"Thu ~10:40 PM", who:"manager", step:6, type:"ai",
+     log:"🤖 The <b>Mock Debrief</b> — built automatically from the recording's transcript — appears on the mock thread and on Ananya's profile. Nobody asked for it."},
+    {t:"Fri 10:30 AM", who:"mlead", step:6, bub:"Read the debrief ☑",
+     log:"Thirty minutes before the real interview, Ahmed and Shashank skim the debrief and the expert's notes. Zero emails sent, zero emails searched.", type:"good"}
+  ]
+},
+{
+  id:"B", title:"Scenario B — Candidate unreachable",
+  sub:"Mohammed Faisal · Java Developer",
+  candidate:"Faisal",
+  checklist:["Resume walkthrough","Core Java + Spring Q&A","System design basics","Behavioral","Logistics check"],
+  events:[
+    {t:"Tue 1:00 PM", who:"lead", step:0, bub:"Request Mock for Faisal", check:"show",
+     log:"Prateek requests a mock for <b>Mohammed Faisal</b> ahead of Thursday's client round. Expert auto-assigned from his profile; checklist set."},
+    {t:"Tue 1:00 PM", who:"expert", step:0, popupTo:"expert",
+     log:"<b>Pop-up to Aditya</b>; the whole chain — Ahmed, Shashank, Akash — sees <b>Requested</b>.", type:"good"},
+    {t:"Tue 4:05 PM", who:"expert", step:1, bub:"Start",
+     log:"Aditya starts and moves straight to scheduling."},
+    {t:"Tue 4:10 PM", who:"candidate", step:2, fx:{icon:"📞",from:"expert",to:"candidate"}, alert:true, bub:"…no answer",
+     log:"Call #1 — <b>no answer</b> (Faisal is on his shift). Attempt logged.", type:"warn"},
+    {t:"Tue 4:35 PM", who:"candidate", step:2, fx:{icon:"📞",from:"expert",to:"candidate"}, alert:true, bub:"…still no answer",
+     log:"Call #2 — <b>no answer</b>. Attempt logged.", type:"warn"},
+    {t:"Tue 4:42 PM", who:"recruiter", step:2, blocked:true, popupTo:"recruiter", blocker:"⚠ RECRUITER BLOCKER — “2 attempts, candidate not reachable.” The card is red for everyone.",
+     log:"One click: <b>Recruiter blocker</b>. Ahmed gets a <b>pop-up immediately</b>. Everyone can see exactly why this mock is waiting.", type:"warn"},
+    {t:"Tue 5:05 PM", who:"recruiter", step:2, bub:"Reached him on WhatsApp ✓",
+     log:"Ahmed reaches Faisal off-channel and resolves the blocker with a note: <i>“on shift till 8 — call after 8:30.”</i> Card returns to <b>Scheduling</b>. Ahmed's total dashboard time: under a minute.", type:"good"},
+    {t:"Tue 8:35 PM", who:"candidate", step:3, fx:{icon:"📞",from:"expert",to:"candidate"}, bub:"“Tomorrow 7 PM”",
+     log:"Aditya reads the note, calls at 8:35 — mock agreed for <b>Wednesday 7:00 PM</b>. <b>Scheduled</b>.", type:"good"},
+    {t:"Wed 6:55 PM", who:"expert", step:4, fx:{icon:"✉️",from:"expert",to:"candidate"},
+     log:"<b>Create meeting & invite</b> → the one email goes to Faisal with the Teams link.", type:"mail"},
+    {t:"Wed 7:00 PM", who:"expert", step:5, rec:true,
+     log:"Connected (auto-detected). Recording on. The mock runs the checklist.", type:"good", check:"tick-all"},
+    {t:"Wed 8:00 PM", who:"expert", step:6, bub:"3/5 · Needs polish on design round",
+     log:"Feedback submitted → <b>Completed</b>. The AI <b>Mock Debrief</b> follows automatically about an hour later.", type:"ai"},
+    {t:"Wed night", who:"manager", step:6,
+     log:"Akash, reviewing the day: the thread shows the two missed calls, who unblocked it, and the 28 minutes it cost — no detective work.", type:"sys"}
+  ]
+},
+{
+  id:"C", title:"Scenario C — Reschedule + follow-up",
+  sub:"Gurpreet Kaur · Business Analyst",
+  candidate:"Gurpreet",
+  checklist:["Resume walkthrough","BA case structuring","SQL aggregation","Requirements gathering","Behavioral","Stakeholder scenarios","Logistics check"],
+  events:[
+    {t:"Thu 12:30 PM", who:"lead", step:0, bub:"Request Mock for Gurpreet", check:"show",
+     log:"Mock requested for <b>Gurpreet Kaur</b>; expert auto-assigned; a 7-item checklist this time."},
+    {t:"Thu 5:20 PM", who:"candidate", step:3, fx:{icon:"📞",from:"expert",to:"candidate"}, bub:"“Saturday 11 AM”",
+     log:"Expert starts, calls, and books <b>Saturday 11:00 AM</b>. <b>Scheduled</b>.", type:"good"},
+    {t:"Fri 9:10 PM", who:"candidate", step:3, alert:true, bub:"Family event came up 😟",
+     log:"Friday night Gurpreet tells her recruiter she can't make Saturday.", type:"warn"},
+    {t:"Fri 9:25 PM", who:"expert", step:3, bub:"Reschedule → Sun 5 PM",
+     log:"<b>Reschedule</b>: Sunday 5:00 PM. The old slot is preserved in history with the reason — and because the invite is only created just before the mock, <u>no stale invite ever existed</u>.", type:"sys"},
+    {t:"Sun 4:55 PM", who:"expert", step:4, fx:{icon:"✉️",from:"expert",to:"candidate"},
+     log:"<b>Create meeting & invite</b> → Gurpreet gets the Teams invite for the real, final time.", type:"mail"},
+    {t:"Sun 5:00 PM", who:"expert", step:5, rec:true,
+     log:"Connected (auto). Recording on. The mock runs long…", type:"good"},
+    {t:"Sun 6:05 PM", who:"expert", step:5, check:"tick-6of7",
+     log:"Checklist: <b>6 of 7 covered</b> — logistics skipped (ran long), and that's recorded honestly.", type:"sys"},
+    {t:"Sun 6:10 PM", who:"expert", step:6, bub:"2/5 · Needs practice",
+     log:"Feedback: <b>2/5 · Needs practice</b> — “case structuring weak; redo SQL aggregation.” → <b>Completed</b>, and the AI Mock Debrief lands on her profile.", type:"ai"},
+    {t:"Mon 9:00 AM", who:"lead", step:6, bub:"Request follow-up mock ↻", popupTo:"expert",
+     log:"From the completed card, Prateek clicks <b>Request follow-up mock</b> — a new request pre-loaded with the weak + skipped items. The expert gets the pop-up.", type:"good"},
+    {t:"Fri (4 days later)", who:"expert", step:6, bub:"Follow-up: 4/5 · Ready 🎉",
+     log:"The follow-up mock closes at <b>4/5 · Ready</b>. Both mocks — with both debriefs — sit on Gurpreet's profile as a visible progress story.", type:"good"}
+  ]
+}
+];
+
+/* ---------- engine ---------- */
+let scen = SCENARIOS[0], idx = -1, playing = null;
+const $ = id => document.getElementById(id);
+
+function buildTabs(){
+  $("tabs").innerHTML = SCENARIOS.map((s,i)=>
+    `<button class="tab${s===scen?" active":""}" data-i="${i}">${s.title}<small>${s.sub}</small></button>`).join("");
+  document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{ scen=SCENARIOS[+b.dataset.i]; reset(); });
+}
+function buildStepper(){
+  $("stepper").innerHTML = STEPS.map((s,i)=>
+    `<div class="step" data-s="${i}"><div class="dot">${i+1}</div><div class="lbl">${s}</div></div>`).join("");
+}
+function buildActors(){
+  CAST.candidate.nm = scen.candidate;
+  $("actors").innerHTML = Object.entries(CAST).map(([k,a])=>
+    `<div class="actor" id="ac-${k}"><div class="bub" id="bub-${k}"></div><div class="av" style="background:${a.c}">${a.nm[0]}</div><div class="nm">${a.nm}</div><div class="rl">${a.rl}</div></div>`).join("");
+}
+function buildChecklist(){
+  $("check").innerHTML = `<h4>Mock checklist (set by the lead)</h4><ul>${scen.checklist.map((c,i)=>`<li id="ck-${i}">${c}</li>`).join("")}</ul>`;
+  $("check").classList.remove("on");
+}
+function setStepper(n, blocked){
+  document.querySelectorAll(".step").forEach(el=>{
+    const i=+el.dataset.s;
+    el.className="step"+(i<n?" done":i===n?(blocked?" blocked":" current"):"");
+    if(blocked && i===n) el.querySelector(".lbl").textContent = "Blocker";
+    else el.querySelector(".lbl").textContent = STEPS[i];
+  });
+}
+function clearTransient(){
+  document.querySelectorAll(".actor").forEach(a=>a.classList.remove("active","alert","speak"));
+  $("toast").classList.remove("show");
+}
+function flyFx(icon, fromK, toK){
+  const from = $("ac-"+fromK).getBoundingClientRect();
+  const to = $("ac-"+toK).getBoundingClientRect();
+  const host = document.querySelector(".actors").getBoundingClientRect();
+  const fx = document.createElement("div");
+  fx.className="fx fly"; fx.textContent=icon;
+  fx.style.left=(from.left-host.left+from.width/2-11)+"px";
+  fx.style.top=(from.top-host.top+from.height/2-11)+"px";
+  fx.style.setProperty("--dx",(to.left-from.left)+"px");
+  fx.style.setProperty("--dy",(to.top-from.top)+"px");
+  document.querySelector(".actors").appendChild(fx);
+  setTimeout(()=>fx.remove(),1700);
+}
+function applyEvent(e){
+  clearTransient();
+  setStepper(e.step, !!e.blocked);
+  const ac = $("ac-"+e.who);
+  ac.classList.add(e.alert?"alert":"active");
+  if(e.bub){ $("bub-"+e.who).innerHTML=e.bub; ac.classList.add("speak"); }
+  if(e.popupTo){
+    const t=$("toast");
+    t.innerHTML=`🔔 <b>Pop-up notification</b> → ${CAST[e.popupTo].nm} (${CAST[e.popupTo].rl})`;
+    t.classList.add("show");
+    $("ac-"+e.popupTo).classList.add("active");
+  }
+  if(e.fx) flyFx(e.fx.icon, e.fx.from, e.fx.to);
+  if(e.rec) $("rec").classList.add("on");
+  if(e.blocker){ const b=$("blockbar"); b.textContent=e.blocker; b.classList.add("on"); }
+  else if(!e.blocked) $("blockbar").classList.remove("on");
+  if(e.check==="show") $("check").classList.add("on");
+  if(e.check==="tick-all") scen.checklist.forEach((_,i)=>$("ck-"+i)?.classList.add("done"));
+  if(e.check==="tick-6of7"){ scen.checklist.forEach((_,i)=>{ const el=$("ck-"+i); if(!el)return; if(i===scen.checklist.length-1)el.classList.add("skip"); else el.classList.add("done"); }); }
+  const ev=document.createElement("div");
+  ev.className="ev "+(e.type||"");
+  ev.innerHTML=`<span class="t">${e.t} · ${CAST[e.who].nm}</span>${e.log}`;
+  $("feed").appendChild(ev);
+  $("feed").scrollTop=$("feed").scrollHeight;
+}
+function renderTo(n){ // rebuild deterministic state up to index n
+  buildActors(); buildChecklist();
+  $("feed").innerHTML=""; $("rec").classList.remove("on");
+  $("blockbar").classList.remove("on");
+  for(let i=0;i<=n;i++) applyEvent(scen.events[i]);
+  if(n<0){ setStepper(-1,false); }
+  updateHud();
+}
+function updateHud(){
+  const total=scen.events.length;
+  $("bar").style.width=((idx+1)/total*100)+"%";
+  $("count").textContent=(idx+1)+" / "+total;
+  $("next").disabled = idx>=total-1;
+  $("prev").disabled = idx<0;
+}
+function next(){ if(idx<scen.events.length-1){ idx++; applyEvent(scen.events[idx]); updateHud(); } else stop(); }
+function prev(){ if(idx>-1){ idx--; renderTo(idx); } }
+function reset(){ stop(); idx=-1; buildTabs(); renderTo(-1); }
+function stop(){ if(playing){ clearInterval(playing); playing=null; $("play").textContent="▶ Play"; } }
+function play(){
+  if(playing){ stop(); return; }
+  if(idx>=scen.events.length-1) { idx=-1; renderTo(-1); }
+  $("play").textContent="⏸ Pause";
+  next();
+  playing=setInterval(()=>{ if(idx>=scen.events.length-1) stop(); else next(); },2600);
+}
+
+$("play").onclick=play; $("next").onclick=()=>{stop();next();};
+$("prev").onclick=()=>{stop();prev();}; $("restart").onclick=reset;
+document.addEventListener("keydown",e=>{ if(e.key==="ArrowRight"){stop();next();} if(e.key==="ArrowLeft"){stop();prev();} if(e.key===" "){e.preventDefault();play();} });
+
+buildStepper(); reset();
+</script>
+</body>
+</html>
