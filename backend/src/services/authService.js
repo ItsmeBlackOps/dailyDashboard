@@ -68,7 +68,11 @@ export class AuthService {
 
       if (!tokenRecord) {
         logger.warn('Invalid refresh token used');
-        throw new Error('Invalid refresh token');
+        // 401, not a 500: an expired/unknown refresh token is a client-auth
+        // condition (the caller must log in again), not a server fault.
+        const err = new Error('Invalid refresh token');
+        err.statusCode = 401;
+        throw err;
       }
 
       const { accessToken } = await this.generateTokens(tokenRecord.email, false);
