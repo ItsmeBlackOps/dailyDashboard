@@ -14,7 +14,18 @@ async function getConfig() {
 // it's missing, points at a different dashboard, or is older than 60 days.
 const ENROLL_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
 
-async function ensureEnrolled({ apiBase, accessToken }) {
+const LOG = '[MeetingDetector:bg]';
+
+async function postEnroll(base, bearer) {
+  const res = await fetch(`${base}/api/meeting-presence/enroll`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bearer}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  return { res, data };
+}
+
+async function ensureEnrolled({ apiBase, accessToken, refreshToken }) {
   const base = (apiBase || '').replace(/\/$/, '');
   if (!base || !accessToken) return { ok: false, error: 'missing_auth' };
 
@@ -31,17 +42,43 @@ async function ensureEnrolled({ apiBase, accessToken }) {
   if (fresh) return { ok: true, already: true };
 
   try {
-    const res = await fetch(`${base}/api/meeting-presence/enroll`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data || !data.token) {
-      return { ok: false, status: res.status };
+    console.info(`${LOG} enrolling via ${base}/api/meeting-presence/enroll`);
+    let { res, data } = await postEnroll(base, accessToken);
+
+    // The page's access token expires after ~15 minutes; an idle tab can hand
+    // us a stale one. Recover by exchanging the page's refresh token for a
+    // fresh access token (same endpoint the app itself uses), then retry once.
+    let viaRefresh = false;
+    if (res.status === 401 && refreshToken) {
+      console.info(`${LOG} access token rejected (401) — trying the refresh token`);
+      try {
+        const rr = await fetch(`${base}/api/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        const rd = await rr.json().catch(() => ({}));
+        if (rr.ok && rd && rd.accessToken) {
+          viaRefresh = true;
+          ({ res, data } = await postEnroll(base, rd.accessToken));
+        } else {
+          console.warn(`${LOG} refresh failed (HTTP ${rr.status}) — user needs to log in again`);
+        }
+      } catch (re) {
+        console.warn(`${LOG} refresh request error:`, re.message);
+      }
     }
+
+    if (!res.ok || !data || !data.token) {
+      console.warn(`${LOG} enrollment failed: HTTP ${res.status}`, data && data.error ? `— ${data.error}` : '');
+      return { ok: false, status: res.status, error: data && data.error };
+    }
+
     await chrome.storage.local.set({ apiBase: base, token: data.token, enrolledAt: Date.now() });
-    return { ok: true, enrolled: true };
+    console.info(`${LOG} ✅ detector token stored${viaRefresh ? ' (recovered via refresh token)' : ''} for ${data.email || 'user'}`);
+    return { ok: true, enrolled: true, viaRefresh };
   } catch (e) {
+    console.warn(`${LOG} enrollment network error:`, e.message);
     return { ok: false, error: e.message };
   }
 }
@@ -52,8 +89,10 @@ let lastAt = 0;
 async function handlePresence({ state, meetingUrl }) {
   const { apiBase, token } = await getConfig();
   if (!apiBase || !token) {
+    console.warn(`${LOG} presence '${state}' dropped — not enrolled yet (open the dashboard while logged in)`);
     return { ok: false, error: 'not_enrolled' };
   }
+  console.info(`${LOG} reporting presence '${state}' for ${meetingUrl ? meetingUrl.slice(0, 80) : '(no url)'}…`);
 
   // Collapse duplicate reports of the same state within 30s.
   const key = `${state}|${meetingUrl || ''}`;
@@ -78,9 +117,11 @@ async function handlePresence({ state, meetingUrl }) {
   }
 
   await chrome.storage.local.set({ lastSent: { state, at: Date.now(), ok: res.ok, result: data } });
+  console.info(`${LOG} report '${state}' -> HTTP ${res.status}`, data);
 
   // Detector token rejected — drop it so the next dashboard visit re-enrolls.
   if (res.status === 401) {
+    console.warn(`${LOG} detector token rejected — dropped; will re-enroll on next dashboard visit`);
     await chrome.storage.local.remove(['token', 'enrolledAt']);
   }
 

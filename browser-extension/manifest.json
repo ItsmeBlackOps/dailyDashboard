@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Interview Meeting Detector",
-  "version": "1.5.0",
+  "name": "1. Interview Meeting Detector",
+  "version": "1.6.0",
   "description": "Reports to the Daily Dashboard when an expert actually joins a Teams interview (in-call, not lobby), and confirms its presence to the dashboard.",
   "permissions": ["storage", "scripting"],
   "host_permissions": [
@@ -31,6 +31,6 @@
   "options_page": "options.html",
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Interview Meeting Detector"
+    "default_title": "1. Interview Meeting Detector"
   }
 }

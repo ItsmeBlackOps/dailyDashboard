@@ -69,8 +69,15 @@
   }
 
   function report(state) {
+    console.info('[MeetingDetector] Teams state →', state, '| meeting url:', (capturedMeetingUrl || '').slice(0, 80));
     try {
-      chrome.runtime.sendMessage({ type: 'meeting.presence', state, meetingUrl: capturedMeetingUrl });
+      chrome.runtime.sendMessage({ type: 'meeting.presence', state, meetingUrl: capturedMeetingUrl }, (resp) => {
+        if (chrome.runtime.lastError) {
+          console.warn('[MeetingDetector] report not delivered:', chrome.runtime.lastError.message);
+          return;
+        }
+        console.info('[MeetingDetector] report result:', resp);
+      });
     } catch (_e) {
       // extension reloaded / context invalidated — ignore
     }
