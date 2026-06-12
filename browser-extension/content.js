@@ -8,7 +8,7 @@
   const POLL_MS = 2000;
   const STABLE_TICKS = 2; // a state must persist ~4s before we report it
 
-  let capturedMeetingUrl = location.href; // meetup-join URL is present on first load
+  let capturedMeetingUrl = /meetup-join|meeting_/i.test(location.href) ? location.href : null;
   let lastReported = null;
   let stableState = null;
   let stableCount = 0;
@@ -27,6 +27,10 @@
       capturedMeetingUrl = href;
       return;
     }
+    // Anchor fallback ONLY when nothing is captured yet — chat messages and
+    // calendar entries contain OTHER meetings' join links, and overwriting a
+    // good capture with the first anchor in the DOM reported wrong meetings.
+    if (capturedMeetingUrl) return;
     const a = document.querySelector('a[href*="meetup-join"], a[href*="meeting_"]');
     if (a && a.href) capturedMeetingUrl = a.href;
   }
@@ -104,6 +108,10 @@
         else return; // idle that didn't follow a call — nothing to report
       }
       report(reportState);
+      // The captured URL belongs to the call that just ended — drop it so the
+      // NEXT meeting joined in this same tab must capture (or be tracked by
+      // the background's navigation listener) fresh, never re-reported stale.
+      if (reportState === 'ended') capturedMeetingUrl = null;
     }
   }
 

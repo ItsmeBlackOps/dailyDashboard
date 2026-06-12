@@ -30,38 +30,40 @@ class MeetingPresenceService {
 
     const col = database.getCollection('taskBody');
     const rx = { $regex: escapeRegExp(threadId), $options: 'i' };
-    const task = await col.findOne(
-      {
-        $or: [
-          { meetingLink: rx },
-          { joinUrl: rx },
-          { joinWebUrl: rx },
-        ],
-      },
-      { projection: { _id: 1, meetingStarted: 1, subject: 1, assignedEmail: 1 } }
-    );
+    const linkMatch = {
+      $or: [
+        { meetingLink: rx },
+        { joinUrl: rx },
+        { joinWebUrl: rx },
+      ],
+    };
+    // ALL tasks tied to this meeting — a reschedule or duplicated row can
+    // share the thread id, and a findOne would pick one arbitrarily (and
+    // short-circuit on an already-started older row, stranding the rest).
+    const tasks = await col
+      .find(linkMatch, { projection: { _id: 1, meetingStarted: 1 } })
+      .limit(20)
+      .toArray();
 
-    if (!task) {
+    if (tasks.length === 0) {
       logger.debug('Meeting presence: no task for meeting id', { email, threadId, state });
       return { matched: false, reason: 'no_task' };
     }
 
-    const taskId = String(task._id);
+    const taskIds = tasks.map((t) => String(t._id));
+    const taskId = taskIds[0];
 
     if (state !== 'in_call') {
       // lobby / pre-join — surfaced for observability, no flag change
-      return { matched: true, taskId, flagged: false, state };
+      return { matched: true, taskId, taskIds, flagged: false, state };
     }
 
-    if (task.meetingStarted === true) {
-      return { matched: true, taskId, flagged: false, alreadyStarted: true };
-    }
-
-    // Conditional update — idempotent under concurrent reports. The taskBody
-    // change stream broadcasts `taskUpdated` to every connected dashboard, so
-    // the live "Started" badge appears without any explicit emit here.
-    const res = await col.updateOne(
-      { _id: task._id, meetingStarted: { $ne: true } },
+    // Flip EVERY task of this meeting that is not started yet — conditional,
+    // so it stays idempotent under concurrent reports. The taskBody change
+    // stream broadcasts `taskUpdated` per modified row, so the live "Started"
+    // badges appear without any explicit emit here.
+    const res = await col.updateMany(
+      { ...linkMatch, meetingStarted: { $ne: true } },
       {
         $set: {
           meetingStarted: true,
@@ -72,14 +74,18 @@ class MeetingPresenceService {
       }
     );
 
+    if (res.modifiedCount === 0) {
+      return { matched: true, taskId, taskIds, flagged: false, alreadyStarted: true };
+    }
+
     logger.info('Meeting presence: meeting marked started from extension', {
-      taskId,
+      taskIds,
       email,
       threadId,
       modified: res.modifiedCount,
     });
 
-    return { matched: true, taskId, flagged: res.modifiedCount > 0 };
+    return { matched: true, taskId, taskIds, flagged: true, flaggedCount: res.modifiedCount };
   }
 }
 

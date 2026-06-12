@@ -83,14 +83,71 @@ async function ensureEnrolled({ apiBase, accessToken, refreshToken }) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Per-tab meeting-URL tracking. Teams is an SPA: the meetup-join route (the
+// only URL carrying the stable meeting_<id> token) often flashes by in
+// milliseconds when a meeting is joined from the Teams calendar, so the
+// content script's 2s poll can miss it and end up reporting the PREVIOUS
+// meeting's URL. webNavigation events are synchronous with the navigation --
+// they never miss it. Stored in storage.session so a service-worker restart
+// mid-call keeps the map.
+const hasMeetingToken = (url) => {
+  let s = url || '';
+  try { s = decodeURIComponent(s); } catch (_e) { /* keep raw */ }
+  try { s = decodeURIComponent(s); } catch (_e) { /* keep raw */ }
+  return /meeting_[A-Za-z0-9_-]+/i.test(s) || /meetup-join/i.test(s);
+};
+
+async function rememberTabUrl(tabId, url) {
+  if (tabId == null || tabId < 0 || !hasMeetingToken(url)) return;
+  try {
+    await chrome.storage.session.set({ [`tabMeetingUrl_${tabId}`]: { url, at: Date.now() } });
+  } catch (_e) { /* storage.session unavailable -- content capture still works */ }
+}
+
+const NAV_FILTER = {
+  url: [{ hostSuffix: 'teams.microsoft.com' }, { hostSuffix: 'teams.live.com' }],
+};
+if (chrome.webNavigation) {
+  chrome.webNavigation.onCommitted.addListener(
+    (d) => { void rememberTabUrl(d.tabId, d.url); }, NAV_FILTER);
+  chrome.webNavigation.onHistoryStateUpdated.addListener(
+    (d) => { void rememberTabUrl(d.tabId, d.url); }, NAV_FILTER);
+  chrome.webNavigation.onReferenceFragmentUpdated.addListener(
+    (d) => { void rememberTabUrl(d.tabId, d.url); }, NAV_FILTER);
+}
+chrome.tabs.onRemoved.addListener((tabId) => {
+  try { void chrome.storage.session.remove(`tabMeetingUrl_${tabId}`); } catch (_e) { /* ignore */ }
+});
+
 let lastKey = null;
 let lastAt = 0;
 
-async function handlePresence({ state, meetingUrl }) {
+async function handlePresence({ state, meetingUrl }, sender) {
   const { apiBase, token } = await getConfig();
   if (!apiBase || !token) {
     console.warn(`${LOG} presence '${state}' dropped — not enrolled yet (open the dashboard while logged in)`);
     return { ok: false, error: 'not_enrolled' };
+  }
+
+  // Prefer the tab's last NAVIGATED meeting URL (event-driven, per tab) over
+  // the content script's polled capture — back-to-back meetings in one Teams
+  // tab otherwise report the previous meeting's URL. Fall back to the content
+  // capture when no navigation was tracked (e.g. browser restarted mid-call:
+  // storage.session is empty but the content capture survives).
+  const tabId = sender && sender.tab ? sender.tab.id : null;
+  if (tabId != null && tabId >= 0) {
+    try {
+      const k = `tabMeetingUrl_${tabId}`;
+      const got = await chrome.storage.session.get(k);
+      const tracked = got && got[k] && got[k].url;
+      if (tracked && hasMeetingToken(tracked)) {
+        if (tracked !== meetingUrl) {
+          console.info(`${LOG} using tab-navigation meeting url (content capture was ${meetingUrl ? 'different/stale' : 'empty'})`);
+        }
+        meetingUrl = tracked;
+      }
+    } catch (_e) { /* fall through to the content capture */ }
   }
   console.info(`${LOG} reporting presence '${state}' for ${meetingUrl ? meetingUrl.slice(0, 80) : '(no url)'}…`);
 
@@ -162,9 +219,9 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
 });
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === 'meeting.presence') {
-    handlePresence(msg).then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+    handlePresence(msg, sender).then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
     return true; // keep the channel open for the async response
   }
   if (msg && msg.type === 'ensure-enrolled') {
