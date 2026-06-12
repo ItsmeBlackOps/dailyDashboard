@@ -93,6 +93,51 @@ export class TaskController {
     res.status(200).json(result);
   });
 
+  // ── Co-assignees (second expert on a task) ─────────────────────────
+  addCoAssignee = asyncHandler(async (req, res) => {
+    try {
+      const result = await this.taskService.addCoAssignee(
+        req.user, req.params.taskId, (req.body || {}).email
+      );
+      res.status(200).json(result);
+    } catch (err) {
+      res.status(err.statusCode || 400).json({ success: false, error: err.message });
+    }
+  });
+
+  approveCoAssignee = asyncHandler(async (req, res) => {
+    try {
+      const result = await this.taskService.approveCoAssignee(
+        req.user, req.params.taskId, req.params.email
+      );
+      res.status(200).json(result);
+    } catch (err) {
+      res.status(err.statusCode || 400).json({ success: false, error: err.message });
+    }
+  });
+
+  rejectCoAssignee = asyncHandler(async (req, res) => {
+    try {
+      const result = await this.taskService.rejectCoAssignee(
+        req.user, req.params.taskId, req.params.email, (req.body || {}).note
+      );
+      res.status(200).json(result);
+    } catch (err) {
+      res.status(err.statusCode || 400).json({ success: false, error: err.message });
+    }
+  });
+
+  removeCoAssignee = asyncHandler(async (req, res) => {
+    try {
+      const result = await this.taskService.removeCoAssignee(
+        req.user, req.params.taskId, req.params.email
+      );
+      res.status(200).json(result);
+    } catch (err) {
+      res.status(err.statusCode || 400).json({ success: false, error: err.message });
+    }
+  });
+
   getTaskStatistics = asyncHandler(async (req, res) => {
     const user = req.user;
     const { start, end } = req.query;

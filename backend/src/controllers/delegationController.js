@@ -44,7 +44,11 @@ class DelegationController {
       scope: body.scope,
       subjectEmails: body.subjectEmails,
       subtreeRootEmail: body.subtreeRootEmail,
-      ttlDays: body.ttlDays === null ? null : Number(body.ttlDays),
+      taskIds: body.taskIds,
+      dayDate: body.dayDate,
+      startsAt: body.startsAt,
+      endsAt: body.endsAt,
+      ttlDays: body.ttlDays === null || body.ttlDays === undefined ? null : Number(body.ttlDays),
       reason: body.reason,
     };
 
@@ -60,20 +64,75 @@ class DelegationController {
   });
 
   /**
+   * GET /api/delegations/eligible
+   * Server-computed dropdown options — same rules that validate writes.
+   */
+  eligible = asyncHandler(async (req, res) => {
+    try {
+      const options = await delegationService.eligibleOptions(req.user);
+      return res.json({ success: true, ...options });
+    } catch (err) {
+      return errorResponse(res, 400, err.message);
+    }
+  });
+
+  /**
+   * GET /api/delegations/pending-approvals
+   * The approvals inbox: requests waiting on ME, plus requests I filed
+   * that are still pending elsewhere.
+   */
+  pendingApprovals = asyncHandler(async (req, res) => {
+    const me = (req.user.email || '').toLowerCase();
+    const [waitingOnMe, myRequests] = await Promise.all([
+      delegationService.listPendingForApprover(me),
+      delegationService.listPendingForOwner(me),
+    ]);
+    return res.json({ success: true, waitingOnMe, myRequests });
+  });
+
+  /** POST /api/delegations/:id/approve */
+  approve = asyncHandler(async (req, res) => {
+    try {
+      const updated = await delegationService.approveRequest(req.user, req.params.id);
+      return res.json({ success: true, delegation: updated });
+    } catch (err) {
+      logger.warn('delegation approve failed', { actor: req.user.email, error: err.message });
+      const status = /assigned approver/i.test(err.message) ? 403 : 400;
+      return errorResponse(res, status, err.message);
+    }
+  });
+
+  /** POST /api/delegations/:id/reject  Body: { note? } */
+  reject = asyncHandler(async (req, res) => {
+    try {
+      const updated = await delegationService.rejectRequest(
+        req.user, req.params.id, (req.body && req.body.note) || ''
+      );
+      return res.json({ success: true, delegation: updated });
+    } catch (err) {
+      logger.warn('delegation reject failed', { actor: req.user.email, error: err.message });
+      const status = /assigned approver/i.test(err.message) ? 403 : 400;
+      return errorResponse(res, status, err.message);
+    }
+  });
+
+  /**
    * GET /api/delegations/mine
    * Returns active grants where I am EITHER the owner or the delegate.
    * Used by the "My active shares" panel.
    */
   mine = asyncHandler(async (req, res) => {
     const me = (req.user.email || '').toLowerCase();
-    const [ownedActive, delegatedToMe] = await Promise.all([
+    const [ownedActive, delegatedToMe, pendingOwned] = await Promise.all([
       delegationService.listActiveForOwner(me),
       delegationService.listActiveForUser(me),
+      delegationService.listPendingForOwner(me),
     ]);
     return res.json({
       success: true,
       owned: ownedActive,        // grants I have made FROM my subtree
       delegated: delegatedToMe,  // grants made TO me
+      pendingOwned,              // my requests still waiting for approval
     });
   });
 

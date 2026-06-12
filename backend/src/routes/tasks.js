@@ -21,6 +21,13 @@ router.get('/:taskId/transcript', transcriptRequestController.getTaskTranscript)
 router.patch('/:taskId/meeting-link', taskController.updateMeetingLink);
 router.post('/:taskId/ensure-meeting', taskController.ensureMeeting);
 router.patch('/:taskId/meeting-started', taskController.markMeetingStarted);
+// Co-assignees — second expert on a task (2026-06-12 spec). Authority
+// rules live in taskService (admin / expert's own lead instant; others
+// pending with the expert's lead as approver).
+router.post('/:taskId/co-assignees', taskController.addCoAssignee);
+router.post('/:taskId/co-assignees/:email/approve', taskController.approveCoAssignee);
+router.post('/:taskId/co-assignees/:email/reject', taskController.rejectCoAssignee);
+router.delete('/:taskId/co-assignees/:email', taskController.removeCoAssignee);
 router.get('/:taskId', taskController.getTaskById);
 
 router.post('/search', taskController.searchTasks);

@@ -93,11 +93,56 @@ const notifyTransfer = async ({ subjectEmail, fromName, toName, actorEmail }) =>
   ]).catch((err) => logger.warn('notifyTransfer partial failure', { error: err.message }));
 };
 
+// Human description of what a delegation covers (notifications + logs).
+const describeScope = (doc) => {
+  if (doc.scope === 'tasks') {
+    const n = (doc.taskIds || []).length;
+    return `${n} task${n === 1 ? '' : 's'}`;
+  }
+  if (doc.scope === 'day') return `the whole day ${doc.dayDate}`;
+  if (doc.scope === 'subtree') {
+    return doc.subtreeRootEmail === doc.ownerEmail
+      ? `${doc.ownerEmail}'s dashboard`
+      : `the subtree under ${doc.subtreeRootEmail}`;
+  }
+  return `${(doc.subjectEmails || []).length} subordinate(s)`;
+};
+
 const COLLECTION = 'userDelegations';
 
 // Locked TTLs from the spec. Frontend dropdown must match this exactly.
 const VALID_TTL_DAYS = new Set([7, 15, 30, 180]);
 const FOREVER = null;
+
+// Delegation v2 — granular scopes + approval flow (2026-06-12 spec).
+const VALID_SCOPES = ['specific', 'subtree', 'tasks', 'day'];
+const EXPERT_ROLES = new Set(['user', 'expert']);
+const LEAD_TIER = new Set(['lead', 'mlead', 'am', 'mam']);
+const MAX_TASK_IDS = 10;
+const MAX_WINDOW_DAYS = 30;
+const TASK_GRACE_MS = 24 * 60 * 60 * 1000; // hand-off lives 24h past the last task
+const DAY_GRACE_MS = 28 * 60 * 60 * 1000;  // day grant: end of UTC day + EST slack
+
+const normName = (v) => (v || '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
+
+// Resolve a user's teamLead display name ("Anusree Vasudevan") to that
+// lead's email, matching the BFS convention that display names derive
+// from email local parts. Returns null when no active user matches.
+const resolveTeamLeadEmail = async (user) => {
+  const wanted = normName(user?.teamLead);
+  if (!wanted) return null;
+  const usersCol = database.getCollection('users');
+  if (!usersCol) return null;
+  const { userService } = await import('./userService.js');
+  const rows = await usersCol
+    .find({ active: { $ne: false } }, { projection: { email: 1 } })
+    .toArray();
+  for (const u of rows) {
+    const display = normName(userService.deriveDisplayNameFromEmail(u.email));
+    if (display && display === wanted) return (u.email || '').toLowerCase();
+  }
+  return null;
+};
 
 // Share matrix — locked in the audit's C19 card. Same role-level + same
 // team. `manager` is the only role allowed to share cross-team.
@@ -176,6 +221,8 @@ class DelegationService {
     const {
       ownerEmail, delegateEmail, scope,
       subjectEmails = [], subtreeRootEmail = null,
+      taskIds = [], dayDate = null,
+      startsAt = null, endsAt = null,
       ttlDays, reason = '',
     } = input || {};
 
@@ -185,8 +232,8 @@ class DelegationService {
     if (ownerEmail.toLowerCase() === delegateEmail.toLowerCase()) {
       throw new Error('cannot delegate to yourself');
     }
-    if (!['specific', 'subtree'].includes(scope)) {
-      throw new Error(`scope must be 'specific' or 'subtree', got: ${scope}`);
+    if (!VALID_SCOPES.includes(scope)) {
+      throw new Error(`scope must be one of ${VALID_SCOPES.join('/')}, got: ${scope}`);
     }
     if (scope === 'specific' && (!Array.isArray(subjectEmails) || subjectEmails.length === 0)) {
       throw new Error('scope=specific requires at least one subjectEmail');
@@ -194,13 +241,27 @@ class DelegationService {
     if (scope === 'subtree' && !subtreeRootEmail) {
       throw new Error('scope=subtree requires subtreeRootEmail');
     }
-
-    // Authority: only the owner themselves or admin can grant from a
-    // given subtree. Admin can grant anything.
-    const actorRole = toLegacyRole(actor.role, actor.team);
-    if (actorRole !== 'admin' && actor.email.toLowerCase() !== ownerEmail.toLowerCase()) {
-      throw new Error('only the owner or an admin can grant a delegation');
+    let taskOids = [];
+    if (scope === 'tasks') {
+      if (!Array.isArray(taskIds) || taskIds.length === 0) {
+        throw new Error('scope=tasks requires at least one taskId');
+      }
+      if (taskIds.length > MAX_TASK_IDS) {
+        throw new Error(`scope=tasks supports at most ${MAX_TASK_IDS} tasks — use a day or dashboard share instead`);
+      }
+      try {
+        taskOids = taskIds.map((id) => new ObjectId(id));
+      } catch {
+        throw new Error('invalid taskId in taskIds');
+      }
     }
+    if (scope === 'day' && !/^\d{4}-\d{2}-\d{2}$/.test(dayDate || '')) {
+      throw new Error('scope=day requires dayDate as YYYY-MM-DD');
+    }
+
+    const ownerLower = ownerEmail.toLowerCase();
+    const actorEmail = actor.email.toLowerCase();
+    const actorRole = toLegacyRole(actor.role, actor.team);
 
     const owner = await Promise.resolve(userModel.getUserByEmail(ownerEmail));
     const delegate = await Promise.resolve(userModel.getUserByEmail(delegateEmail));
@@ -208,6 +269,24 @@ class DelegationService {
     if (!delegate) throw new Error(`delegate ${delegateEmail} not found`);
     if (owner.active === false) throw new Error('owner is inactive');
     if (delegate.active === false) throw new Error('delegate is inactive');
+
+    // Authority: the owner themselves, an admin — or, for the coverage
+    // scopes, the owner's own team lead acting on their report's behalf
+    // (the "lead hands off directly" path; it skips the approval queue).
+    let onBehalfLead = false;
+    if (actorRole !== 'admin' && actorEmail !== ownerLower) {
+      const { userService } = await import('./userService.js');
+      const actorDisplay = normName(userService.deriveDisplayNameFromEmail(actorEmail));
+      const leadOwnsReport =
+        LEAD_TIER.has(actorRole) &&
+        ['tasks', 'day', 'subtree'].includes(scope) &&
+        actorDisplay &&
+        normName(owner.teamLead) === actorDisplay;
+      if (!leadOwnsReport) {
+        throw new Error('only the owner, their team lead, or an admin can grant a delegation');
+      }
+      onBehalfLead = true;
+    }
 
     const matrix = validateShareMatrix({
       ownerRole: owner.role, ownerTeam: owner.team,
@@ -217,35 +296,264 @@ class DelegationService {
       throw new Error(`share matrix violation: ${matrix.reason}`);
     }
 
-    const expiresAt = computeExpiresAt(ttlDays);
+    // Expert authors get the coverage scopes only, and a subtree share
+    // must be their own dashboard (root = self).
+    const ownerRole = toLegacyRole(owner.role, owner.team);
+    const ownerIsExpert = EXPERT_ROLES.has(ownerRole);
+    if (ownerIsExpert) {
+      if (!['tasks', 'day', 'subtree'].includes(scope)) {
+        throw new Error('experts can share tasks, a day, or their own dashboard');
+      }
+      if (scope === 'subtree' && (subtreeRootEmail || '').toLowerCase() !== ownerLower) {
+        throw new Error('experts can only share their own dashboard (subtree root must be themselves)');
+      }
+    }
+
+    // Expiry per scope. Coverage scopes derive absolute windows, so a
+    // slow approval never eats into the coverage itself.
     const now = new Date();
+    let computedStartsAt = null;
+    let expiresAt;
+    if (scope === 'tasks') {
+      const taskCol = database.getCollection('taskBody');
+      if (!taskCol) throw new Error('database not ready');
+      const rows = await taskCol
+        .find({ _id: { $in: taskOids } }, { projection: { interviewEndsAt: 1, interviewStartAt: 1, assignedTo: 1 } })
+        .toArray();
+      if (rows.length !== taskOids.length) throw new Error('one or more taskIds not found');
+      const notOwned = rows.find((r) => (r.assignedTo || '').toLowerCase() !== ownerLower);
+      if (notOwned) throw new Error('tasks can only be handed off by the expert they are assigned to');
+      const ends = rows.map((r) => new Date(r.interviewEndsAt || r.interviewStartAt || now).getTime());
+      expiresAt = new Date(Math.max(...ends, now.getTime()) + TASK_GRACE_MS);
+    } else if (scope === 'day') {
+      expiresAt = new Date(new Date(`${dayDate}T00:00:00Z`).getTime() + 24 * 3600 * 1000 + DAY_GRACE_MS);
+      if (expiresAt <= now) throw new Error('dayDate is already in the past');
+    } else if (ownerIsExpert) {
+      // dashboard window — explicit dates, max 30 days, may start later
+      if (!endsAt) throw new Error('a dashboard share needs an end date (endsAt)');
+      const sDate = startsAt ? new Date(startsAt) : now;
+      const eDate = new Date(endsAt);
+      if (Number.isNaN(sDate.getTime()) || Number.isNaN(eDate.getTime())) {
+        throw new Error('invalid startsAt/endsAt');
+      }
+      if (eDate <= sDate) throw new Error('endsAt must be after startsAt');
+      if (eDate.getTime() - sDate.getTime() > MAX_WINDOW_DAYS * 86400 * 1000) {
+        throw new Error(`a dashboard share cannot exceed ${MAX_WINDOW_DAYS} days`);
+      }
+      computedStartsAt = startsAt ? sDate : null;
+      expiresAt = eDate;
+    } else {
+      expiresAt = computeExpiresAt(ttlDays);
+    }
+
+    // Approval: expert-authored requests go to the expert's own team
+    // lead. Lead-on-behalf and admin grants activate immediately.
+    let status = 'active';
+    let approverEmail = null;
+    if (ownerIsExpert && !onBehalfLead && actorRole !== 'admin') {
+      approverEmail = await resolveTeamLeadEmail(owner);
+      if (!approverEmail) {
+        throw new Error(`cannot resolve a team lead to approve this request (teamLead: ${owner.teamLead || 'none'})`);
+      }
+      status = 'pending';
+    }
 
     const doc = {
-      ownerEmail: ownerEmail.toLowerCase(),
+      ownerEmail: ownerLower,
       delegateEmail: delegateEmail.toLowerCase(),
       scope,
       subjectEmails: scope === 'specific'
         ? subjectEmails.map((e) => (e || '').toString().toLowerCase()).filter(Boolean)
         : [],
       subtreeRootEmail: scope === 'subtree' ? (subtreeRootEmail || '').toLowerCase() : null,
+      taskIds: scope === 'tasks' ? taskOids.map((o) => o.toString()) : [],
+      dayDate: scope === 'day' ? dayDate : null,
+      startsAt: computedStartsAt,
+      status,
+      approverEmail,
+      approvedAt: null,
+      approvedBy: null,
+      rejectedAt: null,
+      rejectedBy: null,
+      rejectNote: null,
       grantedAt: now,
-      grantedBy: actor.email.toLowerCase(),
+      grantedBy: actorEmail,
       expiresAt,
       revokedAt: null,
       revokedBy: null,
       reason: (reason || '').toString().slice(0, 500),
-      source: actor.email.toLowerCase() === 'system' ? 'system' : 'manual-ui',
+      source: actorEmail === 'system' ? 'system' : 'manual-ui',
     };
 
     const result = await this.collection().insertOne(doc);
     logger.info('delegation granted', {
       id: result.insertedId.toString(),
       ownerEmail: doc.ownerEmail, delegateEmail: doc.delegateEmail,
-      scope, expiresAt, grantedBy: doc.grantedBy,
+      scope, status, expiresAt, grantedBy: doc.grantedBy,
     });
-    // Fire-and-forget — don't fail the grant on notification errors.
-    notifyDelegationGranted(doc).catch(() => {});
+    if (status === 'pending') {
+      notificationService.createNotification(approverEmail, {
+        type: 'info',
+        title: 'Delegation approval needed',
+        description: `${doc.ownerEmail} asked ${doc.delegateEmail} to cover ${describeScope(doc)}. Review it on the Delegations page.`,
+        link: '/delegations',
+      }).catch(() => {});
+      notificationService.createNotification(doc.ownerEmail, {
+        type: 'info',
+        title: 'Request sent for approval',
+        description: `Your coverage request (${describeScope(doc)} → ${doc.delegateEmail}) is waiting for ${approverEmail}.`,
+      }).catch(() => {});
+    } else {
+      // Fire-and-forget — don't fail the grant on notification errors.
+      notifyDelegationGranted(doc).catch(() => {});
+    }
     return { _id: result.insertedId, ...doc };
+  }
+
+  /**
+   * Approve a pending (expert-authored) delegation. Only the assigned
+   * approver — the requesting expert's team lead — or an admin.
+   */
+  async approveRequest(actor, delegationId) {
+    if (!actor?.email) throw new Error('actor required');
+    let oid;
+    try { oid = new ObjectId(delegationId); }
+    catch { throw new Error('invalid delegationId'); }
+    const doc = await this.collection().findOne({ _id: oid });
+    if (!doc) throw new Error('delegation not found');
+    if (doc.status !== 'pending') return doc; // idempotent
+    const actorRole = toLegacyRole(actor.role, actor.team);
+    if (actorRole !== 'admin' && actor.email.toLowerCase() !== doc.approverEmail) {
+      throw new Error('only the assigned approver or an admin can approve');
+    }
+    const now = new Date();
+    await this.collection().updateOne(
+      { _id: oid, status: 'pending' },
+      { $set: { status: 'active', approvedAt: now, approvedBy: actor.email.toLowerCase() } }
+    );
+    logger.info('delegation approved', { id: delegationId, by: actor.email });
+    const updated = { ...doc, status: 'active', approvedAt: now, approvedBy: actor.email.toLowerCase() };
+    Promise.all([
+      notificationService.createNotification(doc.ownerEmail, {
+        type: 'info',
+        title: 'Coverage approved',
+        description: `${actor.email} approved: ${doc.delegateEmail} now covers ${describeScope(doc)}.`,
+      }),
+      notificationService.createNotification(doc.delegateEmail, {
+        type: 'info',
+        title: 'You are covering',
+        description: `${actor.email} approved ${doc.ownerEmail}'s request — you now cover ${describeScope(doc)}.`,
+        link: '/tasks',
+      }),
+    ]).catch(() => {});
+    return updated;
+  }
+
+  /** Reject a pending delegation (assigned approver or admin). */
+  async rejectRequest(actor, delegationId, note = '') {
+    if (!actor?.email) throw new Error('actor required');
+    let oid;
+    try { oid = new ObjectId(delegationId); }
+    catch { throw new Error('invalid delegationId'); }
+    const doc = await this.collection().findOne({ _id: oid });
+    if (!doc) throw new Error('delegation not found');
+    if (doc.status !== 'pending') return doc; // idempotent
+    const actorRole = toLegacyRole(actor.role, actor.team);
+    if (actorRole !== 'admin' && actor.email.toLowerCase() !== doc.approverEmail) {
+      throw new Error('only the assigned approver or an admin can reject');
+    }
+    const now = new Date();
+    const fields = {
+      status: 'rejected',
+      rejectedAt: now,
+      rejectedBy: actor.email.toLowerCase(),
+      rejectNote: (note || '').toString().slice(0, 500),
+    };
+    await this.collection().updateOne({ _id: oid, status: 'pending' }, { $set: fields });
+    logger.info('delegation rejected', { id: delegationId, by: actor.email });
+    notificationService.createNotification(doc.ownerEmail, {
+      type: 'info',
+      title: 'Coverage request declined',
+      description: `${actor.email} declined your request for ${doc.delegateEmail} to cover ${describeScope(doc)}.${fields.rejectNote ? ' Note: ' + fields.rejectNote : ''}`,
+    }).catch(() => {});
+    return { ...doc, ...fields };
+  }
+
+  /** Pending requests waiting on this approver (the lead's inbox). */
+  async listPendingForApprover(approverEmail) {
+    return this.collection()
+      .find({ status: 'pending', approverEmail: (approverEmail || '').toLowerCase() })
+      .toArray();
+  }
+
+  /** Pending requests this owner has filed (for "my requests" chips). */
+  async listPendingForOwner(ownerEmail) {
+    return this.collection()
+      .find({ status: 'pending', ownerEmail: (ownerEmail || '').toLowerCase() })
+      .toArray();
+  }
+
+  /**
+   * Server-computed dropdown options for the Delegations UI — produced
+   * by the SAME rules that validate writes, so the client can never
+   * offer an illegal choice. Active users only.
+   */
+  async eligibleOptions(actor) {
+    if (!actor?.email) throw new Error('actor required');
+    const usersCol = database.getCollection('users');
+    if (!usersCol) throw new Error('database not ready');
+    const { userService } = await import('./userService.js');
+    const me = (actor.email || '').toLowerCase();
+    const all = await usersCol
+      .find({ active: { $ne: false } }, { projection: { email: 1, role: 1, team: 1, teamLead: 1 } })
+      .toArray();
+    const meDoc = all.find((u) => (u.email || '').toLowerCase() === me)
+      || { email: me, role: actor.role, team: actor.team || null, teamLead: null };
+    const myRole = toLegacyRole(meDoc.role, meDoc.team);
+    const myTeam = meDoc.team || null;
+    const myDisplay = normName(userService.deriveDisplayNameFromEmail(me));
+    const legacyOf = (u) => toLegacyRole(u.role, u.team);
+    const slim = (u) => ({
+      email: (u.email || '').toLowerCase(),
+      role: legacyOf(u),
+      team: u.team || null,
+      teamLead: u.teamLead || null,
+    });
+    const byEmail = (a, b) => a.email.localeCompare(b.email);
+
+    const delegates = all
+      .filter((u) => (u.email || '').toLowerCase() !== me)
+      .filter((u) => validateShareMatrix({
+        ownerRole: meDoc.role, ownerTeam: meDoc.team,
+        delegateRole: u.role, delegateTeam: u.team,
+      }).ok)
+      .map(slim)
+      .sort(byEmail);
+
+    const myPeople = myDisplay
+      ? all.filter((u) => normName(u.teamLead) === myDisplay).map(slim).sort(byEmail)
+      : [];
+
+    const deptExperts = all
+      .filter((u) => EXPERT_ROLES.has(legacyOf(u)))
+      .filter((u) => (u.email || '').toLowerCase() !== me)
+      .filter((u) => (myTeam ? (u.team || null) === myTeam : true))
+      .map((u) => ({ ...slim(u), mine: myDisplay ? normName(u.teamLead) === myDisplay : false }))
+      .sort(byEmail);
+
+    const transferTargets = all
+      .filter((u) => (u.email || '').toLowerCase() !== me)
+      .filter((u) => legacyOf(u) === myRole && LEAD_TIER.has(myRole))
+      .filter((u) => (u.team || null) === myTeam)
+      .map((u) => ({
+        email: (u.email || '').toLowerCase(),
+        displayName: userService.formatNameValue
+          ? userService.formatNameValue(userService.deriveDisplayNameFromEmail(u.email))
+          : userService.deriveDisplayNameFromEmail(u.email),
+      }))
+      .sort(byEmail);
+
+    return { actorRole: myRole, actorTeam: myTeam, delegates, myPeople, deptExperts, transferTargets };
   }
 
   /**
@@ -297,9 +605,12 @@ class DelegationService {
     const cursor = this.collection().find({
       delegateEmail: (delegateEmail || '').toLowerCase(),
       revokedAt: null,
-      $or: [
-        { expiresAt: null },
-        { expiresAt: { $gt: now } },
+      // pending/rejected grant NOTHING; legacy docs without status pass.
+      status: { $nin: ['pending', 'rejected'] },
+      $and: [
+        { $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] },
+        // future-dated windows stay dormant until startsAt
+        { $or: [{ startsAt: null }, { startsAt: { $exists: false } }, { startsAt: { $lte: now } }] },
       ],
     });
     return cursor.toArray();
@@ -313,6 +624,7 @@ class DelegationService {
     const cursor = this.collection().find({
       ownerEmail: (ownerEmail || '').toLowerCase(),
       revokedAt: null,
+      status: { $nin: ['pending', 'rejected'] },
       $or: [
         { expiresAt: null },
         { expiresAt: { $gt: now } },
@@ -456,4 +768,5 @@ class DelegationService {
 }
 
 export const delegationService = new DelegationService();
-export const _testHelpers = { validateShareMatrix, computeExpiresAt, VALID_TTL_DAYS };
+export { resolveTeamLeadEmail };
+export const _testHelpers = { validateShareMatrix, computeExpiresAt, VALID_TTL_DAYS, describeScope };

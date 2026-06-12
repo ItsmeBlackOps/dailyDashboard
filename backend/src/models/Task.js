@@ -319,7 +319,7 @@ export class TaskModel {
         ])
         .toArray();
 
-      let tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails);
+      let tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails, { delegations: options.delegations });
 
       // Enrich with Appwrite transcript status
       tasks = await this.enrichWithTranscriptStatus(tasks);
@@ -582,7 +582,18 @@ export class TaskModel {
     }
   }
 
-  filterAndFormatTasks(docs, userEmail, userRole, teamEmails = []) {
+  filterAndFormatTasks(docs, userEmail, userRole, teamEmails = [], extras = {}) {
+    // extras.delegations — active coverage grants for THIS viewer:
+    //   { taskIdSet: Set<string>, dayGrants: [{owner, dayDate}], windowOwners: Set<string> }
+    // Built by taskService from delegationService.listActiveForUser, so
+    // pending/rejected/expired grants never reach here.
+    const delegations = extras && extras.delegations ? extras.delegations : null;
+    const interviewDayEst = (doc) => {
+      const v = doc.interviewStartAt || doc.interviewDateTime;
+      if (!v) return null;
+      const m = moment(v).tz('America/New_York');
+      return m.isValid() ? m.format('YYYY-MM-DD') : null;
+    };
     const toId = (value) => {
       if (!value) return '';
       if (typeof value === 'string') return value;
@@ -748,13 +759,30 @@ export class TaskModel {
       }
 
       const isAdmin = normalizedRole === 'admin';
-      const isSelf = userEmailLower === assignedEmailLower;
-      const isOnTeam = teamEmailSet.has(assignedEmailLower) || teamEmailSet.has(doc.candidateExpertRaw);
+      const coAssignees = toArray(doc.coAssignees).map((e) => (e || '').toString().toLowerCase());
+      const isSelf = userEmailLower === assignedEmailLower || coAssignees.includes(userEmailLower);
+      const isOnTeam =
+        teamEmailSet.has(assignedEmailLower) ||
+        teamEmailSet.has(doc.candidateExpertRaw) ||
+        coAssignees.some((e) => teamEmailSet.has(e));
+      // Delegated coverage: explicit task hand-off, whole-day grant, or an
+      // active dashboard-window share from the task's owner.
+      let isDelegated = false;
+      if (delegations) {
+        const idStr = toId(task._id || doc._id);
+        isDelegated =
+          (delegations.taskIdSet && delegations.taskIdSet.has(idStr)) ||
+          (delegations.windowOwners && delegations.windowOwners.has(assignedEmailLower)) ||
+          (Array.isArray(delegations.dayGrants) &&
+            delegations.dayGrants.some(
+              (g) => g.owner === assignedEmailLower && g.dayDate === interviewDayEst(doc)
+            ));
+      }
 
-      if (isAdmin || isSelf || isOnTeam) {
+      if (isAdmin || isSelf || isOnTeam || isDelegated) {
         logSuggestionDebug('TasksToday base visibility satisfied', {
           ...baseMeta,
-          reason: isAdmin ? 'admin_access' : isSelf ? 'self_assignment' : 'team_assignment'
+          reason: isAdmin ? 'admin_access' : isSelf ? 'self_assignment' : isOnTeam ? 'team_assignment' : 'delegated_coverage'
         });
         tasks.push(task);
         continue;
@@ -1061,7 +1089,7 @@ export class TaskModel {
         ])
         .toArray();
 
-      let tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails);
+      let tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails, { delegations: options.delegations });
 
       // Enrich with Appwrite transcript status
       tasks = await this.enrichWithTranscriptStatus(tasks);
