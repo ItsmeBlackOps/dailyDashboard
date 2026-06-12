@@ -1,16 +1,20 @@
-// C19 UI — standalone Delegations page.
+// Delegations — coverage & hand-offs (2026-06-12 redesign).
 //
-// Three sections:
-//   1. New Share — grant a peer access to a subordinate / subtree
-//   2. New Transfer — one-shot lateral move
-//   3. My Active Shares — outbound (owned) + inbound (delegated to me),
-//      with revoke action per row
+// Everything is dropdown-driven from GET /api/delegations/eligible (the
+// server computes who is legal via the same rules that validate writes),
+// values are prefilled, and a live summary sentence states exactly what
+// will happen before anything is committed.
 //
-// The page is intentionally minimal — most of the validation lives on
-// the backend (share matrix, authority, compatibility). This UI just
-// collects intent + surfaces errors clearly.
+// Role-shaped surface:
+//   expert (user/expert)  "Share my work" — a whole day or a dashboard
+//                         window to a same-team teammate; lands PENDING
+//                         until their own team lead approves.
+//   lead and above        direct C19 share (team / specific people, TTL
+//                         chips), the "Awaiting your approval" inbox for
+//                         expert requests, and lateral Transfer — now with
+//                         people pickers instead of free-typed emails.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,50 +22,108 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth, API_URL } from '@/hooks/useAuth';
+import { deriveDisplayNameFromEmail } from '@/utils/userNames';
 import {
-  Delegation, MineResponse, fetchMineDelegations, grantDelegation,
-  revokeDelegation, transferUser, TTL_OPTIONS,
+  Delegation, MineResponse, EligibleResponse, PendingApprovalsResponse,
+  fetchMineDelegations, fetchEligible, fetchPendingApprovals,
+  grantDelegation, approveDelegation, rejectDelegation, revokeDelegation,
+  transferUser, describeDelegation,
 } from '@/lib/delegationApi';
 
+const EXPERT_ROLES = new Set(['user', 'expert']);
+const TTL_CHIP_DAYS = [7, 15, 30, 180];
+
+const nameOf = (email?: string | null): string =>
+  email ? deriveDisplayNameFromEmail(email) || email : '';
+
+const todayISO = (): string => {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
 const formatExpiry = (d: Delegation): string => {
-  if (!d.expiresAt) return 'Forever';
-  const now = Date.now();
+  if (!d.expiresAt) return 'No expiry';
   const exp = new Date(d.expiresAt).getTime();
+  const now = Date.now();
   if (exp < now) return 'Expired';
   const days = Math.ceil((exp - now) / (24 * 60 * 60 * 1000));
   return `${days} day${days === 1 ? '' : 's'} left (${new Date(d.expiresAt).toLocaleDateString()})`;
 };
 
+function StatusChip({ d }: { d: Delegation }) {
+  const status = d.status || 'active';
+  if (status === 'pending') {
+    return (
+      <Badge variant="outline" className="border-amber-400/60 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px]">
+        pending approval
+      </Badge>
+    );
+  }
+  if (status === 'rejected') {
+    return (
+      <Badge variant="outline" className="border-rose-400/60 bg-rose-500/10 text-rose-600 text-[10px]">
+        declined
+      </Badge>
+    );
+  }
+  const dormant = d.startsAt && new Date(d.startsAt).getTime() > Date.now();
+  return (
+    <Badge variant="outline" className="border-emerald-400/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[10px]">
+      {dormant ? `starts ${new Date(d.startsAt as string).toLocaleDateString()}` : 'active'}
+    </Badge>
+  );
+}
+
 export default function DelegationsPage() {
   const { authFetch } = useAuth();
   const { toast } = useToast();
   const myEmail = (localStorage.getItem('email') || '').toLowerCase();
+  const myRole = (localStorage.getItem('role') || '').toLowerCase();
+  const isExpert = EXPERT_ROLES.has(myRole);
+  const isAdmin = myRole === 'admin';
 
   const [mine, setMine] = useState<MineResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [eligible, setEligible] = useState<EligibleResponse | null>(null);
+  const [pending, setPending] = useState<PendingApprovalsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Grant form state
+  // ── shared form state ────────────────────────────────────────────────
   const [delegateEmail, setDelegateEmail] = useState('');
-  const [scope, setScope] = useState<'subtree' | 'specific'>('subtree');
-  const [subjectEmailsRaw, setSubjectEmailsRaw] = useState('');
-  const [subtreeRoot, setSubtreeRoot] = useState(''); // defaults to self below
-  const [ttlDays, setTtlDays] = useState<string>('7'); // string for Select compat
   const [reason, setReason] = useState('');
   const [granting, setGranting] = useState(false);
 
-  // Transfer form state
+  // expert form
+  const [coverageType, setCoverageType] = useState<'day' | 'window'>('day');
+  const [dayDate, setDayDate] = useState(todayISO());
+  const [windowFrom, setWindowFrom] = useState(todayISO());
+  const [windowTo, setWindowTo] = useState('');
+
+  // lead form
+  const [scopeChoice, setScopeChoice] = useState<'team' | 'specific'>('team');
+  const [selectedPeople, setSelectedPeople] = useState<Set<string>>(new Set());
+  const [ttlDays, setTtlDays] = useState<number | null>(7);
+
+  // transfer form
   const [transferSubject, setTransferSubject] = useState('');
   const [transferTo, setTransferTo] = useState('');
   const [transferReason, setTransferReason] = useState('');
   const [transferring, setTransferring] = useState(false);
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchMineDelegations(authFetch, API_URL);
-      setMine(data);
+      const [m, e, p] = await Promise.all([
+        fetchMineDelegations(authFetch, API_URL),
+        fetchEligible(authFetch, API_URL),
+        fetchPendingApprovals(authFetch, API_URL),
+      ]);
+      setMine(m);
+      setEligible(e);
+      setPending(p);
     } catch (err) {
       toast({
         title: 'Failed to load delegations',
@@ -71,154 +133,415 @@ export default function DelegationsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [authFetch, toast]);
 
   useEffect(() => {
-    reload();
-    if (!subtreeRoot && myEmail) setSubtreeRoot(myEmail);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void reload();
+  }, [reload]);
 
-  const handleGrant = async () => {
+  const delegateName = nameOf(delegateEmail);
+
+  // ── summary sentences (the "what will happen" line) ─────────────────
+  const expertSummary = useMemo(() => {
+    if (!delegateEmail) return '';
+    if (coverageType === 'day') {
+      return `${delegateName} will see all your tasks on ${dayDate || '…'} — needs your team lead's approval.`;
+    }
+    if (!windowTo) return `Pick an end date for the window.`;
+    return `${delegateName} will see your whole dashboard from ${windowFrom} to ${windowTo} — needs your team lead's approval.`;
+  }, [delegateEmail, delegateName, coverageType, dayDate, windowFrom, windowTo]);
+
+  const leadSummary = useMemo(() => {
+    if (!delegateEmail) return '';
+    const what = scopeChoice === 'team'
+      ? 'everyone under you'
+      : `${selectedPeople.size} selected ${selectedPeople.size === 1 ? 'person' : 'people'}`;
+    const when = ttlDays === null ? 'with no expiry' : `for ${ttlDays} days`;
+    return `${delegateName} will see ${what} ${when}.`;
+  }, [delegateEmail, delegateName, scopeChoice, selectedPeople, ttlDays]);
+
+  // ── actions ──────────────────────────────────────────────────────────
+  const resetShareForm = () => {
+    setDelegateEmail('');
+    setReason('');
+    setSelectedPeople(new Set());
+    setWindowTo('');
+  };
+
+  const handleExpertGrant = async () => {
     if (!delegateEmail) {
-      toast({ title: 'Pick a delegate', description: 'Enter an email.', variant: 'destructive' });
+      toast({ title: 'Pick a teammate', variant: 'destructive' });
       return;
     }
     setGranting(true);
     try {
-      const subjectEmails = scope === 'specific'
-        ? subjectEmailsRaw.split(/[,\s]+/).map((e) => e.trim()).filter(Boolean)
-        : undefined;
-      await grantDelegation(authFetch, API_URL, {
-        delegateEmail: delegateEmail.trim().toLowerCase(),
-        scope,
-        subjectEmails,
-        subtreeRootEmail: scope === 'subtree' ? (subtreeRoot || myEmail) : null,
-        ttlDays: ttlDays === 'forever' ? null : parseInt(ttlDays, 10),
-        reason: reason.trim() || undefined,
+      if (coverageType === 'day') {
+        await grantDelegation(authFetch, API_URL, {
+          delegateEmail, scope: 'day', dayDate, reason: reason.trim() || undefined,
+        });
+      } else {
+        await grantDelegation(authFetch, API_URL, {
+          delegateEmail,
+          scope: 'subtree',
+          subtreeRootEmail: myEmail,
+          startsAt: windowFrom ? new Date(`${windowFrom}T00:00:00`).toISOString() : undefined,
+          endsAt: windowTo ? new Date(`${windowTo}T23:59:59`).toISOString() : undefined,
+          reason: reason.trim() || undefined,
+        });
+      }
+      toast({
+        title: 'Request sent for approval',
+        description: 'Your team lead has been notified — coverage starts once they approve.',
       });
-      toast({ title: 'Share granted' });
-      setDelegateEmail('');
-      setSubjectEmailsRaw('');
-      setReason('');
+      resetShareForm();
       await reload();
     } catch (err) {
-      toast({
-        title: 'Grant failed',
-        description: (err as Error).message,
-        variant: 'destructive',
-      });
+      toast({ title: 'Request failed', description: (err as Error).message, variant: 'destructive' });
     } finally {
       setGranting(false);
     }
   };
 
-  const handleRevoke = async (id: string) => {
-    if (!window.confirm('Revoke this share?')) return;
+  const handleLeadGrant = async () => {
+    if (!delegateEmail) {
+      toast({ title: 'Pick a delegate', variant: 'destructive' });
+      return;
+    }
+    if (scopeChoice === 'specific' && selectedPeople.size === 0) {
+      toast({ title: 'Select at least one person', variant: 'destructive' });
+      return;
+    }
+    setGranting(true);
     try {
-      await revokeDelegation(authFetch, API_URL, id, 'manual revoke from UI');
-      toast({ title: 'Share revoked' });
+      await grantDelegation(authFetch, API_URL, {
+        delegateEmail,
+        scope: scopeChoice === 'team' ? 'subtree' : 'specific',
+        subtreeRootEmail: scopeChoice === 'team' ? myEmail : undefined,
+        subjectEmails: scopeChoice === 'specific' ? [...selectedPeople] : undefined,
+        ttlDays,
+        reason: reason.trim() || undefined,
+      });
+      toast({ title: 'Share granted' });
+      resetShareForm();
       await reload();
     } catch (err) {
-      toast({
-        title: 'Revoke failed',
-        description: (err as Error).message,
-        variant: 'destructive',
-      });
+      toast({ title: 'Grant failed', description: (err as Error).message, variant: 'destructive' });
+    } finally {
+      setGranting(false);
+    }
+  };
+
+  const handleApprove = async (id: string) => {
+    try {
+      await approveDelegation(authFetch, API_URL, id);
+      toast({ title: 'Approved', description: 'The coverage is now active.' });
+      await reload();
+    } catch (err) {
+      toast({ title: 'Approve failed', description: (err as Error).message, variant: 'destructive' });
+    }
+  };
+
+  const handleReject = async (id: string) => {
+    const note = window.prompt('Optional note for the requester (or leave empty):') || '';
+    try {
+      await rejectDelegation(authFetch, API_URL, id, note);
+      toast({ title: 'Request declined' });
+      await reload();
+    } catch (err) {
+      toast({ title: 'Reject failed', description: (err as Error).message, variant: 'destructive' });
+    }
+  };
+
+  const handleRevoke = async (d: Delegation) => {
+    const verb = (d.status || 'active') === 'pending' ? 'Cancel this request?' : 'Revoke this share?';
+    if (!window.confirm(verb)) return;
+    try {
+      await revokeDelegation(authFetch, API_URL, d._id, 'manual revoke from UI');
+      toast({ title: (d.status || 'active') === 'pending' ? 'Request cancelled' : 'Share revoked' });
+      await reload();
+    } catch (err) {
+      toast({ title: 'Revoke failed', description: (err as Error).message, variant: 'destructive' });
     }
   };
 
   const handleTransfer = async () => {
     if (!transferSubject || !transferTo) {
-      toast({ title: 'Need subject + new teamLead', variant: 'destructive' });
+      toast({ title: 'Pick a person and a destination lead', variant: 'destructive' });
       return;
     }
-    if (!window.confirm(`Move ${transferSubject} to teamLead "${transferTo}"? The current teamLead loses access immediately.`)) return;
+    const subjectName = nameOf(transferSubject);
+    if (!window.confirm(`Move ${subjectName} under "${transferTo}" permanently? Their current lead loses access immediately.`)) return;
     setTransferring(true);
     try {
       await transferUser(authFetch, API_URL, {
-        subjectEmail: transferSubject.trim().toLowerCase(),
-        toTeamLeadDisplayName: transferTo.trim(),
+        subjectEmail: transferSubject,
+        toTeamLeadDisplayName: transferTo,
         reason: transferReason.trim() || undefined,
       });
       toast({ title: 'Transfer applied' });
       setTransferSubject('');
       setTransferTo('');
       setTransferReason('');
+      await reload();
     } catch (err) {
-      toast({
-        title: 'Transfer failed',
-        description: (err as Error).message,
-        variant: 'destructive',
-      });
+      toast({ title: 'Transfer failed', description: (err as Error).message, variant: 'destructive' });
     } finally {
       setTransferring(false);
     }
   };
 
-  const ownedSorted = useMemo(
-    () => (mine?.owned || []).slice().sort((a, b) => (b.grantedAt || '').localeCompare(a.grantedAt || '')),
-    [mine],
-  );
+  // ── derived lists ────────────────────────────────────────────────────
+  const waitingOnMe = pending?.waitingOnMe || [];
+  const ownedAll = useMemo(() => {
+    const pendingOwned = mine?.pendingOwned || [];
+    const owned = mine?.owned || [];
+    return [...pendingOwned, ...owned].sort((a, b) => (b.grantedAt || '').localeCompare(a.grantedAt || ''));
+  }, [mine]);
   const delegatedSorted = useMemo(
     () => (mine?.delegated || []).slice().sort((a, b) => (b.grantedAt || '').localeCompare(a.grantedAt || '')),
     [mine],
   );
 
-  return (
-    <>
-      <div className="space-y-6 p-6">
-        <div>
-          <h1 className="text-2xl font-bold">Delegations</h1>
-          <p className="text-sm text-muted-foreground">
-            Share access to your subordinates with a peer (time-bound), or transfer a report to a peer's team.
-            Original ownership is unchanged for shares; transfers move the reporting line one-shot.
-          </p>
-        </div>
+  const togglePerson = (email: string) => {
+    setSelectedPeople((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email);
+      else next.add(email);
+      return next;
+    });
+  };
 
-        <div className="grid gap-6 md:grid-cols-2">
+  return (
+    <div className="space-y-6 p-6">
+      <div>
+        <h1 className="text-2xl font-bold">Delegations</h1>
+        <p className="text-sm text-muted-foreground">
+          {isExpert
+            ? 'Going on leave or double-booked? Share your work with a teammate — your team lead approves it.'
+            : 'Share access with a peer for a while, approve your experts’ coverage requests, or transfer a report permanently.'}
+        </p>
+      </div>
+
+      {/* ── Awaiting your approval (leads/admin) ── */}
+      {waitingOnMe.length > 0 && (
+        <Card className="border-amber-400/60">
+          <CardHeader>
+            <CardTitle className="text-base">Awaiting your approval ({waitingOnMe.length})</CardTitle>
+            <CardDescription>Coverage requests from your experts.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {waitingOnMe.map((d) => (
+              <div key={d._id} className="flex flex-wrap items-center gap-3 rounded-lg border bg-amber-500/[0.04] px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">
+                    {nameOf(d.ownerEmail)} → {nameOf(d.delegateEmail)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {describeDelegation(d)}
+                    {d.startsAt ? ` · from ${new Date(d.startsAt).toLocaleDateString()}` : ''}
+                    {d.expiresAt ? ` · until ${new Date(d.expiresAt).toLocaleDateString()}` : ''}
+                    {d.reason ? ` · "${d.reason}"` : ''}
+                  </div>
+                </div>
+                <Button size="sm" onClick={() => void handleApprove(d._id)}>Approve</Button>
+                <Button size="sm" variant="outline" onClick={() => void handleReject(d._id)}>Reject</Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* ── Share card ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{isExpert ? 'Share my work' : 'New share'}</CardTitle>
+            <CardDescription>
+              {isExpert
+                ? 'A teammate covers your tasks for a day, or your whole dashboard for a date range.'
+                : 'Grant a peer time-bound access to your people.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <Label className="text-xs">{isExpert ? 'Who covers for you?' : 'Who gets access?'}</Label>
+              <Select value={delegateEmail || undefined} onValueChange={setDelegateEmail}>
+                <SelectTrigger aria-label={isExpert ? 'Teammate' : 'Delegate'}>
+                  <SelectValue placeholder={isExpert ? 'Pick a teammate' : 'Pick a peer'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(eligible?.delegates || []).map((p) => (
+                    <SelectItem key={p.email} value={p.email}>
+                      {nameOf(p.email)}
+                      {p.teamLead ? ` — under ${p.teamLead}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!loading && (eligible?.delegates || []).length === 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">No eligible people found for your role.</p>
+              )}
+            </div>
+
+            {isExpert ? (
+              <>
+                <div>
+                  <Label className="text-xs">What do they cover?</Label>
+                  <div className="mt-1 flex gap-2">
+                    <Button
+                      type="button" size="sm"
+                      variant={coverageType === 'day' ? 'default' : 'outline'}
+                      onClick={() => setCoverageType('day')}
+                    >
+                      One day
+                    </Button>
+                    <Button
+                      type="button" size="sm"
+                      variant={coverageType === 'window' ? 'default' : 'outline'}
+                      onClick={() => setCoverageType('window')}
+                    >
+                      My dashboard (date range)
+                    </Button>
+                  </div>
+                </div>
+                {coverageType === 'day' ? (
+                  <div>
+                    <Label className="text-xs">Which day?</Label>
+                    <Input type="date" aria-label="Which day" value={dayDate} onChange={(e) => setDayDate(e.target.value)} />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">From</Label>
+                      <Input type="date" aria-label="From" value={windowFrom} onChange={(e) => setWindowFrom(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label className="text-xs">To (max 30 days)</Label>
+                      <Input type="date" aria-label="To (max 30 days)" value={windowTo} onChange={(e) => setWindowTo(e.target.value)} />
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div>
+                  <Label className="text-xs">What can they see?</Label>
+                  <div className="mt-1 flex gap-2">
+                    <Button
+                      type="button" size="sm"
+                      variant={scopeChoice === 'team' ? 'default' : 'outline'}
+                      onClick={() => setScopeChoice('team')}
+                    >
+                      My whole team
+                    </Button>
+                    <Button
+                      type="button" size="sm"
+                      variant={scopeChoice === 'specific' ? 'default' : 'outline'}
+                      onClick={() => setScopeChoice('specific')}
+                    >
+                      Only specific people
+                    </Button>
+                  </div>
+                </div>
+                {scopeChoice === 'specific' && (
+                  <div className="max-h-44 space-y-1.5 overflow-y-auto rounded-md border p-2">
+                    {(eligible?.myPeople || []).length === 0 ? (
+                      <p className="text-xs text-muted-foreground">No direct reports found.</p>
+                    ) : (
+                      (eligible?.myPeople || []).map((p) => (
+                        <label key={p.email} className="flex cursor-pointer items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={selectedPeople.has(p.email)}
+                            onCheckedChange={() => togglePerson(p.email)}
+                            aria-label={nameOf(p.email)}
+                          />
+                          <span>{nameOf(p.email)}</span>
+                          <span className="text-xs text-muted-foreground">{p.role}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                )}
+                <div>
+                  <Label className="text-xs">For how long?</Label>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {TTL_CHIP_DAYS.map((d) => (
+                      <Button
+                        key={d} type="button" size="sm"
+                        variant={ttlDays === d ? 'default' : 'outline'}
+                        onClick={() => setTtlDays(d)}
+                      >
+                        {d} days
+                      </Button>
+                    ))}
+                    {isAdmin && (
+                      <Button
+                        type="button" size="sm"
+                        variant={ttlDays === null ? 'default' : 'outline'}
+                        onClick={() => setTtlDays(null)}
+                      >
+                        Forever
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div>
+              <Label className="text-xs">Reason (shows in the audit trail)</Label>
+              <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={isExpert ? 'annual leave, double-booked…' : 'PTO cover, handoff…'} />
+            </div>
+
+            {(isExpert ? expertSummary : leadSummary) && (
+              <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-foreground/80">
+                {isExpert ? expertSummary : leadSummary}
+              </p>
+            )}
+
+            <Button
+              onClick={() => void (isExpert ? handleExpertGrant() : handleLeadGrant())}
+              disabled={granting}
+              className="w-full"
+            >
+              {granting ? 'Sending…' : isExpert ? 'Request coverage' : 'Grant share'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* ── Transfer card (leads/admin only) ── */}
+        {!isExpert && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">New Share</CardTitle>
-              <CardDescription>Grant a peer time-bound access to your reports.</CardDescription>
+              <CardTitle className="text-base">Transfer to a peer</CardTitle>
+              <CardDescription>Permanent lateral move — the current lead loses access immediately.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <Label className="text-xs">Delegate email</Label>
-                <Input value={delegateEmail} onChange={(e) => setDelegateEmail(e.target.value)} placeholder="peer@silverspaceinc.com" />
-              </div>
-              <div>
-                <Label className="text-xs">Scope</Label>
-                <Select value={scope} onValueChange={(v) => setScope(v as 'subtree' | 'specific')}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label className="text-xs">Who moves?</Label>
+                <Select value={transferSubject || undefined} onValueChange={setTransferSubject}>
+                  <SelectTrigger aria-label="Transfer subject">
+                    <SelectValue placeholder="Pick one of your people" />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="subtree">Subtree — covers everyone under a root, including future hires</SelectItem>
-                    <SelectItem value="specific">Specific — exact list of subordinate emails</SelectItem>
+                    {(eligible?.myPeople || []).map((p) => (
+                      <SelectItem key={p.email} value={p.email}>
+                        {nameOf(p.email)} <span className="text-muted-foreground">({p.role})</span>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
-              {scope === 'subtree' && (
-                <div>
-                  <Label className="text-xs">Subtree root email</Label>
-                  <Input value={subtreeRoot} onChange={(e) => setSubtreeRoot(e.target.value)} placeholder={myEmail} />
-                  <p className="text-xs text-muted-foreground mt-1">Defaults to you. Use a sub-root to share only part of your subtree.</p>
-                </div>
-              )}
-              {scope === 'specific' && (
-                <div>
-                  <Label className="text-xs">Subject emails</Label>
-                  <Input value={subjectEmailsRaw} onChange={(e) => setSubjectEmailsRaw(e.target.value)} placeholder="a@x.com, b@x.com" />
-                  <p className="text-xs text-muted-foreground mt-1">Comma- or space-separated.</p>
-                </div>
-              )}
               <div>
-                <Label className="text-xs">Duration</Label>
-                <Select value={ttlDays} onValueChange={setTtlDays}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label className="text-xs">To which lead?</Label>
+                <Select value={transferTo || undefined} onValueChange={setTransferTo}>
+                  <SelectTrigger aria-label="Destination lead">
+                    <SelectValue placeholder="Pick the receiving lead" />
+                  </SelectTrigger>
                   <SelectContent>
-                    {TTL_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.label} value={opt.days === null ? 'forever' : String(opt.days)}>
-                        {opt.label}
+                    {(eligible?.transferTargets || []).map((t) => (
+                      <SelectItem key={t.email} value={t.displayName}>
+                        {t.displayName}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -226,128 +549,96 @@ export default function DelegationsPage() {
               </div>
               <div>
                 <Label className="text-xs">Reason (optional)</Label>
-                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="PTO 7d, handoff, etc." />
-              </div>
-              <Button onClick={handleGrant} disabled={granting} className="w-full">
-                {granting ? 'Granting…' : 'Grant share'}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Transfer to peer</CardTitle>
-              <CardDescription>One-shot lateral move. Source loses access immediately.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <Label className="text-xs">Subject email</Label>
-                <Input value={transferSubject} onChange={(e) => setTransferSubject(e.target.value)} placeholder="user@x.com" />
-              </div>
-              <div>
-                <Label className="text-xs">New teamLead (display name)</Label>
-                <Input value={transferTo} onChange={(e) => setTransferTo(e.target.value)} placeholder="e.g. Umang Pandya" />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Match the existing teamLead string format exactly. The C9/C16 validator will reject invalid combinations.
-                </p>
-              </div>
-              <div>
-                <Label className="text-xs">Reason (optional)</Label>
                 <Input value={transferReason} onChange={(e) => setTransferReason(e.target.value)} />
               </div>
-              <Button onClick={handleTransfer} disabled={transferring} className="w-full">
+              {transferSubject && transferTo && (
+                <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-foreground/80">
+                  {nameOf(transferSubject)} will move under {transferTo} permanently.
+                </p>
+              )}
+              <Button onClick={() => void handleTransfer()} disabled={transferring} className="w-full">
                 {transferring ? 'Moving…' : 'Apply transfer'}
               </Button>
             </CardContent>
           </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">My Active Shares</CardTitle>
-            <CardDescription>
-              {loading ? 'Loading…' : `${ownedSorted.length} outbound, ${delegatedSorted.length} inbound`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div>
-              <h3 className="text-sm font-semibold mb-2">Outbound — shares I have granted</h3>
-              {ownedSorted.length === 0 ? (
-                <p className="text-sm text-muted-foreground">None.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Delegate</TableHead>
-                      <TableHead>Scope</TableHead>
-                      <TableHead>Expires</TableHead>
-                      <TableHead>Reason</TableHead>
-                      <TableHead className="w-32" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {ownedSorted.map((d) => (
-                      <TableRow key={d._id}>
-                        <TableCell className="font-mono text-xs">{d.delegateEmail}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">{d.scope}</Badge>
-                          {d.scope === 'subtree' && d.subtreeRootEmail && (
-                            <span className="ml-2 text-xs text-muted-foreground">root: {d.subtreeRootEmail}</span>
-                          )}
-                          {d.scope === 'specific' && (
-                            <span className="ml-2 text-xs text-muted-foreground">{d.subjectEmails.length} subject(s)</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs">{formatExpiry(d)}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{d.reason || '—'}</TableCell>
-                        <TableCell>
-                          <Button size="sm" variant="ghost" onClick={() => handleRevoke(d._id)}>Revoke</Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </div>
-
-            <div>
-              <h3 className="text-sm font-semibold mb-2">Inbound — shares granted to me</h3>
-              {delegatedSorted.length === 0 ? (
-                <p className="text-sm text-muted-foreground">None.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Owner</TableHead>
-                      <TableHead>Scope</TableHead>
-                      <TableHead>Expires</TableHead>
-                      <TableHead>Reason</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {delegatedSorted.map((d) => (
-                      <TableRow key={d._id}>
-                        <TableCell className="font-mono text-xs">{d.ownerEmail}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">{d.scope}</Badge>
-                          {d.scope === 'subtree' && d.subtreeRootEmail && (
-                            <span className="ml-2 text-xs text-muted-foreground">root: {d.subtreeRootEmail}</span>
-                          )}
-                          {d.scope === 'specific' && (
-                            <span className="ml-2 text-xs text-muted-foreground">{d.subjectEmails.length} subject(s)</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs">{formatExpiry(d)}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{d.reason || '—'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        )}
       </div>
-    </>
+
+      {/* ── My shares ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">My shares</CardTitle>
+          <CardDescription>
+            {loading ? 'Loading…' : `${ownedAll.length} outbound · ${delegatedSorted.length} covering for others`}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div>
+            <h3 className="mb-2 text-sm font-semibold">Outbound — what I have shared</h3>
+            {ownedAll.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nothing shared right now.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>To</TableHead>
+                    <TableHead>Covers</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Expires</TableHead>
+                    <TableHead className="w-32" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ownedAll.map((d) => (
+                    <TableRow key={d._id}>
+                      <TableCell className="text-sm">{nameOf(d.delegateEmail)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {describeDelegation(d, myEmail)}
+                        {d.reason ? ` · "${d.reason}"` : ''}
+                      </TableCell>
+                      <TableCell><StatusChip d={d} /></TableCell>
+                      <TableCell className="text-xs">{formatExpiry(d)}</TableCell>
+                      <TableCell>
+                        <Button size="sm" variant="ghost" onClick={() => void handleRevoke(d)}>
+                          {(d.status || 'active') === 'pending' ? 'Cancel' : 'Revoke'}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+
+          <div>
+            <h3 className="mb-2 text-sm font-semibold">Inbound — what others shared with me</h3>
+            {delegatedSorted.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nobody is sharing with you right now.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>From</TableHead>
+                    <TableHead>Covers</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Expires</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {delegatedSorted.map((d) => (
+                    <TableRow key={d._id}>
+                      <TableCell className="text-sm">{nameOf(d.ownerEmail)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{describeDelegation(d)}</TableCell>
+                      <TableCell><StatusChip d={d} /></TableCell>
+                      <TableCell className="text-xs">{formatExpiry(d)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
