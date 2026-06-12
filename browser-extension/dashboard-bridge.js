@@ -1,14 +1,26 @@
-// Runs on the Daily Dashboard origin. Lets the dashboard page detect that the
-// extension is installed, via a window.postMessage handshake (no extension ID
-// needed). The dashboard's gate pings; we pong. We also announce on load in
-// case the page is already listening.
+// Runs on the Daily Dashboard origin. Two jobs:
+//  1. Answer the page's "is the extension installed?" ping (postMessage).
+//  2. Auto-enroll: read the dashboard's own auth from localStorage and hand it
+//     to the background worker, which exchanges it for the detector token.
+// All steps log to the page console with the [MeetingDetector] prefix so a
+// stuck enrollment is diagnosable from DevTools.
 (() => {
   const FROM_EXT = 'meeting-detector-extension';
   const FROM_PAGE = 'meeting-detector-page';
+  const LOG = '[MeetingDetector]';
+
+  // Fallback when the page bundle predates the md_api_base write (stale cached
+  // frontend): the production API base is fixed, so enrollment must not depend
+  // on the page being fresh. Local dev pages talk to a local API.
+  const FALLBACK_API_BASE = window.location.hostname === 'localhost'
+    ? window.location.origin.replace(/:\d+$/, ':3004')
+    : 'https://dailydb.silverspace.tech';
 
   function version() {
     try { return chrome.runtime.getManifest().version; } catch { return 'unknown'; }
   }
+
+  console.info(`${LOG} bridge injected (v${version()}) on ${window.location.origin}`);
 
   function announce(type) {
     window.postMessage({ source: FROM_EXT, type, version: version() }, window.location.origin);
@@ -22,48 +34,61 @@
     }
   });
 
-  // Announce now and again shortly after, so a page that mounts its listener a
-  // beat later still hears us even without pinging.
   announce('present');
   setTimeout(() => announce('present'), 800);
 
-  // Auto-enroll: read the dashboard's OWN auth from localStorage (the access
-  // token it already stores) plus the API base it writes for us, and hand them
-  // to the background worker, which exchanges them for the detector token. No
-  // manual token copy-paste. We poll (rather than a fixed retry window) because
-  // sign-in can complete via SPA navigation after this script has loaded, with
-  // no page reload — so the token may appear minutes later. ensure-enrolled is
-  // idempotent (the background no-ops on a fresh token), and we stop polling
-  // once it reports success.
+  // ---- auto-enroll ----
   let enrollTimer = null;
+  let attempt = 0;
+  let lastLogged = ''; // avoid spamming the same condition every 4s
 
-  // Fallback when the page bundle predates the md_api_base write (stale cached
-  // frontend): the production API base is fixed, so enrollment must not depend
-  // on the page being fresh. Local dev pages talk to a local API.
-  const FALLBACK_API_BASE = window.location.hostname === 'localhost'
-    ? window.location.origin.replace(/:\d+$/, ':3004')
-    : 'https://dailydb.silverspace.tech';
+  function logOnce(key, fn) {
+    if (lastLogged !== key) {
+      lastLogged = key;
+      fn();
+    }
+  }
 
   function tryEnroll() {
     let accessToken = null;
+    let refreshToken = null;
     let apiBase = null;
     try {
       accessToken = window.localStorage.getItem('accessToken');
+      refreshToken = window.localStorage.getItem('refreshToken');
       apiBase = window.localStorage.getItem('md_api_base') || FALLBACK_API_BASE;
-    } catch {
+    } catch (e) {
+      logOnce('ls-blocked', () => console.warn(`${LOG} cannot read localStorage:`, e.message));
       return;
     }
-    if (!accessToken || !apiBase) return;
+
+    if (!accessToken) {
+      logOnce('no-token', () => console.info(`${LOG} waiting for login — no accessToken in localStorage yet (polling every 4s)`));
+      return;
+    }
+
+    attempt += 1;
+    logOnce('sending', () => console.info(`${LOG} attempting enrollment via ${apiBase} (have refreshToken: ${Boolean(refreshToken)})`));
+
     try {
-      chrome.runtime.sendMessage({ type: 'ensure-enrolled', apiBase, accessToken }, (resp) => {
-        if (chrome.runtime.lastError) return;
-        if (resp && resp.ok && enrollTimer) {
-          clearInterval(enrollTimer);
-          enrollTimer = null;
+      chrome.runtime.sendMessage(
+        { type: 'ensure-enrolled', apiBase, accessToken, refreshToken },
+        (resp) => {
+          if (chrome.runtime.lastError) {
+            logOnce('sw-err', () => console.warn(`${LOG} background worker unreachable:`, chrome.runtime.lastError.message));
+            return;
+          }
+          if (resp && resp.ok) {
+            console.info(`${LOG} ✅ enrolled${resp.already ? ' (already had a fresh token)' : ''}${resp.viaRefresh ? ' (recovered via refresh token)' : ''} — detector active for this browser`);
+            if (enrollTimer) { clearInterval(enrollTimer); enrollTimer = null; }
+          } else {
+            const why = resp ? (resp.error || `HTTP ${resp.status}`) : 'no response';
+            logOnce(`fail-${why}`, () => console.warn(`${LOG} enrollment attempt ${attempt} failed: ${why} — will keep retrying every 4s`));
+          }
         }
-      });
-    } catch {
-      /* extension context invalidated */
+      );
+    } catch (e) {
+      logOnce('ctx', () => console.warn(`${LOG} extension context invalidated (reloaded?). Refresh this tab.`, e.message));
     }
   }
 
