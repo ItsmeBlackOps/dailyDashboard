@@ -1343,6 +1343,39 @@ export class TaskService {
     }
   }
 
+  /**
+   * Pending co-assign requests waiting on this approver — feeds the
+   * Delegations page's approvals inbox alongside delegation requests.
+   */
+  async listPendingCoAssignsForApprover(approverEmail) {
+    const col = this.taskModel.collection;
+    if (!col) return [];
+    const me = (approverEmail || '').toLowerCase();
+    if (!me) return [];
+    const rows = await col
+      .find(
+        { pendingCoAssigns: { $elemMatch: { approverEmail: me } } },
+        { projection: { subject: 1, assignedTo: 1, pendingCoAssigns: 1 } }
+      )
+      .limit(50)
+      .toArray();
+    const out = [];
+    for (const r of rows) {
+      for (const pc of r.pendingCoAssigns || []) {
+        if ((pc.approverEmail || '').toLowerCase() !== me) continue;
+        out.push({
+          taskId: String(r._id),
+          subject: r.subject || '',
+          ownerEmail: (r.assignedTo || '').toLowerCase(),
+          email: pc.email,
+          requestedBy: pc.requestedBy,
+          requestedAt: pc.requestedAt,
+        });
+      }
+    }
+    return out;
+  }
+
   _normName(value) {
     return (value || '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
   }

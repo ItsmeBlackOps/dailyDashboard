@@ -93,6 +93,12 @@ export class TaskController {
     res.status(200).json(result);
   });
 
+  // GET /tasks/pending-co-assigns — co-expert requests waiting on ME.
+  getPendingCoAssigns = asyncHandler(async (req, res) => {
+    const items = await this.taskService.listPendingCoAssignsForApprover(req.user.email);
+    res.status(200).json({ success: true, items });
+  });
+
   // ── Co-assignees (second expert on a task) ─────────────────────────
   addCoAssignee = asyncHandler(async (req, res) => {
     try {

@@ -32,6 +32,10 @@ import {
   grantDelegation, approveDelegation, rejectDelegation, revokeDelegation,
   transferUser, describeDelegation,
 } from '@/lib/delegationApi';
+import {
+  approveCoAssignee, rejectCoAssignee, fetchPendingCoAssigns,
+  type PendingCoAssignItem,
+} from '@/lib/coAssignApi';
 
 const EXPERT_ROLES = new Set(['user', 'expert']);
 const TTL_CHIP_DAYS = [7, 15, 30, 180];
@@ -89,6 +93,7 @@ export default function DelegationsPage() {
   const [mine, setMine] = useState<MineResponse | null>(null);
   const [eligible, setEligible] = useState<EligibleResponse | null>(null);
   const [pending, setPending] = useState<PendingApprovalsResponse | null>(null);
+  const [coAssignInbox, setCoAssignInbox] = useState<PendingCoAssignItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   // ── shared form state ────────────────────────────────────────────────
@@ -116,14 +121,16 @@ export default function DelegationsPage() {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [m, e, p] = await Promise.all([
+      const [m, e, p, ca] = await Promise.all([
         fetchMineDelegations(authFetch, API_URL),
         fetchEligible(authFetch, API_URL),
         fetchPendingApprovals(authFetch, API_URL),
+        fetchPendingCoAssigns(authFetch, API_URL).catch(() => ({ success: false, items: [] })),
       ]);
       setMine(m);
       setEligible(e);
       setPending(p);
+      setCoAssignInbox(ca.items || []);
     } catch (err) {
       toast({
         title: 'Failed to load delegations',
@@ -292,6 +299,7 @@ export default function DelegationsPage() {
 
   // ── derived lists ────────────────────────────────────────────────────
   const waitingOnMe = pending?.waitingOnMe || [];
+  const inboxCount = waitingOnMe.length + coAssignInbox.length;
   const ownedAll = useMemo(() => {
     const pendingOwned = mine?.pendingOwned || [];
     const owned = mine?.owned || [];
@@ -323,11 +331,11 @@ export default function DelegationsPage() {
       </div>
 
       {/* ── Awaiting your approval (leads/admin) ── */}
-      {waitingOnMe.length > 0 && (
+      {inboxCount > 0 && (
         <Card className="border-amber-400/60">
           <CardHeader>
-            <CardTitle className="text-base">Awaiting your approval ({waitingOnMe.length})</CardTitle>
-            <CardDescription>Coverage requests from your experts.</CardDescription>
+            <CardTitle className="text-base">Awaiting your approval ({inboxCount})</CardTitle>
+            <CardDescription>Coverage requests and co-expert adds from your experts.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {waitingOnMe.map((d) => (
@@ -345,6 +353,37 @@ export default function DelegationsPage() {
                 </div>
                 <Button size="sm" onClick={() => void handleApprove(d._id)}>Approve</Button>
                 <Button size="sm" variant="outline" onClick={() => void handleReject(d._id)}>Reject</Button>
+              </div>
+            ))}
+            {coAssignInbox.map((c) => (
+              <div key={`${c.taskId}-${c.email}`} className="flex flex-wrap items-center gap-3 rounded-lg border bg-amber-500/[0.04] px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">
+                    {nameOf(c.requestedBy)} wants {nameOf(c.email)} as co-expert
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground" title={c.subject}>
+                    {c.subject}
+                  </div>
+                </div>
+                <Button size="sm" onClick={() => void (async () => {
+                  try {
+                    await approveCoAssignee(authFetch, API_URL, c.taskId, c.email);
+                    toast({ title: 'Co-expert approved' });
+                    await reload();
+                  } catch (err) {
+                    toast({ title: 'Approve failed', description: (err as Error).message, variant: 'destructive' });
+                  }
+                })()}>Approve</Button>
+                <Button size="sm" variant="outline" onClick={() => void (async () => {
+                  const note = window.prompt('Optional note for the requester (or leave empty):') || '';
+                  try {
+                    await rejectCoAssignee(authFetch, API_URL, c.taskId, c.email, note);
+                    toast({ title: 'Request declined' });
+                    await reload();
+                  } catch (err) {
+                    toast({ title: 'Reject failed', description: (err as Error).message, variant: 'destructive' });
+                  }
+                })()}>Reject</Button>
               </div>
             ))}
           </CardContent>

@@ -2,7 +2,9 @@ import { jest } from '@jest/globals';
 
 const findOne = jest.fn();
 const updateOne = jest.fn(async () => ({ modifiedCount: 1 }));
-const mockCollection = { findOne, updateOne };
+const findToArray = jest.fn(async () => []);
+const findChain = jest.fn(() => ({ limit: jest.fn(() => ({ toArray: findToArray })) }));
+const mockCollection = { findOne, updateOne, find: findChain };
 
 jest.unstable_mockModule('../../models/Task.js', () => ({
   taskModel: { collection: mockCollection },
@@ -164,6 +166,29 @@ describe('approve / reject / remove', () => {
     findOne.mockResolvedValue({ ...TASK, coAssignees: ['utsa.maiti@vizvainc.com'] });
     const r = await taskService.removeCoAssignee(ANUSREE, TASK_ID, 'utsa.maiti@vizvainc.com');
     expect(r.status).toBe('removed');
+  });
+});
+
+describe('listPendingCoAssignsForApprover', () => {
+  it('flattens only the entries waiting on this approver', async () => {
+    findToArray.mockResolvedValue([
+      {
+        _id: 't1',
+        subject: 'Interview Support - Venkata Kaseeswar',
+        assignedTo: 'subhash.sharma@vizvainc.com',
+        pendingCoAssigns: [
+          { email: 'aditya.sharma@vizvainc.com', requestedBy: 'anusree.vasudevan@vizvainc.com', requestedAt: 'x', approverEmail: 'prateek.narvariya@silverspaceinc.com' },
+          { email: 'other@x.com', requestedBy: 'a@x.com', requestedAt: 'y', approverEmail: 'someone.else@x.com' },
+        ],
+      },
+    ]);
+    const items = await taskService.listPendingCoAssignsForApprover('PRATEEK.NARVARIYA@silverspaceinc.com');
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      taskId: 't1',
+      email: 'aditya.sharma@vizvainc.com',
+      ownerEmail: 'subhash.sharma@vizvainc.com',
+    });
   });
 });
 

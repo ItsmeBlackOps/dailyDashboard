@@ -4465,6 +4465,15 @@ export default function TasksToday() {
                         {canSeeBotStatus() && (
                           <BotStatusBadge status={task.botStatus} attempts={task.botInviteAttempts} error={task.botLastError} />
                         )}
+                        {Array.isArray((task as any).coAssignees) && (task as any).coAssignees.length > 0 && (
+                          <Badge
+                            variant="outline"
+                            className="border-violet-400/60 bg-violet-500/10 text-violet-600 text-[9px] px-1"
+                            title={`Co-expert${(task as any).coAssignees.length === 1 ? '' : 's'}: ${(task as any).coAssignees.join(', ')}`}
+                          >
+                            +{(task as any).coAssignees.length} co-expert{(task as any).coAssignees.length === 1 ? '' : 's'}
+                          </Badge>
+                        )}
                       </div>
                     </TableCell>
                     {showActionsColumn && (

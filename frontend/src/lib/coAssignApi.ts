@@ -65,3 +65,19 @@ export async function removeCoAssignee(
   );
   return parseJsonOrThrow(res);
 }
+
+export interface PendingCoAssignItem {
+  taskId: string;
+  subject: string;
+  ownerEmail: string;
+  email: string;
+  requestedBy: string;
+  requestedAt: string;
+}
+
+export async function fetchPendingCoAssigns(
+  authFetch: AuthFetch, apiUrl: string,
+): Promise<{ success: boolean; items: PendingCoAssignItem[] }> {
+  const res = await authFetch(`${apiUrl}/api/tasks/pending-co-assigns`);
+  return parseJsonOrThrow(res);
+}
