@@ -69,6 +69,7 @@ const AdminAlertsPage = lazyWithRetry(() => import('./pages/AdminAlerts'));
 const UserManagementPage = lazyWithRetry(() => import('./pages/UserManagement'));
 const DelegationsPage = lazyWithRetry(() => import('./pages/Delegations'));
 const MeetingDetectorPage = lazyWithRetry(() => import('./pages/MeetingDetector'));
+const AdminAnnouncePage = lazyWithRetry(() => import('./pages/AdminAnnounce'));
 const PermissionsManagement = lazyWithRetry(() => import('./pages/PermissionsManagement'));
 
 // Lazy imports — heavy/secondary pages, split into their own chunks
@@ -141,6 +142,7 @@ const App = () => (
                 <Route path="/user-management" element={<UserManagementPage />} />
                 <Route path="/delegations" element={<DelegationsPage />} />
                 <Route path="/meeting-detector" element={<MeetingDetectorPage />} />
+                <Route path="/admin/announce" element={<AdminAnnouncePage />} />
                 <Route path="/permissions" element={<PermissionsManagement />} />
                 <Route path="/dashboard-v2" element={<DashboardV2 />} />
                 <Route path="/profile-hub" element={<ProfileHubPage />} />
