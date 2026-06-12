@@ -321,8 +321,11 @@ export class TaskModel {
 
       let tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails, { delegations: options.delegations });
 
-      // Enrich with Appwrite transcript status
-      tasks = await this.enrichWithTranscriptStatus(tasks);
+      // Transcript flags: persisted-only on the hot path; discovery runs
+      // in the background and streams in via taskUpdated broadcasts.
+      // (This call previously awaited Appwrite TWICE per request.)
+      this.queueTranscriptDiscovery(tasks);
+      tasks = this.applyPersistedTranscriptFlags(tasks);
 
       tasks.sort((a, b) => {
         const diff = a.startTime - b.startTime;
@@ -336,7 +339,7 @@ export class TaskModel {
         totalDocs: docs.length
       });
 
-      return this.enrichWithTranscriptStatus(tasks);
+      return tasks;
     } catch (error) {
       logger.error('Failed to get tasks for user', {
         error: error.message,
@@ -398,6 +401,30 @@ export class TaskModel {
     } else {
       return {};
     }
+  }
+
+  // Hot-path transcript view: trust ONLY the persisted `transcription`
+  // flag — zero remote calls. Discovery of new transcripts runs in the
+  // background (queueTranscriptDiscovery): it persists found flags and the
+  // taskBody change stream broadcasts taskUpdated, so open dashboards see
+  // the flag flip live moments later. This replaced awaiting Appwrite
+  // inline, which cost 30+ seconds per tasks load (batch queries plus up
+  // to 10 sequential prefix lookups on EVERY request with unmatched
+  // subjects).
+  applyPersistedTranscriptFlags(tasks) {
+    return (tasks || []).map((task) => ({ ...task, transcription: task?.transcription === true }));
+  }
+
+  queueTranscriptDiscovery(tasks) {
+    const hasUnflagged = (tasks || []).some(
+      (t) => t && t.transcription !== true && (t.subject || t.Subject)
+    );
+    if (!hasUnflagged) return;
+    if (this._transcriptDiscoveryInFlight) return; // one sweep at a time
+    this._transcriptDiscoveryInFlight = true;
+    void this.enrichWithTranscriptStatus(tasks)
+      .catch((err) => logger.warn('Background transcript discovery failed', { error: err.message }))
+      .finally(() => { this._transcriptDiscoveryInFlight = false; });
   }
 
   async enrichWithTranscriptStatus(tasks) {
@@ -1091,8 +1118,10 @@ export class TaskModel {
 
       let tasks = this.filterAndFormatTasks(docs, userEmail, userRole, effectiveTeamEmails, { delegations: options.delegations });
 
-      // Enrich with Appwrite transcript status
-      tasks = await this.enrichWithTranscriptStatus(tasks);
+      // Persisted transcript flags only — discovery happens in the
+      // background and streams in via taskUpdated broadcasts.
+      this.queueTranscriptDiscovery(tasks);
+      tasks = this.applyPersistedTranscriptFlags(tasks);
 
       tasks.sort(compareByInterviewStart);
 

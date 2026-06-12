@@ -15,6 +15,10 @@ import { RecruiterCallAlertDialog } from './RecruiterCallAlertDialog';
 import { ContactNumberRequiredDialog } from './ContactNumberRequiredDialog';
 import { ExtensionGate } from './ExtensionGate';
 import { UpdateGuard } from './UpdateGuard';
+
+// Warm the heaviest route chunk while the user is still on the landing
+// page — first click on Tasks otherwise pays the download+parse cost.
+const prefetchTasksChunk = () => { void import('@/pages/TasksToday').catch(() => {}); };
 import { AnnouncementModal } from './AnnouncementModal';
 
 interface DashboardLayoutProps {
@@ -46,6 +50,12 @@ function ContentSkeleton() {
 const SIDEBAR_KEY = 'sidebarOpen';
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
+  // Idle-prefetch the Tasks chunk ~2.5s after the shell mounts.
+  useEffect(() => {
+    const id = window.setTimeout(prefetchTasksChunk, 2500);
+    return () => window.clearTimeout(id);
+  }, []);
+
   // persist openness across reloads
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     const saved = localStorage.getItem(SIDEBAR_KEY);
