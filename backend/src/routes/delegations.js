@@ -7,9 +7,16 @@
 
 import { Router } from 'express';
 import { delegationController } from '../controllers/delegationController.js';
-import { requireHTTPRole } from '../middleware/auth.js';
+import { authenticateHTTP, requireHTTPRole } from '../middleware/auth.js';
 
 const router = Router();
+
+// Authenticate FIRST — requireHTTPRole only checks req.user. Without this
+// the whole router 401'd ('Authentication required') for every caller:
+// the mount in routes/index.js applies no auth, and unlike tasks.js this
+// file never installed authenticateHTTP itself (C19 gap, present since
+// the routes shipped).
+router.use(authenticateHTTP);
 
 // Roles allowed to perform any delegation operation. requireHTTPRole
 // already accepts both legacy and new role names (PR #106), so listing
