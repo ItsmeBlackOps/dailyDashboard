@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, Clock, Building2, Briefcase, User, Mail,
-  Layers, Users, ExternalLink, MessageSquare, FileText,
+  Layers, Users, ExternalLink, MessageSquare, FileText, Video,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +40,10 @@ interface TaskFull {
   body: string;
   replies: TaskReply[];
   subject: string;
+  meetingStarted?: boolean;
+  meetingStartedAt?: string | null;
+  meetingStartedBy?: string | null;
+  meetingStartedSource?: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -279,6 +283,38 @@ export default function TaskDetailPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Meeting start — manual dashboard click or the Meeting Detector
+                extension (source 'extension'). Sits right above Email Thread. */}
+            <div
+              className={`rounded-lg border px-4 py-3 flex items-center gap-2.5 ${
+                task.meetingStarted
+                  ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40'
+                  : 'bg-muted/30'
+              }`}
+            >
+              <Video
+                className={`h-4 w-4 shrink-0 ${
+                  task.meetingStarted ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'
+                }`}
+              />
+              {task.meetingStarted ? (
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                    Meeting started
+                    {task.meetingStartedAt ? ` · ${formatDateTime(task.meetingStartedAt)}` : ''}
+                  </div>
+                  {(task.meetingStartedBy || task.meetingStartedSource === 'extension') && (
+                    <div className="text-xs text-muted-foreground">
+                      {task.meetingStartedBy ? `by ${formatEmail(task.meetingStartedBy)}` : ''}
+                      {task.meetingStartedSource === 'extension' ? ' · auto-detected (extension)' : ''}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground">Meeting not started yet</span>
+              )}
+            </div>
 
             {/* ── Email Thread ── */}
             {(task.body || task.replies.length > 0) && (

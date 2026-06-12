@@ -429,7 +429,7 @@ export default function CandidateDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pb-5 pt-1">
-                {id && <CandidateTimeline candidateId={id} />}
+                {id && <CandidateTimeline candidateId={id} onTaskClick={setSelectedTaskId} />}
               </CardContent>
             </Card>
 
