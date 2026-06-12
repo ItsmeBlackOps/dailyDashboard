@@ -11,12 +11,15 @@
     .muted { color: #666; }
     a { color: #185FA5; font-size: 13px; cursor: pointer; }
     .state { font-weight: 600; }
+    #log { margin-top: 6px; border-top: 1px solid #eee; padding-top: 6px; }
+    .logrow { font-size: 11px; color: #555; margin: 2px 0; font-family: ui-monospace, Consolas, monospace; }
   </style>
 </head>
 <body>
   <h1>Interview Meeting Detector</h1>
   <div class="row"><span id="enrollDot" class="dot gray"></span><span id="enroll">Checking…</span></div>
   <div class="row"><span class="muted">Last report:</span> <span id="last" class="state">—</span></div>
+  <div id="log"></div>
   <div class="row"><a id="setup">View status</a></div>
   <script src="popup.js"></script>
 </body>
