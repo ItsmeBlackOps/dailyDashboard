@@ -66,6 +66,10 @@ interface TaskFull {
   botInviteAttempts: number | null;
   botJoinedAt: string | null;
   botLastError: string | null;
+  meetingStarted?: boolean;
+  meetingStartedAt?: string | null;
+  meetingStartedBy?: string | null;
+  meetingStartedSource?: string | null;
 }
 
 interface TaskSheetProps {
@@ -383,6 +387,38 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
                 </div>
               </div>
             )}
+
+            {/* Meeting start — manual dashboard click or the Meeting Detector
+                extension (source 'extension'). Sits right above Email Thread. */}
+            <div
+              className={`rounded-lg border px-3 py-2.5 flex items-center gap-2.5 ${
+                task.meetingStarted
+                  ? 'border-aurora-emerald/30 bg-aurora-emerald/5'
+                  : 'bg-muted/30'
+              }`}
+            >
+              <Video
+                className={`h-3.5 w-3.5 shrink-0 ${
+                  task.meetingStarted ? 'text-aurora-emerald' : 'text-muted-foreground'
+                }`}
+              />
+              {task.meetingStarted ? (
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-aurora-emerald">
+                    Meeting started
+                    {task.meetingStartedAt ? ` · ${formatDateTime(task.meetingStartedAt)}` : ''}
+                  </div>
+                  {(task.meetingStartedBy || task.meetingStartedSource === 'extension') && (
+                    <div className="text-[10px] text-muted-foreground">
+                      {task.meetingStartedBy ? `by ${formatEmail(task.meetingStartedBy)}` : ''}
+                      {task.meetingStartedSource === 'extension' ? ' · auto-detected (extension)' : ''}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">Meeting not started yet</span>
+              )}
+            </div>
 
             {/* Email thread */}
             {(task.body || task.replies?.length > 0) && (

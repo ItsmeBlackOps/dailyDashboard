@@ -1113,6 +1113,12 @@ class CandidateController {
           botInviteAttempts:  typeof doc.botInviteAttempts === 'number' ? doc.botInviteAttempts : null,
           botJoinedAt:        doc.botJoinedAt || null,
           botLastError:       doc.botLastError || null,
+          // Meeting-start flag — flipped manually from the dashboard or
+          // auto-detected by the Meeting Detector extension (source 'extension').
+          meetingStarted:       doc.meetingStarted === true,
+          meetingStartedAt:     doc.meetingStartedAt || null,
+          meetingStartedBy:     doc.meetingStartedBy || null,
+          meetingStartedSource: doc.meetingStartedSource || null,
           // Full mode extras
           body:    full ? (doc.body || doc.textBody || '') : undefined,
           replies: full ? replies : undefined,
