@@ -136,18 +136,27 @@ async function handlePresence({ state, meetingUrl }, sender) {
   // capture when no navigation was tracked (e.g. browser restarted mid-call:
   // storage.session is empty but the content capture survives).
   const tabId = sender && sender.tab ? sender.tab.id : null;
-  if (tabId != null && tabId >= 0) {
+  const contentHasToken = hasMeetingToken(meetingUrl);
+  if (tabId != null && tabId >= 0 && !contentHasToken) {
+    // Content capture has no token — fall back to the tab's last NAVIGATED
+    // meeting URL. (When the content capture DOES carry a token it wins:
+    // it is the tab's current truth, while the tracked URL can belong to a
+    // PREVIOUS call in the same tab.)
     try {
       const k = `tabMeetingUrl_${tabId}`;
       const got = await chrome.storage.session.get(k);
       const tracked = got && got[k] && got[k].url;
       if (tracked && hasMeetingToken(tracked)) {
-        if (tracked !== meetingUrl) {
-          console.info(`${LOG} using tab-navigation meeting url (content capture was ${meetingUrl ? 'different/stale' : 'empty'})`);
-        }
+        console.info(`${LOG} using tab-navigation meeting url (content capture was empty)`);
         meetingUrl = tracked;
       }
-    } catch (_e) { /* fall through to the content capture */ }
+    } catch (_e) { /* keep the content capture */ }
+  }
+  // A call just ended in this tab — its tracked URL is consumed. Without
+  // this, the NEXT meeting joined in the same tab reports the PREVIOUS
+  // meeting's URL and the server answers alreadyStarted for the wrong task.
+  if (state === 'ended' && tabId != null && tabId >= 0) {
+    try { void chrome.storage.session.remove(`tabMeetingUrl_${tabId}`); } catch (_e) { /* ignore */ }
   }
   console.info(`${LOG} reporting presence '${state}' for ${meetingUrl ? meetingUrl.slice(0, 80) : '(no url)'}…`);
 
@@ -174,6 +183,18 @@ async function handlePresence({ state, meetingUrl }, sender) {
   }
 
   await chrome.storage.local.set({ lastSent: { state, at: Date.now(), ok: res.ok, result: data } });
+  try {
+    const tok = (decodeURIComponent(decodeURIComponent(meetingUrl || '')).match(/meeting_[A-Za-z0-9_-]{6}/i) || [''])[0];
+    const { reportLog = [] } = await chrome.storage.local.get('reportLog');
+    reportLog.unshift({
+      at: Date.now(), state, http: res.status, token: tok,
+      matched: data && data.matched === true,
+      flagged: data && data.flagged === true,
+      alreadyStarted: data && data.alreadyStarted === true,
+      reason: (data && data.reason) || null,
+    });
+    await chrome.storage.local.set({ reportLog: reportLog.slice(0, 5) });
+  } catch (_e) { /* diagnostics only */ }
   console.info(`${LOG} report '${state}' -> HTTP ${res.status}`, data);
 
   // Detector token rejected — drop it so the next dashboard visit re-enrolls.
