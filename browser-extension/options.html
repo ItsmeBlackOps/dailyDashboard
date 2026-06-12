@@ -7,37 +7,56 @@
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 560px; margin: 24px auto; padding: 0 20px; color: #1b1b1b; }
     h1 { font-size: 20px; font-weight: 600; }
     p { color: #555; line-height: 1.6; font-size: 14px; }
-    label { display: block; font-size: 13px; font-weight: 600; margin: 16px 0 6px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin-top: 16px; }
+    .row { display: flex; align-items: center; gap: 8px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+    .green { background: #1D9E75; } .amber { background: #EF9F27; }
+    .status-title { font-size: 15px; font-weight: 600; }
+    .meta { font-size: 13px; color: #555; margin-top: 8px; line-height: 1.7; }
+    .meta code { background: #f3f3f3; padding: 1px 5px; border-radius: 4px; }
+    a.btn, button.btn { display: inline-block; margin-top: 12px; padding: 9px 16px; border: 0; border-radius: 8px; background: #1D9E75; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; }
+    details { margin-top: 20px; border: 1px solid #eee; border-radius: 10px; padding: 12px 16px; }
+    summary { cursor: pointer; font-size: 14px; font-weight: 600; color: #444; }
+    label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 6px; }
     input { width: 100%; box-sizing: border-box; padding: 9px 11px; border: 1px solid #ccc; border-radius: 8px; font-size: 14px; }
-    button { margin-top: 18px; padding: 9px 16px; border: 0; border-radius: 8px; background: #1D9E75; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
     button.secondary { background: #eee; color: #222; margin-left: 8px; }
-    .status { margin-top: 16px; font-size: 13px; padding: 10px 12px; border-radius: 8px; display: none; }
+    .statusmsg { margin-top: 14px; font-size: 13px; padding: 10px 12px; border-radius: 8px; display: none; }
     .ok { background: #E1F5EE; color: #0F6E56; display: block; }
     .err { background: #FCEBEB; color: #A32D2D; display: block; }
-    ol { font-size: 14px; color: #555; line-height: 1.7; }
-    code { background: #f3f3f3; padding: 1px 5px; border-radius: 4px; }
   </style>
 </head>
 <body>
   <h1>Interview Meeting Detector — Setup</h1>
-  <p>This connects your browser to the Daily Dashboard so it can mark an interview as <strong>started</strong> the moment you actually join the Teams call.</p>
-  <ol>
-    <li>Open the dashboard, go to <strong>Meeting Detector</strong> (under your profile/settings) and click <strong>Generate token</strong>.</li>
-    <li>Copy the dashboard URL and the token into the fields below and click <strong>Save</strong>.</li>
-    <li>That's it — join your Teams meetings in this browser as usual.</li>
-  </ol>
+  <p>
+    This extension marks your interview as <strong>started</strong> on the Daily Dashboard the
+    moment you actually join the Teams call. It signs itself in using your dashboard login —
+    there is normally <strong>nothing to configure here</strong>.
+  </p>
 
-  <label for="apiBase">Dashboard URL</label>
-  <input id="apiBase" placeholder="https://your-dashboard.example.com" />
-
-  <label for="token">Detector token</label>
-  <input id="token" placeholder="paste the token from the dashboard" />
-
-  <div>
-    <button id="save">Save</button>
-    <button id="test" class="secondary">Test connection</button>
+  <div class="card">
+    <div class="row">
+      <span id="statusDot" class="dot amber"></span>
+      <span id="statusTitle" class="status-title">Checking…</span>
+    </div>
+    <div id="statusMeta" class="meta"></div>
+    <a id="openDashboard" class="btn" href="https://dailydf.silverspace.tech" target="_blank" rel="noopener">Open the dashboard</a>
   </div>
-  <div id="status" class="status"></div>
+
+  <details id="manual">
+    <summary>Manual setup — only if it didn't connect on its own</summary>
+    <p style="font-size:13px">
+      Generate a token on the dashboard's <strong>Meeting Detector</strong> page, then paste it here.
+    </p>
+    <label for="apiBase">Dashboard API URL</label>
+    <input id="apiBase" placeholder="https://dailydb.silverspace.tech" />
+    <label for="token">Detector token</label>
+    <input id="token" placeholder="paste the token from the dashboard" />
+    <div>
+      <button id="save" class="btn">Save</button>
+      <button id="test" class="btn secondary">Test connection</button>
+    </div>
+    <div id="status" class="statusmsg"></div>
+  </details>
 
   <script src="options.js"></script>
 </body>

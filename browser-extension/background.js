@@ -18,6 +18,10 @@ async function ensureEnrolled({ apiBase, accessToken }) {
   const base = (apiBase || '').replace(/\/$/, '');
   if (!base || !accessToken) return { ok: false, error: 'missing_auth' };
 
+  // Remember the API base even if enrollment fails (e.g. token expired before
+  // the exchange) so the options page can prefill the right URL.
+  await chrome.storage.local.set({ apiBaseHint: base });
+
   const stored = await chrome.storage.local.get(['apiBase', 'token', 'enrolledAt']);
   const fresh =
     stored.token &&
