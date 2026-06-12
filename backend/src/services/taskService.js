@@ -28,6 +28,10 @@ export class TaskService {
       const visibilityScope = this.resolveTaskVisibilityScope(userEmail, userRole);
       const teamEmails = visibilityScope.emails;
 
+      // Coverage grants TO this viewer (task hand-offs, day grants,
+      // dashboard windows) widen the model's in-memory visibility filter.
+      const delegations = await this.resolveDelegatedCoverage(userEmail);
+
       const tasks = await this.taskModel.getTasksForUser(
         userEmail,
         userRole,
@@ -35,7 +39,7 @@ export class TaskService {
         manager,
         tab,
         targetDate,
-        options
+        { ...options, delegations }
       );
 
       logger.info('Tasks retrieved for user', {
@@ -1302,6 +1306,253 @@ export class TaskService {
       }));
 
     return { success: true, tasks, windowMinutes, graceMinutes };
+  }
+
+  // ── Delegated coverage + co-assignees ────────────────────────────────
+
+  /**
+   * Active coverage grants where this user is the delegate, reshaped for
+   * the model's visibility filter. Null when there are none (the common
+   * case) so the model skips the extra checks entirely.
+   */
+  async resolveDelegatedCoverage(userEmail) {
+    try {
+      const { delegationService } = await import('./delegationService.js');
+      const grants = await delegationService.listActiveForUser(userEmail);
+      if (!Array.isArray(grants) || grants.length === 0) return null;
+      const taskIdSet = new Set();
+      const dayGrants = [];
+      const windowOwners = new Set();
+      for (const g of grants) {
+        if (g.scope === 'tasks') {
+          (g.taskIds || []).forEach((id) => taskIdSet.add(String(id)));
+        } else if (g.scope === 'day' && g.dayDate) {
+          dayGrants.push({ owner: g.ownerEmail, dayDate: g.dayDate });
+        } else if (g.scope === 'subtree' && g.subtreeRootEmail === g.ownerEmail) {
+          // expert "my dashboard" window — owner's own tasks
+          windowOwners.add(g.ownerEmail);
+        }
+      }
+      if (taskIdSet.size === 0 && dayGrants.length === 0 && windowOwners.size === 0) return null;
+      return { taskIdSet, dayGrants, windowOwners };
+    } catch (error) {
+      logger.warn('resolveDelegatedCoverage failed — continuing without coverage', {
+        userEmail, error: error.message,
+      });
+      return null;
+    }
+  }
+
+  _normName(value) {
+    return (value || '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  _isLeadTier(role) {
+    return ['lead', 'mlead', 'am', 'mam'].includes((role || '').toLowerCase());
+  }
+
+  _isExpertTier(role) {
+    return ['user', 'expert'].includes((role || '').toLowerCase());
+  }
+
+  async _coAssignContext(taskId, expertEmail) {
+    let oid;
+    try { oid = new ObjectId(taskId); }
+    catch { const e = new Error('Invalid task ID'); e.statusCode = 400; throw e; }
+    const col = this.taskModel.collection;
+    if (!col) { const e = new Error('Database not ready'); e.statusCode = 503; throw e; }
+    const task = await col.findOne(
+      { _id: oid },
+      { projection: { assignedTo: 1, assignedExpert: 1, coAssignees: 1, pendingCoAssigns: 1, subject: 1 } }
+    );
+    if (!task) { const e = new Error('Task not found'); e.statusCode = 404; throw e; }
+    const email = (expertEmail || '').toString().toLowerCase().trim();
+    if (!email || !email.includes('@')) { const e = new Error('expert email required'); e.statusCode = 400; throw e; }
+    return { col, oid, task, email };
+  }
+
+  /**
+   * Add (or request) a second expert on a task — the "co-expert".
+   * Rules (2026-06-12 spec):
+   *   admin → instant. Lead-tier whose report the expert is → instant.
+   *   Lead-tier cross-squad (same department) → pending, approved by the
+   *   expert's own lead. Expert-tier may request on their OWN tasks →
+   *   pending the same way. Cross-department is refused.
+   */
+  async addCoAssignee(actor, taskId, expertEmail) {
+    const { col, oid, task, email } = await this._coAssignContext(taskId, expertEmail);
+    const actorEmail = (actor.email || '').toLowerCase();
+    const actorRole = (actor.role || '').toLowerCase();
+
+    const target = await Promise.resolve(this.userModel.getUserByEmail(email));
+    if (!target) { const e = new Error(`user ${email} not found`); e.statusCode = 400; throw e; }
+    if (target.active === false) { const e = new Error('that expert is inactive'); e.statusCode = 400; throw e; }
+    const targetRole = (target.role || '').toLowerCase();
+    if (!['user', 'expert'].includes(targetRole)) {
+      const e = new Error('co-experts must be expert-tier users'); e.statusCode = 400; throw e;
+    }
+
+    const ownerEmail = (task.assignedTo || task.assignedExpert || '').toLowerCase();
+    if (email === ownerEmail) { const e = new Error('that expert already owns this task'); e.statusCode = 400; throw e; }
+    if ((task.coAssignees || []).map((x) => (x || '').toLowerCase()).includes(email)) {
+      return { success: true, status: 'added', already: true };
+    }
+
+    // Same-department guard (owner's team vs target's team, when both known).
+    if (ownerEmail) {
+      const owner = await Promise.resolve(this.userModel.getUserByEmail(ownerEmail));
+      if (owner && owner.team && target.team && owner.team !== target.team) {
+        const e = new Error('co-experts must be in the same department'); e.statusCode = 400; throw e;
+      }
+    }
+
+    let instant = actorRole === 'admin';
+    if (!instant && this._isLeadTier(actorRole)) {
+      const actorDisplay = this._normName(this.userService.deriveDisplayNameFromEmail(actorEmail));
+      instant = Boolean(actorDisplay) && this._normName(target.teamLead) === actorDisplay;
+    } else if (!instant && this._isExpertTier(actorRole)) {
+      const mine = ownerEmail === actorEmail
+        || (task.coAssignees || []).map((x) => (x || '').toLowerCase()).includes(actorEmail);
+      if (!mine) { const e = new Error('you can only request co-experts on your own tasks'); e.statusCode = 403; throw e; }
+    } else if (!instant && !this._isLeadTier(actorRole)) {
+      const e = new Error('not allowed to add co-experts'); e.statusCode = 403; throw e;
+    }
+
+    const { notificationService } = await import('./notificationService.js');
+
+    if (instant) {
+      await col.updateOne(
+        { _id: oid },
+        {
+          $addToSet: { coAssignees: email },
+          $pull: { pendingCoAssigns: { email } },
+          $push: { coAssignHistory: { action: 'added', email, by: actorEmail, at: new Date() } },
+        }
+      );
+      Promise.all([
+        notificationService.createNotification(email, {
+          type: 'info',
+          title: 'You were added to a task',
+          description: `${actorEmail} added you as co-expert on: ${task.subject || taskId}`,
+          link: '/tasks',
+        }),
+        ownerEmail ? notificationService.createNotification(ownerEmail, {
+          type: 'info',
+          title: 'Co-expert added to your task',
+          description: `${this.userService.deriveDisplayNameFromEmail(email)} was added to: ${task.subject || taskId}`,
+        }) : Promise.resolve(),
+      ]).catch(() => {});
+      logger.info('co-assignee added', { taskId, email, by: actorEmail });
+      return { success: true, status: 'added' };
+    }
+
+    // pending — approver is the target expert's own team lead
+    const { resolveTeamLeadEmail } = await import('./delegationService.js');
+    const approverEmail = await resolveTeamLeadEmail(target);
+    if (!approverEmail) {
+      const e = new Error(`cannot resolve ${email}'s team lead for approval`); e.statusCode = 400; throw e;
+    }
+    if ((task.pendingCoAssigns || []).some((pc) => (pc.email || '').toLowerCase() === email)) {
+      return { success: true, status: 'pending', already: true, approverEmail };
+    }
+    await col.updateOne(
+      { _id: oid },
+      { $push: { pendingCoAssigns: { email, requestedBy: actorEmail, requestedAt: new Date(), approverEmail } } }
+    );
+    notificationService.createNotification(approverEmail, {
+      type: 'info',
+      title: 'Co-expert approval needed',
+      description: `${actorEmail} wants ${email} on: ${task.subject || taskId}. Review on the Delegations page.`,
+      link: '/delegations',
+    }).catch(() => {});
+    logger.info('co-assignee requested', { taskId, email, by: actorEmail, approverEmail });
+    return { success: true, status: 'pending', approverEmail };
+  }
+
+  /** Approve a pending co-assign — the expert's own lead (or admin). */
+  async approveCoAssignee(actor, taskId, expertEmail) {
+    const { col, oid, task, email } = await this._coAssignContext(taskId, expertEmail);
+    const entry = (task.pendingCoAssigns || []).find((pc) => (pc.email || '').toLowerCase() === email);
+    if (!entry) { const e = new Error('no pending co-assign for that expert'); e.statusCode = 404; throw e; }
+    const actorEmail = (actor.email || '').toLowerCase();
+    if ((actor.role || '').toLowerCase() !== 'admin' && actorEmail !== (entry.approverEmail || '').toLowerCase()) {
+      const e = new Error('only the assigned approver or an admin can approve'); e.statusCode = 403; throw e;
+    }
+    await col.updateOne(
+      { _id: oid },
+      {
+        $addToSet: { coAssignees: email },
+        $pull: { pendingCoAssigns: { email } },
+        $push: { coAssignHistory: { action: 'approved', email, by: actorEmail, at: new Date(), requestedBy: entry.requestedBy } },
+      }
+    );
+    const { notificationService } = await import('./notificationService.js');
+    Promise.all([
+      notificationService.createNotification(email, {
+        type: 'info',
+        title: 'You were added to a task',
+        description: `${actorEmail} approved you as co-expert on: ${task.subject || taskId}`,
+        link: '/tasks',
+      }),
+      entry.requestedBy ? notificationService.createNotification(entry.requestedBy, {
+        type: 'info',
+        title: 'Co-expert approved',
+        description: `${actorEmail} approved ${email} on: ${task.subject || taskId}`,
+      }) : Promise.resolve(),
+    ]).catch(() => {});
+    logger.info('co-assignee approved', { taskId, email, by: actorEmail });
+    return { success: true, status: 'added' };
+  }
+
+  /** Reject a pending co-assign — same authority as approve. */
+  async rejectCoAssignee(actor, taskId, expertEmail, note = '') {
+    const { col, oid, task, email } = await this._coAssignContext(taskId, expertEmail);
+    const entry = (task.pendingCoAssigns || []).find((pc) => (pc.email || '').toLowerCase() === email);
+    if (!entry) { const e = new Error('no pending co-assign for that expert'); e.statusCode = 404; throw e; }
+    const actorEmail = (actor.email || '').toLowerCase();
+    if ((actor.role || '').toLowerCase() !== 'admin' && actorEmail !== (entry.approverEmail || '').toLowerCase()) {
+      const e = new Error('only the assigned approver or an admin can reject'); e.statusCode = 403; throw e;
+    }
+    await col.updateOne(
+      { _id: oid },
+      {
+        $pull: { pendingCoAssigns: { email } },
+        $push: { coAssignHistory: { action: 'rejected', email, by: actorEmail, at: new Date(), note: (note || '').slice(0, 300) } },
+      }
+    );
+    if (entry.requestedBy) {
+      const { notificationService } = await import('./notificationService.js');
+      notificationService.createNotification(entry.requestedBy, {
+        type: 'info',
+        title: 'Co-expert request declined',
+        description: `${actorEmail} declined ${email} on: ${task.subject || taskId}${note ? '. Note: ' + note : ''}`,
+      }).catch(() => {});
+    }
+    logger.info('co-assignee rejected', { taskId, email, by: actorEmail });
+    return { success: true, status: 'rejected' };
+  }
+
+  /** Remove a co-expert — admin, or a lead-tier actor for their own report. */
+  async removeCoAssignee(actor, taskId, expertEmail) {
+    const { col, oid, task, email } = await this._coAssignContext(taskId, expertEmail);
+    const actorEmail = (actor.email || '').toLowerCase();
+    const actorRole = (actor.role || '').toLowerCase();
+    let allowed = actorRole === 'admin';
+    if (!allowed && this._isLeadTier(actorRole)) {
+      const target = await Promise.resolve(this.userModel.getUserByEmail(email));
+      const actorDisplay = this._normName(this.userService.deriveDisplayNameFromEmail(actorEmail));
+      allowed = Boolean(actorDisplay) && this._normName(target?.teamLead) === actorDisplay;
+    }
+    if (!allowed) { const e = new Error('only that expert\'s lead or an admin can remove them'); e.statusCode = 403; throw e; }
+    await col.updateOne(
+      { _id: oid },
+      {
+        $pull: { coAssignees: email, pendingCoAssigns: { email } },
+        $push: { coAssignHistory: { action: 'removed', email, by: actorEmail, at: new Date() } },
+      }
+    );
+    logger.info('co-assignee removed', { taskId, email, by: actorEmail });
+    return { success: true, status: 'removed' };
   }
 }
 
