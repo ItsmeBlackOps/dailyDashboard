@@ -91,7 +91,10 @@ const TASK_ID = '6a2c0c5aedd160ce6e3b3e42';
 
 describe('expert-authored grants → pending + approval', () => {
   it('a task hand-off lands pending with the expert\'s lead as approver, expiring after the last task', async () => {
-    const taskEnd = new Date('2026-06-12T18:30:00.000Z');
+    // Relative to now — the service clamps expiry to max(taskEnd, now)+24h,
+    // so a fixed past date asserts the wrong branch once the clock passes
+    // it (exactly how this test broke in CI).
+    const taskEnd = new Date(Date.now() + 2 * 3600 * 1000);
     taskToArray.mockResolvedValue([
       { _id: TASK_ID, assignedTo: SUBHASH.email, interviewEndsAt: taskEnd },
     ]);
