@@ -46,6 +46,7 @@ import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler.j
 // Import jobs
 import { startFirefliesBotScheduler } from './jobs/firefliesBotScheduler.js';
 import { startBotMissingAlertScheduler } from './jobs/botMissingAlertScheduler.js';
+import { startTranscriptGapsScheduler } from './jobs/transcriptGapsScheduler.js';
 import { startCandidateAlertScheduler } from './jobs/candidateAlertScheduler.js';
 import { startTranscriptAutoGenScheduler } from './jobs/transcriptAutoGenScheduler.js';
 import { emailOutboxRepository } from './services/emailOutboxRepository.js';
@@ -326,6 +327,7 @@ class Application {
 
         startFirefliesBotScheduler();
         startBotMissingAlertScheduler();
+        startTranscriptGapsScheduler();
         startCandidateAlertScheduler();
         startTranscriptAutoGenScheduler();
         startPerfMetricsFlusher();
