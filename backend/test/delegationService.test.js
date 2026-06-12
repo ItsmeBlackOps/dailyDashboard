@@ -165,7 +165,7 @@ describe('grant', () => {
     await expect(delegationService.grant(stranger, {
       ownerEmail: owner.email, delegateEmail: delegate.email,
       scope: 'subtree', subtreeRootEmail: owner.email, ttlDays: 7,
-    })).rejects.toThrow(/owner or an admin/i);
+    })).rejects.toThrow(/owner, their team lead, or an admin/i);
   });
 
   it('rejects scope=specific without subjectEmails', async () => {

@@ -7,9 +7,10 @@ const grant = jest.fn();
 const revoke = jest.fn();
 const listActiveForOwner = jest.fn();
 const listActiveForUser = jest.fn();
+const listPendingForOwner = jest.fn();
 
 jest.unstable_mockModule('../src/services/delegationService.js', () => ({
-  delegationService: { grant, revoke, listActiveForOwner, listActiveForUser },
+  delegationService: { grant, revoke, listActiveForOwner, listActiveForUser, listPendingForOwner },
 }));
 
 const { delegationController } = await import('../src/controllers/delegationController.js');
@@ -24,6 +25,7 @@ const makeRes = () => {
 beforeEach(() => {
   grant.mockClear(); revoke.mockClear();
   listActiveForOwner.mockClear(); listActiveForUser.mockClear();
+  listPendingForOwner.mockClear();
 });
 
 describe('grant controller', () => {
@@ -70,9 +72,10 @@ describe('grant controller', () => {
 });
 
 describe('mine controller', () => {
-  it('returns owned + delegated lists', async () => {
+  it('returns owned + delegated + pending lists', async () => {
     listActiveForOwner.mockResolvedValue([{ _id: '1' }]);
     listActiveForUser.mockResolvedValue([{ _id: '2' }]);
+    listPendingForOwner.mockResolvedValue([{ _id: '3', status: 'pending' }]);
     const req = { user: { email: 'b@x.com', role: 'teamLead' } };
     const res = makeRes();
     delegationController.mine(req, res);
@@ -81,6 +84,7 @@ describe('mine controller', () => {
       success: true,
       owned: [{ _id: '1' }],
       delegated: [{ _id: '2' }],
+      pendingOwned: [{ _id: '3', status: 'pending' }],
     });
   });
 });
