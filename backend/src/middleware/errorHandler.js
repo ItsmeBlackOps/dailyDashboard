@@ -65,9 +65,12 @@ export const globalErrorHandler = (err, req, res, next) => {
     timestamp: new Date().toISOString()
   };
 
-  // Include details in development or for client errors
+  // Include details for client errors. Stack traces never go in API
+  // responses — they're already logged server-side above, and the VM has
+  // shipped with NODE_ENV unset, which made the old
+  // `isDevelopment ? err.stack : …` leak raw stacks to clients in prod.
   if (isDevelopment || statusCode < 500) {
-    response.details = details || (isDevelopment ? err.stack : undefined);
+    response.details = details || undefined;
   }
 
   res.status(statusCode).json(response);
