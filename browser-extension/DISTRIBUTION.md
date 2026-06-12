@@ -69,9 +69,10 @@ Nothing to do. After installing, open the dashboard once; the extension reads
 your dashboard login from the page and **signs itself in** (no token to copy).
 The amber "not installed" reminder disappears within a second or two.
 
-If it doesn't connect on its own (rare — e.g. you weren't logged in yet), open
-**Meeting Detector** in the sidebar → expand **Manual setup**, generate a token,
-and paste it + the Dashboard URL into the extension's setup page.
+If it doesn't connect on its own, it's almost always because you weren't
+logged in yet — open the dashboard again and it retries automatically every
+few seconds. (There is no manual token entry; the extension's options page is
+a status view.)
 
 Then joining a Teams meeting in the browser marks the interview as started
 automatically.

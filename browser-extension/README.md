@@ -46,9 +46,9 @@ Once installed, the extension **signs itself in** using your dashboard login —
 exchanges it for a long-lived, meeting-presence-scoped detector token. Just open
 the dashboard once after installing; nothing to copy or paste.
 
-If auto-enroll can't run (rare), there's a manual fallback on the dashboard's
-**Meeting Detector** page: Generate token → extension icon → Open setup → paste
-the Dashboard URL + token → Save.
+There is no manual setup — the options page is a status view only (Connected
+as <email> / "open the dashboard to connect"). If it ever fails to connect,
+opening the dashboard again retries automatically every few seconds.
 
 Then join Teams meetings in this browser as usual. The icon shows a green dot
 while you're reported as in-call.
