@@ -1,4 +1,5 @@
-import { EXTENSION_DOWNLOAD_URL } from '@/lib/meetingDetector';
+import { useState } from 'react';
+import { EXTENSION_DOWNLOAD_URL, extensionsPageUrl } from '@/lib/meetingDetector';
 import { useExtensionInstalled } from '@/hooks/useExtensionInstalled';
 
 // Setup surface for the Meeting Detector extension. Fully zero-touch:
@@ -7,6 +8,18 @@ import { useExtensionInstalled } from '@/hooks/useExtensionInstalled';
 // detected in this browser.
 export default function MeetingDetector() {
   const { status } = useExtensionInstalled();
+  const extUrl = extensionsPageUrl();
+  const [copied, setCopied] = useState(false);
+
+  const copyExtUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(extUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -49,10 +62,18 @@ export default function MeetingDetector() {
                 Download the extension
               </a>
               <p className="mt-2 text-muted-foreground">
-                Unzip it to a permanent folder, then in{' '}
-                <code className="rounded bg-muted px-1.5 py-0.5 text-xs">chrome://extensions</code> or{' '}
-                <code className="rounded bg-muted px-1.5 py-0.5 text-xs">edge://extensions</code> turn on{' '}
-                <strong>Developer mode</strong> → <strong>Load unpacked</strong> → pick the folder.
+                Unzip it to a permanent folder, then open{' '}
+                <button
+                  type="button"
+                  onClick={copyExtUrl}
+                  title="Click to copy, then paste in the address bar (browsers don't allow direct links to this page)"
+                  className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 font-mono text-xs hover:bg-muted/70"
+                >
+                  {extUrl}
+                  <span className="text-[10px] font-sans text-muted-foreground">{copied ? '✓ copied' : 'copy'}</span>
+                </button>{' '}
+                (click to copy, paste in the address bar), turn on <strong>Developer mode</strong> →{' '}
+                <strong>Load unpacked</strong> → pick the folder.
               </p>
             </div>
           </li>
