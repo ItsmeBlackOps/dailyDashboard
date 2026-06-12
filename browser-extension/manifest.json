@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "1. Interview Meeting Detector",
   "version": "1.7.2",
-  "description": "Reports to the Daily Dashboard when an expert actually joins a Teams interview (in-call, not lobby), and confirms its presence to the dashboard.",
+  "description": "Marks interviews as started on the company dashboard the moment a signed-in expert joins the Teams call (in-call, never lobby).",
   "permissions": [
     "storage",
     "scripting",
