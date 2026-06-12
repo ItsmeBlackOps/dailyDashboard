@@ -37,12 +37,19 @@
   // once it reports success.
   let enrollTimer = null;
 
+  // Fallback when the page bundle predates the md_api_base write (stale cached
+  // frontend): the production API base is fixed, so enrollment must not depend
+  // on the page being fresh. Local dev pages talk to a local API.
+  const FALLBACK_API_BASE = window.location.hostname === 'localhost'
+    ? window.location.origin.replace(/:\d+$/, ':3004')
+    : 'https://dailydb.silverspace.tech';
+
   function tryEnroll() {
     let accessToken = null;
     let apiBase = null;
     try {
       accessToken = window.localStorage.getItem('accessToken');
-      apiBase = window.localStorage.getItem('md_api_base');
+      apiBase = window.localStorage.getItem('md_api_base') || FALLBACK_API_BASE;
     } catch {
       return;
     }
