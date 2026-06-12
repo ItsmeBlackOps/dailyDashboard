@@ -41,6 +41,7 @@ interface NotificationEvent {
     actor?: Actor;
     batchData?: any[];
     resumeUnderstandingStatus?: string;
+    popup?: boolean; // show as a blocking announcement modal, not just a bell item
 }
 
 interface CallAlert {
@@ -158,7 +159,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                         link: n.link,
                         changeDetails: n.changeDetails,
                         actor: n.actor,
-                        batchData: n.batchData
+                        batchData: n.batchData,
+                        popup: n.popup === true
                     })));
                 }
             } catch (err) {
