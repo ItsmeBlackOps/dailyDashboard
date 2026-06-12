@@ -82,6 +82,17 @@ export class TaskController {
     res.status(200).json(result);
   });
 
+  // GET /tasks/upcoming — unstarted tasks starting within ~20 minutes
+  // (dashboard "Starting soon" strip). windowMinutes is clamped to 5..120.
+  getUpcomingUnstarted = asyncHandler(async (req, res) => {
+    const parsed = parseInt(req.query.windowMinutes, 10);
+    const windowMinutes = Math.min(Math.max(Number.isNaN(parsed) ? 20 : parsed, 5), 120);
+
+    const result = await this.taskService.getUpcomingUnstarted(windowMinutes);
+
+    res.status(200).json(result);
+  });
+
   getTaskStatistics = asyncHandler(async (req, res) => {
     const user = req.user;
     const { start, end } = req.query;

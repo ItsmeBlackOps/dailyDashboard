@@ -10,6 +10,7 @@ import { ExpertAnalytics } from '@/components/dashboard/v2/ExpertAnalytics';
 import { ManagementReports } from '@/components/dashboard/v2/ManagementReports';
 import { CandidateGroupsWidget } from '@/components/dashboard/v2/CandidateGroupsWidget';
 import POTab from '@/components/profile-hub/POTab';
+import { UpcomingInterviews } from '@/components/dashboard/UpcomingInterviews';
 
 interface OverviewStats {
     totalCandidates: number;
@@ -149,6 +150,9 @@ export default function DashboardV2() {
                         Welcome back, {user?.displayName || user?.email?.split('@')[0] || 'User'}
                     </p>
                 </div>
+
+                {/* ── Starting soon — unstarted tasks in the next ~20 min ── */}
+                <UpcomingInterviews />
 
                 {/* ── Sticky Date Filter Bar ── */}
                 <div className="sticky top-0 z-10 bg-background border-b px-4 md:px-6 py-2 flex flex-wrap items-center gap-2">
