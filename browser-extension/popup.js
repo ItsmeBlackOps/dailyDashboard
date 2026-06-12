@@ -18,7 +18,7 @@ function tokenEmail(token) {
   const email = enrolled ? tokenEmail(token) : '';
   $('enroll').textContent = enrolled
     ? (email ? `Connected as ${email}` : 'Connected to dashboard')
-    : 'Not connected — open the dashboard once';
+    : 'Not connected — open (or refresh) the dashboard while logged in';
 
   if (lastSent && lastSent.state) {
     const when = lastSent.at ? new Date(lastSent.at).toLocaleTimeString() : '';

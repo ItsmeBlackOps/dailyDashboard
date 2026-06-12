@@ -94,6 +94,33 @@ async function handlePresence({ state, meetingUrl }) {
   return { ok: res.ok, status: res.status, data };
 }
 
+// MV3 does not inject content scripts into tabs that were already open when
+// the extension is installed/updated — exactly the moment a user installs it
+// with the dashboard sitting open in another tab. Inject into existing tabs
+// once at install/update so enrollment starts without anyone refreshing.
+const INJECTIONS = [
+  { urls: ['https://dailydf.silverspace.tech/*', 'http://localhost/*'], files: ['dashboard-bridge.js'] },
+  { urls: ['https://teams.microsoft.com/*', 'https://teams.live.com/*'], files: ['content.js'] },
+];
+
+chrome.runtime.onInstalled.addListener(async () => {
+  for (const { urls, files } of INJECTIONS) {
+    try {
+      const tabs = await chrome.tabs.query({ url: urls });
+      for (const tab of tabs) {
+        if (!tab.id) continue;
+        try {
+          await chrome.scripting.executeScript({ target: { tabId: tab.id }, files });
+        } catch (_e) {
+          // tab not injectable (discarded, chrome:// redirect, etc.) — skip
+        }
+      }
+    } catch (_e) {
+      // query failure — non-fatal; a tab refresh still works
+    }
+  }
+});
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && msg.type === 'meeting.presence') {
     handlePresence(msg).then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
