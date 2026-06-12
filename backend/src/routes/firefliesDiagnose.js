@@ -10,7 +10,7 @@
 import express from 'express';
 import { database } from '../config/database.js';
 import { firefliesService } from '../services/firefliesService.js';
-import { requireHTTPRole } from '../middleware/auth.js';
+import { authenticateHTTP, requireHTTPRole } from '../middleware/auth.js';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
@@ -24,6 +24,11 @@ const getSchedulerTick = async () => {
 };
 
 const router = express.Router();
+
+// Authenticate FIRST — requireHTTPRole only checks req.user. Same gap as
+// the delegations router (#240): the mount applies no auth, so every
+// route here 401'd 'Authentication required' for valid admins.
+router.use(authenticateHTTP);
 
 router.get('/diagnose', requireHTTPRole(['admin']), async (req, res) => {
   try {
