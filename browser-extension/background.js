@@ -8,6 +8,40 @@ async function getConfig() {
   return { apiBase: (apiBase || '').replace(/\/$/, ''), token: token || '' };
 }
 
+// Auto-enrollment: the dashboard bridge reads the user's own access token from
+// the dashboard's localStorage and hands it here; we exchange it once for a
+// long-lived, meeting-presence-scoped detector token and keep it. Re-enroll if
+// it's missing, points at a different dashboard, or is older than 60 days.
+const ENROLL_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
+
+async function ensureEnrolled({ apiBase, accessToken }) {
+  const base = (apiBase || '').replace(/\/$/, '');
+  if (!base || !accessToken) return { ok: false, error: 'missing_auth' };
+
+  const stored = await chrome.storage.local.get(['apiBase', 'token', 'enrolledAt']);
+  const fresh =
+    stored.token &&
+    stored.apiBase === base &&
+    stored.enrolledAt &&
+    Date.now() - stored.enrolledAt < ENROLL_MAX_AGE_MS;
+  if (fresh) return { ok: true, already: true };
+
+  try {
+    const res = await fetch(`${base}/api/meeting-presence/enroll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data || !data.token) {
+      return { ok: false, status: res.status };
+    }
+    await chrome.storage.local.set({ apiBase: base, token: data.token, enrolledAt: Date.now() });
+    return { ok: true, enrolled: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 let lastKey = null;
 let lastAt = 0;
 
@@ -41,6 +75,11 @@ async function handlePresence({ state, meetingUrl }) {
 
   await chrome.storage.local.set({ lastSent: { state, at: Date.now(), ok: res.ok, result: data } });
 
+  // Detector token rejected — drop it so the next dashboard visit re-enrolls.
+  if (res.status === 401) {
+    await chrome.storage.local.remove(['token', 'enrolledAt']);
+  }
+
   if (state === 'in_call' && res.ok) {
     chrome.action.setBadgeText({ text: '●' });
     chrome.action.setBadgeBackgroundColor({ color: '#1D9E75' });
@@ -55,6 +94,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && msg.type === 'meeting.presence') {
     handlePresence(msg).then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
     return true; // keep the channel open for the async response
+  }
+  if (msg && msg.type === 'ensure-enrolled') {
+    ensureEnrolled(msg).then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+    return true;
   }
   return false;
 });

@@ -11,16 +11,28 @@ and **Edge**.
 
 ---
 
-## 1. Package it (you, once per release)
+## 0. Easiest path — the in-app download
+
+Experts don't actually need a file from you: the dashboard has a **Download
+extension** button (on the *Meeting Detector* page and on the "not installed"
+reminder) that serves the latest zip from a stable bucket URL. Point people
+there and skip to step 2.
+
+## 1. Package + publish (you, once per release)
 
 From the repo root:
 
 ```bash
-bash browser-extension/package.sh
+bash browser-extension/package.sh            # -> browser-extension/dist/...-v<version>.zip
+node backend/scripts/uploadExtensionZip.mjs  # uploads it to the bucket (versioned + -latest)
 ```
 
-This writes `browser-extension/dist/interview-meeting-detector-v<version>.zip`
-(version is read from `manifest.json`). Share that single zip file.
+`package.sh` reads the version from `manifest.json`. `uploadExtensionZip.mjs`
+pushes the zip to Supabase storage and overwrites the stable
+`extensions/interview-meeting-detector-latest.zip` that the in-app Download
+button links to — so bumping the manifest version + re-running these two
+commands is the whole release. (You can also just hand out the dist zip
+directly.)
 
 > No `package.sh`? On Windows you can also run, from the repo root:
 > `powershell -Command "Compress-Archive -Path browser-extension/*.json,browser-extension/*.js,browser-extension/*.html,browser-extension/*.md -DestinationPath interview-meeting-detector.zip -Force"`
@@ -51,16 +63,17 @@ When loaded, the extension icon appears in the toolbar. The dashboard's amber
 
 ---
 
-## 3. Connect it (each expert, once)
+## 3. Connect it — automatic
 
-1. In the dashboard, open **Meeting Detector** in the sidebar.
-2. Click **Generate token**.
-3. Click the extension icon → **Open setup** (or right-click the icon →
-   *Options* / *Extension options*).
-4. Paste the **Dashboard URL** and the **token** shown on the page, click **Test
-   connection**, then **Save**.
+Nothing to do. After installing, open the dashboard once; the extension reads
+your dashboard login from the page and **signs itself in** (no token to copy).
+The amber "not installed" reminder disappears within a second or two.
 
-Done. Joining a Teams meeting in the browser now marks the interview as started
+If it doesn't connect on its own (rare — e.g. you weren't logged in yet), open
+**Meeting Detector** in the sidebar → expand **Manual setup**, generate a token,
+and paste it + the Dashboard URL into the extension's setup page.
+
+Then joining a Teams meeting in the browser marks the interview as started
 automatically.
 
 ---

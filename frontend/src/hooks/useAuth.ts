@@ -51,6 +51,10 @@ const resolveSocketUrl = (httpUrl: string) => {
 export const API_URL = resolveHttpUrl();
 export const SOCKET_URL = resolveSocketUrl(API_URL);
 
+// Expose the API base for the Meeting Detector extension's auto-enroll bridge,
+// which reads it from localStorage alongside the access token to self-enroll.
+try { localStorage.setItem('md_api_base', API_URL); } catch { /* ignore */ }
+
 interface RefreshResponse {
   success: boolean;
   accessToken?: string;

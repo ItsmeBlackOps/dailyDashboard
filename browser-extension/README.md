@@ -38,15 +38,20 @@ content.js watches the DOM
 2. Turn on **Developer mode**.
 3. **Load unpacked** → select this `browser-extension/` folder.
 
-## Enroll
+## Enroll (automatic)
 
-1. In the dashboard, open **Meeting Detector** (under profile/settings) and click
-   **Generate token**.
-2. Click the extension's icon → **Open setup** (or right-click → Options).
-3. Paste the **Dashboard URL** and the **token**, click **Test connection**, then
-   **Save**.
-4. Join Teams meetings in this browser as usual. The icon shows a green dot while
-   you're reported as in-call.
+Once installed, the extension **signs itself in** using your dashboard login —
+`dashboard-bridge.js` reads the access token the dashboard already stores in
+`localStorage` (plus the API base it writes for us) and the background worker
+exchanges it for a long-lived, meeting-presence-scoped detector token. Just open
+the dashboard once after installing; nothing to copy or paste.
+
+If auto-enroll can't run (rare), there's a manual fallback on the dashboard's
+**Meeting Detector** page: Generate token → extension icon → Open setup → paste
+the Dashboard URL + token → Save.
+
+Then join Teams meetings in this browser as usual. The icon shows a green dot
+while you're reported as in-call.
 
 ## Presence handshake (gate)
 
