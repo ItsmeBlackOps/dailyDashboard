@@ -13,6 +13,7 @@ router.get('/', taskController.getTasks);
 router.get('/health', taskController.healthCheck);
 router.get('/statistics', taskController.getTaskStatistics);
 router.get('/dashboard-summary', taskController.getDashboardSummary);
+router.get('/upcoming', taskController.getUpcomingUnstarted);
 router.post('/transcript-requests/status', transcriptRequestController.getMyTranscriptRequestStatuses);
 router.get('/:taskId/interview-debrief', taskController.getInterviewDebriefStatus);
 router.get('/:taskId/transcript-request', transcriptRequestController.getMyTranscriptRequestStatus);

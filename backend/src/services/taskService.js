@@ -1234,6 +1234,75 @@ export class TaskService {
 
     return false;
   }
+
+  // Tasks starting within the next `windowMinutes` (plus a short overdue
+  // grace window) that nobody has marked started yet — feeds the dashboard
+  // "Starting soon" strip. Deliberately unscoped by role: every dashboard
+  // shows the same list so anyone can chase a missed start. Uses the
+  // indexed BSON Date `interviewStartAt` (SP3), so the scan is a tight
+  // range seek.
+  async getUpcomingUnstarted(windowMinutes = 20, graceMinutes = 15) {
+    const collection = this.taskModel.collection;
+    if (!collection) {
+      return { success: true, tasks: [], windowMinutes, graceMinutes };
+    }
+
+    const now = Date.now();
+    const from = new Date(now - graceMinutes * 60 * 1000);
+    const to = new Date(now + windowMinutes * 60 * 1000);
+
+    const docs = await collection
+      .find(
+        {
+          interviewStartAt: { $gte: from, $lte: to },
+          meetingStarted: { $ne: true },
+          // Mock-interview rows (future Mock Support work) never belong in
+          // the interview-ops strip.
+          taskType: { $ne: 'mock' },
+        },
+        {
+          projection: {
+            'Candidate Name': 1,
+            'Job Title': 1,
+            'End Client': 1,
+            'Interview Round': 1,
+            status: 1,
+            interviewStartAt: 1,
+            assignedTo: 1,
+            assignedExpert: 1,
+            meetingLink: 1,
+            joinUrl: 1,
+            joinWebUrl: 1,
+          },
+        }
+      )
+      .sort({ interviewStartAt: 1 })
+      .limit(25)
+      .toArray();
+
+    // Status strings in taskBody are mixed-case; filter in JS rather than
+    // with a case-insensitive $nin (the window holds at most a handful of
+    // rows).
+    const INACTIVE = new Set(['cancelled', 'completed', 'done', 'selected', 'rejected']);
+    const tasks = docs
+      .filter((d) => !INACTIVE.has(String(d.status || '').toLowerCase()))
+      .map((d) => ({
+        taskId: d._id.toString(),
+        candidateName: d['Candidate Name'] || '',
+        role: d['Job Title'] || '',
+        client: d['End Client'] || '',
+        round: d['Interview Round'] || '',
+        status: d.status || '',
+        interviewStartAt: d.interviewStartAt ? new Date(d.interviewStartAt).toISOString() : null,
+        interviewStartEst: d.interviewStartAt
+          ? moment(d.interviewStartAt).tz(TIMEZONE).format('h:mm A')
+          : null,
+        assignedTo: d.assignedTo || d.assignedExpert || '',
+        hasMeetingLink: Boolean(d.meetingLink || d.joinUrl || d.joinWebUrl),
+      }));
+
+    return { success: true, tasks, windowMinutes, graceMinutes };
+  }
 }
 
 export const taskService = new TaskService();
