@@ -27,6 +27,7 @@ import { API_URL, useAuth } from '@/hooks/useAuth';
 
 import { useManageableUsers } from './useManageableUsers';
 import { canCreate, fieldPolicy } from './rolePolicy';
+import { teamLeadOptionsFor, managerOptionsFor, intersectOptions } from './options';
 import {
   filterUsers,
   sortUsers,
@@ -36,7 +37,6 @@ import {
   type SortKey,
   type SortDir,
 } from './grouping';
-import { deriveDisplayNameFromEmail } from '@/utils/userNames';
 import { DirectoryToolbar, type DirectoryFilters } from './DirectoryToolbar';
 import { BulkActionBar, type BulkPatch } from './BulkActionBar';
 import { UserTable } from './UserTable';
@@ -111,14 +111,22 @@ export function UserManagementPage() {
     [users, selectedEmails],
   );
   const selectedRoles = useMemo(() => distinctRoles(selectedUsers), [selectedUsers]);
-  // Display-name suggestions for the bulk team-lead / manager inputs
-  // (autocomplete to reduce typos — restores the legacy <datalist>).
-  const nameOptions = useMemo(
+  // Roster dropdown options for the bulk team-lead / manager actions:
+  // computed per selected user (same department, active only) and
+  // intersected so one applied name is valid for the whole selection.
+  const bulkTeamLeadOptions = useMemo(
     () =>
-      Array.from(new Set(users.map((u) => deriveDisplayNameFromEmail(u.email)).filter(Boolean))).sort(
-        (a, b) => a.localeCompare(b),
-      ),
-    [users],
+      selectedUsers.length === 0
+        ? []
+        : intersectOptions(selectedUsers.map((u) => teamLeadOptionsFor(u.role, users, u.team))),
+    [selectedUsers, users],
+  );
+  const bulkManagerOptions = useMemo(
+    () =>
+      selectedUsers.length === 0
+        ? []
+        : intersectOptions(selectedUsers.map((u) => managerOptionsFor(u.role, users, u.team))),
+    [selectedUsers, users],
   );
 
   // --- per-row policy predicates -------------------------------------
@@ -289,7 +297,8 @@ export function UserManagementPage() {
         count={selectedEmails.size}
         selectedRoles={selectedRoles}
         actorRole={actorRole}
-        nameOptions={nameOptions}
+        teamLeadOptions={bulkTeamLeadOptions}
+        managerOptions={bulkManagerOptions}
         onApply={(patch) => void handleBulkApply(patch)}
       />
 

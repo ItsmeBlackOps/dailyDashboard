@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { teamLeadOptionsFor, managerOptionsFor } from '../options';
+import { teamLeadOptionsFor, managerOptionsFor, intersectOptions } from '../options';
 import type { ManageableUser } from '../grouping';
 
 // A small roster spanning every legacy role. Display names are derived
@@ -107,5 +107,83 @@ describe('managerOptionsFor', () => {
   it('returns [] when no managers exist', () => {
     const noMm = [make({ email: 'rahul.recruiter@x.com', role: 'recruiter' })];
     expect(managerOptionsFor('recruiter', noMm)).toEqual([]);
+  });
+});
+
+describe('department scoping + active filtering', () => {
+  it('excludes inactive users from team-lead options', () => {
+    const roster = [
+      make({ email: 'active.lead@x.com', role: 'lead' }),
+      make({ email: 'gone.lead@x.com', role: 'lead', active: false }),
+    ];
+    const opts = teamLeadOptionsFor('user', roster);
+    expect(opts).toContain('Active Lead');
+    expect(opts).not.toContain('Gone Lead');
+  });
+
+  it('scopes the mm tier of team-lead options by team (unset team = both sides)', () => {
+    const roster = [
+      make({ email: 'marketing.boss@x.com', role: 'mm', team: 'marketing' }),
+      make({ email: 'tech.boss@x.com', role: 'mm', team: 'technical' }),
+      make({ email: 'wildcard.boss@x.com', role: 'mm', team: null }),
+      make({ email: 'prateek.narvariya@x.com', role: 'lead', team: 'technical' }),
+    ];
+    const techOpts = teamLeadOptionsFor('user', roster);
+    expect(techOpts).toContain('Tech Boss');
+    expect(techOpts).toContain('Wildcard Boss');
+    expect(techOpts).toContain('Prateek Narvariya');
+    expect(techOpts).not.toContain('Marketing Boss');
+
+    const mktOpts = teamLeadOptionsFor('recruiter', roster);
+    expect(mktOpts).toContain('Marketing Boss');
+    expect(mktOpts).toContain('Wildcard Boss');
+    expect(mktOpts).not.toContain('Tech Boss');
+  });
+
+  it('manager options are scoped to the target side, inactive mms excluded', () => {
+    const roster = [
+      make({ email: 'marketing.boss@x.com', role: 'mm', team: 'marketing' }),
+      make({ email: 'retired.boss@x.com', role: 'mm', team: 'marketing', active: false }),
+      make({ email: 'tech.boss@x.com', role: 'mm', team: 'technical' }),
+    ];
+    expect(managerOptionsFor('recruiter', roster)).toEqual(['Marketing Boss']);
+    expect(managerOptionsFor('user', roster)).toEqual(['Tech Boss']);
+  });
+
+  it('falls back to admins when no manager matches the side (real technical org)', () => {
+    const roster = [
+      make({ email: 'marketing.boss@x.com', role: 'mm', team: 'marketing' }),
+      make({ email: 'harsh.patel@x.com', role: 'admin', team: null }),
+    ];
+    // Technical target: no technical/unset mm -> admins offered instead.
+    expect(managerOptionsFor('user', roster)).toEqual(['Harsh Patel']);
+    // Marketing target: a marketing mm exists -> no admin fallback.
+    expect(managerOptionsFor('recruiter', roster)).toEqual(['Marketing Boss']);
+  });
+
+  it('an explicit target team overrides the role-derived side', () => {
+    const roster = [
+      make({ email: 'marketing.boss@x.com', role: 'mm', team: 'marketing' }),
+      make({ email: 'tech.boss@x.com', role: 'mm', team: 'technical' }),
+    ];
+    // 'user' is technical by token, but an explicit marketing team wins.
+    expect(managerOptionsFor('user', roster, 'marketing')).toEqual(['Marketing Boss']);
+  });
+});
+
+describe('intersectOptions', () => {
+  it('keeps only names present in every list, preserving first-list order', () => {
+    expect(
+      intersectOptions([
+        ['Alpha One', 'Beta Two', 'Gamma Three'],
+        ['Beta Two', 'Gamma Three'],
+        ['Gamma Three', 'Beta Two', 'Delta Four'],
+      ]),
+    ).toEqual(['Beta Two', 'Gamma Three']);
+  });
+
+  it('returns [] for empty input and propagates an empty member list', () => {
+    expect(intersectOptions([])).toEqual([]);
+    expect(intersectOptions([['Alpha One'], []])).toEqual([]);
   });
 });

@@ -3,19 +3,24 @@
 //
 // "Set active" / "Set inactive" fire immediately. "Change role",
 // "Change team lead" and "Change manager" reveal a small inline control
-// (a role Select, or a free-text Input) plus an Apply button so the
-// caller only ever sees the final patch.
+// (a Select) plus an Apply button so the caller only ever sees the
+// final patch.
 //
 // "Change role" is gated: it only shows when EVERY selected role is one
 // the actor is allowed to assign (canAssign), so a manager can never bulk
 // the bar into reassigning a peer/superior they couldn't touch one-by-one.
+//
+// Team lead / manager are real dropdowns (no free text): the page
+// computes the eligible names for the CURRENT selection — same
+// department (marketing/technical), active users only, intersected
+// across the selected users — and passes them in. An empty list renders
+// an explanatory hint instead of a control.
 //
 // Styling reuses the existing primary accent token (bg-primary/10) — no
 // new colours.
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -38,9 +43,11 @@ export interface BulkActionBarProps {
   /** Distinct legacy roles among the selected users. */
   selectedRoles: string[];
   actorRole: string;
-  /** Display names offered as autocomplete for team lead / manager,
-   *  restoring the legacy <datalist> suggestions to reduce typos. */
-  nameOptions?: string[];
+  /** Eligible team-lead names for the current selection (same department,
+   *  active, valid for every selected user). */
+  teamLeadOptions?: string[];
+  /** Eligible manager names for the current selection. */
+  managerOptions?: string[];
   onApply: (patch: BulkPatch) => void;
 }
 
@@ -51,12 +58,13 @@ export function BulkActionBar({
   count,
   selectedRoles,
   actorRole,
-  nameOptions = [],
+  teamLeadOptions = [],
+  managerOptions = [],
   onApply,
 }: BulkActionBarProps) {
   const [mode, setMode] = useState<InlineMode>(null);
   const [roleValue, setRoleValue] = useState('');
-  const [textValue, setTextValue] = useState('');
+  const [nameValue, setNameValue] = useState('');
 
   if (count === 0) return null;
 
@@ -67,12 +75,12 @@ export function BulkActionBar({
   const reset = () => {
     setMode(null);
     setRoleValue('');
-    setTextValue('');
+    setNameValue('');
   };
 
   const openMode = (next: InlineMode) => {
     setRoleValue('');
-    setTextValue('');
+    setNameValue('');
     setMode(next);
   };
 
@@ -82,14 +90,17 @@ export function BulkActionBar({
     reset();
   };
 
-  const applyText = () => {
+  const applyName = () => {
+    if (!nameValue) return;
     if (mode === 'teamLead') {
-      onApply({ teamLead: textValue });
+      onApply({ teamLead: nameValue });
     } else if (mode === 'manager') {
-      onApply({ manager: textValue });
+      onApply({ manager: nameValue });
     }
     reset();
   };
+
+  const nameOpts = mode === 'teamLead' ? teamLeadOptions : managerOptions;
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-primary/10 px-4 py-3">
@@ -145,28 +156,37 @@ export function BulkActionBar({
         </div>
       )}
 
-      {(mode === 'teamLead' || mode === 'manager') && (
-        <div className="flex items-center gap-2">
-          <Input
-            aria-label={mode === 'teamLead' ? 'New team lead' : 'New manager'}
-            className="h-9 w-[200px]"
-            placeholder={mode === 'teamLead' ? 'Team lead name' : 'Manager name'}
-            list={nameOptions.length ? 'bulk-name-suggestions' : undefined}
-            value={textValue}
-            onChange={(e) => setTextValue(e.target.value)}
-          />
-          {nameOptions.length > 0 && (
-            <datalist id="bulk-name-suggestions">
-              {nameOptions.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-          )}
-          <Button type="button" size="sm" onClick={applyText}>
-            Apply
-          </Button>
-        </div>
-      )}
+      {(mode === 'teamLead' || mode === 'manager') &&
+        (nameOpts.length === 0 ? (
+          <span className="text-xs text-muted-foreground">
+            {mode === 'teamLead'
+              ? 'No eligible team leads for this selection.'
+              : 'No eligible managers for this selection.'}
+          </span>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Select value={nameValue} onValueChange={setNameValue}>
+              <SelectTrigger
+                aria-label={mode === 'teamLead' ? 'New team lead' : 'New manager'}
+                className="h-9 w-[220px]"
+              >
+                <SelectValue
+                  placeholder={mode === 'teamLead' ? 'Select a team lead' : 'Select a manager'}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {nameOpts.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="button" size="sm" onClick={applyName}>
+              Apply
+            </Button>
+          </div>
+        ))}
     </div>
   );
 }
