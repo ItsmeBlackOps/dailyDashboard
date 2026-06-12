@@ -50,7 +50,8 @@ class NotificationService {
             link: n.link,
             batchData: n.batchData,
             changeDetails: n.changeDetails,
-            actor: n.actor
+            actor: n.actor,
+            popup: n.popup === true
         }));
     }
 

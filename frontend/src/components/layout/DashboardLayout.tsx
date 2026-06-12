@@ -14,6 +14,7 @@ import { RoleDetailRequiredDialog } from './RoleDetailRequiredDialog';
 import { RecruiterCallAlertDialog } from './RecruiterCallAlertDialog';
 import { ContactNumberRequiredDialog } from './ContactNumberRequiredDialog';
 import { ExtensionGate } from './ExtensionGate';
+import { AnnouncementModal } from './AnnouncementModal';
 
 interface DashboardLayoutProps {
   // Optional: when DashboardLayout is used as a layout *route* (the normal case
@@ -112,6 +113,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <RoleDetailRequiredDialog />
           <ContactNumberRequiredDialog />
           <ExtensionGate />
+          <AnnouncementModal />
           <NotificationDetailModal />
           <MicrosoftConsentDialog />
           <TechnicalAckModal />

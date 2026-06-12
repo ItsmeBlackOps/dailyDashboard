@@ -55,7 +55,8 @@ class NotificationModel {
             expiresAt: data.expiresAt || expiresAt,
             batchData: data.batchData || null,
             changeDetails: data.changeDetails || null,
-            actor: data.actor || null
+            actor: data.actor || null,
+            popup: data.popup === true // surfaced as a blocking pop-up modal, not just a bell item
         };
 
         // Use updateOne with upsert to prevent duplicates
