@@ -50,8 +50,15 @@ const config = {
         'http://localhost:3000',
         'http://localhost:8180',
       ].filter(Boolean);
-      if (!origin || allowed.includes(origin)) return callback(null, true);
-      callback(new Error('Not allowed by CORS'));
+      // Browser-extension service workers (Meeting Detector) send
+      // Origin: chrome-extension://<id>. Web pages can't forge these schemes,
+      // and CORS isn't the auth boundary here (bearer JWTs are) — rejecting
+      // them only breaks the extension's enroll/report calls.
+      const isBrowserExtension = /^(chrome|moz|safari-web|ms-browser)-extension:\/\//.test(origin || '');
+      if (!origin || isBrowserExtension || allowed.includes(origin)) return callback(null, true);
+      const err = new Error('Not allowed by CORS');
+      err.statusCode = 403; // a denied origin is a client condition, not a server fault
+      callback(err);
     },
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
