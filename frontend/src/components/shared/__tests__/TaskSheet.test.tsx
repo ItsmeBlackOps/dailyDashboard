@@ -63,6 +63,42 @@ function mockTask(task: Record<string, unknown>) {
   });
 }
 
+describe('TaskSheet — people on this task', () => {
+  beforeEach(() => {
+    authFetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('renders owner, co-experts, and pending co-assigns with their states', async () => {
+    mockTask({
+      ...BASE_TASK,
+      assignedTo: 'subhash.sharma@vizvainc.com',
+      coAssignees: ['utsa.maiti@vizvainc.com'],
+      pendingCoAssigns: [{
+        email: 'aditya.sharma@vizvainc.com',
+        requestedBy: 'anusree.vasudevan@vizvainc.com',
+        requestedAt: '2026-06-12T12:00:00Z',
+        approverEmail: 'prateek.narvariya@silverspaceinc.com',
+      }],
+    });
+
+    render(<TaskSheet taskId="t1" onClose={() => {}} />);
+
+    expect(await screen.findByText('People on this task')).toBeInTheDocument();
+    // owner name also appears in the details grid's Expert field
+    expect(screen.getAllByText('Subhash Sharma').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('owner')).toBeInTheDocument();
+    expect(screen.getByText('Utsa Maiti')).toBeInTheDocument();
+    expect(screen.getByText('co-expert')).toBeInTheDocument();
+    expect(screen.getByText('Aditya Sharma')).toBeInTheDocument();
+    expect(screen.getByText(/pending Prateek Narvariya/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add co-expert/i })).toBeInTheDocument();
+  });
+});
+
 describe('TaskSheet — meeting start strip', () => {
   beforeEach(() => {
     authFetchMock.mockReset();

@@ -1113,6 +1113,10 @@ class CandidateController {
           botInviteAttempts:  typeof doc.botInviteAttempts === 'number' ? doc.botInviteAttempts : null,
           botJoinedAt:        doc.botJoinedAt || null,
           botLastError:       doc.botLastError || null,
+          // Co-experts (2026-06-12 redesign) — second experts on the task,
+          // plus requests still waiting on a lead's approval.
+          coAssignees:      Array.isArray(doc.coAssignees) ? doc.coAssignees : [],
+          pendingCoAssigns: Array.isArray(doc.pendingCoAssigns) ? doc.pendingCoAssigns : [],
           // Meeting-start flag — flipped manually from the dashboard or
           // auto-detected by the Meeting Detector extension (source 'extension').
           meetingStarted:       doc.meetingStarted === true,
