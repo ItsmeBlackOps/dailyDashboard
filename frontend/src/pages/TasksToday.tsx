@@ -361,6 +361,7 @@ const MAX_DELAY = 2147483647; // ~24.85 days (2^31 - 1)
 
 import { SubjectValidationBadge } from "@/components/tasks/SubjectValidationBadge";
 import { DeleteTaskDialog } from "@/components/tasks/DeleteTaskDialog";
+import { HandOffDialog } from "@/components/tasks/HandOffDialog";
 import { Trash2, RefreshCw } from "lucide-react";
 import { TaskSheet } from '@/components/shared/TaskSheet';
 import { PODraftSheet } from '@/components/shared/PODraftSheet';
@@ -617,6 +618,9 @@ export default function TasksToday() {
     open: false,
     task: null
   });
+
+  // Hand off to teammate (tasks-scope delegation) — launched per row.
+  const [handOffTask, setHandOffTask] = useState<Task | null>(null);
 
   // Reprocess Subject Dialog State (admin only — wipes & re-pushes via Kafka/Intervue).
   const [reprocessDialog, setReprocessDialog] = useState<{ open: boolean; task: Task | null; busy: boolean }>({
@@ -4484,6 +4488,14 @@ export default function TasksToday() {
                               onClick={(e) => e.stopPropagation()}
                               onCloseAutoFocus={(e) => e.preventDefault()}
                             >
+                              {(task.assignedEmail || '').toLowerCase() === (currentUserEmail || '').toLowerCase() && (
+                                <>
+                                  <DropdownMenuItem onClick={() => setHandOffTask(task)}>
+                                    Hand off to teammate…
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                </>
+                              )}
                               {canGenerateInterviewDebrief && (
                                 <>
                                   <DropdownMenuItem
@@ -5118,6 +5130,16 @@ export default function TasksToday() {
         </DialogContent>
       </Dialog>
       {/* Delete Task Dialog */}
+      <HandOffDialog
+        open={!!handOffTask}
+        task={handOffTask ? { taskId: String(handOffTask._id), subject: handOffTask.subject || '' } : null}
+        myOtherTasks={displayed
+          .filter((t) =>
+            t._id !== handOffTask?._id &&
+            (t.assignedEmail || '').toLowerCase() === (currentUserEmail || '').toLowerCase())
+          .map((t) => ({ taskId: String(t._id), subject: t.subject || '' }))}
+        onClose={() => setHandOffTask(null)}
+      />
       <DeleteTaskDialog
         open={deleteTaskDialog.open}
         onOpenChange={(open) => setDeleteTaskDialog(prev => ({ ...prev, open }))}

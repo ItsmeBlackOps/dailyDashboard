@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { parseJsonOrThrow } from '@/lib/fetchJson';
 import { canSeeBotStatus } from '@/lib/roleAliases';
 import {
-  Calendar, Clock, Building2, Briefcase, User, Mail,
+  Calendar, Clock, Building2, Briefcase, User, Mail, UserPlus, X as XIcon,
   Layers, Users, ExternalLink, MessageSquare, FileText, Video, Check, Loader2,
 } from 'lucide-react';
 import {
@@ -15,6 +15,11 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { useAuth, API_URL } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { fetchEligible, type EligiblePerson } from '@/lib/delegationApi';
+import {
+  addCoAssignee, approveCoAssignee, rejectCoAssignee, removeCoAssignee,
+} from '@/lib/coAssignApi';
 import BotStatusBadge from './BotStatusBadge';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -70,6 +75,8 @@ interface TaskFull {
   meetingStartedAt?: string | null;
   meetingStartedBy?: string | null;
   meetingStartedSource?: string | null;
+  coAssignees?: string[];
+  pendingCoAssigns?: { email: string; requestedBy: string; requestedAt: string; approverEmail: string }[];
 }
 
 interface TaskSheetProps {
@@ -186,6 +193,8 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
   const [passwordDraft, setPasswordDraft] = useState('');
   const [savingLink, setSavingLink] = useState(false);
 
+  const [refreshKey, setRefreshKey] = useState(0);
+
   useEffect(() => {
     if (!taskId) { setTask(null); setError(null); return; }
     setLoading(true);
@@ -204,7 +213,7 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
         setError(e.message);
       })
       .finally(() => setLoading(false));
-  }, [taskId, authFetch]);
+  }, [taskId, authFetch, refreshKey]);
 
   const handleSaveMeetingLink = async () => {
     if (!taskId || !linkDraft.trim()) return;
@@ -303,6 +312,9 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
                 value={task.assignedTo ? (task.assignedTo.includes('@') ? formatEmail(task.assignedTo) : task.assignedTo) : null} />
               <Field icon={Clock}     label="Assigned At"  value={formatDate(task.assignedAt)} />
             </div>
+
+            {/* People on this task — owner + co-experts (2026-06-12 redesign) */}
+            <PeopleOnTask task={task} onChanged={() => setRefreshKey((k) => k + 1)} />
 
             {/* Meeting Link */}
             <div className="rounded-lg border p-3 space-y-3">
@@ -479,6 +491,161 @@ export function TaskSheet({ taskId, onClose, onCreatePO }: TaskSheetProps) {
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+// ── People on this task ─────────────────────────────────────────────────────
+// Owner + co-experts, with add (dropdown of department experts — instant
+// for the expert's own lead/admin, pending that lead's approval otherwise),
+// approve/reject for pending entries, and remove. Authority is enforced
+// server-side; failed actions surface as toasts.
+
+function PeopleOnTask({ task, onChanged }: { task: TaskFull; onChanged: () => void }) {
+  const { authFetch } = useAuth();
+  const { toast } = useToast();
+  const [experts, setExperts] = useState<EligiblePerson[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [pickOpen, setPickOpen] = useState(false);
+
+  const ownerEmail = (task.assignedTo || '').toLowerCase();
+  const coAssignees = task.coAssignees || [];
+  const pending = task.pendingCoAssigns || [];
+
+  useEffect(() => {
+    if (!pickOpen || experts.length > 0) return;
+    fetchEligible(authFetch, API_URL)
+      .then((e) => setExperts(e.deptExperts || []))
+      .catch(() => setExperts([]));
+  }, [pickOpen, experts.length, authFetch]);
+
+  const act = async (fn: () => Promise<unknown>, okTitle: string) => {
+    try {
+      await fn();
+      toast({ title: okTitle });
+      onChanged();
+    } catch (err) {
+      toast({ title: 'Action failed', description: (err as Error).message, variant: 'destructive' });
+    }
+  };
+
+  const handleAdd = async (email: string) => {
+    setAdding(true);
+    setPickOpen(false);
+    try {
+      const r = await addCoAssignee(authFetch, API_URL, task.taskId, email);
+      toast({
+        title: r.status === 'pending' ? 'Sent for approval' : 'Co-expert added',
+        description: r.status === 'pending'
+          ? `${formatEmail(email)} joins once ${formatEmail(r.approverEmail || '')} approves.`
+          : `${formatEmail(email)} is now on this task.`,
+      });
+      onChanged();
+    } catch (err) {
+      toast({ title: 'Could not add', description: (err as Error).message, variant: 'destructive' });
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const taken = new Set([ownerEmail, ...coAssignees, ...pending.map((p) => p.email)]);
+  const options = experts.filter((e) => !taken.has(e.email));
+
+  return (
+    <div className="rounded-lg border p-3 space-y-2.5">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold">People on this task</h4>
+        {!pickOpen ? (
+          <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" disabled={adding}
+            onClick={() => setPickOpen(true)}>
+            <UserPlus className="h-3 w-3" /> Add co-expert
+          </Button>
+        ) : (
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setPickOpen(false)}>
+            Cancel
+          </Button>
+        )}
+      </div>
+
+      {pickOpen && (
+        <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-1.5">
+          {options.length === 0 ? (
+            <p className="px-1 py-2 text-xs text-muted-foreground">No other eligible experts found.</p>
+          ) : (
+            options.map((e) => (
+              <button
+                key={e.email}
+                type="button"
+                onClick={() => void handleAdd(e.email)}
+                className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs hover:bg-muted"
+              >
+                <span>{formatEmail(e.email)}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {e.mine ? 'your team' : e.teamLead ? `under ${e.teamLead}` : ''}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        {ownerEmail && (
+          <div className="flex items-center gap-2 text-xs">
+            <User className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="font-medium">{formatEmail(ownerEmail)}</span>
+            <Badge variant="secondary" className="text-[9px] px-1">owner</Badge>
+          </div>
+        )}
+        {coAssignees.map((email) => (
+          <div key={email} className="flex items-center gap-2 text-xs">
+            <Users className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="font-medium">{formatEmail(email)}</span>
+            <Badge variant="outline" className="border-violet-400/60 bg-violet-500/10 text-violet-600 text-[9px] px-1">
+              co-expert
+            </Badge>
+            <button
+              type="button"
+              aria-label={`Remove ${formatEmail(email)}`}
+              className="ml-auto rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={() => void act(
+                () => removeCoAssignee(authFetch, API_URL, task.taskId, email),
+                'Co-expert removed',
+              )}
+            >
+              <XIcon className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+        {pending.map((pc) => (
+          <div key={pc.email} className="flex flex-wrap items-center gap-2 text-xs">
+            <Users className="h-3.5 w-3.5 text-amber-500" />
+            <span className="font-medium">{formatEmail(pc.email)}</span>
+            <Badge variant="outline" className="border-amber-400/60 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[9px] px-1">
+              pending {formatEmail(pc.approverEmail)}
+            </Badge>
+            <span className="ml-auto flex gap-1">
+              <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]"
+                onClick={() => void act(
+                  () => approveCoAssignee(authFetch, API_URL, task.taskId, pc.email),
+                  'Co-expert approved',
+                )}>
+                Approve
+              </Button>
+              <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]"
+                onClick={() => void act(
+                  () => rejectCoAssignee(authFetch, API_URL, task.taskId, pc.email),
+                  'Request declined',
+                )}>
+                Reject
+              </Button>
+            </span>
+          </div>
+        ))}
+        {!coAssignees.length && !pending.length && (
+          <p className="text-xs text-muted-foreground">No co-experts yet.</p>
+        )}
+      </div>
+    </div>
   );
 }
 

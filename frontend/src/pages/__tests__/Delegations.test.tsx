@@ -14,9 +14,12 @@ if (!window.HTMLElement.prototype.releasePointerCapture) {
   window.HTMLElement.prototype.releasePointerCapture = function () {};
 }
 
+// Stable auth value — a fresh authFetch per render retriggers data
+// effects forever (render loop -> worker OOM).
+const stableAuth = vi.hoisted(() => ({ authFetch: () => Promise.resolve(new Response('{}')) }));
 vi.mock('@/hooks/useAuth', () => ({
   API_URL: 'http://localhost:3004',
-  useAuth: () => ({ authFetch: vi.fn() }),
+  useAuth: () => stableAuth,
 }));
 
 const api = vi.hoisted(() => ({
