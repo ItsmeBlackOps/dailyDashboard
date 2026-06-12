@@ -42,6 +42,7 @@ interface NotificationEvent {
     batchData?: any[];
     resumeUnderstandingStatus?: string;
     popup?: boolean; // show as a blocking announcement modal, not just a bell item
+    popupViews?: number; // how many times this user has seen the pop-up (caps at 3)
 }
 
 interface CallAlert {
@@ -58,6 +59,7 @@ interface NotificationContextType {
     notifications: NotificationEvent[];
     unreadCount: number;
     markAsRead: (id: string) => void;
+    recordPopupView: (id: string) => Promise<number>;
     clearAll: () => void;
     // Modal State
     selectedNotification: NotificationEvent | null;
@@ -160,7 +162,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                         changeDetails: n.changeDetails,
                         actor: n.actor,
                         batchData: n.batchData,
-                        popup: n.popup === true
+                        popup: n.popup === true,
+                        popupViews: n.popupViews || 0
                     })));
                 }
             } catch (err) {
@@ -487,6 +490,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         }
     };
 
+    const recordPopupView = async (id: string): Promise<number> => {
+        // optimistic local bump so the 3-view cap holds even within one session
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, popupViews: (n.popupViews || 0) + 1 } : n));
+        try {
+            const res = await authFetch(`${API_URL}/api/notifications/${id}/popup-seen`, { method: 'PUT' });
+            const data = await res.json().catch(() => ({}));
+            return typeof data.views === 'number' ? data.views : 0;
+        } catch (err) {
+            console.error('Failed to record popup view', err);
+            return 0;
+        }
+    };
+
     const clearAll = async () => {
         setNotifications(prev => prev.map(n => ({ ...n, read: true }))); // UI Optimistic
         try {
@@ -525,7 +541,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     };
 
     return (
-        <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, clearAll, selectedNotification, isModalOpen, openModal, closeModal, pendingCallAlerts, respondToCallAlert, activityRefreshTrigger }}>
+        <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, recordPopupView, clearAll, selectedNotification, isModalOpen, openModal, closeModal, pendingCallAlerts, respondToCallAlert, activityRefreshTrigger }}>
             {children}
         </NotificationContext.Provider>
     );

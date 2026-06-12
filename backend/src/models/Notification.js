@@ -141,6 +141,19 @@ class NotificationModel {
         );
     }
 
+    // Counts one pop-up viewing for this recipient and returns the new total.
+    // The modal stops popping once this reaches the cap (3).
+    async incrementPopupViews(notificationId, userEmail) {
+        const collection = database.getCollection(COLLECTION);
+        const res = await collection.findOneAndUpdate(
+            { _id: new ObjectId(notificationId), recipient: userEmail },
+            { $inc: { popupViews: 1 } },
+            { returnDocument: 'after' }
+        );
+        const doc = res && (res.value !== undefined ? res.value : res);
+        return doc ? (doc.popupViews || 0) : 0;
+    }
+
     async markAllAsRead(userEmail) {
         const collection = database.getCollection(COLLECTION);
         await collection.updateMany(

@@ -482,6 +482,14 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                   badge={adminAlertCount > 0 ? String(adminAlertCount) : undefined}
                 />
               )}
+              {normalizedRole === 'admin' && (
+                <NavItem
+                  icon={Megaphone}
+                  label="Send Announcement"
+                  href="/admin/announce"
+                  isOpen={isOpen}
+                />
+              )}
               {showResumeNav && (
                 <NavItem
                   icon={ClipboardCheck}
