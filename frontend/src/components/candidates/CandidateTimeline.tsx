@@ -150,6 +150,19 @@ export function CandidateTimeline({ candidateId, refreshKey, onTaskClick }: Cand
                 </span>
               </div>
               {actor && <div className="text-xs text-muted-foreground">{actor}</div>}
+              {(() => {
+                // Call attempts (and other logged activities) carry the typed
+                // note in detail.notes — surface it; the label alone only says
+                // connected/unavailable.
+                const d = event.detail as { notes?: unknown } | null | undefined;
+                const notes = d && typeof d.notes === 'string' ? d.notes.trim() : '';
+                if (!notes || notes === event.label) return null;
+                return (
+                  <div className="mt-1 whitespace-pre-wrap break-words rounded bg-muted/50 px-2 py-1 text-xs text-foreground/80">
+                    {notes}
+                  </div>
+                );
+              })()}
             </div>
             {clickable && (
               <ChevronRight className="h-4 w-4 flex-shrink-0 self-center text-muted-foreground/50" />

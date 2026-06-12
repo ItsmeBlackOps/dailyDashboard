@@ -123,6 +123,44 @@ describe('CandidateTimeline — unified feed', () => {
     expect(onTaskClick).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the typed note under call activities (and skips note-as-label duplicates)', async () => {
+    authFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        timeline: [
+          {
+            id: 'a1',
+            ts: '2026-06-04T10:00:00Z',
+            type: 'call_attempt',
+            label: 'Call attempt — connected',
+            actor: 'rec@x.com',
+            detail: { outcome: 'connected', notes: 'Asked to reschedule to Friday after 6pm' },
+            source: 'activity',
+          },
+          {
+            id: 'a2',
+            ts: '2026-06-04T09:00:00Z',
+            type: 'document_prepared',
+            // Non-call activities use the note AS the label — must not render twice.
+            label: 'Resume v3 shared with vendor',
+            detail: { outcome: null, notes: 'Resume v3 shared with vendor' },
+            source: 'activity',
+          },
+        ],
+      }),
+    });
+
+    render(<CandidateTimeline candidateId="cand-5" />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Call attempt — connected')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('Asked to reschedule to Friday after 6pm')).toBeInTheDocument();
+    // The duplicate-label note renders exactly once.
+    expect(screen.getAllByText('Resume v3 shared with vendor')).toHaveLength(1);
+  });
+
   it('renders no buttons when onTaskClick is not provided', async () => {
     authFetchMock.mockResolvedValue({
       ok: true,

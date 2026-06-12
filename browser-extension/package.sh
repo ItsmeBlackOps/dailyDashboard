@@ -14,10 +14,10 @@ mkdir -p dist
 rm -f "$out"
 
 # Only the files the browser needs to run the extension.
-files=(manifest.json background.js content.js dashboard-bridge.js options.html options.js popup.html popup.js README.md)
+files=(manifest.json background.js content.js dashboard-bridge.js options.html options.js popup.html popup.js README.md icons)
 
 if command -v zip >/dev/null 2>&1; then
-  zip -q "$out" "${files[@]}"
+  zip -qr "$out" "${files[@]}"
 elif command -v powershell >/dev/null 2>&1; then
   # Windows fallback — Compress-Archive (paths relative to this dir).
   list="$(printf '"%s",' "${files[@]}")"; list="${list%,}"

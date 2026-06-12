@@ -14,6 +14,7 @@ import { RoleDetailRequiredDialog } from './RoleDetailRequiredDialog';
 import { RecruiterCallAlertDialog } from './RecruiterCallAlertDialog';
 import { ContactNumberRequiredDialog } from './ContactNumberRequiredDialog';
 import { ExtensionGate } from './ExtensionGate';
+import { UpdateGuard } from './UpdateGuard';
 import { AnnouncementModal } from './AnnouncementModal';
 
 interface DashboardLayoutProps {
@@ -112,6 +113,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </div>
           <RoleDetailRequiredDialog />
           <ContactNumberRequiredDialog />
+          <UpdateGuard />
           <ExtensionGate />
           <AnnouncementModal />
           <NotificationDetailModal />
