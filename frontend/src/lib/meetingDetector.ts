@@ -12,3 +12,23 @@ export function extensionsPageUrl(): string {
     ? 'edge://extensions'
     : 'chrome://extensions';
 }
+
+// Minimum extension version the hard gate accepts. Bump when an extension
+// release carries a fix the org depends on (e.g. 1.7.0's stale-URL fix) —
+// older installs are then blocked until updated.
+export const MIN_EXTENSION_VERSION = '1.7.0';
+
+/** Numeric segment-wise compare: '1.10.0' >= '1.7.0'. Unknown/blank → false. */
+export function meetsMinVersion(
+  version: string | null | undefined,
+  min: string = MIN_EXTENSION_VERSION,
+): boolean {
+  if (!version) return false;
+  const a = version.split('.').map((n) => parseInt(n, 10) || 0);
+  const b = min.split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (a[i] || 0) - (b[i] || 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return true;
+}
