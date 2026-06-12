@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { X, AlertTriangle } from 'lucide-react';
 import { useExtensionInstalled } from '@/hooks/useExtensionInstalled';
 import { isTechnicalTeam } from '@/lib/technicalTeam';
+import { EXTENSION_DOWNLOAD_URL } from '@/lib/meetingDetector';
 
 // Warn-but-allow: technical-team members without the Meeting Detector extension
 // are NOT blocked — they get a non-blocking warning that interviews won't be
@@ -33,12 +34,18 @@ export function ExtensionGate() {
             Without the browser extension, your interviews won't be marked <strong>started</strong>{' '}
             automatically when you join the Teams call. Set it up to enable it.
           </p>
-          <div className="mt-3 flex items-center gap-2">
-            <Link
-              to="/meeting-detector"
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <a
+              href={EXTENSION_DOWNLOAD_URL}
               className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700"
             >
-              Set up the extension
+              Download extension
+            </a>
+            <Link
+              to="/meeting-detector"
+              className="rounded-md border border-amber-400 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-900/40"
+            >
+              Setup help
             </Link>
             <button
               type="button"
