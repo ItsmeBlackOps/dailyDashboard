@@ -81,10 +81,15 @@ router.get('/diagnose', requireHTTPRole(['admin']), async (req, res) => {
     const recentAudit = await auditCol.find(
       { phase: { $regex: /^FIREFLIES_/ }, timestamp: { $gte: since24h } },
       {
-        timestamp: 1, phase: 1, level: 1, detail: 1, subject: 1,
-        'extra.candidateName': 1, 'extra.stage': 1, 'extra.taskId': 1,
-        'extra.firefliesStatus': 1, 'extra.firefliesBody': 1,
-        'extra.retryAfter': 1, 'extra.attemptNumber': 1,
+        // Projection MUST be nested under `projection` — a bare map as the
+        // options arg made the driver read `level: 1` as a readConcern
+        // level (int), 500ing the whole endpoint.
+        projection: {
+          timestamp: 1, phase: 1, level: 1, detail: 1, subject: 1,
+          'extra.candidateName': 1, 'extra.stage': 1, 'extra.taskId': 1,
+          'extra.firefliesStatus': 1, 'extra.firefliesBody': 1,
+          'extra.retryAfter': 1, 'extra.attemptNumber': 1,
+        },
       }
     ).sort({ timestamp: -1 }).limit(50).toArray();
 
@@ -106,9 +111,11 @@ router.get('/diagnose', requireHTTPRole(['admin']), async (req, res) => {
         ],
       },
       {
-        'Candidate Name': 1, interviewDateTime: 1, 'Date of Interview': 1,
-        'Start Time Of Interview': 1, meetingLink: 1, joinUrl: 1, joinWebUrl: 1,
-        botInviteAttempts: 1,
+        projection: {
+          'Candidate Name': 1, interviewDateTime: 1, 'Date of Interview': 1,
+          'Start Time Of Interview': 1, meetingLink: 1, joinUrl: 1, joinWebUrl: 1,
+          botInviteAttempts: 1,
+        },
       }
     ).sort({ interviewDateTime: -1 }).limit(20).toArray();
 
@@ -116,8 +123,10 @@ router.get('/diagnose', requireHTTPRole(['admin']), async (req, res) => {
     const terminalFailures = await taskCol.find(
       { botStatus: { $in: ['main_failed', 'precheck_failed'] } },
       {
-        'Candidate Name': 1, interviewDateTime: 1, botStatus: 1,
-        botInviteAttempts: 1, botLastError: 1, subject: 1, Subject: 1,
+        projection: {
+          'Candidate Name': 1, interviewDateTime: 1, botStatus: 1,
+          botInviteAttempts: 1, botLastError: 1, subject: 1, Subject: 1,
+        },
       }
     ).sort({ interviewDateTime: -1 }).limit(15).toArray();
 
