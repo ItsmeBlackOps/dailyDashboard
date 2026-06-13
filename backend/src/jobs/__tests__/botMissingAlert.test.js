@@ -14,6 +14,10 @@ jest.unstable_mockModule('../../services/notificationService.js', () => ({
   notificationService: { createNotification },
 }));
 
+jest.unstable_mockModule('../../services/firefliesService.js', () => ({
+  firefliesService: { enabled: true },
+}));
+
 jest.unstable_mockModule('../../utils/logger.js', () => ({
   logger: { info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
@@ -71,5 +75,18 @@ describe('sweepBotMissingOnce', () => {
     toArray.mockResolvedValue([{ _id: 't2', subject: 'x', assignedTo: '', coAssignees: [] }]);
     expect(await sweepBotMissingOnce()).toBe(0);
     expect(createNotification).not.toHaveBeenCalled();
+  });
+
+  it('stays dormant when the Fireflies live-bot is disabled (no false alarms)', async () => {
+    const { firefliesService } = await import('../../services/firefliesService.js');
+    firefliesService.enabled = false;
+    try {
+      toArray.mockResolvedValue([{ _id: 't3', subject: 'live', assignedTo: 'e@x.com', coAssignees: [] }]);
+      expect(await sweepBotMissingOnce()).toBe(0);
+      expect(find).not.toHaveBeenCalled();
+      expect(createNotification).not.toHaveBeenCalled();
+    } finally {
+      firefliesService.enabled = true;
+    }
   });
 });

@@ -22,6 +22,7 @@
 // Default ON; set BOT_MISSING_ALERTS_DISABLED=1 to opt out.
 
 import { database } from '../config/database.js';
+import { firefliesService } from '../services/firefliesService.js';
 import { notificationService } from '../services/notificationService.js';
 import { logger } from '../utils/logger.js';
 
@@ -33,6 +34,13 @@ let interval = null;
 let running = false;
 
 export async function sweepBotMissingOnce() {
+  // The alert is only meaningful when the Fireflies live-bot is actually
+  // operational: botJoinedAt (the "Fred is here" signal) is set by the bot
+  // scheduler, and the re-invite button it points at calls the same service.
+  // If the service is disabled/keyless, every started interview would
+  // false-alarm — and recordings still happen via Fred-as-calendar-attendee,
+  // so silence is correct. Stay dormant until the live-bot is restored.
+  if (!firefliesService?.enabled) return 0;
   const col = database.getCollection('taskBody');
   if (!col) return 0;
 
