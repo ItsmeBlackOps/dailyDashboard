@@ -88,6 +88,7 @@ import firefliesDiagnoseRoutes from './firefliesDiagnose.js';
 import jobsRoutes from './jobs.js';
 import jobApplicationsRoutes from './jobApplications.js';
 import delegationRoutes from './delegations.js';
+import mockRoutes from './mocks.js';
 import meetingPresenceRoutes from './meetingPresence.js';
 
 const router = express.Router();
@@ -106,6 +107,7 @@ router.use('/transcript-requests', transcriptRequestRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/po', poRoutes);
 router.use('/delegations', delegationRoutes);
+router.use('/mocks', mockRoutes);
 router.use('/meeting-presence', meetingPresenceRoutes);
 // Mount specific path BEFORE the generic /jobs prefix so Express
 // reaches the applications router instead of falling into jobsRoutes.
