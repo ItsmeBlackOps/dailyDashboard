@@ -195,6 +195,15 @@ class Application {
       logger.warn('delegationService.ensureIndexes failed at boot', { error: err.message });
     }
 
+    // Mock Support — mockRequests indexes (idempotent).
+    try {
+      const { mockRequestModel } = await import('./models/MockRequest.js');
+      mockRequestModel.init();
+      await mockRequestModel.ensureIndexes();
+    } catch (err) {
+      logger.warn('mockRequestModel.ensureIndexes failed at boot', { error: err.message });
+    }
+
     logger.info('✅ Models initialized');
   }
 

@@ -569,6 +569,14 @@ export function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 tourId="user-management-link"
               />
             )}
+            {['admin', 'mm', 'mam', 'mlead', 'lead', 'am', 'manager', 'assistantmanager', 'teamlead', 'user', 'expert', 'recruiter'].includes(normalizedRole) && (
+              <NavItem
+                icon={GraduationCap}
+                label="Mock Supports"
+                href="/mock-supports"
+                isOpen={isOpen}
+              />
+            )}
             {['admin', 'mm', 'mam', 'mlead', 'lead', 'am', 'manager', 'assistantmanager', 'teamlead', 'user', 'expert'].includes(normalizedRole) && (
               <NavItem
                 icon={UserPlus}
